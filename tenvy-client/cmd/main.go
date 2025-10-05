@@ -154,6 +154,37 @@ type BuildPreferences struct {
 	ForceAdmin    bool
 }
 
+type temporaryError interface {
+	error
+	Temporary() bool
+}
+
+type registrationError struct {
+	err       error
+	temporary bool
+}
+
+func (e *registrationError) Error() string {
+	if e == nil || e.err == nil {
+		return "registration error"
+	}
+	return e.err.Error()
+}
+
+func (e *registrationError) Unwrap() error {
+	if e == nil {
+		return nil
+	}
+	return e.err
+}
+
+func (e *registrationError) Temporary() bool {
+	if e == nil {
+		return false
+	}
+	return e.temporary
+}
+
 func init() {
 	rand.Seed(time.Now().UnixNano())
 }
@@ -200,7 +231,7 @@ func main() {
 
 	client := &http.Client{Timeout: 60 * time.Second}
 
-	registration, err := registerAgent(ctx, client, serverURL, sharedSecret, metadata)
+	registration, err := registerAgentWithRetry(ctx, logger, client, serverURL, sharedSecret, metadata, 0)
 	if err != nil {
 		logger.Fatalf("failed to register agent: %v", err)
 	}
@@ -448,7 +479,7 @@ func (a *Agent) reRegister(ctx context.Context) error {
 	}
 
 	metadata := collectMetadata()
-	registration, err := registerAgent(ctx, a.client, a.baseURL, a.sharedSecret, metadata)
+	registration, err := registerAgentWithRetry(ctx, a.logger, a.client, a.baseURL, a.sharedSecret, metadata, a.maxBackoff())
 	if err != nil {
 		return err
 	}
@@ -637,6 +668,64 @@ func (a *Agent) withJitter(base time.Duration) time.Duration {
 	return value
 }
 
+func registerAgentWithRetry(ctx context.Context, logger *log.Logger, client *http.Client, serverURL, token string, metadata AgentMetadata, maxBackoff time.Duration) (*AgentRegistrationResponse, error) {
+	if maxBackoff <= 0 {
+		maxBackoff = fallbackMaxBackoff()
+	}
+	if maxBackoff <= 0 {
+		maxBackoff = defaultBackoff
+	}
+
+	backoff := time.Second
+	if backoff <= 0 {
+		backoff = time.Second
+	}
+
+	attempt := 1
+	for {
+		registration, err := registerAgent(ctx, client, serverURL, token, metadata)
+		if err == nil {
+			if attempt > 1 {
+				logger.Printf("registration succeeded after %d attempts", attempt)
+			}
+			return registration, nil
+		}
+
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
+
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			return nil, err
+		}
+
+		if tempErr, ok := err.(temporaryError); ok && !tempErr.Temporary() {
+			logger.Printf("registration aborted after %d attempts: %v", attempt, err)
+			return nil, err
+		}
+
+		logger.Printf("registration attempt %d failed: %v", attempt, err)
+
+		wait := jitterDuration(backoff)
+		if wait > maxBackoff {
+			wait = maxBackoff
+		}
+
+		logger.Printf("retrying registration in %s", wait)
+
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-time.After(wait):
+		}
+
+		attempt++
+		if backoff < maxBackoff {
+			backoff = minDuration(backoff*2, maxBackoff)
+		}
+	}
+}
+
 func registerAgent(ctx context.Context, client *http.Client, serverURL, token string, metadata AgentMetadata) (*AgentRegistrationResponse, error) {
 	request := AgentRegistrationRequest{Metadata: metadata}
 	if strings.TrimSpace(token) != "" {
@@ -659,31 +748,93 @@ func registerAgent(ctx context.Context, client *http.Client, serverURL, token st
 
 	resp, err := client.Do(req)
 	if err != nil {
-		return nil, err
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			return nil, err
+		}
+
+		temporary := false
+		var netErr net.Error
+		if errors.As(err, &netErr) {
+			temporary = netErr.Timeout() || netErr.Temporary()
+		}
+		if !temporary {
+			var opErr *net.OpError
+			if errors.As(err, &opErr) {
+				temporary = true
+			}
+		}
+		if !temporary {
+			var urlErr *url.Error
+			if errors.As(err, &urlErr) {
+				if urlErr.Timeout() {
+					temporary = true
+				}
+				if !temporary {
+					if _, ok := urlErr.Err.(*net.OpError); ok {
+						temporary = true
+					}
+				}
+			}
+		}
+
+		return nil, &registrationError{err: err, temporary: temporary}
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode >= 400 {
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 1024))
-		if len(body) == 0 {
-			return nil, fmt.Errorf("registration failed with status %d", resp.StatusCode)
+		message := strings.TrimSpace(string(body))
+		if message == "" {
+			message = fmt.Sprintf("status %d", resp.StatusCode)
 		}
-		return nil, fmt.Errorf("registration failed: %s", strings.TrimSpace(string(body)))
+		return nil, &registrationError{
+			err:       fmt.Errorf("registration failed: %s", message),
+			temporary: isTemporaryStatus(resp.StatusCode),
+		}
 	}
 
 	var payload AgentRegistrationResponse
 	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
-		return nil, err
+		return nil, &registrationError{err: err, temporary: true}
 	}
 
 	if strings.TrimSpace(payload.AgentID) == "" {
-		return nil, errors.New("missing agent identifier in response")
+		return nil, &registrationError{err: errors.New("missing agent identifier in response"), temporary: true}
 	}
 	if strings.TrimSpace(payload.AgentKey) == "" {
-		return nil, errors.New("missing agent key in response")
+		return nil, &registrationError{err: errors.New("missing agent key in response"), temporary: true}
 	}
 
 	return &payload, nil
+}
+
+func isTemporaryStatus(status int) bool {
+	switch {
+	case status >= 500:
+		return true
+	case status == http.StatusTooManyRequests,
+		status == http.StatusRequestTimeout,
+		status == http.StatusTooEarly:
+		return true
+	default:
+		return false
+	}
+}
+
+func jitterDuration(base time.Duration) time.Duration {
+	if base <= 0 {
+		return time.Second
+	}
+
+	minFactor := 0.5
+	maxFactor := 1.5
+	factor := minFactor + rand.Float64()*(maxFactor-minFactor)
+	wait := time.Duration(float64(base) * factor)
+	if wait <= 0 {
+		return base
+	}
+
+	return wait
 }
 
 func collectMetadata() AgentMetadata {
