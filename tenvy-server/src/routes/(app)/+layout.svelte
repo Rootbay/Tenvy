@@ -22,15 +22,16 @@
 	import { Separator } from '$lib/components/ui/separator/index.js';
 	import type { IconComponent, NavKey } from '$lib/types/navigation.js';
 	import {
-		Activity,
-		Bell,
-		LogOut,
-		LayoutDashboard,
-		PlugZap,
-		Search,
-		Settings,
-		User,
-		Users
+                Activity,
+                Bell,
+                LogOut,
+                LayoutDashboard,
+                Hammer,
+                PlugZap,
+                Search,
+                Settings,
+                User,
+                Users
 	} from '@lucide/svelte';
 
 	type NavItem = {
@@ -67,20 +68,26 @@
 		{
 			label: 'Operations',
 			items: [
-				{
-					title: 'Clients',
-					icon: Users,
-					badge: '18',
-					badgeClass: 'bg-blue-500/15 text-blue-500',
-					slug: 'clients',
-					href: '/clients'
-				},
-				{
-					title: 'Plugins',
-					icon: PlugZap,
-					badge: '3',
-					badgeClass: 'bg-purple-500/15 text-purple-500',
-					slug: 'plugins',
+                                {
+                                        title: 'Clients',
+                                        icon: Users,
+                                        badge: '18',
+                                        badgeClass: 'bg-blue-500/15 text-blue-500',
+                                        slug: 'clients',
+                                        href: '/clients'
+                                },
+                                {
+                                        title: 'Build',
+                                        icon: Hammer,
+                                        slug: 'build',
+                                        href: '/build'
+                                },
+                                {
+                                        title: 'Plugins',
+                                        icon: PlugZap,
+                                        badge: '3',
+                                        badgeClass: 'bg-purple-500/15 text-purple-500',
+                                        slug: 'plugins',
 					href: '/plugins'
 				}
 			]
@@ -96,12 +103,16 @@
 			title: 'Clients',
 			description: 'Inspect connected endpoints, filter by posture, and triage which agents need attention next.'
 		},
-		plugins: {
-			title: 'Plugins',
-			description: 'Manage extensions and modular capabilities for the platform.'
-		},
-		activity: {
-			title: 'Activity',
+                plugins: {
+                        title: 'Plugins',
+                        description: 'Manage extensions and modular capabilities for the platform.'
+                },
+                build: {
+                        title: 'Agent builder',
+                        description: 'Compile customized client binaries and distribute them to targets.'
+                },
+                activity: {
+                        title: 'Activity',
 			description: 'Streaming event timelines and operation history.'
 		},
 		settings: {
