@@ -10,7 +10,15 @@
 	} from '$lib/components/ui/card/index.js';
 	import type { IconComponent } from '$lib/types/navigation.js';
 
-	import { Activity, TriangleAlert, CircleCheck, LogIn, PlugZap, Terminal, Users } from '@lucide/svelte';
+	import {
+		Activity,
+		TriangleAlert,
+		CircleCheck,
+		LogIn,
+		PlugZap,
+		Terminal,
+		Users
+	} from '@lucide/svelte';
 
 	type Stat = {
 		title: string;

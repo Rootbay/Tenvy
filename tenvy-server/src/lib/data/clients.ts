@@ -156,7 +156,7 @@ export const riskStyles: Record<ClientRisk, string> = {
 	High: 'border border-red-500/20 bg-red-500/10 text-red-600'
 };
 
-export const statusSummaryOrder: ClientStatus[] = ['online', 'idle', 'dormant', 'offline'];
+export const statusSummaryOrder: ClientStatus[] = ['online', 'idle', 'offline'];
 
 export const availableTags = Array.from(new Set(clients.flatMap((client) => client.tags))).sort(
 	(a, b) => a.localeCompare(b)

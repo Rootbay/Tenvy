@@ -145,27 +145,7 @@
 		}
 	];
 
-	const clientActions: HeaderAction[] = [
-		{
-			label: 'Register client',
-			icon: Plus
-		},
-		{
-			label: 'Group action',
-			icon: Users,
-			variant: 'outline'
-		},
-		{
-			label: 'Deploy plugin',
-			icon: PlugZap,
-			variant: 'outline'
-		},
-		{
-			label: 'Open command',
-			icon: Terminal,
-			variant: 'outline'
-		}
-	];
+
 
 	const pluginActions: HeaderAction[] = [
 		{
@@ -193,7 +173,7 @@
 
 	const navActions: Record<NavKey, HeaderAction[]> = {
 		dashboard: quickActions,
-		clients: clientActions,
+		clients: [],
 		plugins: pluginActions,
 		activity: quickActions,
 		settings: settingsActions
