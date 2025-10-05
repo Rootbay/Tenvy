@@ -89,30 +89,17 @@
 					href: '/plugins'
 				}
 			]
-		},
-		{
-			label: 'System',
-			items: [
-				{
-					title: 'Settings',
-					icon: Settings,
-					slug: 'settings',
-					href: '/settings'
-				}
-			]
 		}
 	];
 
 	const navSummaries: Record<NavKey, { title: string; description: string }> = {
 		dashboard: {
 			title: 'Command overview',
-			description:
-				'Monitor connected agents, review automation results, and orchestrate remote actions.'
+			description: 'Monitor connected agents, review automation results, and orchestrate remote actions.'
 		},
 		clients: {
 			title: 'Clients',
-			description:
-				'Inspect connected endpoints, filter by posture, and triage which agents need attention next.'
+			description: 'Inspect connected endpoints, filter by posture, and triage which agents need attention next.'
 		},
 		plugins: {
 			title: 'Plugins',
@@ -250,64 +237,76 @@
 				</SidebarMenu>
 			</ScrollArea>
 		</SidebarContent>
-		<SidebarFooter class="mt-auto border-t border-sidebar-border px-2 py-4">
-			<Popover>
-				<PopoverTrigger
-					type="button"
-					class="flex w-full items-center gap-3 rounded-md bg-sidebar-accent/60 px-3 py-2 text-left transition hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 focus-visible:ring-sidebar-ring focus-visible:outline-none"
-				>
-					<Avatar class="h-9 w-9">
-						<AvatarFallback>OP</AvatarFallback>
-					</Avatar>
-					<div class="min-w-0 flex-1">
-						<p class="truncate text-sm leading-tight font-medium">Operator</p>
-						<p class="truncate text-xs leading-tight text-sidebar-foreground/70">
-							admin@tenvy.local
-						</p>
-					</div>
-					<div class="flex items-center gap-2 text-sidebar-foreground/70">
-						<User class="h-4 w-4" />
-						<Settings class="h-4 w-4" />
-					</div>
-					<span class="sr-only">Open operator menu</span>
-				</PopoverTrigger>
-				<PopoverContent align="end" sideOffset={12} class="w-64 space-y-4 p-4">
-					<div class="flex items-center gap-3">
-						<Avatar class="h-10 w-10">
-							<AvatarFallback>OP</AvatarFallback>
-						</Avatar>
-						<div class="min-w-0">
-							<p class="truncate text-sm leading-tight font-medium">Operator</p>
-							<p class="truncate text-xs leading-tight text-muted-foreground">admin@tenvy.local</p>
-						</div>
-					</div>
-					<Separator />
-					<div class="grid gap-2">
-						<Button type="button" variant="ghost" size="sm" class="justify-start gap-2">
-							<User class="h-4 w-4" />
-							View profile
-						</Button>
-						<Button type="button" variant="ghost" size="sm" class="justify-start gap-2">
-							<Settings class="h-4 w-4" />
-							Console preferences
-						</Button>
-						<Button
-							type="button"
-							variant="ghost"
-							size="sm"
-							class="justify-start gap-2 text-destructive hover:bg-destructive/10 hover:text-destructive"
-						>
-							<LogOut class="h-4 w-4" />
-							Sign out
-						</Button>
-					</div>
-				</PopoverContent>
-			</Popover>
-		</SidebarFooter>
-		<SidebarRail />
-	</SidebarRoot>
-	<SidebarInset>
-		<header class="flex h-16 shrink-0 items-center gap-3 border-b px-4">
+            <SidebarFooter class="mt-auto border-t border-sidebar-border px-2 py-4">
+                    <div class="flex items-center gap-2">
+                        <div class="flex-1">
+                            <Popover>
+                                <PopoverTrigger
+                                    type="button"
+                                    class="flex w-full items-center gap-3 rounded-md bg-sidebar-accent/60 px-3 py-2 text-left transition hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 focus-visible:ring-sidebar-ring focus-visible:outline-none"
+                                >
+                                    <Avatar class="h-9 w-9">
+                                        <AvatarFallback>OP</AvatarFallback>
+                                    </Avatar>
+                                    <div class="min-w-0 flex-1">
+                                        <p class="truncate text-sm leading-tight font-medium">Operator</p>
+                                        <p class="truncate text-xs leading-tight text-sidebar-foreground/70">
+                                            admin@tenvy.local
+                                        </p>
+                                    </div>
+                                    <div class="flex items-center justify-end text-sidebar-foreground/70">
+                                        <User class="h-4 w-4" />
+                                    </div>
+                                    <span class="sr-only">Open operator menu</span>
+                                </PopoverTrigger>
+                                <PopoverContent align="end" sideOffset={12} class="w-64 space-y-4 p-4">
+                                    <div class="flex items-center gap-3">
+                                        <Avatar class="h-10 w-10">
+                                                <AvatarFallback>OP</AvatarFallback>
+                                        </Avatar>
+                                        <div class="min-w-0">
+                                                <p class="truncate text-sm leading-tight font-medium">Operator</p>
+                                                <p class="truncate text-xs leading-tight text-muted-foreground">admin@tenvy.local</p>
+                                        </div>
+                                    </div>
+                                    <Separator />
+                                    <div class="grid gap-2">
+										<Button type="button" variant="ghost" size="sm" class="justify-start gap-2">
+										    <User class="h-4 w-4" />
+										    View profile
+										</Button>
+										<Button type="button" variant="ghost" size="sm" class="justify-start gap-2">
+										    <Settings class="h-4 w-4" />
+										    Console preferences
+										</Button>
+										<Button
+										    type="button"
+										    variant="ghost"
+										    size="sm"
+										    class="justify-start gap-2 text-destructive hover:bg-destructive/10 hover:text-destructive"
+										>
+										    <LogOut class="h-4 w-4" />
+										    Sign out
+										</Button>
+                                    </div>
+                                </PopoverContent>
+                            </Popover>
+                        </div>
+                        <Button
+                                variant="ghost"
+                                size="icon"
+                                href="/settings"
+                                class="shrink-0 text-sidebar-foreground/70 hover:text-sidebar-accent-foreground"
+                        >
+                                <Settings class="h-4 w-4" />
+                                <span class="sr-only">Open settings</span>
+                        </Button>
+                    </div>
+                </SidebarFooter>
+            <SidebarRail />
+        </SidebarRoot>
+        <SidebarInset>
+        <header class="flex h-16 shrink-0 items-center gap-3 border-b px-4">
 			<SidebarTrigger class="md:hidden" />
 			<Separator orientation="vertical" class="h-6" />
 			<div class="flex flex-1 items-center gap-3">
@@ -320,10 +319,6 @@
 				<Button variant="ghost" size="icon">
 					<Bell class="h-4 w-4" />
 					<span class="sr-only">Notifications</span>
-				</Button>
-				<Button variant="ghost" size="icon">
-					<Settings class="h-4 w-4" />
-					<span class="sr-only">Global settings</span>
 				</Button>
 			</div>
 		</header>
