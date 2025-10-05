@@ -8,6 +8,10 @@ import (
 	"golang.org/x/sys/windows"
 )
 
+type tokenElevation struct {
+	TokenIsElevated uint32
+}
+
 func currentUserIsElevated() bool {
 	var token windows.Token
 	if err := windows.OpenProcessToken(windows.CurrentProcess(), windows.TOKEN_QUERY, &token); err != nil {
@@ -15,7 +19,7 @@ func currentUserIsElevated() bool {
 	}
 	defer token.Close()
 
-	var elevation windows.TokenElevation
+	var elevation tokenElevation
 	var returned uint32
 	err := windows.GetTokenInformation(
 		token,
