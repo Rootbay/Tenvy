@@ -2,7 +2,7 @@
 
 > **Tenvy** is a modular, high-performance remote administration framework consisting of:
 >
-> - **tenvy-server** — controller and UI built with **Tauri v2**, **Svelte 5 (Runes Mode)**, **SvelteKit**, **TypeScript**, **TailwindCSS v4**, **shadcn-svelte**, **lucide**, and **Bun**.
+> - **tenvy-server** — controller and UI built with **Svelte 5 (Runes Mode)**, **SvelteKit**, **TypeScript**, **TailwindCSS v4**, **shadcn-svelte**, **lucide**, and **Bun**.
 > - **tenvy-client** — lightweight Go-based agent designed for persistent and adaptive communication with the controller.
 
 ---
@@ -12,7 +12,7 @@
 Tenvy is designed around two synchronized components:
 | Component      | Language / Framework                        | Role                   |
 |----------------|---------------------------------------------|------------------------|
-| **tenvy-server** | Tauri v2 + SvelteKit + TypeScript + Tailwind v4 | Controller \& Interface |
+| **tenvy-server** | SvelteKit + TypeScript + Tailwind v4 | Controller \& Interface |
 | **tenvy-client** | Go                                         | Agent / Target Node    |
 
 Agents operate as modular runtime units capable of system interaction, management, and control.  
@@ -23,10 +23,9 @@ The server handles orchestration, visualization, and plugin management.
 ## 📂 Project Structure
 
 tenvy/
-├── tenvy-server/ # Controller UI and logic (Tauri + SvelteKit)
+├── tenvy-server/ # Controller UI and logic (SvelteKit)
 │ ├── src/
 │ ├── static/
-│ ├── tauri.conf.json
 │ └── package.json
 │
 ├── tenvy-client/ # Go agent source code
@@ -60,7 +59,7 @@ Each feature group is represented as a module, dynamically managed and executed 
 
 ## 🖥️ Server UI Overview
 
-The **Tenvy Server** provides a fast, responsive desktop interface built with **Tauri + Svelte 5**.
+The **Tenvy Server** provides a fast, responsive desktop interface built with **Svelte 5**.
 
 **Navigation Tabs**
 - **Dashboard** — system overview and active session stats  
@@ -76,7 +75,7 @@ Future updates include **multi-admin synchronization**, allowing shared agent st
 
 | Layer           | Technology                                      |
 |-----------------|-------------------------------------------------|
-| Controller Core | Tauri v2                                        |
+| Controller Core | SvelteKit                                       |
 | Frontend        | Svelte 5 (Runes Mode), SvelteKit, TypeScript    |
 | Styling         | TailwindCSS v4, shadcn-svelte, lucide           |
 | Runtime         | Bun                                             |

@@ -7,7 +7,7 @@ context_for: tenvy-server / tenvy-client
 ## Overview
 The **agent system** consists of two main components:
 
-- **tenvy-server** — the controller, built with **Tauri v2**, **Svelte 5 (Runes Mode)**, **SvelteKit**, **TypeScript**, **TailwindCSS v4**, **shadcn-svelte**, **lucide**, and **Bun**.
+- **tenvy-server** — the controller, built with **Svelte 5 (Runes Mode)**, **SvelteKit**, **TypeScript**, **TailwindCSS v4**, **shadcn-svelte**, **lucide**, and **Bun**.
 - **tenvy-client** — the target agent, written in **Go**, optimized for persistent, stealthy, and adaptive remote management.
 
 The agent maintains a continuous, reliable connection with the server, automatically handling reconnection and synchronization using optimal adaptive intervals.
@@ -57,7 +57,7 @@ Modules are independent, extendable, and can be invoked individually or composed
 - **TCP Connections** — inspect active and listening sockets.
 
 ### Recovery
-- Placeholder for credential or configuration recovery features.
+- Credential or configuration recovery features.
 
 ### Options
 - Manage agent settings, runtime behaviors, and operational preferences.
@@ -95,5 +95,5 @@ Modules are independent, extendable, and can be invoked individually or composed
 
 | Component      | Language / Framework                        | Role                |
 |----------------|---------------------------------------------|---------------------|
-| tenvy-server   | Tauri v2 + SvelteKit + TypeScript + Tailwind v4 | Controller / UI     |
+| tenvy-server   | SvelteKit + TypeScript + Tailwind v4 | Controller / UI     |
 | tenvy-client   | Go                                          | Target Agent        |
