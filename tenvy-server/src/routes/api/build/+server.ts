@@ -72,9 +72,9 @@ export const POST: RequestHandler = async ({ request }) => {
                         `-X main.defaultStartupOnBoot=${startupOnBoot ? 'true' : 'false'}`
                 ].join(' ');
 
-                const goArgs = ['build', '-o', tempBinaryPath, '-ldflags', ldflags, './tenvy-client/cmd'];
+                const goArgs = ['build', '-ldflags', ldflags, '-o', tempBinaryPath, './cmd'];
                 const builder = spawn('go', goArgs, {
-                        cwd: repoRoot,
+                        cwd: join(repoRoot, 'tenvy-client'),
                         env: process.env,
                         stdio: ['ignore', 'pipe', 'pipe']
                 });

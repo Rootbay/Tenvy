@@ -12,36 +12,38 @@
         import { Label } from '$lib/components/ui/label/index.js';
         import { Progress } from '$lib/components/ui/progress/index.js';
         import { Switch } from '$lib/components/ui/switch/index.js';
-        import { AlertTriangle, CheckCircle2, Info } from '@lucide/svelte';
+        import { TriangleAlert, CircleCheck, Info } from '@lucide/svelte';
 
-        type BuildStatus = 'idle' | 'running' | 'success' | 'error';
+	type BuildStatus = 'idle' | 'running' | 'success' | 'error';
 
-        type BuildResponse = {
-                success: boolean;
-                message?: string;
-                downloadUrl?: string;
-                outputPath?: string;
-                log?: string[];
-        };
+	type BuildResponse = {
+		success: boolean;
+		message?: string;
+		downloadUrl?: string;
+		outputPath?: string;
+		log?: string[];
+	};
 
-        let host = 'localhost';
-        let port = '3000';
-        let outputFilename = 'tenvy-client';
-        let installationPath = '';
-        let encryptionKey = '';
-        let meltAfterRun = false;
-        let startupOnBoot = false;
+	let host = $state('localhost');
+	let port = $state('3000');
+	let outputFilename = $state('tenvy-client');
+	let installationPath = $state('');
+	let encryptionKey = $state('');
+	let meltAfterRun = $state(false);
+	let startupOnBoot = $state(false);
 
-        let buildStatus: BuildStatus = 'idle';
-        let buildProgress = 0;
-        let buildError: string | null = null;
-        let downloadUrl: string | null = null;
-        let outputPath: string | null = null;
-        let buildLog: string[] = [];
+	let buildStatus = $state<BuildStatus>('idle');
+	let buildProgress = $state(0);
+	let buildError = $state<string | null>(null);
+	let downloadUrl = $state<string | null>(null);
+	let outputPath = $state<string | null>(null);
+	let buildLog = $state<string[]>([]);
 
-        let progressMessages: { id: number; text: string; tone: 'info' | 'success' | 'error' }[] = [];
-        let nextMessageId = 0;
+	let progressMessages = $state<{ id: number; text: string; tone: 'info' | 'success' | 'error' }[]>([]);
+	let nextMessageId = $state(0);
 
+	let isBuilding = $derived(buildStatus === 'running');
+        
         function resetProgress() {
                 buildStatus = 'idle';
                 buildProgress = 0;
@@ -142,8 +144,8 @@
         }
 
         function toneIcon(tone: 'info' | 'success' | 'error') {
-                if (tone === 'success') return CheckCircle2;
-                if (tone === 'error') return AlertTriangle;
+                if (tone === 'success') return CircleCheck;
+                if (tone === 'error') return TriangleAlert;
                 return Info;
         }
 </script>
@@ -223,8 +225,9 @@
                                         <ul class="space-y-2 text-sm">
                                                 {#each progressMessages as message (message.id)}
                                                         {#if message}
+                                                                {@const Icon = toneIcon(message.tone)}
                                                                 <li class={`flex items-start gap-2 ${messageToneClasses(message.tone)}`}>
-                                                                        <svelte:component this={toneIcon(message.tone)} class="mt-0.5 h-4 w-4" />
+                                                                        <Icon class="mt-0.5 h-4 w-4" />
                                                                         <span class="text-left">{message.text}</span>
                                                                 </li>
                                                         {/if}
@@ -246,7 +249,7 @@
                                                 <div>
                                                         <p class="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Build log</p>
                                                         <pre class="mt-2 max-h-48 overflow-auto rounded-md bg-muted/40 p-3 text-xs font-mono">
-{buildLog.join('\n')}
+                                                                {buildLog.join('\n')}
                                                         </pre>
                                                 </div>
                                         {/if}
@@ -258,8 +261,8 @@
                                 Provide a host and port to embed defaults inside the generated binary. Additional preferences are stored
                                 for the agent to consume on first launch.
                         </div>
-                        <Button type="button" disabled={buildStatus === 'running'} on:click={buildAgent}>
-                                {buildStatus === 'running' ? 'Building…' : 'Build Agent'}
+                        <Button type="button" disabled={isBuilding} onclick={buildAgent}>
+                                {isBuilding ? 'Building…' : 'Build Agent'}
                         </Button>
                 </CardFooter>
         </Card>
