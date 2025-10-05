@@ -10,15 +10,15 @@
 	} from '$lib/components/ui/card/index.js';
 	import type { IconComponent } from '$lib/types/navigation.js';
 
-	import {
-		Activity,
-		TriangleAlert,
-		CircleCheck,
-		LogIn,
-		PlugZap,
-		Terminal,
-		Users
-	} from '@lucide/svelte';
+        import {
+                Activity,
+                TriangleAlert,
+                CircleCheck,
+                PlugZap,
+                Terminal,
+                Users
+        } from '@lucide/svelte';
+        import { Switch } from '$lib/components/ui/switch/index.js';
 
 	type Stat = {
 		title: string;
@@ -59,54 +59,95 @@
 		}
 	];
 
-	type Activity = {
-		title: string;
-		description: string;
-		time: string;
-		badge?: string;
-		badgeVariant?: 'default' | 'secondary' | 'destructive' | 'outline';
-		icon: IconComponent;
-		accentClass?: string;
-	};
+        type LogEntry = {
+                source: string;
+                message: string;
+                time: string;
+                level: 'info' | 'warning' | 'critical';
+                icon: IconComponent;
+                accentClass: string;
+        };
 
-	const recentActivity: Activity[] = [
-		{
-			title: 'Agent VELA established a new session',
-			description: 'Initial beacon received from 192.168.20.14',
-			time: '2 minutes ago',
-			badge: 'Online',
-			badgeVariant: 'secondary',
-			icon: LogIn,
-			accentClass: 'bg-emerald-500/15 text-emerald-500'
-		},
-		{
-			title: 'Automation "Aurora Sweep" executed',
-			description: 'Recon workflow completed across 3 hosts',
-			time: '14 minutes ago',
-			badge: 'Automation',
-			badgeVariant: 'outline',
-			icon: Activity,
-			accentClass: 'bg-blue-500/15 text-blue-500'
-		},
-		{
-			title: 'Plugin "Credential Cache" reported results',
-			description: '4 credentials queued for analyst review',
-			time: '27 minutes ago',
-			badge: 'Review',
-			badgeVariant: 'outline',
-			icon: PlugZap,
-			accentClass: 'bg-purple-500/15 text-purple-500'
-		},
-		{
-			title: 'Task queue healthy',
-			description: 'All execution nodes responsive',
-			time: '42 minutes ago',
-			badge: 'Stable',
-			badgeVariant: 'secondary',
-			icon: CircleCheck,
-			accentClass: 'bg-emerald-500/15 text-emerald-600'
-		}
-	];
+        const logEntries: LogEntry[] = [
+                {
+                        source: 'vela/core',
+                        message: 'Beacon accepted, stage negotiation complete.',
+                        time: '00:02:14',
+                        level: 'info',
+                        icon: Activity,
+                        accentClass: 'bg-emerald-500/15 text-emerald-500'
+                },
+                {
+                        source: 'aurora/tasker',
+                        message: 'Workflow "Aurora Sweep" completed across 3 hosts.',
+                        time: '00:14:08',
+                        level: 'info',
+                        icon: CircleCheck,
+                        accentClass: 'bg-blue-500/15 text-blue-500'
+                },
+                {
+                        source: 'credentials/cache',
+                        message: 'New credential bundle awaiting analyst review.',
+                        time: '00:27:46',
+                        level: 'warning',
+                        icon: PlugZap,
+                        accentClass: 'bg-purple-500/15 text-purple-500'
+                },
+                {
+                        source: 'guardian/watch',
+                        message: 'Safeguard override requested for lateral move.',
+                        time: '00:41:59',
+                        level: 'critical',
+                        icon: TriangleAlert,
+                        accentClass: 'bg-red-500/15 text-red-500'
+                }
+        ];
+
+        type CommandEntry = {
+                kind: 'command' | 'output' | 'system' | 'error';
+                prompt?: string;
+                text: string;
+        };
+
+        const commandStream: CommandEntry[] = [
+                {
+                        kind: 'system',
+                        text: '[channel] connected to agent VELA :: latency 142ms'
+                },
+                {
+                        kind: 'command',
+                        prompt: 'vela@controller:~$',
+                        text: 'status --summary'
+                },
+                {
+                        kind: 'output',
+                        text: 'active clients: 18  |  pending tasks: 42  |  safeguards: 2 overrides pending'
+                },
+                {
+                        kind: 'command',
+                        prompt: 'vela@controller:~$',
+                        text: 'tail --follow=/var/log/vela/broker.log --lines=4'
+                },
+                {
+                        kind: 'output',
+                        text: ':: broker :: queue synced :: 14 new events buffered'
+                },
+                {
+                        kind: 'error',
+                        text: 'warning: safeguard escalation required for host-239'
+                },
+                {
+                        kind: 'command',
+                        prompt: 'vela@controller:~$',
+                        text: 'acknowledge --ticket=9124'
+                },
+                {
+                        kind: 'system',
+                        text: '[channel] awaiting operator input…'
+                }
+        ];
+
+        let showCommand = false;
 </script>
 
 <section class="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
@@ -127,36 +168,87 @@
 </section>
 
 <section class="grid gap-6 lg:grid-cols-7">
-	<Card class="lg:col-span-4">
-		<CardHeader>
-			<CardTitle>Live activity</CardTitle>
-			<CardDescription>Newest events received from connected clients.</CardDescription>
-		</CardHeader>
-		<CardContent class="space-y-4">
-			{#each recentActivity as event}
-				<div class="flex items-start gap-4 rounded-lg border border-border/60 p-4">
-					<div
-						class={cn(
-							'mt-1 flex h-9 w-9 items-center justify-center rounded-md',
-							event.accentClass
-						)}
-					>
-						<event.icon class="h-4 w-4" />
-					</div>
-					<div class="flex-1 space-y-1">
-						<p class="text-sm leading-tight font-medium">{event.title}</p>
-						<p class="text-xs leading-relaxed text-muted-foreground">{event.description}</p>
-					</div>
-					<div class="flex flex-col items-end gap-2 text-xs text-muted-foreground">
-						<span>{event.time}</span>
-						{#if event.badge}
-							<Badge variant={event.badgeVariant ?? 'secondary'}>{event.badge}</Badge>
-						{/if}
-					</div>
-				</div>
-			{/each}
-		</CardContent>
-	</Card>
+        <Card class="lg:col-span-4">
+                <CardHeader class="space-y-3">
+                        <div class="flex items-center gap-2 text-[0.7rem] font-semibold uppercase tracking-[0.08em]">
+                                <span class={cn('transition-colors', showCommand ? 'text-muted-foreground/70' : 'text-primary')}>
+                                        Logs
+                                </span>
+                                <Switch
+                                        bind:checked={showCommand}
+                                        aria-label="Toggle between log stream and command console"
+                                />
+                                <span class={cn('transition-colors', showCommand ? 'text-primary' : 'text-muted-foreground/70')}>
+                                        Command
+                                </span>
+                        </div>
+                        <div class="space-y-1">
+                                <CardTitle>Operations console</CardTitle>
+                                <CardDescription>
+                                        Monitor live log ingestion or drop into the embedded command interface.
+                                </CardDescription>
+                        </div>
+                </CardHeader>
+                <CardContent class="space-y-4">
+                        {#if !showCommand}
+                                <div class="space-y-3">
+                                        {#each logEntries as entry}
+                                                <div class="flex items-start gap-4 rounded-lg border border-border/60 p-4">
+                                                        <div
+                                                                class={cn(
+                                                                        'mt-1 flex h-9 w-9 items-center justify-center rounded-md',
+                                                                        entry.accentClass
+                                                                )}
+                                                        >
+                                                                <entry.icon class="h-4 w-4" />
+                                                        </div>
+                                                        <div class="flex-1 space-y-1">
+                                                                <p class="text-xs font-mono uppercase tracking-[0.08em] text-muted-foreground">
+                                                                        {entry.source}
+                                                                </p>
+                                                                <p class="text-sm leading-tight font-medium">{entry.message}</p>
+                                                        </div>
+                                                        <div class="flex flex-col items-end gap-2 text-xs text-muted-foreground">
+                                                                <span>{entry.time}</span>
+                                                                <Badge
+                                                                        variant={entry.level === 'critical'
+                                                                                ? 'destructive'
+                                                                                : entry.level === 'warning'
+                                                                                ? 'outline'
+                                                                                : 'secondary'}
+                                                                >
+                                                                        {entry.level}
+                                                                </Badge>
+                                                        </div>
+                                                </div>
+                                        {/each}
+                                </div>
+                        {:else}
+                                <div class="space-y-3 rounded-lg border border-border/60 bg-background/95 p-4 font-mono text-xs">
+                                        {#each commandStream as line}
+                                                <div
+                                                        class={cn(
+                                                                'flex flex-wrap gap-x-2 gap-y-1',
+                                                                line.kind === 'command' && 'text-emerald-400',
+                                                                line.kind === 'system' && 'text-sky-400/90',
+                                                                line.kind === 'error' && 'text-red-400',
+                                                                line.kind === 'output' && 'text-muted-foreground'
+                                                        )}
+                                                >
+                                                        {#if line.prompt}
+                                                                <span class="select-none">{line.prompt}</span>
+                                                        {/if}
+                                                        <span class="whitespace-pre-wrap">{line.text}</span>
+                                                </div>
+                                        {/each}
+                                        <div class="flex items-center gap-2 text-emerald-400">
+                                                <span class="select-none">vela@controller:~$</span>
+                                                <span class="animate-pulse text-muted-foreground/60">█</span>
+                                        </div>
+                                </div>
+                        {/if}
+                </CardContent>
+        </Card>
 
 	<Card class="lg:col-span-3">
 		<CardHeader>
