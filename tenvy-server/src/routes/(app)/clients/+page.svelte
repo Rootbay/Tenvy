@@ -42,12 +42,16 @@
 		{ label: 'macOS', value: 'macos' }
 	] satisfies { label: string; value: 'all' | ClientPlatform }[];
 
-	let searchTerm = '';
-	let statusFilter: (typeof statusFilters)[number]['value'] = 'all';
-	let platformFilter: (typeof platformFilters)[number]['value'] = 'all';
-	let tagFilter: string | 'all' = 'all';
-	let viewMode: 'table' | 'grid' = 'table';
-	let filtersVisible = false;
+	let searchTerm = $state('');
+	let statusFilter = $state<'all' | ClientStatus>('all');
+	let platformFilter = $state<'all' | ClientPlatform>('all');
+	let tagFilter = $state<string | 'all'>('all');
+	let viewMode = $state<'table' | 'grid'>('table');
+	let filtersVisible = $state(false);
+
+	let menuOpen = $state(false);
+	let activeClient = $state<any>(null);
+	let menuPosition = $state({ x: 0, y: 0 });
 
 	const statusSummary = clients.reduce(
 		(acc, client) => {
@@ -62,22 +66,25 @@
 		} satisfies Record<ClientStatus, number>
 	);
 
-	$: normalizedSearch = searchTerm.trim().toLowerCase();
-	$: filteredClients = clients.filter((client) => {
+	const normalizedSearch = $derived(searchTerm.trim().toLowerCase());
+	const filteredClients = $derived(
+	clients.filter((client) => {
+		const search = normalizedSearch;
 		const matchesSearch =
-			normalizedSearch.length === 0 ||
-			[client.codename, client.hostname, client.ip, client.location, client.os, client.version]
-				.join(' ')
-				.toLowerCase()
-				.includes(normalizedSearch) ||
-			client.tags.some((tag) => tag.toLowerCase().includes(normalizedSearch));
+		search.length === 0 ||
+		[client.codename, client.hostname, client.ip, client.location, client.os, client.version]
+			.join(' ')
+			.toLowerCase()
+			.includes(search) ||
+		client.tags.some((tag) => tag.toLowerCase().includes(search));
 
 		const matchesStatus = statusFilter === 'all' || client.status === statusFilter;
 		const matchesPlatform = platformFilter === 'all' || client.platform === platformFilter;
 		const matchesTag = tagFilter === 'all' || client.tags.includes(tagFilter);
 
 		return matchesSearch && matchesStatus && matchesPlatform && matchesTag;
-	});
+	})
+	);
 </script>
 
 <div class="flex flex-wrap items-center gap-2">
@@ -227,9 +234,9 @@
 							</thead>
 							<tbody class="divide-y divide-border/60 bg-background">
 								{#each filteredClients as client (client.id)}
-									<ContextMenu>
+								    <ContextMenu>
 										<ContextMenuTrigger>
-											<tr class="hover:bg-muted/30">
+											<tr class="hover:bg-muted/30" >
 												<td class="px-4 py-3 align-top">
 													<div class="font-semibold text-foreground">{client.codename}</div>
 													<div class="text-xs text-muted-foreground">#{client.id}</div>
@@ -279,7 +286,7 @@
 													{/if}
 												</td>
 											</tr>
-										</ContextMenuTrigger>
+									    </ContextMenuTrigger>
 										<ClientContextMenu {client} />
 									</ContextMenu>
 								{/each}
@@ -292,77 +299,81 @@
 			<div class="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
 				{#each filteredClients as client (client.id)}
 					<ContextMenu>
-						<ContextMenuTrigger asChild let:builder>
-							<Card class="border-border/60">
+						<ContextMenuTrigger>
+							<Card class="border-border/60 cursor-context-menu">
 								<CardHeader class="space-y-3">
-									<div class="flex items-start justify-between gap-2">
-										<div>
-											<CardTitle class="text-base font-semibold">{client.codename}</CardTitle>
-											<CardDescription class="text-xs tracking-wide text-muted-foreground uppercase">
-												#{client.id}
-											</CardDescription>
-										</div>
-										<Badge
-											variant="outline"
-											class={cn('px-2.5 py-1 text-xs font-medium', statusStyles[client.status])}
-										>
-											{statusLabels[client.status]}
-										</Badge>
-									</div>
-									<div class="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-										<span class="font-medium text-foreground">{client.hostname}</span>
-										<span>•</span>
-										<span>{client.ip}</span>
-										<span>•</span>
-										<span>{client.location}</span>
-									</div>
-								</CardHeader>
-								<CardContent class="space-y-4 text-sm">
-									<div class="flex justify-between">
-										<span class="text-muted-foreground">Platform</span>
-										<span class="font-medium capitalize">{client.platform}</span>
-									</div>
-									<div class="flex justify-between">
-										<span class="text-muted-foreground">Operating system</span>
-										<span class="font-medium">{client.os}</span>
-									</div>
-									<div class="flex justify-between">
-										<span class="text-muted-foreground">Last seen</span>
-										<span class="font-medium">{client.lastSeen}</span>
-									</div>
-									<div class="flex justify-between">
-										<span class="text-muted-foreground">Version</span>
-										<span class="font-medium">v{client.version}</span>
-									</div>
+								<div class="flex items-start justify-between gap-2">
 									<div>
-										<span class="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
-											Tags
-										</span>
-										<div class="mt-2 flex flex-wrap gap-1.5">
-											{#each client.tags as tag}
-												<Badge
-													variant="outline"
-													class="border-border/70 px-2 py-0.5 text-xs font-medium"
-												>
-													{tag}
-												</Badge>
-											{/each}
-										</div>
+									<CardTitle class="text-base font-semibold">{client.codename}</CardTitle>
+									<CardDescription class="text-xs tracking-wide text-muted-foreground uppercase">
+										#{client.id}
+									</CardDescription>
 									</div>
-									<div class="flex justify-between">
-										<span class="text-muted-foreground">Risk</span>
+									<Badge
+									variant="outline"
+									class={cn('px-2.5 py-1 text-xs font-medium', statusStyles[client.status])}
+									>
+									{statusLabels[client.status]}
+									</Badge>
+								</div>
+								<div class="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+									<span class="font-medium text-foreground">{client.hostname}</span>
+									<span>•</span>
+									<span>{client.ip}</span>
+									<span>•</span>
+									<span>{client.location}</span>
+								</div>
+								</CardHeader>
+
+								<CardContent class="space-y-4 text-sm">
+								<div class="flex justify-between">
+									<span class="text-muted-foreground">Platform</span>
+									<span class="font-medium capitalize">{client.platform}</span>
+								</div>
+								<div class="flex justify-between">
+									<span class="text-muted-foreground">Operating system</span>
+									<span class="font-medium">{client.os}</span>
+								</div>
+								<div class="flex justify-between">
+									<span class="text-muted-foreground">Last seen</span>
+									<span class="font-medium">{client.lastSeen}</span>
+								</div>
+								<div class="flex justify-between">
+									<span class="text-muted-foreground">Version</span>
+									<span class="font-medium">v{client.version}</span>
+								</div>
+
+								<div>
+									<span class="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
+									Tags
+									</span>
+									<div class="mt-2 flex flex-wrap gap-1.5">
+									{#each client.tags as tag}
 										<Badge
-											variant="outline"
-											class={cn('px-2.5 py-1 text-xs font-semibold', riskStyles[client.risk])}
+										variant="outline"
+										class="border-border/70 px-2 py-0.5 text-xs font-medium"
 										>
-											{client.risk}
+										{tag}
 										</Badge>
+									{/each}
 									</div>
-									{#if client.notes}
-										<p class="rounded-md border border-border/60 bg-muted/40 p-3 text-xs text-muted-foreground">
-											{client.notes}
-										</p>
-									{/if}
+								</div>
+
+								<div class="flex justify-between">
+									<span class="text-muted-foreground">Risk</span>
+									<Badge
+									variant="outline"
+									class={cn('px-2.5 py-1 text-xs font-semibold', riskStyles[client.risk])}
+									>
+									{client.risk}
+									</Badge>
+								</div>
+
+								{#if client.notes}
+									<p class="rounded-md border border-border/60 bg-muted/40 p-3 text-xs text-muted-foreground">
+									{client.notes}
+									</p>
+								{/if}
 								</CardContent>
 							</Card>
 						</ContextMenuTrigger>

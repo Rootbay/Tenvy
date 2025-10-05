@@ -20,21 +20,16 @@
 	import { Popover, PopoverContent, PopoverTrigger } from '$lib/components/ui/popover/index.js';
 	import { ScrollArea } from '$lib/components/ui/scroll-area/index.js';
 	import { Separator } from '$lib/components/ui/separator/index.js';
-	import type { HeaderAction, IconComponent, NavKey } from '$lib/types/navigation.js';
+	import type { IconComponent, NavKey } from '$lib/types/navigation.js';
 	import {
 		Activity,
 		Bell,
 		LogOut,
 		LayoutDashboard,
 		PlugZap,
-		Plus,
-		RefreshCcw,
-		Save,
 		Search,
 		Settings,
-		Terminal,
 		User,
-		UserPlus,
 		Users
 	} from '@lucide/svelte';
 
@@ -115,57 +110,6 @@
 		}
 	};
 
-	const quickActions: HeaderAction[] = [
-		{
-			label: 'Register client',
-			icon: Plus
-		},
-		{
-			label: 'Deploy plugin',
-			icon: PlugZap,
-			variant: 'outline'
-		},
-		{
-			label: 'Open command',
-			icon: Terminal,
-			variant: 'outline'
-		}
-	];
-
-
-
-	const pluginActions: HeaderAction[] = [
-		{
-			label: 'Install plugin',
-			icon: PlugZap
-		},
-		{
-			label: 'Sync registry',
-			icon: RefreshCcw,
-			variant: 'outline'
-		}
-	];
-
-	const settingsActions: HeaderAction[] = [
-		{
-			label: 'Save console changes',
-			icon: Save
-		},
-		{
-			label: 'Invite operator',
-			icon: UserPlus,
-			variant: 'outline'
-		}
-	];
-
-	const navActions: Record<NavKey, HeaderAction[]> = {
-		dashboard: quickActions,
-		clients: [],
-		plugins: pluginActions,
-		activity: quickActions,
-		settings: settingsActions
-	};
-
 	const searchPlaceholders: Partial<Record<NavKey, string>> = {
 		clients: 'Search clients, hosts, IPs...'
 	};
@@ -181,11 +125,6 @@
 		return navSummaries[activeNav];
 	});
 
-	const currentActions = $derived(() => {
-		const { activeNav } = layoutData as LayoutData;
-		return navActions[activeNav] ?? [];
-	});
-
 	const globalSearchPlaceholder = $derived(() => {
 		const { activeNav } = layoutData as LayoutData;
 		return searchPlaceholders[activeNav] ?? defaultSearchPlaceholder;
@@ -197,13 +136,13 @@
 		<SidebarHeader class="border-b border-sidebar-border px-2 pt-3 pb-4">
 			<div class="flex items-center gap-3 rounded-lg px-2 py-1.5">
 				<div
-					class="flex h-9 w-9 items-center justify-center rounded-md bg-sidebar-primary text-sm font-semibold text-sidebar-primary-foreground uppercase"
+					class="flex h-14 w-14 items-center justify-center"
 				>
-					Tv
+					<img src="/LAHS.png" alt="Tenvy Logo" />
 				</div>
 				<div class="grid">
 					<span class="text-sm leading-tight font-semibold">Tenvy Control</span>
-					<span class="text-xs leading-tight text-sidebar-foreground/70">Operations console</span>
+					<span class="text-xs leading-tight text-sidebar-foreground/70">Made By Rootbay</span>
 				</div>
 			</div>
 		</SidebarHeader>
@@ -306,7 +245,7 @@
             <SidebarRail />
         </SidebarRoot>
         <SidebarInset>
-        <header class="flex h-16 shrink-0 items-center gap-3 border-b px-4">
+        <header class="flex h-16 shrink-0 items-center gap-3 border-b">
 			<SidebarTrigger class="md:hidden" />
 			<Separator orientation="vertical" class="h-6" />
 			<div class="flex flex-1 items-center gap-3">
@@ -326,22 +265,11 @@
 			<div class="flex flex-1 flex-col gap-8 overflow-y-auto p-6">
 				{#key (layoutData as LayoutData).activeNav}
 					{@const summary = activeSummary()}
-					{@const actions = currentActions()}
 					<section class="flex flex-wrap items-center justify-between gap-4">
 						<div>
 							<h1 class="text-2xl font-semibold tracking-tight">{summary.title}</h1>
 							<p class="text-sm text-muted-foreground">{summary.description}</p>
 						</div>
-						{#if actions.length}
-							<div class="flex flex-wrap gap-3">
-								{#each actions as action (action.label)}
-									<Button type="button" variant={action.variant ?? 'default'} class="gap-2">
-										<action.icon class="h-4 w-4" />
-										{action.label}
-									</Button>
-								{/each}
-							</div>
-						{/if}
 					</section>
 					<div class="space-y-8">
 						{@render children?.()}

@@ -10,7 +10,7 @@
 	} from '$lib/components/ui/context-menu/index.js';
 	import type { Client } from '$lib/data/clients';
 
-	export let client: Client;
+	const { client } = $props<{ client: Client }>();
 </script>
 
 <ContextMenuContent class="w-64">
