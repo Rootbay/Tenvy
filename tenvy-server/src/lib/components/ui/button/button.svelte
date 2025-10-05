@@ -29,28 +29,32 @@
 		},
 	});
 
-	export type ButtonVariant = VariantProps<typeof buttonVariants>["variant"];
-	export type ButtonSize = VariantProps<typeof buttonVariants>["size"];
+        export type ButtonVariant = VariantProps<typeof buttonVariants>["variant"];
+        export type ButtonSize = VariantProps<typeof buttonVariants>["size"];
 
-	export type ButtonProps = WithElementRef<HTMLButtonAttributes> &
-		WithElementRef<HTMLAnchorAttributes> & {
-			variant?: ButtonVariant;
-			size?: ButtonSize;
-		};
+        export type ButtonProps = WithElementRef<HTMLButtonAttributes> &
+                WithElementRef<HTMLAnchorAttributes> & {
+                        variant?: ButtonVariant;
+                        size?: ButtonSize;
+                };
 </script>
 
 <script lang="ts">
-	let {
-		class: className,
-		variant = "default",
-		size = "default",
-		ref = $bindable(null),
-		href = undefined,
-		type = "button",
-		disabled,
-		children,
-		...restProps
-	}: ButtonProps = $props();
+        type $$Events = {
+                click: MouseEvent;
+        };
+
+        let {
+                class: className,
+                variant = "default",
+                size = "default",
+                ref = $bindable(null),
+                href = undefined,
+                type = "button",
+                disabled,
+                children,
+                ...restProps
+        }: ButtonProps = $props();
 </script>
 
 {#if href}

@@ -21,61 +21,80 @@
 		},
 	});
 
-	export type SidebarMenuButtonVariant = VariantProps<
-		typeof sidebarMenuButtonVariants
-	>["variant"];
-	export type SidebarMenuButtonSize = VariantProps<typeof sidebarMenuButtonVariants>["size"];
+        export type SidebarMenuButtonVariant = VariantProps<
+                typeof sidebarMenuButtonVariants
+        >["variant"];
+        export type SidebarMenuButtonSize = VariantProps<typeof sidebarMenuButtonVariants>["size"];
 </script>
 
 <script lang="ts">
-	import * as Tooltip from "$lib/components/ui/tooltip/index.js";
-	import { cn, type WithElementRef, type WithoutChildrenOrChild } from "$lib/utils.js";
-	import { mergeProps } from "bits-ui";
-	import type { ComponentProps, Snippet } from "svelte";
-	import type { HTMLAttributes } from "svelte/elements";
-	import { useSidebar } from "./context.svelte.js";
+        import * as Tooltip from "$lib/components/ui/tooltip/index.js";
+        import { cn, type WithElementRef, type WithoutChildrenOrChild } from "$lib/utils.js";
+        import { mergeProps } from "bits-ui";
+        import type { ComponentProps, Snippet } from "svelte";
+        import type { HTMLAnchorAttributes, HTMLAttributes } from "svelte/elements";
+        import { useSidebar } from "./context.svelte.js";
 
-	let {
-		ref = $bindable(null),
-		class: className,
-		children,
-		child,
-		variant = "default",
-		size = "default",
-		isActive = false,
-		tooltipContent,
-		tooltipContentProps,
-		...restProps
-	}: WithElementRef<HTMLAttributes<HTMLButtonElement>, HTMLButtonElement> & {
-		isActive?: boolean;
-		variant?: SidebarMenuButtonVariant;
-		size?: SidebarMenuButtonSize;
-		tooltipContent?: Snippet | string;
-		tooltipContentProps?: WithoutChildrenOrChild<ComponentProps<typeof Tooltip.Content>>;
-		child?: Snippet<[{ props: Record<string, unknown> }]>;
-	} = $props();
+        type $$Events = {
+                click: MouseEvent;
+        };
 
-	const sidebar = useSidebar();
+        type BaseProps = {
+                isActive?: boolean;
+                variant?: SidebarMenuButtonVariant;
+                size?: SidebarMenuButtonSize;
+                tooltipContent?: Snippet | string;
+                tooltipContentProps?: WithoutChildrenOrChild<ComponentProps<typeof Tooltip.Content>>;
+                child?: Snippet<[{ props: Record<string, unknown> }]>;
+        };
 
-	const buttonProps = $derived({
-		class: cn(sidebarMenuButtonVariants({ variant, size }), className),
-		"data-slot": "sidebar-menu-button",
-		"data-sidebar": "menu-button",
-		"data-size": size,
-		"data-active": isActive,
-		...restProps,
-	});
+        type ButtonProps = WithElementRef<HTMLAttributes<HTMLButtonElement>, HTMLButtonElement> &
+                BaseProps & { href?: undefined };
+        type AnchorProps = WithElementRef<HTMLAnchorAttributes, HTMLAnchorElement> &
+                BaseProps & { href: string };
+
+        type $$Props = ButtonProps | AnchorProps;
+
+        let {
+                ref = $bindable(null),
+                class: className,
+                children,
+                child,
+                variant = "default",
+                size = "default",
+                isActive = false,
+                tooltipContent,
+                tooltipContentProps,
+                href,
+                ...restProps
+        }: $$Props = $props();
+
+        const sidebar = useSidebar();
+        const isLink = typeof href === "string";
+
+        const buttonProps = $derived({
+                class: cn(sidebarMenuButtonVariants({ variant, size }), className),
+                "data-slot": "sidebar-menu-button",
+                "data-sidebar": "menu-button",
+                "data-size": size,
+                "data-active": isActive,
+                ...restProps,
+        });
 </script>
 
 {#snippet Button({ props }: { props?: Record<string, unknown> })}
-	{@const mergedProps = mergeProps(buttonProps, props)}
-	{#if child}
-		{@render child({ props: mergedProps })}
-	{:else}
-		<button bind:this={ref} {...mergedProps}>
-			{@render children?.()}
-		</button>
-	{/if}
+        {@const mergedProps = mergeProps(buttonProps, props) as Record<string, unknown>}
+        {#if child}
+                {@render child({ props: mergedProps })}
+        {:else if isLink}
+                <a bind:this={ref} {...mergedProps} href={href}>
+                        {@render children?.()}
+                </a>
+        {:else}
+                <button bind:this={ref} {...mergedProps}>
+                        {@render children?.()}
+                </button>
+        {/if}
 {/snippet}
 
 {#if !tooltipContent}
