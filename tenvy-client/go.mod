@@ -1,3 +1,5 @@
 module github.com/rootbay/tenvy-client
 
-go 1.24.1
+go 1.22
+
+require golang.org/x/sys v0.26.0 // indirect
