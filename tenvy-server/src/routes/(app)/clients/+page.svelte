@@ -27,7 +27,7 @@
         };
 
         let { data } = $props<{ data: { agents: AgentSnapshot[] } }>();
-        const agents = $derived(data.agents ?? []);
+        const agents = $derived((data.agents ?? []) as AgentSnapshot[]);
 
         let pingMessages = $state<Record<string, string>>({});
         let shellCommands = $state<Record<string, string>>({});

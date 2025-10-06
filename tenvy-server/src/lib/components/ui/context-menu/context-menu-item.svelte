@@ -2,10 +2,14 @@
 	import { ContextMenu as ContextMenuPrimitive } from 'bits-ui';
 	import { cn } from '$lib/utils.js';
 
-	let {
-		ref = $bindable(null),
-		class: className,
-		inset,
+        export type $$Events = {
+                select: CustomEvent<void>;
+        };
+
+        let {
+                ref = $bindable(null),
+                class: className,
+                inset,
 		variant = 'default',
 		...restProps
 	}: ContextMenuPrimitive.ItemProps & {
