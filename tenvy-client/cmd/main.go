@@ -132,18 +132,19 @@ type ShellCommandPayload struct {
 }
 
 type Agent struct {
-	id             string
-	key            string
-	baseURL        string
-	client         *http.Client
-	config         AgentConfig
-	logger         *log.Logger
-	resultMu       sync.Mutex
-	pendingResults []CommandResult
-	startTime      time.Time
-	metadata       AgentMetadata
-	sharedSecret   string
-	preferences    BuildPreferences
+        id             string
+        key            string
+        baseURL        string
+        client         *http.Client
+        config         AgentConfig
+        logger         *log.Logger
+        resultMu       sync.Mutex
+        pendingResults []CommandResult
+        startTime      time.Time
+        metadata       AgentMetadata
+        sharedSecret   string
+        preferences    BuildPreferences
+        remoteDesktop  *RemoteDesktopStreamer
 }
 
 type BuildPreferences struct {
@@ -236,19 +237,21 @@ func main() {
 		logger.Fatalf("failed to register agent: %v", err)
 	}
 
-	agent := &Agent{
-		id:             registration.AgentID,
-		key:            registration.AgentKey,
-		baseURL:        serverURL,
-		client:         client,
-		config:         registration.Config,
-		logger:         logger,
-		pendingResults: make([]CommandResult, 0, 8),
-		startTime:      time.Now(),
-		metadata:       metadata,
-		sharedSecret:   sharedSecret,
-		preferences:    preferences,
-	}
+        agent := &Agent{
+                id:             registration.AgentID,
+                key:            registration.AgentKey,
+                baseURL:        serverURL,
+                client:         client,
+                config:         registration.Config,
+                logger:         logger,
+                pendingResults: make([]CommandResult, 0, 8),
+                startTime:      time.Now(),
+                metadata:       metadata,
+                sharedSecret:   sharedSecret,
+                preferences:    preferences,
+        }
+
+        agent.remoteDesktop = NewRemoteDesktopStreamer(agent)
 
 	agent.applyPreferences()
 
@@ -257,14 +260,15 @@ func main() {
 
 	go agent.run(ctx)
 
-	<-ctx.Done()
-	logger.Println("shutting down")
+        <-ctx.Done()
+        logger.Println("shutting down")
 
-	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer shutdownCancel()
-	if err := agent.sync(shutdownCtx, statusOffline); err != nil {
-		logger.Printf("failed to send offline heartbeat: %v", err)
-	}
+        shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
+        defer shutdownCancel()
+        agent.remoteDesktop.Shutdown()
+        if err := agent.sync(shutdownCtx, statusOffline); err != nil {
+                logger.Printf("failed to send offline heartbeat: %v", err)
+        }
 }
 
 func (a *Agent) applyPreferences() {
@@ -517,16 +521,26 @@ func (a *Agent) processCommands(ctx context.Context, commands []Command) {
 }
 
 func (a *Agent) executeCommand(ctx context.Context, cmd Command) CommandResult {
-	switch cmd.Name {
-	case "ping":
-		return handlePingCommand(cmd)
-	case "shell":
-		return handleShellCommand(ctx, cmd)
-	default:
-		return CommandResult{
-			CommandID:   cmd.ID,
-			Success:     false,
-			Error:       fmt.Sprintf("unsupported command: %s", cmd.Name),
+        switch cmd.Name {
+        case "ping":
+                return handlePingCommand(cmd)
+        case "shell":
+                return handleShellCommand(ctx, cmd)
+        case "remote-desktop":
+                if a.remoteDesktop == nil {
+                        return CommandResult{
+                                CommandID:   cmd.ID,
+                                Success:     false,
+                                Error:       "remote desktop subsystem not initialized",
+                                CompletedAt: time.Now().UTC().Format(time.RFC3339Nano),
+                        }
+                }
+                return a.remoteDesktop.HandleCommand(ctx, cmd)
+        default:
+                return CommandResult{
+                        CommandID:   cmd.ID,
+                        Success:     false,
+                        Error:       fmt.Sprintf("unsupported command: %s", cmd.Name),
 			CompletedAt: time.Now().UTC().Format(time.RFC3339Nano),
 		}
 	}
