@@ -89,6 +89,10 @@ Future updates include **multi-admin synchronization**, allowing shared agent st
 
 &nbsp; Used for AI reasoning, automation, and code generation context.
 
+### 🔑 Development access voucher
+
+When running the server locally a development voucher is created automatically so you can complete the onboarding flow without touching the database manually. The default code is `TEN-VY-DEV-ACCESS-0000`, but you can override it by setting the `DEV_VOUCHER_CODE` environment variable before starting the server.
+
 ---
 
 ## 🧩 Plugin System

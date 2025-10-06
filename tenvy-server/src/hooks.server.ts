@@ -2,6 +2,7 @@ import { sequence } from '@sveltejs/kit/hooks';
 import * as auth from '$lib/server/auth';
 import type { Handle } from '@sveltejs/kit';
 import { paraglideMiddleware } from '$lib/paraglide/server';
+import { ensureDevVoucher } from '$lib/server/dev-voucher';
 
 const handleParaglide: Handle = ({ event, resolve }) =>
 	paraglideMiddleware(event.request, ({ request, locale }) => {
@@ -13,11 +14,15 @@ const handleParaglide: Handle = ({ event, resolve }) =>
 	});
 
 const handleAuth: Handle = async ({ event, resolve }) => {
-	const sessionToken = event.cookies.get(auth.sessionCookieName);
+        await ensureDevVoucher().catch((error) => {
+                console.error('Failed to ensure development voucher', error);
+        });
 
-	if (!sessionToken) {
-		event.locals.user = null;
-		event.locals.session = null;
+        const sessionToken = event.cookies.get(auth.sessionCookieName);
+
+        if (!sessionToken) {
+                event.locals.user = null;
+                event.locals.session = null;
 		return resolve(event);
 	}
 
