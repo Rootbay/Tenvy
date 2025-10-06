@@ -1,18 +1,18 @@
 <script lang="ts">
         import { cn } from '$lib/utils.js';
         import {
-                Sidebar as SidebarRoot,
-                SidebarContent,
-                SidebarFooter,
-                SidebarHeader,
-		SidebarInset,
-		SidebarMenu,
-		SidebarMenuBadge,
-		SidebarMenuButton,
-		SidebarMenuItem,
-		SidebarProvider,
-		SidebarRail,
-		SidebarTrigger
+            Sidebar,
+            SidebarContent,
+            SidebarFooter,
+            SidebarHeader,
+			SidebarInset,
+			SidebarMenu,
+			SidebarMenuBadge,
+			SidebarMenuButton,
+			SidebarMenuItem,
+			SidebarProvider,
+			SidebarRail,
+			SidebarTrigger
         } from '$lib/components/ui/sidebar/index.js';
         import { Avatar, AvatarFallback } from '$lib/components/ui/avatar/index.js';
         import { Badge } from '$lib/components/ui/badge/index.js';
@@ -27,26 +27,26 @@
         import type { IconComponent, NavKey } from '$lib/types/navigation.js';
         import type { AuthenticatedUser } from '$lib/server/auth';
         import {
-                clearStoredPorts,
-                formatPortSummary,
-                loadStoredPorts,
-                parsePortInput,
-                persistPortSelection
+            clearStoredPorts,
+            formatPortSummary,
+            loadStoredPorts,
+            parsePortInput,
+            persistPortSelection
         } from '$lib/utils/rat-port-preferences.js';
         import {
-        Activity,
-        Bell,
-        LogOut,
-        LayoutDashboard,
-        Hammer,
-        Plug,
-        PlugZap,
-        Search,
-        Settings,
-        User,
-        Users,
-                Sun,
-                Moon
+			Activity,
+			Bell,
+			LogOut,
+			LayoutDashboard,
+			Hammer,
+			Plug,
+			PlugZap,
+			Search,
+			Settings,
+			User,
+			Users,
+			Sun,
+            Moon
         } from '@lucide/svelte';
         import { onMount } from 'svelte';
         import { toggleMode } from "mode-watcher";
@@ -85,27 +85,27 @@
 		{
 			label: 'Operations',
 			items: [
-                                {
-                                        title: 'Clients',
-                                        icon: Users,
-                                        badge: '18',
-                                        badgeClass: 'bg-blue-500/15 text-blue-500',
-                                        slug: 'clients',
-                                        href: '/clients'
-                                },
-                                {
-                                        title: 'Build',
-                                        icon: Hammer,
-                                        slug: 'build',
-                                        href: '/build'
-                                },
-                                {
-                                        title: 'Plugins',
-                                        icon: PlugZap,
-                                        badge: '3',
-                                        badgeClass: 'bg-purple-500/15 text-purple-500',
-                                        slug: 'plugins',
-					href: '/plugins'
+                {
+                        title: 'Clients',
+                        icon: Users,
+                        badge: '18',
+                        badgeClass: 'bg-blue-500/15 text-blue-500',
+                        slug: 'clients',
+                        href: '/clients'
+                },
+                {
+                        title: 'Build',
+                        icon: Hammer,
+                        slug: 'build',
+                        href: '/build'
+                },
+                {
+                        title: 'Plugins',
+                        icon: PlugZap,
+                        badge: '3',
+                        badgeClass: 'bg-purple-500/15 text-purple-500',
+                        slug: 'plugins',
+						href: '/plugins'
 				}
 			]
 		}
@@ -233,26 +233,44 @@
                 return slice ? slice.toUpperCase() : 'OP';
         }
 
-        const operatorInitials = $derived(() => formatIdentifier((layoutData as LayoutData).user.id));
+        const operatorInitials = $derived(() => formatIdentifier((layoutData as LayoutData)?.user?.id ?? ''));
 
         const operatorLabel = $derived(() => {
-                const id = (layoutData as LayoutData).user.id;
+                const id = (layoutData as LayoutData)?.user?.id ?? '';
                 return id ? `Operator ${id.slice(0, 6).toUpperCase()}` : 'Operator';
         });
 
         const voucherDescriptor = $derived(() => {
-                const { voucherId, voucherActive } = (layoutData as LayoutData).user;
-                const truncated = voucherId.length > 10 ? `${voucherId.slice(0, 10)}…` : voucherId;
-                return `${truncated} · ${voucherActive ? 'Voucher active' : 'Voucher inactive'}`;
+                const user = (layoutData as LayoutData)?.user;
+                if (!user?.voucherId) {
+                        return 'Voucher status unavailable';
+                }
+                const truncated = user.voucherId.length > 10 ? `${user.voucherId.slice(0, 10)}…` : user.voucherId;
+                return `${truncated} · ${user.voucherActive ? 'Voucher active' : 'Voucher inactive'}`;
         });
 
-        const voucherStatusBadgeVariant = $derived(() => ((layoutData as LayoutData).user.voucherActive ? 'outline' : 'destructive'));
+        const voucherStatusBadgeVariant = $derived(() => {
+                const active = (layoutData as LayoutData)?.user?.voucherActive;
+                if (active === false) {
+                        return 'destructive';
+                }
+                return 'outline';
+        });
 
-        const voucherStatusLabel = $derived(() => ((layoutData as LayoutData).user.voucherActive ? 'Voucher active' : 'Voucher inactive'));
+        const voucherStatusLabel = $derived(() => {
+                const active = (layoutData as LayoutData)?.user?.voucherActive;
+                if (active === true) {
+                        return 'Voucher active';
+                }
+                if (active === false) {
+                        return 'Voucher inactive';
+                }
+                return 'Voucher status unavailable';
+        });
 </script>
 
 <SidebarProvider>
-	<SidebarRoot collapsible="icon">
+	<Sidebar collapsible="icon">
 		<SidebarHeader class="border-b border-sidebar-border px-2 pt-3 pb-4">
 			<div class="flex items-center gap-3 rounded-lg px-2 py-1.5">
 				<div
@@ -380,7 +398,7 @@
                     </div>
                 </SidebarFooter>
             <SidebarRail />
-        </SidebarRoot>
+        </Sidebar>
         <SidebarInset>
         <header class="flex h-16 shrink-0 items-center gap-3 border-b">
 			<SidebarTrigger class="md:hidden" />
@@ -405,7 +423,7 @@
                                                 ? `RAT listening ports: ${portSummary()}`
                                                 : 'Select RAT listening ports'
                                 }
-                                on:click={() => openPortDialog()}
+                                onclick={() => openPortDialog()}
                         >
                                 <Plug class="h-4 w-4 shrink-0" />
                                 {#if selectedPorts.length > 0}
@@ -437,7 +455,7 @@
                                                 ? `RAT listening ports: ${portSummary()}`
                                                 : 'Select RAT listening ports'
                                 }
-                                on:click={() => openPortDialog()}
+                                onclick={() => openPortDialog()}
                         >
                                 <Plug class="h-4 w-4" />
                                 <span class="sr-only">
@@ -477,60 +495,62 @@
                                         Choose the ports the remote access tooling should listen on once you are signed in.
                                 </Dialog.Description>
                         </Dialog.Header>
-                        <form class="space-y-6" on:submit|preventDefault={handlePortSubmit}>
-                                <div class="space-y-2">
-                                        <Label for="rat-port-input">Listening ports</Label>
-                                        <Input
-                                                id="rat-port-input"
-                                                placeholder="4444, 8080"
-                                                bind:value={portInputValue}
-                                                inputmode="numeric"
-                                                autocomplete="off"
-                                                spellcheck={false}
-                                                aria-invalid={Boolean(portDialogError)}
-                                                aria-describedby={`rat-port-input-hint${portDialogError ? ' rat-port-input-error' : ''}`}
-                                        />
-                                        <p id="rat-port-input-hint" class="text-xs text-muted-foreground">
-                                                Separate multiple ports with commas or spaces. Valid range: 1 to 65,535.
-                                        </p>
-                                </div>
-                                <div class="flex items-start gap-3">
-                                        <Checkbox
-                                                id="remember-rat-ports"
-                                                bind:checked={portDialogRemember}
-                                                aria-describedby="remember-rat-ports-hint"
-                                        />
-                                        <div class="grid gap-1">
-                                                <Label for="remember-rat-ports" class="leading-none">Remember selected ports</Label>
-                                                <p id="remember-rat-ports-hint" class="text-xs text-muted-foreground">
-                                                        Store this preference locally and reuse it for future sessions.
-                                                </p>
-                                        </div>
-                                </div>
-                                {#if portDialogError}
-                                        <p id="rat-port-input-error" class="text-sm text-destructive">{portDialogError}</p>
-                                {/if}
+                        <form class="space-y-6" onsubmit={handlePortSubmit}>
+                            <div class="space-y-2">
+                                    <Label for="rat-port-input">Listening ports</Label>
+                                    <Input
+                                            id="rat-port-input"
+                                            placeholder="4444, 8080"
+                                            bind:value={portInputValue}
+                                            inputmode="numeric"
+                                            autocomplete="off"
+                                            spellcheck={false}
+                                            aria-invalid={Boolean(portDialogError)}
+                                            aria-describedby={`rat-port-input-hint${portDialogError ? ' rat-port-input-error' : ''}`}
+                                    />
+                                    <p id="rat-port-input-hint" class="text-xs text-muted-foreground">
+                                            Separate multiple ports with commas or spaces. Valid range: 1 to 65,535.
+                                    </p>
+                            </div>
+                            <div class="flex items-start gap-3">
+                                    <Checkbox
+                                            id="remember-rat-ports"
+                                            bind:checked={portDialogRemember}
+                                            aria-describedby="remember-rat-ports-hint"
+                                    />
+                                    <div class="grid gap-1">
+                                            <Label for="remember-rat-ports" class="leading-none">Remember selected ports</Label>
+                                            <p id="remember-rat-ports-hint" class="text-xs text-muted-foreground">
+                                                    Store this preference locally and reuse it for future sessions.
+                                            </p>
+                                    </div>
+                            </div>
+                            {#if portDialogError}
+                                <p id="rat-port-input-error" class="text-sm text-destructive">{portDialogError}</p>
+                            {/if}
+                            {#if selectedPorts.length > 0}
+                                <Button
+                                        type="button"
+                                        variant="ghost"
+                                        class="justify-start text-destructive hover:text-destructive focus-visible:ring-destructive/20"
+                                        onclick={handleClearPortPreferences}
+                                >
+                                    Clear saved ports
+                                </Button>
+                            {/if}
+                            <Dialog.Footer>
+                                <Button type="submit">Save ports</Button>
                                 {#if selectedPorts.length > 0}
-                                        <Button
-                                                type="button"
-                                                variant="ghost"
-                                                class="justify-start text-destructive hover:text-destructive focus-visible:ring-destructive/20"
-                                                on:click={handleClearPortPreferences}
-                                        >
-                                                Clear saved ports
+                                    <Dialog.Close let:props>
+                                        <Button {...(props as any)} type="button" variant="outline">
+                                            Cancel
                                         </Button>
+                                    </Dialog.Close>
                                 {/if}
-                                <Dialog.Footer>
-                                        <Button type="submit">Save ports</Button>
-                                        {#if selectedPorts.length > 0}
-                                                <Dialog.Close child let:props>
-                                                        <Button {...props} type="button" variant="outline">
-                                                                Cancel
-                                                        </Button>
-                                                </Dialog.Close>
-                                        {/if}
-                                </Dialog.Footer>
+                            </Dialog.Footer>
                         </form>
                 </Dialog.Content>
         </Dialog.Root>
 </SidebarProvider>
+
+
