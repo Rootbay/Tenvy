@@ -1,17 +1,51 @@
 <script lang="ts">
+        import { browser } from '$app/environment';
         import { invalidateAll } from '$app/navigation';
         import { Badge } from '$lib/components/ui/badge/index.js';
         import { Button } from '$lib/components/ui/button/index.js';
         import {
                 Card,
-                CardContent,
                 CardDescription,
                 CardFooter,
                 CardHeader,
                 CardTitle
         } from '$lib/components/ui/card/index.js';
         import { Input } from '$lib/components/ui/input/index.js';
-        import { Separator } from '$lib/components/ui/separator/index.js';
+        import { Label } from '$lib/components/ui/label/index.js';
+        import { ScrollArea } from '$lib/components/ui/scroll-area/index.js';
+        import {
+                Table,
+                TableBody,
+                TableCell,
+                TableHead,
+                TableHeader,
+                TableRow
+        } from '$lib/components/ui/table/index.js';
+        import {
+                ContextMenu,
+                ContextMenuContent,
+                ContextMenuItem,
+                ContextMenuSeparator,
+                ContextMenuTrigger
+        } from '$lib/components/ui/context-menu/index.js';
+        import {
+                Dialog as DialogRoot,
+                DialogContent,
+                DialogDescription,
+                DialogFooter,
+                DialogHeader,
+                DialogTitle
+        } from '$lib/components/ui/dialog/index.js';
+        import {
+                Select,
+                SelectContent,
+                SelectItem,
+                SelectTrigger
+        } from '$lib/components/ui/select/index.js';
+        import EllipsisVertical from '@lucide/svelte/icons/ellipsis-vertical';
+        import ChevronLeft from '@lucide/svelte/icons/chevron-left';
+        import ChevronRight from '@lucide/svelte/icons/chevron-right';
+        import Search from '@lucide/svelte/icons/search';
         import type { AgentSnapshot } from '../../../../../shared/types/agent';
 
         const statusLabels: Record<AgentSnapshot['status'], string> = {
@@ -29,12 +63,154 @@
         let { data } = $props<{ data: { agents: AgentSnapshot[] } }>();
         const agents = $derived((data.agents ?? []) as AgentSnapshot[]);
 
+        let searchQuery = $state('');
+        let statusFilter = $state<'all' | AgentSnapshot['status']>('all');
+        let tagFilter = $state<'all' | string>('all');
+        let perPage = $state(10);
+        let currentPage = $state(1);
+
+        const perPageOptions = [10, 25, 50];
+
+        let availableTags = $state<string[]>([]);
+        let filteredAgents = $state<AgentSnapshot[]>([]);
+        let paginatedAgents = $state<AgentSnapshot[]>([]);
+        let pageRange = $state({ start: 0, end: 0 });
+        let totalPages = $state(1);
+        let paginationItems = $state<(number | 'ellipsis')[]>([]);
+
+        $effect(() => {
+                const tags = new Set<string>();
+                for (const agent of agents) {
+                        for (const tag of agent.metadata.tags ?? []) {
+                                tags.add(tag);
+                        }
+                }
+                availableTags = Array.from(tags).sort((a, b) => a.localeCompare(b));
+        });
+
+        $effect(() => {
+                const query = searchQuery.trim().toLowerCase();
+
+                filteredAgents = agents.filter((agent) => {
+                        const matchesStatus = statusFilter === 'all' ? true : agent.status === statusFilter;
+
+                        const matchesTag =
+                                tagFilter === 'all'
+                                        ? true
+                                        : agent.metadata.tags?.some((tag) => tag.toLowerCase() === tagFilter.toLowerCase()) ??
+                                          false;
+
+                        if (!matchesStatus || !matchesTag) {
+                                return false;
+                        }
+
+                        if (query === '') {
+                                return true;
+                        }
+
+                        const haystack = [
+                                agent.id,
+                                agent.metadata.hostname,
+                                agent.metadata.username,
+                                agent.metadata.os,
+                                agent.metadata.ipAddress,
+                                ...(agent.metadata.tags ?? [])
+                        ]
+                                .filter(Boolean)
+                                .map((value) => value!.toString().toLowerCase());
+
+                        return haystack.some((value) => value.includes(query));
+                });
+        });
+
+        $effect(() => {
+                const startIndex = (currentPage - 1) * perPage;
+                const slice = filteredAgents.slice(startIndex, startIndex + perPage);
+                paginatedAgents = slice;
+
+                const total = filteredAgents.length === 0 ? 1 : Math.max(1, Math.ceil(filteredAgents.length / perPage));
+                totalPages = total;
+
+                if (filteredAgents.length === 0) {
+                        pageRange = { start: 0, end: 0 };
+                } else {
+                        const start = startIndex + 1;
+                        const end = Math.min(start + slice.length - 1, filteredAgents.length);
+                        pageRange = { start, end };
+                }
+        });
+
+        $effect(() => {
+                searchQuery;
+                statusFilter;
+                tagFilter;
+                perPage;
+                currentPage = 1;
+        });
+
+        $effect(() => {
+                const total = totalPages;
+                if (currentPage > total) {
+                        currentPage = total;
+                }
+        });
+
+        function buildPaginationItems(total: number, current: number, siblingCount = 1): (number | 'ellipsis')[] {
+                if (total <= 1) {
+                        return [1];
+                }
+
+                const safeCurrent = Math.min(Math.max(current, 1), total);
+                const start = Math.max(2, safeCurrent - siblingCount);
+                const end = Math.min(total - 1, safeCurrent + siblingCount);
+
+                const items: (number | 'ellipsis')[] = [1];
+
+                if (start > 2) {
+                        items.push('ellipsis');
+                }
+
+                for (let page = start; page <= end; page += 1) {
+                        items.push(page);
+                }
+
+                if (end < total - 1) {
+                        items.push('ellipsis');
+                }
+
+                items.push(total);
+
+                return items;
+        }
+
+        $effect(() => {
+                paginationItems = buildPaginationItems(totalPages, currentPage);
+        });
+
         let pingMessages = $state<Record<string, string>>({});
         let shellCommands = $state<Record<string, string>>({});
         let shellTimeouts = $state<Record<string, number | undefined>>({});
         let commandErrors = $state<Record<string, string | null>>({});
         let commandSuccess = $state<Record<string, string | null>>({});
         let commandPending = $state<Record<string, boolean>>({});
+
+        let pingDialogAgentId = $state<string | null>(null);
+        let shellDialogAgentId = $state<string | null>(null);
+        let pingAgent = $state<AgentSnapshot | null>(null);
+        let shellAgent = $state<AgentSnapshot | null>(null);
+        let deployDialogOpen = $state(false);
+
+        $effect(() => {
+                pingAgent = findAgentById(pingDialogAgentId);
+        });
+
+        $effect(() => {
+                shellAgent = findAgentById(shellDialogAgentId);
+        });
+
+        type CopyFeedback = { message: string; variant: 'success' | 'error' } | null;
+        let copyFeedback = $state<CopyFeedback>(null);
+        let copyFeedbackTimeout: number | undefined;
 
         function updateRecord<T>(records: Record<string, T>, key: string, value: T): Record<string, T> {
                 return { ...records, [key]: value };
@@ -101,6 +277,13 @@
                 return parts.join(' ');
         }
 
+        function findAgentById(agentId: string | null): AgentSnapshot | null {
+                if (!agentId) {
+                        return null;
+                }
+                return agents.find((agent) => agent.id === agentId) ?? null;
+        }
+
         function getError(key: string): string | null {
                 return commandErrors[key] ?? null;
         }
@@ -149,7 +332,7 @@
                 }
         }
 
-        async function sendPing(agentId: string) {
+        async function sendPing(agentId: string): Promise<boolean> {
                 const key = `ping:${agentId}`;
                 const message = pingMessages[agentId]?.trim();
                 const success = await queueCommand(
@@ -164,14 +347,15 @@
                 if (success) {
                         pingMessages = updateRecord(pingMessages, agentId, '');
                 }
+                return success;
         }
 
-        async function sendShell(agentId: string) {
+        async function sendShell(agentId: string): Promise<boolean> {
                 const key = `shell:${agentId}`;
                 const command = shellCommands[agentId]?.trim();
                 if (!command) {
                         commandErrors = updateRecord(commandErrors, key, 'Command is required');
-                        return;
+                        return false;
                 }
 
                 const timeout = shellTimeouts[agentId];
@@ -193,6 +377,88 @@
                 if (success) {
                         shellCommands = updateRecord(shellCommands, agentId, '');
                 }
+
+                return success;
+        }
+
+        function openPingDialog(agentId: string) {
+                pingDialogAgentId = agentId;
+                commandErrors = updateRecord(commandErrors, `ping:${agentId}`, null);
+                commandSuccess = updateRecord(commandSuccess, `ping:${agentId}`, null);
+        }
+
+        function openShellDialog(agentId: string) {
+                shellDialogAgentId = agentId;
+                commandErrors = updateRecord(commandErrors, `shell:${agentId}`, null);
+                commandSuccess = updateRecord(commandSuccess, `shell:${agentId}`, null);
+        }
+
+        function closePingDialog() {
+                pingDialogAgentId = null;
+        }
+
+        function closeShellDialog() {
+                shellDialogAgentId = null;
+        }
+
+        async function handlePingSubmit() {
+                const agent = findAgentById(pingDialogAgentId);
+                if (!agent) return;
+                const success = await sendPing(agent.id);
+                if (success) {
+                        closePingDialog();
+                }
+        }
+
+        async function handleShellSubmit() {
+                const agent = findAgentById(shellDialogAgentId);
+                if (!agent) return;
+                const success = await sendShell(agent.id);
+                if (success) {
+                        closeShellDialog();
+                }
+        }
+
+        function setCopyFeedback(feedback: CopyFeedback) {
+                copyFeedback = feedback;
+                if (!browser) {
+                        return;
+                }
+                if (copyFeedbackTimeout !== undefined) {
+                        window.clearTimeout(copyFeedbackTimeout);
+                }
+                if (feedback) {
+                        copyFeedbackTimeout = window.setTimeout(() => {
+                                copyFeedback = null;
+                                copyFeedbackTimeout = undefined;
+                        }, 2500);
+                }
+        }
+
+        async function copyAgentId(agentId: string) {
+                if (!browser) return;
+                try {
+                        await navigator.clipboard.writeText(agentId);
+                        setCopyFeedback({ message: 'Agent ID copied to clipboard', variant: 'success' });
+                } catch (err) {
+                        console.error(err);
+                        setCopyFeedback({ message: 'Unable to copy agent ID', variant: 'error' });
+                }
+        }
+
+        function openContextMenuFromButton(event: MouseEvent) {
+                if (!browser) return;
+                event.preventDefault();
+                event.stopPropagation();
+                const trigger = (event.currentTarget as HTMLElement | null)?.closest('[data-context-menu-trigger]');
+                if (!trigger) return;
+                trigger.dispatchEvent(
+                        new MouseEvent('contextmenu', {
+                                bubbles: true,
+                                clientX: event.clientX,
+                                clientY: event.clientY
+                        })
+                );
         }
 </script>
 
@@ -209,228 +475,428 @@
                                         Launch a client instance to have it register and appear here automatically.
                                 </CardDescription>
                         </CardHeader>
+                        <CardFooter>
+                                <Button type="button" onclick={() => (deployDialogOpen = true)}>
+                                        View deployment guide
+                                </Button>
+                        </CardFooter>
                 </Card>
         {/if}
 
-        {#each agents as agent (agent.id)}
-                <Card class="border-border/60">
-                        <CardHeader class="gap-2">
-                                <div class="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
-                                        <div>
-                                                <CardTitle class="text-xl font-semibold">
-                                                        {agent.metadata.hostname}
-                                                        <span class="ml-2 text-sm font-medium text-muted-foreground">
-                                                                {agent.metadata.username}@{agent.metadata.os}
+        <div class="space-y-4 rounded-lg border border-border/60 bg-background/60 p-4">
+                <div class="grid gap-4 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)] lg:items-end">
+                        <div class="flex flex-col gap-2">
+                                <Label for="client-search" class="text-sm font-medium">Search</Label>
+                                <div class="relative">
+                                        <Search class="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+                                        <Input
+                                                id="client-search"
+                                                placeholder="Hostname, user, ID, IP, or tag"
+                                                value={searchQuery}
+                                                oninput={(event) => (searchQuery = event.currentTarget.value)}
+                                                class="pl-10"
+                                        />
+                                </div>
+                        </div>
+                        <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                                <div class="flex flex-col gap-2">
+                                        <Label for="client-status-filter" class="text-sm font-medium">Status</Label>
+                                        <Select
+                                                type="single"
+                                                value={statusFilter}
+                                                onValueChange={(value) => (statusFilter = value as typeof statusFilter)}
+                                        >
+                                                <SelectTrigger id="client-status-filter" class="w-full">
+                                                        <span class="truncate">
+                                                                {statusFilter === 'all'
+                                                                        ? 'All statuses'
+                                                                        : statusLabels[statusFilter]}
                                                         </span>
-                                                </CardTitle>
-                                                <CardDescription class="text-sm">
-                                                        Agent ID: <code>{agent.id}</code>
-                                                </CardDescription>
-                                        </div>
-                                        <Badge class={`rounded-md px-2 py-1 text-xs font-semibold ${statusClasses[agent.status]}`}>
-                                                {statusLabels[agent.status]}
-                                        </Badge>
+                                                </SelectTrigger>
+                                                <SelectContent>
+                                                        <SelectItem value="all">All statuses</SelectItem>
+                                                        <SelectItem value="online">Online</SelectItem>
+                                                        <SelectItem value="offline">Offline</SelectItem>
+                                                        <SelectItem value="error">Error</SelectItem>
+                                                </SelectContent>
+                                        </Select>
                                 </div>
-                                <div class="flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
-                                        <span>Connected {formatDate(agent.connectedAt)}</span>
-                                        <span aria-hidden="true">•</span>
-                                        <span>Last seen {formatRelative(agent.lastSeen)}</span>
-                                        {#if agent.metadata.ipAddress}
-                                                <span aria-hidden="true">•</span>
-                                                <span>IP {agent.metadata.ipAddress}</span>
-                                        {/if}
-                                        {#if agent.metadata.tags?.length}
-                                                <span aria-hidden="true">•</span>
-                                                <span>Tags: {agent.metadata.tags.join(', ')}</span>
-                                        {/if}
+                                <div class="flex flex-col gap-2">
+                                        <Label for="client-tag-filter" class="text-sm font-medium">Tag</Label>
+                                        <Select
+                                                type="single"
+                                                value={tagFilter}
+                                                onValueChange={(value) => (tagFilter = value as typeof tagFilter)}
+                                        >
+                                                <SelectTrigger id="client-tag-filter" class="w-full">
+                                                        <span class="truncate">
+                                                                {tagFilter === 'all' ? 'All tags' : tagFilter}
+                                                        </span>
+                                                </SelectTrigger>
+                                                <SelectContent>
+                                                        <SelectItem value="all">All tags</SelectItem>
+                                                        {#if availableTags.length > 0}
+                                                                {#each availableTags as tag (tag)}
+                                                                        <SelectItem value={tag}>{tag}</SelectItem>
+                                                                {/each}
+                                                        {:else}
+                                                                <SelectItem value="all" disabled>No tags available</SelectItem>
+                                                        {/if}
+                                                </SelectContent>
+                                        </Select>
                                 </div>
-                        </CardHeader>
-                        <CardContent class="space-y-6">
-                                <div class="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)]">
-                                        <section class="space-y-4">
-                                                <div>
-                                                        <h3 class="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-                                                                Metrics
-                                                        </h3>
-                                                        <Separator class="my-2" />
-                                                        <dl class="grid gap-2 text-sm">
-                                                                <div class="flex justify-between">
-                                                                        <dt class="text-muted-foreground">Memory</dt>
-                                                                        <dd class="font-medium">
-                                                                                {formatBytes(agent.metrics?.memoryBytes)}
-                                                                        </dd>
-                                                                </div>
-                                                                <div class="flex justify-between">
-                                                                        <dt class="text-muted-foreground">Goroutines</dt>
-                                                                        <dd class="font-medium">
-                                                                                {agent.metrics?.goroutines ?? '—'}
-                                                                        </dd>
-                                                                </div>
-                                                                <div class="flex justify-between">
-                                                                        <dt class="text-muted-foreground">Uptime</dt>
-                                                                        <dd class="font-medium">
-                                                                                {formatDuration(agent.metrics?.uptimeSeconds)}
-                                                                        </dd>
-                                                                </div>
-                                                        </dl>
-                                                </div>
+                                <div class="flex flex-col gap-2">
+                                        <Label for="client-page-size" class="text-sm font-medium">Per page</Label>
+                                        <Select
+                                                type="single"
+                                                value={perPage.toString()}
+                                                onValueChange={(value) => {
+                                                        const next = Number.parseInt(value, 10);
+                                                        perPage = Number.isNaN(next) ? 10 : next;
+                                                }}
+                                        >
+                                                <SelectTrigger id="client-page-size" class="w-full">
+                                                        <span>{perPage} rows</span>
+                                                </SelectTrigger>
+                                                <SelectContent>
+                                                        {#each perPageOptions as option (option)}
+                                                                <SelectItem value={option.toString()}>{option} rows</SelectItem>
+                                                        {/each}
+                                                </SelectContent>
+                                        </Select>
+                                </div>
+                        </div>
+                </div>
+                {#if copyFeedback}
+                        <p
+                                class={`text-sm ${
+                                        copyFeedback.variant === 'error' ? 'text-destructive' : 'text-emerald-500'
+                                }`}
+                        >
+                                {copyFeedback.message}
+                        </p>
+                {/if}
+        </div>
 
-                                                <div class="space-y-2">
-                                                        <h3 class="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-                                                                Pending commands
-                                                        </h3>
-                                                        <Separator class="my-2" />
-                                                        {#if agent.pendingCommands === 0}
-                                                                <p class="text-sm text-muted-foreground">Queue is empty.</p>
+        <div class="space-y-4">
+                <ScrollArea class="rounded-lg border border-border/60">
+                        <div class="min-w-[960px]">
+                                <Table>
+                                        <TableHeader>
+                                                <TableRow>
+                                                        <TableHead class="w-[22rem]">Agent</TableHead>
+                                                        <TableHead class="w-[8rem]">Status</TableHead>
+                                                        <TableHead class="w-[12rem]">Connected</TableHead>
+                                                        <TableHead class="w-[12rem]">Last seen</TableHead>
+                                                        <TableHead class="w-[7rem] text-center">Pending</TableHead>
+                                                        <TableHead class="w-[10rem]">Memory</TableHead>
+                                                        <TableHead class="w-[9rem]">Uptime</TableHead>
+                                                        <TableHead class="w-[4rem] text-right">Actions</TableHead>
+                                                </TableRow>
+                                        </TableHeader>
+                                        <TableBody>
+                                                {#if paginatedAgents.length === 0}
+                                                        <TableRow>
+                                                                <TableCell colspan={8} class="py-12 text-center text-sm text-muted-foreground">
+                                                                        {#if agents.length === 0}
+                                                                                No agents connected yet.
+                                                                        {:else}
+                                                                                No agents match your current filters.
+                                                                        {/if}
+                                                                </TableCell>
+                                                        </TableRow>
+                                                {:else}
+                                                        {#each paginatedAgents as agent (agent.id)}
+                                                                <ContextMenu>
+                                                                        <TableRow class="cursor-context-menu">
+                                                                                        <TableCell>
+                                                                                                <div class="flex flex-col gap-2">
+                                                                                                        <div class="flex flex-wrap items-center gap-x-3 gap-y-1">
+                                                                                                                <span class="font-medium">{agent.metadata.hostname}</span>
+                                                                                                                <span class="text-xs text-muted-foreground">
+                                                                                                                        {agent.metadata.username}@{agent.metadata.os}
+                                                                                                                </span>
+                                                                                                                {#if agent.metadata.version}
+                                                                                                                        <Badge variant="outline" class="text-[0.65rem]">
+                                                                                                                                v{agent.metadata.version}
+                                                                                                                        </Badge>
+                                                                                                                {/if}
+                                                                                                        </div>
+                                                                                                        <div class="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                                                                                                                <span>Agent ID: <code>{agent.id}</code></span>
+                                                                                                                {#if agent.metadata.ipAddress}
+                                                                                                                        <span aria-hidden="true">•</span>
+                                                                                                                        <span>IP {agent.metadata.ipAddress}</span>
+                                                                                                                {/if}
+                                                                                                        </div>
+                                                                                                        {#if agent.metadata.tags?.length}
+                                                                                                                <div class="flex flex-wrap gap-2">
+                                                                                                                        {#each agent.metadata.tags.slice(0, 3) as tag (tag)}
+                                                                                                                                <Badge variant="outline" class="rounded-md text-[0.65rem]">
+                                                                                                                                        {tag}
+                                                                                                                                </Badge>
+                                                                                                                        {/each}
+                                                                                                                        {#if agent.metadata.tags.length > 3}
+                                                                                                                                <Badge variant="outline" class="rounded-md text-[0.65rem]">
+                                                                                                                                        +{agent.metadata.tags.length - 3}
+                                                                                                                                </Badge>
+                                                                                                                        {/if}
+                                                                                                                </div>
+                                                                                                        {/if}
+                                                                                                </div>
+                                                                                        </TableCell>
+                                                                                        <TableCell>
+                                                                                                <Badge class={`rounded-md px-2 py-1 text-xs font-semibold ${statusClasses[agent.status]}`}>
+                                                                                                        {statusLabels[agent.status]}
+                                                                                                </Badge>
+                                                                                        </TableCell>
+                                                                                        <TableCell class="text-sm text-muted-foreground">{formatDate(agent.connectedAt)}</TableCell>
+                                                                                        <TableCell class="text-sm text-muted-foreground">{formatRelative(agent.lastSeen)}</TableCell>
+                                                                                        <TableCell class="text-center text-sm font-medium">
+                                                                                                {agent.pendingCommands}
+                                                                                        </TableCell>
+                                                                                        <TableCell class="text-sm text-muted-foreground">{formatBytes(agent.metrics?.memoryBytes)}</TableCell>
+                                                                                        <TableCell class="text-sm text-muted-foreground">{formatDuration(agent.metrics?.uptimeSeconds)}</TableCell>
+                                                                                        <TableCell class="text-right">
+                                                                                                <ContextMenuTrigger>
+                                                                                                        <Button
+                                                                                                                type="button"
+                                                                                                                variant="ghost"
+                                                                                                                size="icon"
+                                                                                                                class="text-muted-foreground hover:text-foreground"
+                                                                                                                onclick={openContextMenuFromButton}
+                                                                                                        >
+                                                                                                                <EllipsisVertical class="size-4" />
+                                                                                                                <span class="sr-only">Open actions</span>
+                                                                                                        </Button>
+                                                                                                </ContextMenuTrigger>
+                                                                                        </TableCell>
+                                                                                </TableRow>
+                                                                        <ContextMenuContent class="w-56">
+                                                                                <ContextMenuItem on:select={() => openPingDialog(agent.id)}>
+                                                                                        Send ping…
+                                                                                </ContextMenuItem>
+                                                                                <ContextMenuItem on:select={() => openShellDialog(agent.id)}>
+                                                                                        Run shell command…
+                                                                                </ContextMenuItem>
+                                                                                <ContextMenuSeparator />
+                                                                                <ContextMenuItem on:select={() => copyAgentId(agent.id)}>
+                                                                                        Copy agent ID
+                                                                                </ContextMenuItem>
+                                                                        </ContextMenuContent>
+                                                                </ContextMenu>
+                                                        {/each}
+                                                {/if}
+                                        </TableBody>
+                                </Table>
+                        </div>
+                </ScrollArea>
+
+                <div class="px-4 text-sm text-muted-foreground">
+                        {#if filteredAgents.length === 0}
+                                No agents to display.
+                        {:else}
+                                Showing {pageRange.start}–{pageRange.end} of {filteredAgents.length}
+                                {filteredAgents.length === 1 ? ' agent' : ' agents'}.
+                        {/if}
+                </div>
+
+                {#if filteredAgents.length > 0 && totalPages > 1}
+                        <nav class="flex justify-center">
+                                <ul class="flex flex-row items-center gap-1">
+                                        <li>
+                                                <Button
+                                                        type="button"
+                                                        variant="ghost"
+                                                        class="flex h-9 items-center gap-1 px-2.5 sm:pl-2.5"
+                                                        onclick={() => (currentPage = Math.max(1, currentPage - 1))}
+                                                        disabled={currentPage <= 1}
+                                                >
+                                                        <ChevronLeft class="size-4" />
+                                                        <span class="sr-only sm:not-sr-only">Previous</span>
+                                                </Button>
+                                        </li>
+                                        {#each paginationItems as item, index}
+                                                <li>
+                                                        {#if item === 'ellipsis'}
+                                                                <span class="flex h-9 w-9 items-center justify-center text-sm text-muted-foreground">
+                                                                        …
+                                                                </span>
                                                         {:else}
-                                                                <p class="text-sm font-medium">{agent.pendingCommands} awaiting pickup</p>
-                                                        {/if}
-                                                </div>
-
-                                                <div class="space-y-2">
-                                                        <h3 class="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-                                                                Recent results
-                                                        </h3>
-                                                        <Separator class="my-2" />
-                                                        {#if agent.recentResults.length === 0}
-                                                                <p class="text-sm text-muted-foreground">No results yet.</p>
-                                                        {:else}
-                                                                <ul class="space-y-3 text-sm">
-                                                                        {#each agent.recentResults.slice(0, 5) as result (result.commandId)}
-                                                                                <li class="rounded-md border border-border/60 p-3">
-                                                                                        <div class="flex items-center justify-between text-xs text-muted-foreground">
-                                                                                                <span>#{result.commandId}</span>
-                                                                                                <span>{formatDate(result.completedAt)}</span>
-                                                                                        </div>
-                                                                                        <p class={`mt-2 font-medium ${result.success ? 'text-emerald-500' : 'text-red-500'}`}>
-                                                                                                {result.success ? 'Success' : 'Failed'}
-                                                                                        </p>
-                                                                                        {#if result.output}
-                                                                                                <pre class="mt-2 whitespace-pre-wrap rounded bg-muted/60 p-2 text-xs text-muted-foreground">
-{result.output}
-                                                                                                </pre>
-                                                                                        {/if}
-                                                                                        {#if result.error}
-                                                                                                <p class="mt-2 text-xs text-red-500">{result.error}</p>
-                                                                                        {/if}
-                                                                                </li>
-                                                                        {/each}
-                                                                </ul>
-                                                        {/if}
-                                                </div>
-                                        </section>
-
-                                        <section class="space-y-6">
-                                                <div class="space-y-3 rounded-lg border border-border/60 bg-background/60 p-4">
-                                                        <div>
-                                                                <h3 class="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-                                                                        Ping
-                                                                </h3>
-                                                                <p class="text-sm text-muted-foreground">
-                                                                        Sends a keep-alive message to verify the agent connection.
-                                                                </p>
-                                                        </div>
-                                                        <div class="flex flex-col gap-3 sm:flex-row">
-                                                                <Input
-                                                                        placeholder="Optional message"
-                                                                        value={pingMessages[agent.id] ?? ''}
-                                                                        oninput={(event) =>
-                                                                                (pingMessages = updateRecord(
-                                                                                        pingMessages,
-                                                                                        agent.id,
-                                                                                        event.currentTarget.value
-                                                                                ))
-                                                                        }
-                                                                />
                                                                 <Button
                                                                         type="button"
-                                                                        onclick={() => sendPing(agent.id)}
-                                                                        disabled={isPending(`ping:${agent.id}`)}
+                                                                        variant={item === currentPage ? 'outline' : 'ghost'}
+                                                                        class="h-9 w-9 px-0"
+                                                                        onclick={() => (currentPage = item)}
                                                                 >
-                                                                        {#if isPending(`ping:${agent.id}`)}
-                                                                                Sending…
-                                                                        {:else}
-                                                                                Send ping
-                                                                        {/if}
+                                                                        {item}
                                                                 </Button>
-                                                        </div>
-                                                        {#if getError(`ping:${agent.id}`)}
-                                                                <p class="text-sm text-red-500">{getError(`ping:${agent.id}`)}</p>
-                                                        {:else if getSuccess(`ping:${agent.id}`)}
-                                                                <p class="text-sm text-emerald-500">{getSuccess(`ping:${agent.id}`)}</p>
                                                         {/if}
-                                                </div>
+                                                </li>
+                                        {/each}
+                                        <li>
+                                                <Button
+                                                        type="button"
+                                                        variant="ghost"
+                                                        class="flex h-9 items-center gap-1 px-2.5 sm:pl-2.5"
+                                                        onclick={() => (currentPage = Math.min(totalPages, currentPage + 1))}
+                                                        disabled={currentPage >= totalPages}
+                                                >
+                                                        <span class="sr-only sm:not-sr-only">Next</span>
+                                                        <ChevronRight class="size-4" />
+                                                </Button>
+                                        </li>
+                                </ul>
+                        </nav>
+                {/if}
+        </div>
 
-                                                <div class="space-y-3 rounded-lg border border-border/60 bg-background/60 p-4">
-                                                        <div>
-                                                                <h3 class="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-                                                                        Shell command
-                                                                </h3>
-                                                                <p class="text-sm text-muted-foreground">
-                                                                        Execute a command on the remote system via the agent shell module.
-                                                                </p>
-                                                        </div>
-                                                        <div class="space-y-3">
-                                                                <textarea
-                                                                        class="w-full rounded-md border border-border/60 bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
-                                                                        rows={3}
-                                                                        placeholder="whoami"
-                                                                        value={shellCommands[agent.id] ?? ''}
-                                                                        oninput={(event) =>
-                                                                                (shellCommands = updateRecord(
-                                                                                        shellCommands,
-                                                                                        agent.id,
-                                                                                        event.currentTarget.value
-                                                                                ))
-                                                                        }
-                                                                ></textarea>
-                                                                <div class="flex flex-col gap-3 sm:flex-row sm:items-center">
-                                                                        <div class="flex items-center gap-2">
-                                                                                <Input
-                                                                                        type="number"
-                                                                                        min={1}
-                                                                                        placeholder="Timeout (s)"
-                                                                                        value={shellTimeouts[agent.id] ?? ''}
-                                                                                        oninput={(event) => {
-                                                                                                const raw = event.currentTarget.value;
-                                                                                                const value = Number.parseInt(raw, 10);
-                                                                                                shellTimeouts = updateRecord(
-                                                                                                        shellTimeouts,
-                                                                                                        agent.id,
-                                                                                                        raw.trim() === '' || Number.isNaN(value)
-                                                                                                                ? undefined
-                                                                                                                : value
-                                                                                                );
-                                                                                        }}
-                                                                                />
-                                                                                <span class="text-xs text-muted-foreground">Optional</span>
-                                                                        </div>
-                                                                        <Button
-                                                                                type="button"
-                                                                                onclick={() => sendShell(agent.id)}
-                                                                                disabled={isPending(`shell:${agent.id}`)}
-                                                                        >
-                                                                                {#if isPending(`shell:${agent.id}`)}
-                                                                                        Dispatching…
-                                                                                {:else}
-                                                                                        Execute command
-                                                                                {/if}
-                                                                        </Button>
-                                                                </div>
-                                                        </div>
-                                                        {#if getError(`shell:${agent.id}`)}
-                                                                <p class="text-sm text-red-500">{getError(`shell:${agent.id}`)}</p>
-                                                        {:else if getSuccess(`shell:${agent.id}`)}
-                                                                <p class="text-sm text-emerald-500">{getSuccess(`shell:${agent.id}`)}</p>
-                                                        {/if}
-                                                </div>
-                                        </section>
+        <DialogRoot open={deployDialogOpen} onOpenChange={(value: boolean) => (deployDialogOpen = value)}>
+                <DialogContent class="sm:max-w-md">
+                        <DialogHeader>
+                                <DialogTitle>Connect an agent</DialogTitle>
+                                <DialogDescription>
+                                        Generate a deployment command, execute it on the target system, and the agent will
+                                        appear in this list once it connects.
+                                </DialogDescription>
+                        </DialogHeader>
+                        <div class="space-y-3 text-sm text-muted-foreground">
+                                <p>Install the client binary, provide the controller URL, and confirm network access.</p>
+                                <p>Agents automatically authenticate and begin reporting metrics immediately after launch.</p>
+                        </div>
+                        <DialogFooter>
+                                <Button
+                                        type="button"
+                                        variant="ghost"
+                                        onclick={() => (deployDialogOpen = false)}
+                                >
+                                        Close
+                                </Button>
+                        </DialogFooter>
+                </DialogContent>
+        </DialogRoot>
+
+        {#if pingAgent}
+                <DialogRoot open onOpenChange={(value: boolean) => (!value ? closePingDialog() : null)}>
+                        <DialogContent class="sm:max-w-md">
+                                <DialogHeader>
+                                        <DialogTitle>Send ping</DialogTitle>
+                                        <DialogDescription>
+                                                Queue a keep-alive message for {pingAgent.metadata.hostname}.
+                                        </DialogDescription>
+                                </DialogHeader>
+                                <div class="space-y-4">
+                                        <div class="space-y-2">
+                                                <Label for="ping-message" class="text-sm font-medium">Message</Label>
+                                                <Input
+                                                        id="ping-message"
+                                                        placeholder="Optional message"
+                                                        value={pingMessages[pingAgent!.id] ?? ''}
+                                                        oninput={(event) =>
+                                                                (pingMessages = updateRecord(
+                                                                        pingMessages,
+                                                                        pingAgent!.id,
+                                                                        event.currentTarget.value
+                                                                ))}
+                                                />
+                                        </div>
+                                        {#if getError(`ping:${pingAgent!.id}`)}
+                                                <p class="text-sm text-destructive">{getError(`ping:${pingAgent!.id}`)}</p>
+                                        {:else if getSuccess(`ping:${pingAgent!.id}`)}
+                                                <p class="text-sm text-emerald-500">{getSuccess(`ping:${pingAgent!.id}`)}</p>
+                                        {/if}
                                 </div>
-                        </CardContent>
-                        <CardFooter class="justify-between text-xs text-muted-foreground">
-                                <span>Total results tracked: {agent.recentResults.length}</span>
-                                <span>Last updated {formatDate(agent.lastSeen)}</span>
-                        </CardFooter>
-                </Card>
-        {/each}
+                                <DialogFooter class="gap-2 sm:justify-between">
+                                        <Button type="button" variant="ghost" onclick={closePingDialog}>Cancel</Button>
+                                        <Button
+                                                type="button"
+                                                onclick={handlePingSubmit}
+                                                disabled={isPending(`ping:${pingAgent!.id}`)}
+                                        >
+                                                {#if isPending(`ping:${pingAgent!.id}`)}
+                                                        Sending…
+                                                {:else}
+                                                        Queue ping
+                                                {/if}
+                                        </Button>
+                                </DialogFooter>
+                        </DialogContent>
+                </DialogRoot>
+        {/if}
+
+        {#if shellAgent}
+                <DialogRoot open onOpenChange={(value: boolean) => (!value ? closeShellDialog() : null)}>
+                        <DialogContent class="sm:max-w-lg">
+                                <DialogHeader>
+                                        <DialogTitle>Run shell command</DialogTitle>
+                                        <DialogDescription>
+                                                Dispatch a command for {shellAgent.metadata.hostname} to execute.
+                                        </DialogDescription>
+                                </DialogHeader>
+                                <div class="space-y-4">
+                                        <div class="space-y-2">
+                                                <Label for="shell-command" class="text-sm font-medium">Command</Label>
+                                                <textarea
+                                                        id="shell-command"
+                                                        class="min-h-28 w-full rounded-md border border-border/60 bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+                                                        rows={4}
+                                                        placeholder="whoami"
+                                                        value={shellCommands[shellAgent!.id] ?? ''}
+                                                        oninput={(event) =>
+                                                                (shellCommands = updateRecord(
+                                                                        shellCommands,
+                                                                        shellAgent!.id,
+                                                                        event.currentTarget.value
+                                                                ))}
+                                                ></textarea>
+                                        </div>
+                                        <div class="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
+                                                <div class="space-y-2">
+                                                        <Label for="shell-timeout" class="text-sm font-medium">Timeout (seconds)</Label>
+                                                        <Input
+                                                                id="shell-timeout"
+                                                                type="number"
+                                                                min={1}
+                                                                placeholder="Optional timeout"
+                                                                value={shellTimeouts[shellAgent!.id] ?? ''}
+                                                                oninput={(event) => {
+                                                                        const raw = event.currentTarget.value;
+                                                                        const value = Number.parseInt(raw, 10);
+                                                                        shellTimeouts = updateRecord(
+                                                                                shellTimeouts,
+                                                                                shellAgent!.id,
+                                                                                raw.trim() === '' || Number.isNaN(value)
+                                                                                        ? undefined
+                                                                                        : value
+                                                                        );
+                                                                }}
+                                                        />
+                                                </div>
+                                                <p class="text-xs text-muted-foreground">
+                                                        Leave blank to use the agent default.
+                                                </p>
+                                        </div>
+                                        {#if getError(`shell:${shellAgent!.id}`)}
+                                                <p class="text-sm text-destructive">{getError(`shell:${shellAgent!.id}`)}</p>
+                                        {:else if getSuccess(`shell:${shellAgent!.id}`)}
+                                                <p class="text-sm text-emerald-500">{getSuccess(`shell:${shellAgent!.id}`)}</p>
+                                        {/if}
+                                </div>
+                                <DialogFooter class="gap-2 sm:justify-between">
+                                        <Button type="button" variant="ghost" onclick={closeShellDialog}>Cancel</Button>
+                                        <Button
+                                                type="button"
+                                                onclick={handleShellSubmit}
+                                                disabled={isPending(`shell:${shellAgent!.id}`)}
+                                        >
+                                                {#if isPending(`shell:${shellAgent!.id}`)}
+                                                        Dispatching…
+                                                {:else}
+                                                        Queue command
+                                                {/if}
+                                        </Button>
+                                </DialogFooter>
+                        </DialogContent>
+                </DialogRoot>
+        {/if}
 </section>
