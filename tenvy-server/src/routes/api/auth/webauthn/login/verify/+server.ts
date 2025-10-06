@@ -16,6 +16,12 @@ export const POST: RequestHandler = async (event) => {
                 return json({ message: 'Authentication challenge expired. Try again.' }, { status: 400 });
         }
 
+        event.cookies.delete(CHALLENGE_COOKIE, {
+                path: '/',
+                sameSite: 'strict',
+                secure: event.url.protocol === 'https:'
+        });
+
         const address = event.getClientAddress();
         try {
                 await limitWebAuthn(`${address}:login:verify`);
@@ -82,14 +88,11 @@ export const POST: RequestHandler = async (event) => {
 
         await db
                 .update(table.passkey)
-                .set({ counter: verification.authenticationInfo.newCounter })
+                .set({
+                        counter: verification.authenticationInfo.newCounter,
+                        lastUsedAt: new Date()
+                })
                 .where(eq(table.passkey.id, record.passkey.id));
-
-        event.cookies.delete(CHALLENGE_COOKIE, {
-                path: '/',
-                sameSite: 'strict',
-                secure: event.url.protocol === 'https:'
-        });
 
         if (event.locals.session) {
                 await auth.invalidateSession(event.locals.session.id);

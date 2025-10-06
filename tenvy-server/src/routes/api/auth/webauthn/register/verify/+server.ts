@@ -74,7 +74,9 @@ export const POST: RequestHandler = async (event) => {
                                 counter: registrationInfo.credential.counter,
                                 deviceType: registrationInfo.credentialDeviceType,
                                 backedUp: registrationInfo.credentialBackedUp,
-                                transports: transports.length ? JSON.stringify(transports) : null
+                                transports: transports.length ? JSON.stringify(transports) : null,
+                                createdAt: new Date(),
+                                lastUsedAt: new Date()
                         })
                         .onConflictDoNothing();
 
