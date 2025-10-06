@@ -1,7 +1,8 @@
 import type { AgentConfig } from './config';
 import type { AgentMetrics, AgentStatus } from './agent';
+import type { RemoteDesktopCommandPayload } from './remote-desktop';
 
-export type CommandName = 'ping' | 'shell';
+export type CommandName = 'ping' | 'shell' | 'remote-desktop';
 
 export interface PingCommandPayload {
         message?: string;
@@ -12,7 +13,10 @@ export interface ShellCommandPayload {
         timeoutSeconds?: number;
 }
 
-export type CommandPayload = PingCommandPayload | ShellCommandPayload;
+export type CommandPayload =
+	| PingCommandPayload
+	| ShellCommandPayload
+	| RemoteDesktopCommandPayload;
 
 export interface CommandInput {
         name: CommandName;
