@@ -52,8 +52,9 @@ export const POST: RequestHandler = async (event) => {
                 timeout: 60_000,
                 attestationType: 'none',
                 authenticatorSelection: {
-                        residentKey: 'preferred',
-                        userVerification: 'preferred'
+                        residentKey: 'required',
+                        requireResidentKey: true,
+                        userVerification: 'required'
                 },
                 excludeCredentials
         });

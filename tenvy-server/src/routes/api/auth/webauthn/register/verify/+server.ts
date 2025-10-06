@@ -64,8 +64,8 @@ export const POST: RequestHandler = async (event) => {
                 ? body.response.transports
                 : registrationInfo.credential.transports ?? [];
 
-        await db.transaction(async (tx) => {
-                await tx
+        await db.transaction((tx) => {
+                tx
                         .insert(table.passkey)
                         .values({
                                 id: credentialId,
@@ -78,9 +78,10 @@ export const POST: RequestHandler = async (event) => {
                                 createdAt: new Date(),
                                 lastUsedAt: new Date()
                         })
-                        .onConflictDoNothing();
+                        .onConflictDoNothing()
+                        .run();
 
-                await tx
+                tx
                         .update(table.user)
                         .set({
                                 passkeyRegistered: true,
@@ -88,7 +89,8 @@ export const POST: RequestHandler = async (event) => {
                                 challengeType: null,
                                 challengeExpiresAt: null
                         })
-                        .where(eq(table.user.id, sessionUser.id));
+                        .where(eq(table.user.id, sessionUser.id))
+                        .run();
         });
 
         if (event.locals.session) {

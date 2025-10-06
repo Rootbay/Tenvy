@@ -29,16 +29,18 @@ export async function issueRecoveryCodes(userId: string, count = 10) {
         const now = new Date();
         const codes = Array.from({ length: count }, generateRecoveryCode);
 
-        await db.transaction(async (tx) => {
-                await tx.delete(table.recoveryCode).where(eq(table.recoveryCode.userId, userId));
+        await db.transaction((tx) => {
+                tx.delete(table.recoveryCode).where(eq(table.recoveryCode.userId, userId)).run();
                 if (codes.length === 0) return;
-                await tx.insert(table.recoveryCode).values(
-                        codes.map((code) => ({
-                                userId,
-                                codeHash: hashRecoveryCode(code),
-                                createdAt: now
-                        }))
-                );
+                tx.insert(table.recoveryCode)
+                        .values(
+                                codes.map((code) => ({
+                                        userId,
+                                        codeHash: hashRecoveryCode(code),
+                                        createdAt: now
+                                }))
+                        )
+                        .run();
         });
 
         return codes;

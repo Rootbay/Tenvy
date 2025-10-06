@@ -18,8 +18,7 @@ export const POST: RequestHandler = async (event) => {
         const options = await generateAuthenticationOptions({
                 timeout: 60_000,
                 rpID: event.url.hostname,
-                userVerification: 'required',
-                allowCredentials: []
+                userVerification: 'required'
         });
 
         event.cookies.set(CHALLENGE_COOKIE, options.challenge, {
