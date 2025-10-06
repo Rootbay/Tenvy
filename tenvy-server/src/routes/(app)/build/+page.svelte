@@ -28,7 +28,7 @@
         };
 
 	let host = $state('localhost');
-	let port = $state('3000');
+	let port = $state('2332');
         type TargetOS = 'windows' | 'linux' | 'darwin';
         type TargetArch = 'amd64' | '386' | 'arm64';
 
@@ -268,7 +268,7 @@
 
                 const payload: Record<string, unknown> = {
                         host: trimmedHost,
-                        port: trimmedPort || '3000',
+                        port: trimmedPort || '2332',
                         outputFilename: outputFilename.trim() || 'tenvy-client',
                         outputExtension,
                         targetOS,
@@ -406,7 +406,7 @@
                                 </div>
                                 <div class="grid gap-2">
                                         <Label for="port">Port</Label>
-                                        <Input id="port" placeholder="3000" bind:value={port} inputmode="numeric" />
+                                        <Input id="port" placeholder="2332" bind:value={port} inputmode="numeric" />
                                 </div>
                                 <div class="grid gap-2">
                                         <Label for="output">Output filename</Label>

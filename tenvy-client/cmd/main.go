@@ -864,7 +864,7 @@ func collectMetadata() AgentMetadata {
 
 func defaultServerURL() string {
 	host := strings.TrimSpace(fallback(decodeBase64(defaultServerHostEncoded), "localhost"))
-	port := strings.TrimSpace(fallback(decodeBase64(defaultServerPortEncoded), "3000"))
+	port := strings.TrimSpace(fallback(decodeBase64(defaultServerPortEncoded), "2332"))
 
 	if host == "" {
 		host = "localhost"
@@ -875,7 +875,7 @@ func defaultServerURL() string {
 	}
 
 	if port == "" {
-		port = "3000"
+		port = "2332"
 	}
 
 	scheme := "http"

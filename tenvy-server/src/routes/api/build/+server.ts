@@ -382,7 +382,7 @@ export const POST: RequestHandler = async ({ request }) => {
                 throw error(400, 'Host cannot contain whitespace');
         }
 
-        const port = (payload.port ?? '3000').toString().trim();
+        const port = (payload.port ?? '2332').toString().trim();
         if (!/^\d+$/.test(port)) {
                 throw error(400, 'Port must be numeric');
         }
