@@ -10,7 +10,7 @@ const client = new Database(env.DATABASE_URL);
 client.pragma('foreign_keys = ON');
 
 client.exec(
-        `BEGIN;
+	`BEGIN;
 CREATE TABLE IF NOT EXISTS voucher (
         id TEXT PRIMARY KEY NOT NULL,
         code_hash TEXT NOT NULL,
@@ -66,11 +66,11 @@ COMMIT;`
 );
 
 const ensureColumn = (table: string, column: string, ddl: string) => {
-        const columns = client.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>;
-        const exists = columns.some((entry) => entry.name === column);
-        if (!exists) {
-                client.exec(`ALTER TABLE ${table} ADD COLUMN ${ddl}`);
-        }
+	const columns = client.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>;
+	const exists = columns.some((entry) => entry.name === column);
+	if (!exists) {
+		client.exec(`ALTER TABLE ${table} ADD COLUMN ${ddl}`);
+	}
 };
 
 ensureColumn('passkey', 'last_used_at', 'last_used_at INTEGER');

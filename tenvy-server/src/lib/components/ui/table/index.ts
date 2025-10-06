@@ -7,19 +7,19 @@ import Row from './table-row.svelte';
 import Root from './table.svelte';
 
 export {
-        Body,
-        Cell,
-        Footer,
-        Head,
-        Header,
-        Row,
-        Root,
-        //
-        Body as TableBody,
-        Cell as TableCell,
-        Footer as TableFooter,
-        Head as TableHead,
-        Header as TableHeader,
-        Row as TableRow,
-        Root as Table
+	Body,
+	Cell,
+	Footer,
+	Head,
+	Header,
+	Row,
+	Root,
+	//
+	Body as TableBody,
+	Cell as TableCell,
+	Footer as TableFooter,
+	Head as TableHead,
+	Header as TableHeader,
+	Row as TableRow,
+	Root as Table
 };

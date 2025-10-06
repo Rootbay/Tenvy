@@ -7,164 +7,160 @@ import * as auth from '$lib/server/auth';
 import { limitVoucherRedeem } from '$lib/server/rate-limiters';
 
 class RedeemError extends Error {
-        status: number;
-        data: { message: string; values: { voucher: string } };
-        constructor(status: number, data: { message: string; values: { voucher: string } }) {
-                super(data.message);
-                this.status = status;
-                this.data = data;
-        }
+	status: number;
+	data: { message: string; values: { voucher: string } };
+	constructor(status: number, data: { message: string; values: { voucher: string } }) {
+		super(data.message);
+		this.status = status;
+		this.data = data;
+	}
 }
 
 export const load: PageServerLoad = async ({ locals }) => {
-        if (locals.user && locals.user.passkeyRegistered) {
-                throw redirect(303, '/dashboard');
-        }
+	if (locals.user && locals.user.passkeyRegistered) {
+		throw redirect(303, '/dashboard');
+	}
 
-        return {
-                stage: locals.user ? 'passkey' : 'voucher'
-        } as const;
+	return {
+		stage: locals.user ? 'passkey' : 'voucher'
+	} as const;
 };
 
 export const actions: Actions = {
-        default: async (event) => {
-                if (event.locals.user) {
-                        return fail(400, { message: 'Voucher already redeemed.' });
-                }
+	default: async (event) => {
+		if (event.locals.user) {
+			return fail(400, { message: 'Voucher already redeemed.' });
+		}
 
-                const formData = await event.request.formData();
-                const rawVoucher = formData.get('voucher');
-                const voucherInput = typeof rawVoucher === 'string' ? rawVoucher.trim() : '';
+		const formData = await event.request.formData();
+		const rawVoucher = formData.get('voucher');
+		const voucherInput = typeof rawVoucher === 'string' ? rawVoucher.trim() : '';
 
-                if (voucherInput.length < 16) {
-                        return fail(400, {
-                                message: 'Voucher must be at least 16 characters long.',
-                                values: { voucher: voucherInput }
-                        });
-                }
+		if (voucherInput.length < 16) {
+			return fail(400, {
+				message: 'Voucher must be at least 16 characters long.',
+				values: { voucher: voucherInput }
+			});
+		}
 
-                if (voucherInput.length > 255) {
-                        return fail(400, {
-                                message: 'Voucher is too long. Double-check the code and try again.',
-                                values: { voucher: voucherInput }
-                        });
-                }
+		if (voucherInput.length > 255) {
+			return fail(400, {
+				message: 'Voucher is too long. Double-check the code and try again.',
+				values: { voucher: voucherInput }
+			});
+		}
 
-                const clientAddress = event.getClientAddress();
-                try {
-                        await limitVoucherRedeem(clientAddress);
-                } catch (error) {
-                        const status =
-                                typeof (error as { status?: number }).status === 'number'
-                                        ? (error as { status: number }).status
-                                        : 429;
-                        const message = error instanceof Error ? error.message : 'Too many attempts. Please slow down.';
-                        return fail(status, { message, values: { voucher: voucherInput } });
-                }
+		const clientAddress = event.getClientAddress();
+		try {
+			await limitVoucherRedeem(clientAddress);
+		} catch (error) {
+			const status =
+				typeof (error as { status?: number }).status === 'number'
+					? (error as { status: number }).status
+					: 429;
+			const message =
+				error instanceof Error ? error.message : 'Too many attempts. Please slow down.';
+			return fail(status, { message, values: { voucher: voucherInput } });
+		}
 
-                const voucherHash = auth.hashVoucherCode(voucherInput);
-                const now = new Date();
-                const userId = crypto.randomUUID();
+		const voucherHash = auth.hashVoucherCode(voucherInput);
+		const now = new Date();
+		const userId = crypto.randomUUID();
 
-                let voucherRecord: { id: string; expiresAt: Date | null };
-                try {
-                        voucherRecord = await db.transaction((tx) => {
-                                const voucher = tx
-                                        .select()
-                                        .from(table.voucher)
-                                        .where(eq(table.voucher.codeHash, voucherHash))
-                                        .limit(1)
-                                        .get();
+		let voucherRecord: { id: string; expiresAt: Date | null };
+		try {
+			voucherRecord = await db.transaction((tx) => {
+				const voucher = tx
+					.select()
+					.from(table.voucher)
+					.where(eq(table.voucher.codeHash, voucherHash))
+					.limit(1)
+					.get();
 
-                                if (!voucher) {
-                                        throw new RedeemError(400, {
-                                                message: 'Voucher not recognized. Please check the code and try again.',
-                                                values: { voucher: voucherInput }
-                                        });
-                                }
+				if (!voucher) {
+					throw new RedeemError(400, {
+						message: 'Voucher not recognized. Please check the code and try again.',
+						values: { voucher: voucherInput }
+					});
+				}
 
-                                if (voucher.revokedAt) {
-                                        throw new RedeemError(400, {
-                                                message: 'This voucher has been revoked. Contact support for assistance.',
-                                                values: { voucher: voucherInput }
-                                        });
-                                }
+				if (voucher.revokedAt) {
+					throw new RedeemError(400, {
+						message: 'This voucher has been revoked. Contact support for assistance.',
+						values: { voucher: voucherInput }
+					});
+				}
 
-                                if (voucher.expiresAt && voucher.expiresAt.getTime() <= now.getTime()) {
-                                        throw new RedeemError(400, {
-                                                message: 'This voucher has expired. Please obtain a new voucher.',
-                                                values: { voucher: voucherInput }
-                                        });
-                                }
+				if (voucher.expiresAt && voucher.expiresAt.getTime() <= now.getTime()) {
+					throw new RedeemError(400, {
+						message: 'This voucher has expired. Please obtain a new voucher.',
+						values: { voucher: voucherInput }
+					});
+				}
 
-                                if (voucher.redeemedAt) {
-                                        throw new RedeemError(400, {
-                                                message: 'This voucher has already been used.',
-                                                values: { voucher: voucherInput }
-                                        });
-                                }
+				if (voucher.redeemedAt) {
+					throw new RedeemError(400, {
+						message: 'This voucher has already been used.',
+						values: { voucher: voucherInput }
+					});
+				}
 
-                                const lockedVoucher = tx
-                                        .update(table.voucher)
-                                        .set({ redeemedAt: now })
-                                        .where(
-                                                and(
-                                                        eq(table.voucher.id, voucher.id),
-                                                        isNull(table.voucher.redeemedAt)
-                                                )
-                                        )
-                                        .returning({
-                                                id: table.voucher.id,
-                                                expiresAt: table.voucher.expiresAt
-                                        })
-                                        .get();
+				const lockedVoucher = tx
+					.update(table.voucher)
+					.set({ redeemedAt: now })
+					.where(and(eq(table.voucher.id, voucher.id), isNull(table.voucher.redeemedAt)))
+					.returning({
+						id: table.voucher.id,
+						expiresAt: table.voucher.expiresAt
+					})
+					.get();
 
-                                if (!lockedVoucher) {
-                                        throw new RedeemError(400, {
-                                                message: 'This voucher has already been used.',
-                                                values: { voucher: voucherInput }
-                                        });
-                                }
+				if (!lockedVoucher) {
+					throw new RedeemError(400, {
+						message: 'This voucher has already been used.',
+						values: { voucher: voucherInput }
+					});
+				}
 
-                                tx.insert(table.user)
-                                        .values({
-                                                id: userId,
-                                                voucherId: voucher.id,
-                                                createdAt: now
-                                        })
-                                        .run();
+				tx.insert(table.user)
+					.values({
+						id: userId,
+						voucherId: voucher.id,
+						createdAt: now
+					})
+					.run();
 
-                                return {
-                                        id: voucher.id,
-                                        expiresAt: voucher.expiresAt ?? null
-                                };
-                        });
-                } catch (error) {
-                        if (error instanceof RedeemError) {
-                                return fail(error.status, error.data);
-                        }
-                        throw error;
-                }
+				return {
+					id: voucher.id,
+					expiresAt: voucher.expiresAt ?? null
+				};
+			});
+		} catch (error) {
+			if (error instanceof RedeemError) {
+				return fail(error.status, error.data);
+			}
+			throw error;
+		}
 
-                const token = auth.generateSessionToken();
-                const session = await auth.createSession(token, userId, {
-                        type: 'short',
-                        description: 'voucher-onboarding'
-                });
+		const token = auth.generateSessionToken();
+		const session = await auth.createSession(token, userId, {
+			type: 'short',
+			description: 'voucher-onboarding'
+		});
 
-                const sanitizedUser = {
-                        id: userId,
-                        passkeyRegistered: false,
-                        voucherId: voucherRecord.id,
-                        voucherActive: true,
-                        voucherExpiresAt: voucherRecord.expiresAt
-                } satisfies auth.AuthenticatedUser;
+		const sanitizedUser = {
+			id: userId,
+			passkeyRegistered: false,
+			voucherId: voucherRecord.id,
+			voucherActive: true,
+			voucherExpiresAt: voucherRecord.expiresAt
+		} satisfies auth.AuthenticatedUser;
 
-                auth.setSessionTokenCookie(event, token, session.expiresAt);
+		auth.setSessionTokenCookie(event, token, session.expiresAt);
 
-                event.locals.user = sanitizedUser;
-                event.locals.session = session;
+		event.locals.user = sanitizedUser;
+		event.locals.session = session;
 
-                return { success: true } as const;
-        }
+		return { success: true } as const;
+	}
 };

@@ -14,15 +14,15 @@ const handleParaglide: Handle = ({ event, resolve }) =>
 	});
 
 const handleAuth: Handle = async ({ event, resolve }) => {
-        await ensureDevVoucher().catch((error) => {
-                console.error('Failed to ensure development voucher', error);
-        });
+	await ensureDevVoucher().catch((error) => {
+		console.error('Failed to ensure development voucher', error);
+	});
 
-        const sessionToken = event.cookies.get(auth.sessionCookieName);
+	const sessionToken = event.cookies.get(auth.sessionCookieName);
 
-        if (!sessionToken) {
-                event.locals.user = null;
-                event.locals.session = null;
+	if (!sessionToken) {
+		event.locals.user = null;
+		event.locals.session = null;
 		return resolve(event);
 	}
 

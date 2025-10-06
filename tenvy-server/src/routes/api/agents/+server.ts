@@ -4,6 +4,6 @@ import { registry } from '$lib/server/rat/store';
 import type { AgentListResponse } from '../../../../../shared/types/agent';
 
 export const GET: RequestHandler = () => {
-        const agents = registry.listAgents();
-        return json({ agents } satisfies AgentListResponse);
+	const agents = registry.listAgents();
+	return json({ agents } satisfies AgentListResponse);
 };
