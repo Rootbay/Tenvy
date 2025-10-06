@@ -201,13 +201,6 @@
 </svelte:head>
 
 <section class="space-y-6">
-        <header class="space-y-2">
-                <h1 class="text-2xl font-semibold tracking-tight">Clients</h1>
-                <p class="text-sm text-muted-foreground">
-                        Manage connected agents, dispatch commands and inspect recent activity.
-                </p>
-        </header>
-
         {#if agents.length === 0}
                 <Card class="border-dashed border-border/60">
                         <CardHeader>
