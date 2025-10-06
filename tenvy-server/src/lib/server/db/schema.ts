@@ -61,7 +61,8 @@ export const passkey = sqliteTable('passkey', {
         deviceType: text('device_type'),
         backedUp: integer('backed_up', { mode: 'boolean' }).notNull().default(false),
         transports: text('transports'),
-        createdAt: timestamp('created_at', { defaultNow: true })
+        createdAt: timestamp('created_at', { defaultNow: true }),
+        lastUsedAt: timestamp('last_used_at', { optional: true })
 });
 
 export const recoveryCode = sqliteTable('recovery_code', {

@@ -92,6 +92,11 @@ export async function validateSessionToken(token: string) {
         const voucherActive =
                 !voucher.revokedAt && (!voucher.expiresAt || voucher.expiresAt.getTime() > Date.now());
 
+        if (!voucherActive) {
+                await db.delete(table.session).where(eq(table.session.id, session.id));
+                return { session: null, user: null };
+        }
+
         const sanitizedUser = {
                 id: user.id,
                 passkeyRegistered: Boolean(user.passkeyRegistered),
