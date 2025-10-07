@@ -10,12 +10,49 @@ export interface RemoteDesktopSettings {
   mode: RemoteDesktopStreamMode;
 }
 
-export type RemoteDesktopCommandAction = "start" | "stop" | "configure";
+export type RemoteDesktopCommandAction = "start" | "stop" | "configure" | "input";
+
+export type RemoteDesktopMouseButton = "left" | "middle" | "right";
+
+export type RemoteDesktopInputEvent =
+  | {
+      type: "mouse-move";
+      x: number;
+      y: number;
+      normalized?: boolean;
+      monitor?: number;
+    }
+  | {
+      type: "mouse-button";
+      button: RemoteDesktopMouseButton;
+      pressed: boolean;
+      monitor?: number;
+    }
+  | {
+      type: "mouse-scroll";
+      deltaX: number;
+      deltaY: number;
+      deltaMode?: number;
+      monitor?: number;
+    }
+  | {
+      type: "key";
+      pressed: boolean;
+      key?: string;
+      code?: string;
+      keyCode?: number;
+      repeat?: boolean;
+      altKey?: boolean;
+      ctrlKey?: boolean;
+      shiftKey?: boolean;
+      metaKey?: boolean;
+    };
 
 export interface RemoteDesktopCommandPayload {
   action: RemoteDesktopCommandAction;
   sessionId?: string;
   settings?: Partial<RemoteDesktopSettings>;
+  events?: RemoteDesktopInputEvent[];
 }
 
 export interface RemoteDesktopFrameMetrics {
