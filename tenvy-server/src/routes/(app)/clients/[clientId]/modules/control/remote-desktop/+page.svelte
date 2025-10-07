@@ -33,23 +33,32 @@
 		{ id: 0, label: 'Primary', width: 1280, height: 720 }
 	] satisfies RemoteDesktopMonitor[];
 
-        const qualityOptions = [
-                { value: 'auto', label: 'Auto' },
-                { value: 'high', label: 'High' },
-                { value: 'medium', label: 'Medium' },
-                { value: 'low', label: 'Low' }
-        ] satisfies { value: RemoteDesktopSettings['quality']; label: string }[];
+	const qualityOptions = [
+		{ value: 'auto', label: 'Auto' },
+		{ value: 'high', label: 'High' },
+		{ value: 'medium', label: 'Medium' },
+		{ value: 'low', label: 'Low' }
+	] satisfies { value: RemoteDesktopSettings['quality']; label: string }[];
 
-        const MAX_FRAME_QUEUE = 24;
-        const supportsImageBitmap = browser && typeof createImageBitmap === 'function';
-        const IMAGE_BASE64_PREFIX = 'data:image/png;base64,';
+	const modeOptions = [
+		{ value: 'video', label: 'Video clips (100–300 ms)' },
+		{ value: 'images', label: 'Still frames' }
+	] satisfies { value: RemoteDesktopSettings['mode']; label: string }[];
 
-        let { data } = $props<{ data: { session: RemoteDesktopSessionState | null; client: Client } }>();
+	const MAX_FRAME_QUEUE = 24;
+	const supportsImageBitmap = browser && typeof createImageBitmap === 'function';
+	const IMAGE_BASE64_PREFIX = {
+		png: 'data:image/png;base64,',
+		jpeg: 'data:image/jpeg;base64,'
+	} as const;
+
+	let { data } = $props<{ data: { session: RemoteDesktopSessionState | null; client: Client } }>();
 
 	const client = $derived(data.client);
 	let session = $state<RemoteDesktopSessionState | null>(data.session ?? null);
 	let activeTab = $state<'stream' | 'controls'>('stream');
 	let quality = $state<RemoteDesktopSettings['quality']>('auto');
+	let mode = $state<RemoteDesktopSettings['mode']>('video');
 	let monitor = $state(0);
 	let mouseEnabled = $state(true);
 	let keyboardEnabled = $state(true);
@@ -57,6 +66,7 @@
 	let gpu = $state<number | null>(null);
 	let cpu = $state<number | null>(null);
 	let bandwidth = $state<number | null>(null);
+	let clipQuality = $state<number | null>(null);
 	let streamWidth = $state<number | null>(null);
 	let streamHeight = $state<number | null>(null);
 	let latencyMs = $state<number | null>(null);
@@ -72,15 +82,15 @@
 
 	let canvasEl: HTMLCanvasElement | null = null;
 	let canvasContext: CanvasRenderingContext2D | null = null;
-        let eventSource: EventSource | null = null;
-        let streamSessionId: string | null = null;
-        let frameQueue: RemoteDesktopFramePacket[] = [];
-        let processing = false;
-        let stopRequested = false;
-        let imageBitmapFallbackLogged = false;
+	let eventSource: EventSource | null = null;
+	let streamSessionId: string | null = null;
+	let frameQueue: RemoteDesktopFramePacket[] = [];
+	let processing = false;
+	let stopRequested = false;
+	let imageBitmapFallbackLogged = false;
 
-        let skipMouseSync = true;
-        let skipKeyboardSync = true;
+	let skipMouseSync = true;
+	let skipKeyboardSync = true;
 
 	const qualityLabel = (value: string) => {
 		const found = qualityOptions.find((item) => item.value === value);
@@ -96,11 +106,17 @@
 		return `${found.label} · ${found.width}×${found.height}`;
 	};
 
+	const modeLabel = (value: string) => {
+		const found = modeOptions.find((item) => item.value === value);
+		return found ? found.label : value;
+	};
+
 	function resetMetrics() {
 		fps = null;
 		gpu = null;
 		cpu = null;
 		bandwidth = null;
+		clipQuality = null;
 		streamWidth = null;
 		streamHeight = null;
 		latencyMs = null;
@@ -108,16 +124,16 @@
 	}
 
 	function disconnectStream() {
-                if (eventSource) {
-                        eventSource.close();
-                        eventSource = null;
-                }
-                streamSessionId = null;
-                stopRequested = true;
-                frameQueue = [];
-                processing = false;
-                imageBitmapFallbackLogged = false;
-        }
+		if (eventSource) {
+			eventSource.close();
+			eventSource = null;
+		}
+		streamSessionId = null;
+		stopRequested = true;
+		frameQueue = [];
+		processing = false;
+		imageBitmapFallbackLogged = false;
+	}
 
 	function connectStream(id?: string) {
 		if (!browser) return;
@@ -257,6 +273,8 @@
 							typeof metrics.bandwidthKbps === 'number' ? metrics.bandwidthKbps : bandwidth;
 						cpu = typeof metrics.cpuPercent === 'number' ? metrics.cpuPercent : cpu;
 						gpu = typeof metrics.gpuPercent === 'number' ? metrics.gpuPercent : gpu;
+						clipQuality =
+							typeof metrics.clipQuality === 'number' ? metrics.clipQuality : clipQuality;
 					}
 					streamWidth = typeof next.width === 'number' ? next.width : streamWidth;
 					streamHeight = typeof next.height === 'number' ? next.height : streamHeight;
@@ -283,110 +301,176 @@
 		}
 	}
 
-        async function applyFrame(frame: RemoteDesktopFramePacket) {
-                const context = ensureContext();
-                if (!canvasEl || !context) {
-                        return;
-                }
+	async function applyFrame(frame: RemoteDesktopFramePacket) {
+		const context = ensureContext();
+		if (!canvasEl || !context) {
+			return;
+		}
 
-                if (canvasEl.width !== frame.width || canvasEl.height !== frame.height) {
-                        canvasEl.width = frame.width;
-                        canvasEl.height = frame.height;
-                }
+		if (canvasEl.width !== frame.width || canvasEl.height !== frame.height) {
+			canvasEl.width = frame.width;
+			canvasEl.height = frame.height;
+		}
 
-                if (frame.keyFrame) {
-                        if (!frame.image) {
-                                throw new Error('Missing key frame image data');
-                        }
-                        if (supportsImageBitmap) {
-                                try {
-                                        const bitmap = await decodeBitmap(frame.image);
-                                        try {
-                                                context.drawImage(bitmap, 0, 0, frame.width, frame.height);
-                                        } finally {
-                                                bitmap.close();
-                                        }
-                                        return;
-                                } catch (err) {
-                                        logBitmapFallback(err);
-                                }
-                        }
-                        await drawWithImageElement(context, frame.image, 0, 0, frame.width, frame.height);
-                        return;
-                }
+		if (frame.encoding === 'clip') {
+			await applyClipFrame(context, frame);
+			return;
+		}
 
-                if (frame.deltas && frame.deltas.length > 0) {
-                        if (supportsImageBitmap) {
-                                try {
-                                        const bitmaps = await Promise.all(
-                                                frame.deltas.map(async (rect) => ({
-                                                        rect,
-                                                        bitmap: await decodeBitmap(rect.data)
-                                                }))
-                                        );
-                                        try {
-                                                for (const { rect, bitmap } of bitmaps) {
-                                                        context.drawImage(bitmap, rect.x, rect.y, rect.width, rect.height);
-                                                }
-                                        } finally {
-                                                for (const { bitmap } of bitmaps) {
-                                                        bitmap.close();
-                                                }
-                                        }
-                                        return;
-                                } catch (err) {
-                                        logBitmapFallback(err);
-                                }
-                        }
+		if (frame.keyFrame) {
+			if (!frame.image) {
+				throw new Error('Missing key frame image data');
+			}
+			if (supportsImageBitmap) {
+				try {
+					const bitmap = await decodeBitmap(frame.image, 'image/png');
+					try {
+						context.drawImage(bitmap, 0, 0, frame.width, frame.height);
+					} finally {
+						bitmap.close();
+					}
+					return;
+				} catch (err) {
+					logBitmapFallback(err);
+				}
+			}
+			await drawWithImageElement(context, frame.image, 0, 0, frame.width, frame.height, 'png');
+			return;
+		}
 
-                        for (const rect of frame.deltas) {
-                                await drawWithImageElement(context, rect.data, rect.x, rect.y, rect.width, rect.height);
-                        }
-                }
-        }
+		if (frame.deltas && frame.deltas.length > 0) {
+			if (supportsImageBitmap) {
+				try {
+					const bitmaps = await Promise.all(
+						frame.deltas.map(async (rect) => ({
+							rect,
+							bitmap: await decodeBitmap(
+								rect.data,
+								rect.encoding === 'jpeg' ? 'image/jpeg' : 'image/png'
+							)
+						}))
+					);
+					try {
+						for (const { rect, bitmap } of bitmaps) {
+							context.drawImage(bitmap, rect.x, rect.y, rect.width, rect.height);
+						}
+					} finally {
+						for (const { bitmap } of bitmaps) {
+							bitmap.close();
+						}
+					}
+					return;
+				} catch (err) {
+					logBitmapFallback(err);
+				}
+			}
 
-        async function decodeBitmap(data: string): Promise<ImageBitmap> {
-                const binary = atob(data);
-                const length = binary.length;
-                const bytes = new Uint8Array(length);
-                for (let i = 0; i < length; i += 1) {
-                        bytes[i] = binary.charCodeAt(i);
-                }
-                const blob = new Blob([bytes], { type: 'image/png' });
-                return await createImageBitmap(blob);
-        }
+			for (const rect of frame.deltas) {
+				await drawWithImageElement(
+					context,
+					rect.data,
+					rect.x,
+					rect.y,
+					rect.width,
+					rect.height,
+					rect.encoding === 'jpeg' ? 'jpeg' : 'png'
+				);
+			}
+		}
+	}
 
-        function drawWithImageElement(
-                context: CanvasRenderingContext2D,
-                data: string,
-                x: number,
-                y: number,
-                width: number,
-                height: number
-        ): Promise<void> {
-                return new Promise((resolve, reject) => {
-                        const image = new Image();
-                        image.decoding = 'async';
-                        image.onload = () => {
-                                try {
-                                        context.drawImage(image, x, y, width, height);
-                                        resolve();
-                                } catch (err) {
-                                        reject(err);
-                                }
-                        };
-                        image.onerror = () => reject(new Error('Failed to decode frame image segment'));
-                        image.src = `${IMAGE_BASE64_PREFIX}${data}`;
-                });
-        }
+	async function applyClipFrame(
+		context: CanvasRenderingContext2D,
+		frame: RemoteDesktopFramePacket
+	) {
+		const clip = frame.clip;
+		if (!clip || !clip.frames || clip.frames.length === 0) {
+			throw new Error('Missing clip frame payload');
+		}
 
-        function logBitmapFallback(err: unknown) {
-                if (imageBitmapFallbackLogged) {
-                        return;
-                }
-                imageBitmapFallbackLogged = true;
-                console.warn('ImageBitmap decode failed, falling back to <img> rendering', err);
-        }
+		const start = performance.now();
+		for (const segment of clip.frames) {
+			const target = Math.max(0, segment.offsetMs);
+			const elapsed = performance.now() - start;
+			const delay = target - elapsed;
+			if (delay > 1) {
+				await new Promise<void>((resolve) => setTimeout(resolve, delay));
+			}
+
+			const mime = segment.encoding === 'jpeg' ? 'image/jpeg' : 'image/png';
+			if (supportsImageBitmap) {
+				try {
+					const bitmap = await decodeBitmap(segment.data, mime);
+					try {
+						context.drawImage(bitmap, 0, 0, frame.width, frame.height);
+					} finally {
+						bitmap.close();
+					}
+					continue;
+				} catch (err) {
+					logBitmapFallback(err);
+				}
+			}
+
+			await drawWithImageElement(
+				context,
+				segment.data,
+				0,
+				0,
+				frame.width,
+				frame.height,
+				segment.encoding === 'jpeg' ? 'jpeg' : 'png'
+			);
+		}
+	}
+
+	async function decodeBitmap(
+		data: string,
+		mimeType: 'image/png' | 'image/jpeg'
+	): Promise<ImageBitmap> {
+		const binary = atob(data);
+		const length = binary.length;
+		const bytes = new Uint8Array(length);
+		for (let i = 0; i < length; i += 1) {
+			bytes[i] = binary.charCodeAt(i);
+		}
+		const blob = new Blob([bytes], { type: mimeType });
+		return await createImageBitmap(blob);
+	}
+
+	function drawWithImageElement(
+		context: CanvasRenderingContext2D,
+		data: string,
+		x: number,
+		y: number,
+		width: number,
+		height: number,
+		encoding: 'png' | 'jpeg'
+	): Promise<void> {
+		return new Promise((resolve, reject) => {
+			const image = new Image();
+			image.decoding = 'async';
+			image.onload = () => {
+				try {
+					context.drawImage(image, x, y, width, height);
+					resolve();
+				} catch (err) {
+					reject(err);
+				}
+			};
+			image.onerror = () => reject(new Error('Failed to decode frame image segment'));
+			const prefix = encoding === 'jpeg' ? IMAGE_BASE64_PREFIX.jpeg : IMAGE_BASE64_PREFIX.png;
+			image.src = `${prefix}${data}`;
+		});
+	}
+
+	function logBitmapFallback(err: unknown) {
+		if (imageBitmapFallbackLogged) {
+			return;
+		}
+		imageBitmapFallbackLogged = true;
+		console.warn('ImageBitmap decode failed, falling back to <img> rendering', err);
+	}
 
 	function computeLatency(timestamp?: string | null) {
 		if (!timestamp) {
@@ -409,6 +493,7 @@
 			const payload = {
 				quality,
 				monitor,
+				mode,
 				mouse: mouseEnabled,
 				keyboard: keyboardEnabled
 			} satisfies Partial<RemoteDesktopSettings> & { mouse: boolean; keyboard: boolean };
@@ -531,6 +616,7 @@
 		const current = session;
 		if (!current) {
 			quality = 'auto';
+			mode = 'video';
 			monitor = 0;
 			mouseEnabled = true;
 			keyboardEnabled = true;
@@ -541,6 +627,7 @@
 			return;
 		}
 		quality = current.settings.quality;
+		mode = current.settings.mode;
 		monitor = current.settings.monitor;
 		mouseEnabled = current.settings.mouse;
 		keyboardEnabled = current.settings.keyboard;
@@ -556,6 +643,8 @@
 				typeof current.metrics.bandwidthKbps === 'number'
 					? current.metrics.bandwidthKbps
 					: bandwidth;
+			clipQuality =
+				typeof current.metrics.clipQuality === 'number' ? current.metrics.clipQuality : clipQuality;
 		}
 	});
 
@@ -713,7 +802,7 @@
 				</CardDescription>
 			</CardHeader>
 			<CardContent class="space-y-6">
-				<div class="grid gap-4 md:grid-cols-2">
+				<div class="grid gap-4 md:grid-cols-3">
 					<div class="space-y-2">
 						<Label class="text-sm font-medium" for="quality-select">Quality</Label>
 						<Select
@@ -741,6 +830,31 @@
 						</Select>
 						<p class="text-xs text-muted-foreground">
 							Auto balances fidelity and responsiveness based on observed frame pacing.
+						</p>
+					</div>
+					<div class="space-y-2">
+						<Label class="text-sm font-medium" for="mode-select">Stream mode</Label>
+						<Select
+							type="single"
+							value={mode}
+							onValueChange={(value) => {
+								mode = value as RemoteDesktopSettings['mode'];
+								if (sessionActive) {
+									void updateSession({ mode });
+								}
+							}}
+						>
+							<SelectTrigger id="mode-select" class="w-full" disabled={isUpdating && sessionActive}>
+								<span class="truncate">{modeLabel(mode)}</span>
+							</SelectTrigger>
+							<SelectContent>
+								{#each modeOptions as option (option.value)}
+									<SelectItem value={option.value}>{option.label}</SelectItem>
+								{/each}
+							</SelectContent>
+						</Select>
+						<p class="text-xs text-muted-foreground">
+							Video clips bundle 100–300 ms of motion to improve smoothness.
 						</p>
 					</div>
 					<div class="space-y-2">
@@ -828,6 +942,14 @@
 						<div class="rounded-lg border border-border/60 bg-background/60 p-3">
 							<p class="text-xs text-muted-foreground">Bandwidth</p>
 							<p class="text-sm font-semibold text-foreground">{formatMetric(bandwidth, 'kbps')}</p>
+						</div>
+						<div class="rounded-lg border border-border/60 bg-background/60 p-3">
+							<p class="text-xs text-muted-foreground">JPEG quality</p>
+							<p class="text-sm font-semibold text-foreground">
+								{clipQuality === null || Number.isNaN(clipQuality)
+									? '--'
+									: `Q${Math.round(clipQuality)}`}
+							</p>
 						</div>
 						<div class="rounded-lg border border-border/60 bg-background/60 p-3">
 							<p class="text-xs text-muted-foreground">Resolution</p>

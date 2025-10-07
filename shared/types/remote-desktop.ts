@@ -1,10 +1,13 @@
 export type RemoteDesktopQuality = "auto" | "high" | "medium" | "low";
 
+export type RemoteDesktopStreamMode = "images" | "video";
+
 export interface RemoteDesktopSettings {
   quality: RemoteDesktopQuality;
   monitor: number;
   mouse: boolean;
   keyboard: boolean;
+  mode: RemoteDesktopStreamMode;
 }
 
 export type RemoteDesktopCommandAction = "start" | "stop" | "configure";
@@ -20,6 +23,7 @@ export interface RemoteDesktopFrameMetrics {
   bandwidthKbps?: number;
   cpuPercent?: number;
   gpuPercent?: number;
+  clipQuality?: number;
 }
 
 export interface RemoteDesktopCursorState {
@@ -33,8 +37,21 @@ export interface RemoteDesktopDeltaRect {
   y: number;
   width: number;
   height: number;
-  encoding: "png";
+  encoding: "png" | "jpeg";
   data: string;
+}
+
+export interface RemoteDesktopVideoFrame {
+  offsetMs: number;
+  width: number;
+  height: number;
+  encoding: "jpeg";
+  data: string;
+}
+
+export interface RemoteDesktopVideoClip {
+  durationMs: number;
+  frames: RemoteDesktopVideoFrame[];
 }
 
 export interface RemoteDesktopFramePacket {
@@ -44,9 +61,10 @@ export interface RemoteDesktopFramePacket {
   width: number;
   height: number;
   keyFrame: boolean;
-  encoding: "png";
+  encoding: "png" | "clip";
   image?: string;
   deltas?: RemoteDesktopDeltaRect[];
+  clip?: RemoteDesktopVideoClip;
   monitors?: RemoteDesktopMonitor[];
   cursor?: RemoteDesktopCursorState;
   metrics?: RemoteDesktopFrameMetrics;
