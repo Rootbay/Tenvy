@@ -816,7 +816,7 @@
 
 										<ContextMenuSub>
 											<ContextMenuSubTrigger>Control</ContextMenuSubTrigger>
-											<ContextMenuSubContent>
+											<ContextMenuSubContent class="w-48">
 												<ContextMenuItem on:select={() => openSection('hiddenVnc', agent)}>
 													Hidden VNC
 												</ContextMenuItem>
@@ -831,7 +831,7 @@
 												</ContextMenuItem>
 												<ContextMenuSub>
 													<ContextMenuSubTrigger>Keylogger</ContextMenuSubTrigger>
-													<ContextMenuSubContent>
+													<ContextMenuSubContent class="w-48">
 														<ContextMenuItem
 															on:select={() => openSection('keyloggerOnline', agent)}
 														>
@@ -859,7 +859,7 @@
 
 										<ContextMenuSub>
 											<ContextMenuSubTrigger>Management</ContextMenuSubTrigger>
-											<ContextMenuSubContent>
+											<ContextMenuSubContent class="w-48">
 												<ContextMenuItem on:select={() => openSection('fileManager', agent)}>
 													File Manager
 												</ContextMenuItem>
@@ -894,7 +894,7 @@
 
 										<ContextMenuSub>
 											<ContextMenuSubTrigger>Miscellaneous</ContextMenuSubTrigger>
-											<ContextMenuSubContent>
+											<ContextMenuSubContent class="w-48">
 												<ContextMenuItem on:select={() => openSection('openUrl', agent)}>
 													Open URL
 												</ContextMenuItem>
@@ -922,7 +922,7 @@
 
 										<ContextMenuSub>
 											<ContextMenuSubTrigger>System Controls</ContextMenuSubTrigger>
-											<ContextMenuSubContent>
+											<ContextMenuSubContent class="w-48">
 												<ContextMenuItem on:select={() => openSection('reconnect', agent)}>
 													Reconnect
 												</ContextMenuItem>
@@ -936,7 +936,7 @@
 
 										<ContextMenuSub>
 											<ContextMenuSubTrigger>Power</ContextMenuSubTrigger>
-											<ContextMenuSubContent>
+											<ContextMenuSubContent class="w-48">
 												<ContextMenuItem on:select={() => openSection('shutdown', agent)}>
 													Shutdown
 												</ContextMenuItem>
