@@ -36,6 +36,23 @@ const (
 	RemoteStreamModeVideo  RemoteDesktopStreamMode = "video"
 )
 
+type RemoteDesktopInputType string
+
+const (
+	RemoteInputMouseMove   RemoteDesktopInputType = "mouse-move"
+	RemoteInputMouseButton RemoteDesktopInputType = "mouse-button"
+	RemoteInputMouseScroll RemoteDesktopInputType = "mouse-scroll"
+	RemoteInputKey         RemoteDesktopInputType = "key"
+)
+
+type RemoteDesktopMouseButton string
+
+const (
+	RemoteMouseButtonLeft   RemoteDesktopMouseButton = "left"
+	RemoteMouseButtonMiddle RemoteDesktopMouseButton = "middle"
+	RemoteMouseButtonRight  RemoteDesktopMouseButton = "right"
+)
+
 type RemoteDesktopSettings struct {
 	Quality  RemoteDesktopQuality    `json:"quality"`
 	Monitor  int                     `json:"monitor"`
@@ -56,6 +73,28 @@ type RemoteDesktopCommandPayload struct {
 	Action    string                      `json:"action"`
 	SessionID string                      `json:"sessionId,omitempty"`
 	Settings  *RemoteDesktopSettingsPatch `json:"settings,omitempty"`
+	Events    []RemoteDesktopInputEvent   `json:"events,omitempty"`
+}
+
+type RemoteDesktopInputEvent struct {
+	Type       RemoteDesktopInputType   `json:"type"`
+	X          float64                  `json:"x,omitempty"`
+	Y          float64                  `json:"y,omitempty"`
+	Normalized bool                     `json:"normalized,omitempty"`
+	Monitor    *int                     `json:"monitor,omitempty"`
+	Button     RemoteDesktopMouseButton `json:"button,omitempty"`
+	Pressed    bool                     `json:"pressed,omitempty"`
+	DeltaX     float64                  `json:"deltaX,omitempty"`
+	DeltaY     float64                  `json:"deltaY,omitempty"`
+	DeltaMode  int                      `json:"deltaMode,omitempty"`
+	Key        string                   `json:"key,omitempty"`
+	Code       string                   `json:"code,omitempty"`
+	KeyCode    int                      `json:"keyCode,omitempty"`
+	Repeat     bool                     `json:"repeat,omitempty"`
+	AltKey     bool                     `json:"altKey,omitempty"`
+	CtrlKey    bool                     `json:"ctrlKey,omitempty"`
+	ShiftKey   bool                     `json:"shiftKey,omitempty"`
+	MetaKey    bool                     `json:"metaKey,omitempty"`
 }
 
 type RemoteDesktopFrameMetrics struct {
@@ -205,6 +244,8 @@ func (s *RemoteDesktopStreamer) HandleCommand(ctx context.Context, cmd Command) 
 		err = s.stopSession(payload.SessionID)
 	case "configure":
 		err = s.configureSession(payload)
+	case "input":
+		err = s.handleInput(payload)
 	default:
 		err = fmt.Errorf("unsupported remote desktop action: %s", payload.Action)
 	}
@@ -311,6 +352,51 @@ func (s *RemoteDesktopStreamer) configureSession(payload RemoteDesktopCommandPay
 
 	s.applySettingsLocked(s.session, payload.Settings)
 	return nil
+}
+
+func (s *RemoteDesktopStreamer) handleInput(payload RemoteDesktopCommandPayload) error {
+	if len(payload.Events) == 0 {
+		return nil
+	}
+
+	sessionID := strings.TrimSpace(payload.SessionID)
+
+	s.mu.Lock()
+	if s.session == nil {
+		s.mu.Unlock()
+		return errors.New("remote desktop session not active")
+	}
+	if sessionID != "" && sessionID != s.session.ID {
+		s.mu.Unlock()
+		return fmt.Errorf("session %s not active", sessionID)
+	}
+
+	settings := s.session.Settings
+	monitors := append([]remoteMonitor(nil), s.session.monitors...)
+	s.mu.Unlock()
+
+	filtered := make([]RemoteDesktopInputEvent, 0, len(payload.Events))
+	for _, event := range payload.Events {
+		switch event.Type {
+		case RemoteInputMouseMove, RemoteInputMouseButton, RemoteInputMouseScroll:
+			if !settings.Mouse {
+				continue
+			}
+		case RemoteInputKey:
+			if !settings.Keyboard {
+				continue
+			}
+		default:
+			continue
+		}
+		filtered = append(filtered, event)
+	}
+
+	if len(filtered) == 0 {
+		return nil
+	}
+
+	return processRemoteInput(monitors, settings, filtered)
 }
 
 func (s *RemoteDesktopStreamer) stopLocked() {
