@@ -33,6 +33,7 @@
 		parsePortInput,
 		persistPortSelection
 	} from '$lib/utils/rat-port-preferences.js';
+	import { browser } from '$app/environment';
 	import {
 		Activity,
 		Bell,
@@ -140,6 +141,45 @@
 		}
 	};
 
+	const PORT_SYNC_CHANNEL_NAME = 'tenvy.rat-port-sync';
+	const PORT_SYNC_STORAGE_KEY = 'tenvy.rat-port-sync-message';
+
+	type PortSyncPayload =
+		| { type: 'state-request'; source: string }
+		| { type: 'state-update'; source: string; ports: number[]; remember: boolean }
+		| { type: 'state-clear'; source: string };
+
+	let portSyncChannel: BroadcastChannel | null = null;
+	let portSyncId: string | null = null;
+
+	function generatePortSyncId(): string {
+		if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+			return crypto.randomUUID();
+		}
+
+		return Math.random().toString(36).slice(2);
+	}
+
+	function postPortSync(message: Omit<PortSyncPayload, 'source'>) {
+		if (!browser || !portSyncId) {
+			return;
+		}
+
+		const payload = { ...message, source: portSyncId } as PortSyncPayload;
+
+		if (portSyncChannel) {
+			portSyncChannel.postMessage(payload);
+			return;
+		}
+
+		try {
+			window.localStorage.setItem(PORT_SYNC_STORAGE_KEY, JSON.stringify(payload));
+			window.localStorage.removeItem(PORT_SYNC_STORAGE_KEY);
+		} catch {
+			// localStorage may be unavailable (e.g., Safari private mode); ignore silently.
+		}
+	}
+
 	const searchPlaceholders: Partial<Record<NavKey, string>> = {
 		clients: 'Search clients, hosts, IPs...'
 	};
@@ -179,6 +219,11 @@
 		portDialogOpen = false;
 
 		persistPortSelection(result.ports, portDialogRemember);
+		postPortSync({
+			type: 'state-update',
+			ports: result.ports,
+			remember: portDialogRemember
+		});
 	}
 
 	function handleClearPortPreferences() {
@@ -189,9 +234,14 @@
 		portInputValue = '';
 		portDialogError = null;
 		portDialogOpen = true;
+		postPortSync({ type: 'state-clear' });
 	}
 
 	onMount(() => {
+		if (!browser) {
+			return;
+		}
+
 		const stored = loadStoredPorts();
 
 		if (stored) {
@@ -204,6 +254,102 @@
 		}
 
 		hasHydrated = true;
+
+		portSyncId = generatePortSyncId();
+
+		const handleIncoming = (payload: PortSyncPayload | null | undefined) => {
+			if (!payload || payload.source === portSyncId) {
+				return;
+			}
+
+			if (payload.type === 'state-request') {
+				if (selectedPorts.length > 0) {
+					postPortSync({
+						type: 'state-update',
+						ports: selectedPorts,
+						remember: rememberPorts
+					});
+				} else {
+					postPortSync({ type: 'state-clear' });
+				}
+				return;
+			}
+
+			if (payload.type === 'state-update') {
+				selectedPorts = payload.ports;
+				rememberPorts = payload.remember;
+				portDialogRemember = payload.remember;
+				portInputValue = formatPortSummary(payload.ports);
+				portDialogError = null;
+
+				if (payload.ports.length > 0) {
+					portDialogOpen = false;
+				}
+
+				persistPortSelection(payload.ports, payload.remember);
+				return;
+			}
+
+			if (payload.type === 'state-clear') {
+				selectedPorts = [];
+				rememberPorts = false;
+				portDialogRemember = false;
+				portInputValue = '';
+				portDialogError = null;
+
+				if (!portDialogOpen) {
+					portDialogOpen = true;
+				}
+
+				persistPortSelection([], false);
+			}
+		};
+
+		const storageListener = (event: StorageEvent) => {
+			if (event.key !== PORT_SYNC_STORAGE_KEY || !event.newValue) {
+				return;
+			}
+
+			try {
+				const payload = JSON.parse(event.newValue) as PortSyncPayload;
+				handleIncoming(payload);
+			} catch {
+				// Ignore malformed sync messages.
+			}
+		};
+
+		window.addEventListener('storage', storageListener);
+
+		let channel: BroadcastChannel | null = null;
+		let channelListener: ((event: MessageEvent<PortSyncPayload>) => void) | null = null;
+
+		if ('BroadcastChannel' in window) {
+			channel = new BroadcastChannel(PORT_SYNC_CHANNEL_NAME);
+			channelListener = (event) => handleIncoming(event.data);
+			channel.addEventListener('message', channelListener);
+			portSyncChannel = channel;
+		} else {
+			portSyncChannel = null;
+		}
+
+		queueMicrotask(() => {
+			postPortSync({ type: 'state-request' });
+		});
+
+		return () => {
+			window.removeEventListener('storage', storageListener);
+
+			if (channel && channelListener) {
+				channel.removeEventListener('message', channelListener);
+				channel.close();
+			}
+
+			if (portSyncChannel === channel) {
+				portSyncChannel = null;
+			}
+
+			portSyncId = null;
+		};
 	});
 
 	$effect(() => {

