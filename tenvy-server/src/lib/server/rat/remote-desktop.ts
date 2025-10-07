@@ -12,10 +12,11 @@ const HEARTBEAT_INTERVAL_MS = 15_000;
 const HISTORY_LIMIT = 30;
 
 const defaultSettings: RemoteDesktopSettings = Object.freeze({
-	quality: 'auto',
-	monitor: 0,
-	mouse: true,
-	keyboard: true
+        quality: 'auto',
+        monitor: 0,
+        mouse: true,
+        keyboard: true,
+        mode: 'video'
 });
 
 const defaultMonitors: readonly RemoteDesktopMonitor[] = Object.freeze([
@@ -23,6 +24,7 @@ const defaultMonitors: readonly RemoteDesktopMonitor[] = Object.freeze([
 ]);
 
 const qualities = new Set<RemoteDesktopSettings['quality']>(['auto', 'high', 'medium', 'low']);
+const modes = new Set<RemoteDesktopSettings['mode']>(['images', 'video']);
 
 class RemoteDesktopError extends Error {
 	status: number;
@@ -121,19 +123,25 @@ function appendFrameHistory(record: RemoteDesktopSessionRecord, frame: RemoteDes
 }
 
 function resolveSettings(settings?: Partial<RemoteDesktopSettings>): RemoteDesktopSettings {
-	const resolved = { ...defaultSettings } satisfies RemoteDesktopSettings;
-	if (settings) {
-		if (settings.quality) {
-			if (!qualities.has(settings.quality)) {
-				throw new RemoteDesktopError('Invalid quality preset', 400);
-			}
-			resolved.quality = settings.quality;
-		}
-		if (typeof settings.monitor === 'number' && settings.monitor >= 0) {
-			resolved.monitor = Math.floor(settings.monitor);
-		}
-		if (typeof settings.mouse === 'boolean') {
-			resolved.mouse = settings.mouse;
+        const resolved = { ...defaultSettings } satisfies RemoteDesktopSettings;
+        if (settings) {
+                if (settings.quality) {
+                        if (!qualities.has(settings.quality)) {
+                                throw new RemoteDesktopError('Invalid quality preset', 400);
+                        }
+                        resolved.quality = settings.quality;
+                }
+                if (settings.mode) {
+                        if (!modes.has(settings.mode)) {
+                                throw new RemoteDesktopError('Invalid stream mode', 400);
+                        }
+                        resolved.mode = settings.mode;
+                }
+                if (typeof settings.monitor === 'number' && settings.monitor >= 0) {
+                        resolved.monitor = Math.floor(settings.monitor);
+                }
+                if (typeof settings.mouse === 'boolean') {
+                        resolved.mouse = settings.mouse;
 		}
 		if (typeof settings.keyboard === 'boolean') {
 			resolved.keyboard = settings.keyboard;
@@ -143,17 +151,23 @@ function resolveSettings(settings?: Partial<RemoteDesktopSettings>): RemoteDeskt
 }
 
 function applySettings(target: RemoteDesktopSettings, updates: Partial<RemoteDesktopSettings>) {
-	if (updates.quality) {
-		if (!qualities.has(updates.quality)) {
-			throw new RemoteDesktopError('Invalid quality preset', 400);
-		}
-		target.quality = updates.quality;
-	}
-	if (typeof updates.monitor === 'number') {
-		if (updates.monitor < 0) {
-			throw new RemoteDesktopError('Monitor index must be non-negative', 400);
-		}
-		target.monitor = Math.floor(updates.monitor);
+        if (updates.quality) {
+                if (!qualities.has(updates.quality)) {
+                        throw new RemoteDesktopError('Invalid quality preset', 400);
+                }
+                target.quality = updates.quality;
+        }
+        if (updates.mode) {
+                if (!modes.has(updates.mode)) {
+                        throw new RemoteDesktopError('Invalid stream mode', 400);
+                }
+                target.mode = updates.mode;
+        }
+        if (typeof updates.monitor === 'number') {
+                if (updates.monitor < 0) {
+                        throw new RemoteDesktopError('Monitor index must be non-negative', 400);
+                }
+                target.monitor = Math.floor(updates.monitor);
 	}
 	if (typeof updates.mouse === 'boolean') {
 		target.mouse = updates.mouse;

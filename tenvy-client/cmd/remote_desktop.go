@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"image"
+	"image/jpeg"
 	"image/png"
 	"math"
 	"net/http"
@@ -22,25 +23,32 @@ import (
 
 type RemoteDesktopQuality string
 
+type RemoteDesktopStreamMode string
+
 const (
 	RemoteQualityAuto   RemoteDesktopQuality = "auto"
 	RemoteQualityHigh   RemoteDesktopQuality = "high"
 	RemoteQualityMedium RemoteDesktopQuality = "medium"
 	RemoteQualityLow    RemoteDesktopQuality = "low"
+
+	RemoteStreamModeImages RemoteDesktopStreamMode = "images"
+	RemoteStreamModeVideo  RemoteDesktopStreamMode = "video"
 )
 
 type RemoteDesktopSettings struct {
-	Quality  RemoteDesktopQuality `json:"quality"`
-	Monitor  int                  `json:"monitor"`
-	Mouse    bool                 `json:"mouse"`
-	Keyboard bool                 `json:"keyboard"`
+	Quality  RemoteDesktopQuality    `json:"quality"`
+	Monitor  int                     `json:"monitor"`
+	Mouse    bool                    `json:"mouse"`
+	Keyboard bool                    `json:"keyboard"`
+	Mode     RemoteDesktopStreamMode `json:"mode"`
 }
 
 type RemoteDesktopSettingsPatch struct {
-	Quality  *RemoteDesktopQuality `json:"quality,omitempty"`
-	Monitor  *int                  `json:"monitor,omitempty"`
-	Mouse    *bool                 `json:"mouse,omitempty"`
-	Keyboard *bool                 `json:"keyboard,omitempty"`
+	Quality  *RemoteDesktopQuality    `json:"quality,omitempty"`
+	Monitor  *int                     `json:"monitor,omitempty"`
+	Mouse    *bool                    `json:"mouse,omitempty"`
+	Keyboard *bool                    `json:"keyboard,omitempty"`
+	Mode     *RemoteDesktopStreamMode `json:"mode,omitempty"`
 }
 
 type RemoteDesktopCommandPayload struct {
@@ -54,6 +62,7 @@ type RemoteDesktopFrameMetrics struct {
 	BandwidthKbps float64 `json:"bandwidthKbps,omitempty"`
 	CPUPercent    float64 `json:"cpuPercent,omitempty"`
 	GPUPercent    float64 `json:"gpuPercent,omitempty"`
+	ClipQuality   int     `json:"clipQuality,omitempty"`
 }
 
 type RemoteDesktopMonitorInfo struct {
@@ -82,8 +91,22 @@ type RemoteDesktopFramePacket struct {
 	Encoding  string                     `json:"encoding"`
 	Image     string                     `json:"image,omitempty"`
 	Deltas    []RemoteDesktopDeltaRect   `json:"deltas,omitempty"`
+	Clip      *RemoteDesktopVideoClip    `json:"clip,omitempty"`
 	Monitors  []RemoteDesktopMonitorInfo `json:"monitors,omitempty"`
 	Metrics   *RemoteDesktopFrameMetrics `json:"metrics,omitempty"`
+}
+
+type RemoteDesktopVideoClip struct {
+	DurationMs int                      `json:"durationMs"`
+	Frames     []RemoteDesktopClipFrame `json:"frames"`
+}
+
+type RemoteDesktopClipFrame struct {
+	OffsetMs int    `json:"offsetMs"`
+	Width    int    `json:"width"`
+	Height   int    `json:"height"`
+	Encoding string `json:"encoding"`
+	Data     string `json:"data"`
 }
 
 type RemoteDesktopSession struct {
@@ -92,6 +115,7 @@ type RemoteDesktopSession struct {
 	Width          int
 	Height         int
 	TileSize       int
+	ClipQuality    int
 	FrameInterval  time.Duration
 	Sequence       uint64
 	LastFrame      []byte
@@ -109,6 +133,8 @@ type RemoteDesktopSession struct {
 	BaseTile       int
 	MinTile        int
 	MaxTile        int
+	MinClipQuality int
+	MaxClipQuality int
 	LastAdaptation time.Time
 	monitors       []remoteMonitor
 	monitorInfos   []RemoteDesktopMonitorInfo
@@ -127,9 +153,26 @@ type RemoteDesktopStreamer struct {
 	session *RemoteDesktopSession
 }
 
+const (
+	remoteEncodingPNG      = "png"
+	remoteEncodingClip     = "clip"
+	remoteClipEncodingJPEG = "jpeg"
+	minClipDuration        = 120 * time.Millisecond
+	maxClipDuration        = 350 * time.Millisecond
+	defaultClipDuration    = 220 * time.Millisecond
+	maxClipFrames          = 12
+	minClipQuality         = 45
+	maxClipQuality         = 92
+	defaultClipQuality     = 80
+	clipQualityStepDown    = 6
+	clipQualityStepUp      = 3
+)
+
 var (
-	pngEncoder    = png.Encoder{CompressionLevel: png.BestSpeed}
-	pngBufferPool = sync.Pool{New: func() interface{} { return new(bytes.Buffer) }}
+	pngEncoder      = png.Encoder{CompressionLevel: png.BestSpeed}
+	imageBufferPool = sync.Pool{New: func() interface{} { return new(bytes.Buffer) }}
+	frameBufferPool = sync.Pool{New: func() interface{} { return make([]byte, 0) }}
+	jpegOptionsPool = sync.Pool{New: func() interface{} { return new(jpeg.Options) }}
 )
 
 func NewRemoteDesktopStreamer(agent *Agent) *RemoteDesktopStreamer {
@@ -278,11 +321,22 @@ func (s *RemoteDesktopStreamer) applySettingsLocked(session *RemoteDesktopSessio
 	}
 
 	prevMonitor := session.Settings.Monitor
+	prevMode := session.Settings.Mode
 
 	if patch.Quality != nil {
 		session.Settings.Quality = normalizeQuality(*patch.Quality)
 		session.AdaptiveScale = 1
 		session.LastAdaptation = time.Time{}
+		session.ClipQuality = 0
+	}
+	if patch.Mode != nil {
+		session.Settings.Mode = normalizeStreamMode(*patch.Mode)
+		if session.Settings.Mode != prevMode {
+			session.ForceKeyFrame = true
+			releaseFrameBuffer(session.LastFrame)
+			session.LastFrame = nil
+			session.ClipQuality = 0
+		}
 	}
 	if patch.Monitor != nil {
 		session.Settings.Monitor = *patch.Monitor
@@ -317,6 +371,10 @@ func (s *RemoteDesktopStreamer) configureProfileLocked(
 		return
 	}
 
+	if session.Settings.Mode == "" {
+		session.Settings.Mode = RemoteStreamModeVideo
+	}
+
 	baseWidth := maxInt(1, width)
 	baseHeight := maxInt(1, height)
 	session.BaseWidth = baseWidth
@@ -341,6 +399,23 @@ func (s *RemoteDesktopStreamer) configureProfileLocked(
 	session.MinTile = maxInt(24, baseTile-16)
 	session.MaxTile = minInt(120, baseTile+32)
 	session.TileSize = clampInt(baseTile, session.MinTile, session.MaxTile)
+
+	session.MinClipQuality = minClipQuality
+	session.MaxClipQuality = maxClipQuality
+	baseClipQuality := clipQualityBaseline(session.Settings.Quality)
+	if baseClipQuality <= 0 {
+		baseClipQuality = defaultClipQuality
+	}
+	baseClipQuality = clampInt(baseClipQuality, session.MinClipQuality, session.MaxClipQuality)
+	if session.Settings.Mode != RemoteStreamModeVideo {
+		session.ClipQuality = baseClipQuality
+	} else {
+		if session.ClipQuality == 0 || forceKey {
+			session.ClipQuality = baseClipQuality
+		} else {
+			session.ClipQuality = clampInt(session.ClipQuality, session.MinClipQuality, session.MaxClipQuality)
+		}
+	}
 
 	baseInterval := interval
 	if baseInterval <= 0 {
@@ -475,17 +550,11 @@ func (s *RemoteDesktopStreamer) maybeAdaptQualityLocked(
 	slowThreshold := session.FrameInterval + session.FrameInterval/2
 	fastThreshold := session.FrameInterval * 3 / 4
 
-	degrade := false
-	if fps > 0 && fps < 8 {
-		degrade = true
-	}
-	if bandwidth > 6000 {
-		degrade = true
-	}
-	if processing > slowThreshold {
-		degrade = true
-	}
+	lowFps := fps > 0 && fps < 8
+	highBandwidth := bandwidth > 6000
+	slowProcessing := processing > slowThreshold
 
+	degrade := lowFps || highBandwidth || slowProcessing
 	improve := false
 	if fps > 18 && processing < slowThreshold {
 		if bandwidth <= 0 || bandwidth < 2500 {
@@ -503,24 +572,45 @@ func (s *RemoteDesktopStreamer) maybeAdaptQualityLocked(
 	}
 
 	adapted := false
+	clipAdjusted := false
+	clipAdjustedDegrade := false
 
-	if degrade {
-		newScale := clampFloat(session.AdaptiveScale*0.85, session.MinScale, session.MaxScale)
-		if newScale != session.AdaptiveScale {
-			session.AdaptiveScale = newScale
-			if s.applyAdaptiveScaleLocked(session, true) {
-				adapted = true
+	if session.Settings.Mode == RemoteStreamModeVideo {
+		if degrade {
+			nextQuality := clampInt(session.ClipQuality-clipQualityStepDown, session.MinClipQuality, session.MaxClipQuality)
+			if nextQuality != session.ClipQuality {
+				session.ClipQuality = nextQuality
+				clipAdjusted = true
+				clipAdjustedDegrade = true
+			}
+		} else if improve {
+			nextQuality := clampInt(session.ClipQuality+clipQualityStepUp, session.MinClipQuality, session.MaxClipQuality)
+			if nextQuality != session.ClipQuality {
+				session.ClipQuality = nextQuality
+				clipAdjusted = true
 			}
 		}
-		nextInterval := clampDuration(session.FrameInterval+15*time.Millisecond, session.MinInterval, session.MaxInterval)
-		if nextInterval != session.FrameInterval {
-			session.FrameInterval = nextInterval
-			adapted = true
-		}
-		nextTile := clampInt(session.TileSize+8, session.MinTile, session.MaxTile)
-		if nextTile != session.TileSize {
-			session.TileSize = nextTile
-			adapted = true
+	}
+
+	if degrade {
+		if slowProcessing || lowFps || !clipAdjustedDegrade {
+			newScale := clampFloat(session.AdaptiveScale*0.85, session.MinScale, session.MaxScale)
+			if newScale != session.AdaptiveScale {
+				session.AdaptiveScale = newScale
+				if s.applyAdaptiveScaleLocked(session, true) {
+					adapted = true
+				}
+			}
+			nextInterval := clampDuration(session.FrameInterval+15*time.Millisecond, session.MinInterval, session.MaxInterval)
+			if nextInterval != session.FrameInterval {
+				session.FrameInterval = nextInterval
+				adapted = true
+			}
+			nextTile := clampInt(session.TileSize+8, session.MinTile, session.MaxTile)
+			if nextTile != session.TileSize {
+				session.TileSize = nextTile
+				adapted = true
+			}
 		}
 	} else if improve {
 		newScale := clampFloat(session.AdaptiveScale*1.1, session.MinScale, session.MaxScale)
@@ -542,6 +632,10 @@ func (s *RemoteDesktopStreamer) maybeAdaptQualityLocked(
 		}
 	}
 
+	if clipAdjusted {
+		adapted = true
+	}
+
 	if adapted {
 		session.LastAdaptation = now
 	}
@@ -552,6 +646,12 @@ func (s *RemoteDesktopStreamer) stream(ctx context.Context, session *RemoteDeskt
 	timer := time.NewTimer(0)
 	defer timer.Stop()
 
+	activeMode := normalizeStreamMode(session.Settings.Mode)
+	var clipFrames []RemoteDesktopClipFrame
+	var clipStart time.Time
+	clipKeyPending := activeMode == RemoteStreamModeVideo
+	clipBytes := 0
+
 	for {
 		select {
 		case <-ctx.Done():
@@ -559,9 +659,12 @@ func (s *RemoteDesktopStreamer) stream(ctx context.Context, session *RemoteDeskt
 		case <-timer.C:
 		}
 
+		clipQuality := defaultClipQuality
 		s.mu.Lock()
 		if s.session == nil || s.session.ID != session.ID {
+			prev := session.LastFrame
 			s.mu.Unlock()
+			releaseFrameBuffer(prev)
 			return
 		}
 
@@ -580,11 +683,39 @@ func (s *RemoteDesktopStreamer) stream(ctx context.Context, session *RemoteDeskt
 		height := session.Height
 		tile := session.TileSize
 		targetInterval := session.FrameInterval
+		mode := normalizeStreamMode(session.Settings.Mode)
+		if mode != activeMode {
+			activeMode = mode
+			clipFrames = nil
+			clipStart = time.Time{}
+			clipBytes = 0
+			clipKeyPending = mode == RemoteStreamModeVideo
+			if session.LastFrame != nil {
+				releaseFrameBuffer(session.LastFrame)
+				session.LastFrame = nil
+			}
+			session.ForceKeyFrame = true
+		}
+
+		minAllowed := session.MinClipQuality
+		maxAllowed := session.MaxClipQuality
+		if minAllowed <= 0 || minAllowed >= maxAllowed {
+			minAllowed = minClipQuality
+			maxAllowed = maxClipQuality
+		}
+		clipQuality = clampInt(session.ClipQuality, minAllowed, maxAllowed)
+		if clipQuality <= 0 {
+			clipQuality = clampInt(defaultClipQuality, minAllowed, maxAllowed)
+		}
+
 		forceKey := session.ForceKeyFrame || len(session.LastFrame) == 0
-		prev := append([]byte(nil), session.LastFrame...)
-		sequence := session.Sequence + 1
-		session.Sequence = sequence
-		session.ForceKeyFrame = false
+		prev := session.LastFrame
+		var sequence uint64
+		if mode == RemoteStreamModeImages {
+			sequence = session.Sequence + 1
+			session.Sequence = sequence
+			session.ForceKeyFrame = false
+		}
 		s.mu.Unlock()
 
 		if targetInterval <= 0 {
@@ -602,6 +733,170 @@ func (s *RemoteDesktopStreamer) stream(ctx context.Context, session *RemoteDeskt
 			continue
 		}
 
+		if mode == RemoteStreamModeVideo {
+			clipDuration := clampDuration(targetInterval*2, minClipDuration, maxClipDuration)
+			if clipDuration <= 0 {
+				clipDuration = defaultClipDuration
+			}
+
+			if forceKey {
+				clipFrames = nil
+				clipStart = time.Now()
+				clipBytes = 0
+				clipKeyPending = true
+			} else if clipStart.IsZero() {
+				clipStart = time.Now()
+			}
+
+			if len(monitorsPayload) > 0 {
+				clipKeyPending = true
+			}
+
+			offsetMs := 0
+			if !clipStart.IsZero() {
+				offsetMs = int(time.Since(clipStart).Milliseconds())
+				if offsetMs < 0 {
+					offsetMs = 0
+				}
+			}
+
+			encoded, err := encodeJPEG(width, height, clipQuality, current)
+			if err != nil {
+				s.agent.logger.Printf("remote desktop clip encode error: %v", err)
+				releaseFrameBuffer(current)
+				releaseFrameBuffer(prev)
+				scheduleNextFrame(timer, targetInterval)
+				continue
+			}
+
+			clipBytes += len(encoded)
+			clipFrames = append(clipFrames, RemoteDesktopClipFrame{
+				OffsetMs: offsetMs,
+				Width:    width,
+				Height:   height,
+				Encoding: remoteClipEncodingJPEG,
+				Data:     encoded,
+			})
+
+			releaseFrameBuffer(current)
+			releaseFrameBuffer(prev)
+
+			clipElapsed := time.Since(clipStart)
+			intervalMs := targetInterval.Milliseconds()
+			if intervalMs <= 0 {
+				intervalMs = 80
+			}
+			clipMs := clipDuration.Milliseconds()
+			if clipMs <= 0 {
+				clipMs = defaultClipDuration.Milliseconds()
+			}
+			frameCap := int(clipMs/int64(intervalMs)) + 1
+			if frameCap < 2 {
+				frameCap = 2
+			}
+			if frameCap > maxClipFrames {
+				frameCap = maxClipFrames
+			}
+
+			shouldFlush := false
+			if clipElapsed >= clipDuration || len(clipFrames) >= frameCap {
+				shouldFlush = true
+			}
+			if clipKeyPending && len(clipFrames) > 0 {
+				shouldFlush = true
+			}
+			if len(monitorsPayload) > 0 && len(clipFrames) > 0 {
+				shouldFlush = true
+			}
+
+			if !shouldFlush {
+				scheduleNextFrame(timer, targetInterval)
+				continue
+			}
+
+			framesCopy := append([]RemoteDesktopClipFrame(nil), clipFrames...)
+			durationMs := framesCopy[len(framesCopy)-1].OffsetMs
+			if durationMs <= 0 {
+				durationMs = int(clipElapsed.Milliseconds())
+			}
+			if durationMs <= 0 {
+				durationMs = int(targetInterval.Milliseconds())
+			}
+
+			processingDuration := time.Since(processStart)
+			frameDuration := targetInterval
+			if !lastSent.IsZero() {
+				if elapsed := time.Since(lastSent); elapsed > 0 {
+					frameDuration = elapsed
+				}
+			}
+
+			metrics := computeMetrics(targetInterval, frameDuration, processingDuration, clipBytes, clipQuality)
+			timestamp := time.Now()
+			frame := RemoteDesktopFramePacket{
+				SessionID: session.ID,
+				Timestamp: timestamp.UTC().Format(time.RFC3339Nano),
+				Width:     width,
+				Height:    height,
+				KeyFrame:  clipKeyPending,
+				Encoding:  remoteEncodingClip,
+				Clip: &RemoteDesktopVideoClip{
+					DurationMs: durationMs,
+					Frames:     framesCopy,
+				},
+				Metrics: metrics,
+			}
+			if len(monitorsPayload) > 0 {
+				frame.Monitors = monitorsPayload
+			}
+
+			nextInterval := targetInterval
+
+			s.mu.Lock()
+			if s.session != nil && s.session.ID == session.ID {
+				s.session.Sequence++
+				frame.Sequence = s.session.Sequence
+				s.maybeAdaptQualityLocked(s.session, metrics, processingDuration, frameDuration, clipBytes)
+				if len(monitorsPayload) > 0 {
+					s.session.monitorsDirty = false
+				}
+				s.session.ForceKeyFrame = false
+				nextInterval = s.session.FrameInterval
+			} else {
+				s.mu.Unlock()
+				clipFrames = nil
+				clipStart = time.Time{}
+				clipBytes = 0
+				clipKeyPending = true
+				scheduleNextFrame(timer, targetInterval)
+				continue
+			}
+			s.mu.Unlock()
+
+			sendCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+			err = s.sendFrame(sendCtx, frame)
+			cancel()
+			if err != nil {
+				if !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
+					s.agent.logger.Printf("remote desktop clip send error: %v", err)
+				}
+				clipFrames = nil
+				clipStart = time.Time{}
+				clipBytes = 0
+				clipKeyPending = true
+				scheduleNextFrame(timer, nextInterval)
+				continue
+			}
+
+			clipFrames = nil
+			clipStart = time.Time{}
+			clipBytes = 0
+			clipKeyPending = false
+			scheduleNextFrame(timer, nextInterval)
+			lastSent = timestamp
+			continue
+		}
+
 		keyFrame := forceKey || len(prev) != len(current) || len(prev) == 0
 		var imageData string
 		var deltas []RemoteDesktopDeltaRect
@@ -611,6 +906,7 @@ func (s *RemoteDesktopStreamer) stream(ctx context.Context, session *RemoteDeskt
 			encoded, err := encodePNG(width, height, current)
 			if err != nil {
 				s.agent.logger.Printf("remote desktop encode frame: %v", err)
+				releaseFrameBuffer(current)
 				scheduleNextFrame(timer, targetInterval)
 				continue
 			}
@@ -626,6 +922,7 @@ func (s *RemoteDesktopStreamer) stream(ctx context.Context, session *RemoteDeskt
 					bytesSent += len(encoded)
 				} else {
 					s.agent.logger.Printf("remote desktop fallback encode: %v", encErr)
+					releaseFrameBuffer(current)
 					scheduleNextFrame(timer, targetInterval)
 					continue
 				}
@@ -642,6 +939,7 @@ func (s *RemoteDesktopStreamer) stream(ctx context.Context, session *RemoteDeskt
 							bytesSent += len(encoded)
 						} else {
 							s.agent.logger.Printf("remote desktop idle encode: %v", encErr)
+							releaseFrameBuffer(current)
 							scheduleNextFrame(timer, targetInterval)
 							continue
 						}
@@ -658,7 +956,7 @@ func (s *RemoteDesktopStreamer) stream(ctx context.Context, session *RemoteDeskt
 			}
 		}
 
-		metrics := computeMetrics(targetInterval, frameDuration, processingDuration, bytesSent)
+		metrics := computeMetrics(targetInterval, frameDuration, processingDuration, bytesSent, 0)
 		timestamp := time.Now()
 		frame := RemoteDesktopFramePacket{
 			SessionID: session.ID,
@@ -667,7 +965,7 @@ func (s *RemoteDesktopStreamer) stream(ctx context.Context, session *RemoteDeskt
 			Width:     width,
 			Height:    height,
 			KeyFrame:  keyFrame,
-			Encoding:  "png",
+			Encoding:  remoteEncodingPNG,
 			Metrics:   metrics,
 		}
 		if len(monitorsPayload) > 0 {
@@ -696,6 +994,7 @@ func (s *RemoteDesktopStreamer) stream(ctx context.Context, session *RemoteDeskt
 			if !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
 				s.agent.logger.Printf("remote desktop frame send error: %v", err)
 			}
+			releaseFrameBuffer(current)
 			scheduleNextFrame(timer, nextInterval)
 			continue
 		}
@@ -703,10 +1002,14 @@ func (s *RemoteDesktopStreamer) stream(ctx context.Context, session *RemoteDeskt
 		s.mu.Lock()
 		if s.session != nil && s.session.ID == session.ID {
 			s.session.LastFrame = current
+			releaseFrameBuffer(prev)
 			if len(monitorsPayload) > 0 {
 				s.session.monitorsDirty = false
 			}
 			nextInterval = s.session.FrameInterval
+		} else {
+			releaseFrameBuffer(current)
+			releaseFrameBuffer(prev)
 		}
 		s.mu.Unlock()
 
@@ -751,6 +1054,7 @@ func defaultRemoteDesktopSettings() RemoteDesktopSettings {
 		Monitor:  0,
 		Mouse:    true,
 		Keyboard: true,
+		Mode:     RemoteStreamModeVideo,
 	}
 }
 
@@ -760,6 +1064,9 @@ func applySettingsPatch(settings *RemoteDesktopSettings, patch *RemoteDesktopSet
 	}
 	if patch.Quality != nil {
 		settings.Quality = normalizeQuality(*patch.Quality)
+	}
+	if patch.Mode != nil {
+		settings.Mode = normalizeStreamMode(*patch.Mode)
 	}
 	if patch.Monitor != nil && *patch.Monitor >= 0 {
 		settings.Monitor = *patch.Monitor
@@ -782,6 +1089,17 @@ func normalizeQuality(value RemoteDesktopQuality) RemoteDesktopQuality {
 		return RemoteQualityLow
 	default:
 		return RemoteQualityAuto
+	}
+}
+
+func normalizeStreamMode(value RemoteDesktopStreamMode) RemoteDesktopStreamMode {
+	switch strings.ToLower(string(value)) {
+	case string(RemoteStreamModeImages):
+		return RemoteStreamModeImages
+	case string(RemoteStreamModeVideo):
+		return RemoteStreamModeVideo
+	default:
+		return RemoteStreamModeVideo
 	}
 }
 
@@ -843,6 +1161,19 @@ func qualityProfile(quality RemoteDesktopQuality, monitor RemoteDesktopMonitorIn
 	return targetWidth, targetHeight, tile, interval
 }
 
+func clipQualityBaseline(preset RemoteDesktopQuality) int {
+	switch preset {
+	case RemoteQualityHigh:
+		return 88
+	case RemoteQualityMedium:
+		return 80
+	case RemoteQualityLow:
+		return 72
+	default:
+		return defaultClipQuality
+	}
+}
+
 func captureMonitorFrame(monitor remoteMonitor, width, height int) ([]byte, error) {
 	if width <= 0 || height <= 0 {
 		return nil, errors.New("invalid frame dimensions")
@@ -859,30 +1190,57 @@ func captureMonitorFrame(monitor remoteMonitor, width, height int) ([]byte, erro
 	var rgba *image.RGBA
 	if img.Bounds().Dx() != width || img.Bounds().Dy() != height {
 		dst := image.NewRGBA(image.Rect(0, 0, width, height))
-		xdraw.CatmullRom.Scale(dst, dst.Bounds(), img, img.Bounds(), xdraw.Over, nil)
+		xdraw.ApproxBiLinear.Scale(dst, dst.Bounds(), img, img.Bounds(), xdraw.Over, nil)
 		rgba = dst
 	} else {
 		rgba = img
 	}
 
-	return copyRGBA(rgba, width, height), nil
+	frameSize := width * height * 4
+	buffer := acquireFrameBuffer(frameSize)
+	copyRGBAInto(buffer, rgba, width, height)
+	return buffer, nil
 }
 
-func copyRGBA(img *image.RGBA, width, height int) []byte {
+func copyRGBAInto(dst []byte, img *image.RGBA, width, height int) {
+	if len(dst) == 0 || img == nil {
+		return
+	}
+
 	stride := img.Stride
 	if stride == width*4 {
-		length := width * height * 4
-		if len(img.Pix) >= length {
-			return append([]byte(nil), img.Pix[:length]...)
-		}
+		copy(dst, img.Pix[:width*height*4])
+		return
 	}
-	buf := make([]byte, width*height*4)
 	for y := 0; y < height; y++ {
 		start := y * width * 4
 		rowStart := y * stride
-		copy(buf[start:start+width*4], img.Pix[rowStart:rowStart+width*4])
+		copy(dst[start:start+width*4], img.Pix[rowStart:rowStart+width*4])
 	}
-	return buf
+}
+
+func acquireFrameBuffer(size int) []byte {
+	if size <= 0 {
+		return nil
+	}
+
+	value := frameBufferPool.Get()
+	if buf, ok := value.([]byte); ok {
+		if cap(buf) >= size {
+			return buf[:size]
+		}
+		frameBufferPool.Put(buf[:0])
+		return make([]byte, size)
+	}
+
+	return make([]byte, size)
+}
+
+func releaseFrameBuffer(buf []byte) {
+	if buf == nil {
+		return
+	}
+	frameBufferPool.Put(buf[:0])
 }
 
 func safeCaptureRect(bounds image.Rectangle) (img *image.RGBA, err error) {
@@ -898,15 +1256,51 @@ func safeCaptureRect(bounds image.Rectangle) (img *image.RGBA, err error) {
 }
 
 func encodePNG(width, height int, data []byte) (string, error) {
-	img := image.NewRGBA(image.Rect(0, 0, width, height))
-	copy(img.Pix, data)
-	bufPtr := pngBufferPool.Get().(*bytes.Buffer)
+	if len(data) == 0 || width <= 0 || height <= 0 {
+		return "", errors.New("invalid frame data")
+	}
+
+	img := &image.RGBA{
+		Pix:    data,
+		Stride: width * 4,
+		Rect:   image.Rect(0, 0, width, height),
+	}
+	bufPtr := imageBufferPool.Get().(*bytes.Buffer)
 	bufPtr.Reset()
-	defer pngBufferPool.Put(bufPtr)
+	defer imageBufferPool.Put(bufPtr)
 
 	if err := pngEncoder.Encode(bufPtr, img); err != nil {
 		return "", err
 	}
+	encoded := base64.StdEncoding.EncodeToString(bufPtr.Bytes())
+	return encoded, nil
+}
+
+func encodeJPEG(width, height, quality int, data []byte) (string, error) {
+	if len(data) == 0 || width <= 0 || height <= 0 {
+		return "", errors.New("invalid frame data")
+	}
+
+	img := &image.RGBA{
+		Pix:    data,
+		Stride: width * 4,
+		Rect:   image.Rect(0, 0, width, height),
+	}
+	bufPtr := imageBufferPool.Get().(*bytes.Buffer)
+	bufPtr.Reset()
+	defer imageBufferPool.Put(bufPtr)
+
+	if quality <= 0 {
+		quality = defaultClipQuality
+	}
+	optsPtr := jpegOptionsPool.Get().(*jpeg.Options)
+	optsPtr.Quality = clampInt(quality, 1, 100)
+	err := jpeg.Encode(bufPtr, img, optsPtr)
+	jpegOptionsPool.Put(optsPtr)
+	if err != nil {
+		return "", err
+	}
+
 	encoded := base64.StdEncoding.EncodeToString(bufPtr.Bytes())
 	return encoded, nil
 }
@@ -916,6 +1310,10 @@ func diffFrames(previous, current []byte, width, height, tile int) ([]RemoteDesk
 		return nil, errors.New("frame size mismatch")
 	}
 	if len(current) == 0 {
+		return nil, nil
+	}
+
+	if bytes.Equal(previous, current) {
 		return nil, nil
 	}
 
@@ -937,7 +1335,7 @@ func diffFrames(previous, current []byte, width, height, tile int) ([]RemoteDesk
 					Y:        y,
 					Width:    w,
 					Height:   h,
-					Encoding: "png",
+					Encoding: remoteEncodingPNG,
 					Data:     encoded,
 				})
 			}
@@ -1071,7 +1469,7 @@ func clampMonitorIndex(monitors []remoteMonitor, index int) int {
 	return index
 }
 
-func computeMetrics(targetInterval, frameDuration, processing time.Duration, bytesSent int) *RemoteDesktopFrameMetrics {
+func computeMetrics(targetInterval, frameDuration, processing time.Duration, bytesSent int, clipQuality int) *RemoteDesktopFrameMetrics {
 	if targetInterval <= 0 {
 		targetInterval = 100 * time.Millisecond
 	}
@@ -1108,6 +1506,9 @@ func computeMetrics(targetInterval, frameDuration, processing time.Duration, byt
 	}
 	if gpuUsage > 0 {
 		metrics.GPUPercent = math.Round(gpuUsage*10) / 10
+	}
+	if clipQuality > 0 {
+		metrics.ClipQuality = clampInt(clipQuality, 1, 100)
 	}
 
 	return metrics
@@ -1177,13 +1578,6 @@ func clampDuration(value, min, max time.Duration) time.Duration {
 		return max
 	}
 	return value
-}
-
-func minDuration(a, b time.Duration) time.Duration {
-	if a < b {
-		return a
-	}
-	return b
 }
 
 func maxDuration(a, b time.Duration) time.Duration {
