@@ -28,7 +28,6 @@
         import IpGeolocationWorkspace from '$lib/components/workspace/tools/ip-geolocation-workspace.svelte';
         import EnvironmentVariablesWorkspace from '$lib/components/workspace/tools/environment-variables-workspace.svelte';
         import SimpleActionWorkspace from '$lib/components/workspace/tools/simple-action-workspace.svelte';
-        import type { SvelteComponent } from 'svelte';
 
         let { data } = $props<{ data: PageData }>();
         const client = $derived(data.client);
