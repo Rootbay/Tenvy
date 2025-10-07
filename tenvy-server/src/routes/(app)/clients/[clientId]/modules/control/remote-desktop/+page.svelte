@@ -22,16 +22,16 @@
 	import { Badge } from '$lib/components/ui/badge/index.js';
 	import { Separator } from '$lib/components/ui/separator/index.js';
 	import type { Client } from '$lib/data/clients';
-        import type {
-                RemoteDesktopFramePacket,
-                RemoteDesktopMonitor,
-                RemoteDesktopSessionState,
-                RemoteDesktopSettings
-        } from '$lib/types/remote-desktop';
+	import type {
+		RemoteDesktopFramePacket,
+		RemoteDesktopMonitor,
+		RemoteDesktopSessionState,
+		RemoteDesktopSettings
+	} from '$lib/types/remote-desktop';
 
-        const fallbackMonitors = [
-                { id: 0, label: 'Primary', width: 1280, height: 720 }
-        ] satisfies RemoteDesktopMonitor[];
+	const fallbackMonitors = [
+		{ id: 0, label: 'Primary', width: 1280, height: 720 }
+	] satisfies RemoteDesktopMonitor[];
 
         const qualityOptions = [
                 { value: 'auto', label: 'Auto' },
@@ -40,47 +40,56 @@
                 { value: 'low', label: 'Low' }
         ] satisfies { value: RemoteDesktopSettings['quality']; label: string }[];
 
-	let { data } = $props<{ data: { session: RemoteDesktopSessionState | null; client: Client } }>();
+        const MAX_FRAME_QUEUE = 24;
+        const supportsImageBitmap = browser && typeof createImageBitmap === 'function';
+        const IMAGE_BASE64_PREFIX = 'data:image/png;base64,';
+
+        let { data } = $props<{ data: { session: RemoteDesktopSessionState | null; client: Client } }>();
 
 	const client = $derived(data.client);
-        let session = $state<RemoteDesktopSessionState | null>(data.session ?? null);
-        let activeTab = $state<'stream' | 'controls'>('stream');
-        let quality = $state<RemoteDesktopSettings['quality']>('auto');
-        let monitor = $state(0);
-        let mouseEnabled = $state(true);
-        let keyboardEnabled = $state(true);
-        let fps = $state<number | null>(null);
-        let gpu = $state<number | null>(null);
-        let cpu = $state<number | null>(null);
-        let bandwidth = $state<number | null>(null);
+	let session = $state<RemoteDesktopSessionState | null>(data.session ?? null);
+	let activeTab = $state<'stream' | 'controls'>('stream');
+	let quality = $state<RemoteDesktopSettings['quality']>('auto');
+	let monitor = $state(0);
+	let mouseEnabled = $state(true);
+	let keyboardEnabled = $state(true);
+	let fps = $state<number | null>(null);
+	let gpu = $state<number | null>(null);
+	let cpu = $state<number | null>(null);
+	let bandwidth = $state<number | null>(null);
+	let streamWidth = $state<number | null>(null);
+	let streamHeight = $state<number | null>(null);
+	let latencyMs = $state<number | null>(null);
+	let droppedFrames = $state(0);
 	let isStarting = $state(false);
 	let isStopping = $state(false);
 	let isUpdating = $state(false);
 	let errorMessage = $state<string | null>(null);
 	let infoMessage = $state<string | null>(null);
-        let monitors = $state<RemoteDesktopMonitor[]>(fallbackMonitors);
-        let sessionActive = $state(false);
-        let sessionId = $state('');
+	let monitors = $state<RemoteDesktopMonitor[]>(fallbackMonitors);
+	let sessionActive = $state(false);
+	let sessionId = $state('');
 
 	let canvasEl: HTMLCanvasElement | null = null;
 	let canvasContext: CanvasRenderingContext2D | null = null;
-	let eventSource: EventSource | null = null;
-	let streamSessionId: string | null = null;
-	let frameQueue: RemoteDesktopFramePacket[] = [];
-	let processing = false;
-	let stopRequested = false;
+        let eventSource: EventSource | null = null;
+        let streamSessionId: string | null = null;
+        let frameQueue: RemoteDesktopFramePacket[] = [];
+        let processing = false;
+        let stopRequested = false;
+        let imageBitmapFallbackLogged = false;
 
-	let skipMouseSync = true;
-	let skipKeyboardSync = true;
+        let skipMouseSync = true;
+        let skipKeyboardSync = true;
 
 	const qualityLabel = (value: string) => {
 		const found = qualityOptions.find((item) => item.value === value);
 		return found ? found.label : value;
 	};
 
-        const monitorLabel = (id: number) => {
-                const list = monitors;
-                const found = list.find((item: RemoteDesktopMonitor) => item.id === id);
+	const monitorLabel = (id: number) => {
+		const list = monitors;
+		const found = list.find((item: RemoteDesktopMonitor) => item.id === id);
 		if (!found) {
 			return `Monitor ${id + 1}`;
 		}
@@ -92,18 +101,23 @@
 		gpu = null;
 		cpu = null;
 		bandwidth = null;
+		streamWidth = null;
+		streamHeight = null;
+		latencyMs = null;
+		droppedFrames = 0;
 	}
 
 	function disconnectStream() {
-		if (eventSource) {
-			eventSource.close();
-			eventSource = null;
-		}
-		streamSessionId = null;
-		stopRequested = true;
-		frameQueue = [];
-		processing = false;
-	}
+                if (eventSource) {
+                        eventSource.close();
+                        eventSource = null;
+                }
+                streamSessionId = null;
+                stopRequested = true;
+                frameQueue = [];
+                processing = false;
+                imageBitmapFallbackLogged = false;
+        }
 
 	function connectStream(id?: string) {
 		if (!browser) return;
@@ -196,7 +210,26 @@
 	}
 
 	function enqueueFrame(frame: RemoteDesktopFramePacket) {
+		if (frame.keyFrame) {
+			frameQueue = [];
+		}
 		frameQueue.push(frame);
+
+		if (frameQueue.length > MAX_FRAME_QUEUE) {
+			let removed = 0;
+			while (frameQueue.length > MAX_FRAME_QUEUE) {
+				if (frameQueue[0]?.keyFrame && frameQueue.length > 1) {
+					frameQueue.splice(1, 1);
+				} else {
+					frameQueue.shift();
+				}
+				removed += 1;
+			}
+			if (removed > 0) {
+				droppedFrames += removed;
+			}
+		}
+
 		if (!processing) {
 			void processQueue();
 		}
@@ -217,29 +250,32 @@
 				}
 				try {
 					await applyFrame(next);
-                                        if (next.metrics) {
-                                                const metrics = next.metrics;
-                                                fps = typeof metrics.fps === 'number' ? metrics.fps : fps;
-                                                bandwidth =
-                                                        typeof metrics.bandwidthKbps === 'number' ? metrics.bandwidthKbps : bandwidth;
-                                                cpu = typeof metrics.cpuPercent === 'number' ? metrics.cpuPercent : cpu;
-                                                gpu = typeof metrics.gpuPercent === 'number' ? metrics.gpuPercent : gpu;
-                                        }
-                                        if (next.monitors && next.monitors.length > 0) {
-                                                monitors = next.monitors;
-                                        }
-                                        if (session) {
-                                                session = {
-                                                        ...session,
-                                                        lastSequence: next.sequence,
-                                                        lastUpdatedAt: next.timestamp,
-                                                        metrics: next.metrics ?? session.metrics,
-                                                        monitors: next.monitors && next.monitors.length > 0 ? next.monitors : session.monitors
-                                                };
-                                        }
-                                } catch (err) {
-                                        console.error('Failed to apply frame', err);
-                                        errorMessage = err instanceof Error ? err.message : 'Failed to render frame';
+					if (next.metrics) {
+						const metrics = next.metrics;
+						fps = typeof metrics.fps === 'number' ? metrics.fps : fps;
+						bandwidth =
+							typeof metrics.bandwidthKbps === 'number' ? metrics.bandwidthKbps : bandwidth;
+						cpu = typeof metrics.cpuPercent === 'number' ? metrics.cpuPercent : cpu;
+						gpu = typeof metrics.gpuPercent === 'number' ? metrics.gpuPercent : gpu;
+					}
+					streamWidth = typeof next.width === 'number' ? next.width : streamWidth;
+					streamHeight = typeof next.height === 'number' ? next.height : streamHeight;
+					latencyMs = computeLatency(next.timestamp);
+					if (next.monitors && next.monitors.length > 0) {
+						monitors = next.monitors;
+					}
+					if (session) {
+						session = {
+							...session,
+							lastSequence: next.sequence,
+							lastUpdatedAt: next.timestamp,
+							metrics: next.metrics ?? session.metrics,
+							monitors: next.monitors && next.monitors.length > 0 ? next.monitors : session.monitors
+						};
+					}
+				} catch (err) {
+					console.error('Failed to apply frame', err);
+					errorMessage = err instanceof Error ? err.message : 'Failed to render frame';
 				}
 			}
 		} finally {
@@ -247,50 +283,121 @@
 		}
 	}
 
-	async function applyFrame(frame: RemoteDesktopFramePacket) {
-		const context = ensureContext();
-		if (!canvasEl || !context) {
-			return;
-		}
+        async function applyFrame(frame: RemoteDesktopFramePacket) {
+                const context = ensureContext();
+                if (!canvasEl || !context) {
+                        return;
+                }
 
-		if (canvasEl.width !== frame.width || canvasEl.height !== frame.height) {
-			canvasEl.width = frame.width;
-			canvasEl.height = frame.height;
-		}
+                if (canvasEl.width !== frame.width || canvasEl.height !== frame.height) {
+                        canvasEl.width = frame.width;
+                        canvasEl.height = frame.height;
+                }
 
-		if (frame.keyFrame) {
-			if (!frame.image) {
-				throw new Error('Missing key frame image data');
-			}
-			await drawSegment(context, frame.image, 0, 0, frame.width, frame.height);
-		} else if (frame.deltas && frame.deltas.length > 0) {
-			for (const rect of frame.deltas) {
-				await drawSegment(context, rect.data, rect.x, rect.y, rect.width, rect.height);
-			}
-		}
-	}
+                if (frame.keyFrame) {
+                        if (!frame.image) {
+                                throw new Error('Missing key frame image data');
+                        }
+                        if (supportsImageBitmap) {
+                                try {
+                                        const bitmap = await decodeBitmap(frame.image);
+                                        try {
+                                                context.drawImage(bitmap, 0, 0, frame.width, frame.height);
+                                        } finally {
+                                                bitmap.close();
+                                        }
+                                        return;
+                                } catch (err) {
+                                        logBitmapFallback(err);
+                                }
+                        }
+                        await drawWithImageElement(context, frame.image, 0, 0, frame.width, frame.height);
+                        return;
+                }
 
-	function drawSegment(
-		context: CanvasRenderingContext2D,
-		data: string,
-		x: number,
-		y: number,
-		width: number,
-		height: number
-	): Promise<void> {
-		return new Promise((resolve, reject) => {
-			const image = new Image();
-			image.onload = () => {
-				try {
-					context.drawImage(image, x, y, width, height);
-					resolve();
-				} catch (err) {
-					reject(err);
-				}
-			};
-			image.onerror = () => reject(new Error('Failed to decode frame image segment'));
-			image.src = `data:image/png;base64,${data}`;
-		});
+                if (frame.deltas && frame.deltas.length > 0) {
+                        if (supportsImageBitmap) {
+                                try {
+                                        const bitmaps = await Promise.all(
+                                                frame.deltas.map(async (rect) => ({
+                                                        rect,
+                                                        bitmap: await decodeBitmap(rect.data)
+                                                }))
+                                        );
+                                        try {
+                                                for (const { rect, bitmap } of bitmaps) {
+                                                        context.drawImage(bitmap, rect.x, rect.y, rect.width, rect.height);
+                                                }
+                                        } finally {
+                                                for (const { bitmap } of bitmaps) {
+                                                        bitmap.close();
+                                                }
+                                        }
+                                        return;
+                                } catch (err) {
+                                        logBitmapFallback(err);
+                                }
+                        }
+
+                        for (const rect of frame.deltas) {
+                                await drawWithImageElement(context, rect.data, rect.x, rect.y, rect.width, rect.height);
+                        }
+                }
+        }
+
+        async function decodeBitmap(data: string): Promise<ImageBitmap> {
+                const binary = atob(data);
+                const length = binary.length;
+                const bytes = new Uint8Array(length);
+                for (let i = 0; i < length; i += 1) {
+                        bytes[i] = binary.charCodeAt(i);
+                }
+                const blob = new Blob([bytes], { type: 'image/png' });
+                return await createImageBitmap(blob);
+        }
+
+        function drawWithImageElement(
+                context: CanvasRenderingContext2D,
+                data: string,
+                x: number,
+                y: number,
+                width: number,
+                height: number
+        ): Promise<void> {
+                return new Promise((resolve, reject) => {
+                        const image = new Image();
+                        image.decoding = 'async';
+                        image.onload = () => {
+                                try {
+                                        context.drawImage(image, x, y, width, height);
+                                        resolve();
+                                } catch (err) {
+                                        reject(err);
+                                }
+                        };
+                        image.onerror = () => reject(new Error('Failed to decode frame image segment'));
+                        image.src = `${IMAGE_BASE64_PREFIX}${data}`;
+                });
+        }
+
+        function logBitmapFallback(err: unknown) {
+                if (imageBitmapFallbackLogged) {
+                        return;
+                }
+                imageBitmapFallbackLogged = true;
+                console.warn('ImageBitmap decode failed, falling back to <img> rendering', err);
+        }
+
+	function computeLatency(timestamp?: string | null) {
+		if (!timestamp) {
+			return null;
+		}
+		const parsed = Date.parse(timestamp);
+		if (Number.isNaN(parsed)) {
+			return null;
+		}
+		const delta = Date.now() - parsed;
+		return delta < 0 ? 0 : delta;
 	}
 
 	async function startSession() {
@@ -394,6 +501,23 @@
 		return `${Math.round(value)}%`;
 	}
 
+	function formatResolution(width: number | null, height: number | null) {
+		if (width === null || height === null || Number.isNaN(width) || Number.isNaN(height)) {
+			return '--';
+		}
+		return `${width}×${height}`;
+	}
+
+	function formatLatency(value: number | null) {
+		if (value === null || Number.isNaN(value)) {
+			return '-- ms';
+		}
+		if (value >= 1000) {
+			return `${(value / 1000).toFixed(1)} s`;
+		}
+		return `${Math.round(value)} ms`;
+	}
+
 	function formatTimestamp(value: string | null | undefined) {
 		if (!value) return '—';
 		const parsed = new Date(value);
@@ -403,28 +527,29 @@
 		return parsed.toLocaleTimeString();
 	}
 
-        $effect(() => {
-                const current = session;
-                if (!current) {
-                        quality = 'auto';
-                        monitor = 0;
-                        mouseEnabled = true;
-                        keyboardEnabled = true;
-                        sessionActive = false;
-                        sessionId = '';
-                        monitors = fallbackMonitors;
-                        resetMetrics();
-                        return;
-                }
-                quality = current.settings.quality;
-                monitor = current.settings.monitor;
-                mouseEnabled = current.settings.mouse;
-                keyboardEnabled = current.settings.keyboard;
-                sessionActive = current.active === true;
-                sessionId = current.sessionId ?? '';
-                monitors = current.monitors && current.monitors.length > 0 ? current.monitors : fallbackMonitors;
-                if (current.metrics) {
-                        fps = typeof current.metrics.fps === 'number' ? current.metrics.fps : fps;
+	$effect(() => {
+		const current = session;
+		if (!current) {
+			quality = 'auto';
+			monitor = 0;
+			mouseEnabled = true;
+			keyboardEnabled = true;
+			sessionActive = false;
+			sessionId = '';
+			monitors = fallbackMonitors;
+			resetMetrics();
+			return;
+		}
+		quality = current.settings.quality;
+		monitor = current.settings.monitor;
+		mouseEnabled = current.settings.mouse;
+		keyboardEnabled = current.settings.keyboard;
+		sessionActive = current.active === true;
+		sessionId = current.sessionId ?? '';
+		monitors =
+			current.monitors && current.monitors.length > 0 ? current.monitors : fallbackMonitors;
+		if (current.metrics) {
+			fps = typeof current.metrics.fps === 'number' ? current.metrics.fps : fps;
 			gpu = typeof current.metrics.gpuPercent === 'number' ? current.metrics.gpuPercent : gpu;
 			cpu = typeof current.metrics.cpuPercent === 'number' ? current.metrics.cpuPercent : cpu;
 			bandwidth =
@@ -565,15 +690,15 @@
 			>
 				<span>Last frame: {formatTimestamp(session?.lastUpdatedAt)}</span>
 				<div class="flex gap-2">
-                                        {#if sessionActive}
-                                                <Button variant="destructive" disabled={isStopping} onclick={stopSession}>
-                                                        {isStopping ? 'Stopping…' : 'Stop session'}
-                                                </Button>
-                                        {:else}
-                                                <Button disabled={isStarting} onclick={startSession}>
-                                                        {isStarting ? 'Starting…' : 'Start session'}
-                                                </Button>
-                                        {/if}
+					{#if sessionActive}
+						<Button variant="destructive" disabled={isStopping} onclick={stopSession}>
+							{isStopping ? 'Stopping…' : 'Stop session'}
+						</Button>
+					{:else}
+						<Button disabled={isStarting} onclick={startSession}>
+							{isStarting ? 'Starting…' : 'Start session'}
+						</Button>
+					{/if}
 				</div>
 			</CardFooter>
 		</Card>
@@ -687,7 +812,7 @@
 				<Separator />
 				<div class="grid gap-3 text-sm">
 					<p class="text-xs text-muted-foreground uppercase">Current metrics</p>
-					<div class="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+					<div class="grid gap-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6">
 						<div class="rounded-lg border border-border/60 bg-background/60 p-3">
 							<p class="text-xs text-muted-foreground">Frame rate</p>
 							<p class="text-sm font-semibold text-foreground">{formatMetric(fps, 'fps')}</p>
@@ -704,7 +829,22 @@
 							<p class="text-xs text-muted-foreground">Bandwidth</p>
 							<p class="text-sm font-semibold text-foreground">{formatMetric(bandwidth, 'kbps')}</p>
 						</div>
+						<div class="rounded-lg border border-border/60 bg-background/60 p-3">
+							<p class="text-xs text-muted-foreground">Resolution</p>
+							<p class="text-sm font-semibold text-foreground">
+								{formatResolution(streamWidth, streamHeight)}
+							</p>
+						</div>
+						<div class="rounded-lg border border-border/60 bg-background/60 p-3">
+							<p class="text-xs text-muted-foreground">Latency</p>
+							<p class="text-sm font-semibold text-foreground">{formatLatency(latencyMs)}</p>
+						</div>
 					</div>
+					{#if droppedFrames > 0}
+						<p class="text-xs text-muted-foreground">
+							Dropped {droppedFrames} frame{droppedFrames === 1 ? '' : 's'} to keep playback responsive.
+						</p>
+					{/if}
 				</div>
 			</CardContent>
 		</Card>
