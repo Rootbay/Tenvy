@@ -13,6 +13,7 @@ import (
 	"math"
 	"net/http"
 	"net/url"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -173,6 +174,12 @@ var (
 	imageBufferPool = sync.Pool{New: func() interface{} { return new(bytes.Buffer) }}
 	frameBufferPool = sync.Pool{New: func() interface{} { return make([]byte, 0) }}
 	jpegOptionsPool = sync.Pool{New: func() interface{} { return new(jpeg.Options) }}
+	scaledImagePool = sync.Pool{New: func() interface{} { return image.NewRGBA(image.Rect(0, 0, 1, 1)) }}
+)
+
+const (
+	maxDeltaCoverageRatio = 0.35
+	maxDeltaTileFactor    = 3
 )
 
 func NewRemoteDesktopStreamer(agent *Agent) *RemoteDesktopStreamer {
@@ -913,19 +920,12 @@ func (s *RemoteDesktopStreamer) stream(ctx context.Context, session *RemoteDeskt
 			imageData = encoded
 			bytesSent += len(encoded)
 		} else {
-			rects, err := diffFrames(prev, current, width, height, tile)
+			rects, fallback, err := diffFrames(prev, current, width, height, tile)
 			if err != nil {
 				s.agent.logger.Printf("remote desktop diff error: %v", err)
 				keyFrame = true
-				if encoded, encErr := encodePNG(width, height, current); encErr == nil {
-					imageData = encoded
-					bytesSent += len(encoded)
-				} else {
-					s.agent.logger.Printf("remote desktop fallback encode: %v", encErr)
-					releaseFrameBuffer(current)
-					scheduleNextFrame(timer, targetInterval)
-					continue
-				}
+			} else if fallback {
+				keyFrame = true
 			} else {
 				deltas = rects
 				for _, rect := range rects {
@@ -934,16 +934,19 @@ func (s *RemoteDesktopStreamer) stream(ctx context.Context, session *RemoteDeskt
 				if len(rects) == 0 {
 					if time.Since(lastSent) > 3*targetInterval {
 						keyFrame = true
-						if encoded, encErr := encodePNG(width, height, current); encErr == nil {
-							imageData = encoded
-							bytesSent += len(encoded)
-						} else {
-							s.agent.logger.Printf("remote desktop idle encode: %v", encErr)
-							releaseFrameBuffer(current)
-							scheduleNextFrame(timer, targetInterval)
-							continue
-						}
 					}
+				}
+			}
+
+			if keyFrame && imageData == "" {
+				if encoded, encErr := encodePNG(width, height, current); encErr == nil {
+					imageData = encoded
+					bytesSent += len(encoded)
+				} else {
+					s.agent.logger.Printf("remote desktop fallback encode: %v", encErr)
+					releaseFrameBuffer(current)
+					scheduleNextFrame(timer, targetInterval)
+					continue
 				}
 			}
 		}
@@ -1187,18 +1190,18 @@ func captureMonitorFrame(monitor remoteMonitor, width, height int) ([]byte, erro
 		return nil, errors.New("empty monitor capture")
 	}
 
-	var rgba *image.RGBA
-	if img.Bounds().Dx() != width || img.Bounds().Dy() != height {
-		dst := image.NewRGBA(image.Rect(0, 0, width, height))
-		xdraw.ApproxBiLinear.Scale(dst, dst.Bounds(), img, img.Bounds(), xdraw.Over, nil)
-		rgba = dst
-	} else {
-		rgba = img
-	}
-
 	frameSize := width * height * 4
 	buffer := acquireFrameBuffer(frameSize)
-	copyRGBAInto(buffer, rgba, width, height)
+
+	if img.Bounds().Dx() != width || img.Bounds().Dy() != height {
+		rgba := acquireScaledImage(width, height)
+		xdraw.ApproxBiLinear.Scale(rgba, rgba.Bounds(), img, img.Bounds(), xdraw.Over, nil)
+		copyRGBAInto(buffer, rgba, width, height)
+		releaseScaledImage(rgba)
+		return buffer, nil
+	}
+
+	copyRGBAInto(buffer, img, width, height)
 	return buffer, nil
 }
 
@@ -1217,6 +1220,24 @@ func copyRGBAInto(dst []byte, img *image.RGBA, width, height int) {
 		rowStart := y * stride
 		copy(dst[start:start+width*4], img.Pix[rowStart:rowStart+width*4])
 	}
+}
+
+func acquireScaledImage(width, height int) *image.RGBA {
+	value := scaledImagePool.Get()
+	if img, ok := value.(*image.RGBA); ok {
+		if img.Bounds().Dx() != width || img.Bounds().Dy() != height {
+			return image.NewRGBA(image.Rect(0, 0, width, height))
+		}
+		return img
+	}
+	return image.NewRGBA(image.Rect(0, 0, width, height))
+}
+
+func releaseScaledImage(img *image.RGBA) {
+	if img == nil {
+		return
+	}
+	scaledImagePool.Put(img)
 }
 
 func acquireFrameBuffer(size int) []byte {
@@ -1305,44 +1326,138 @@ func encodeJPEG(width, height, quality int, data []byte) (string, error) {
 	return encoded, nil
 }
 
-func diffFrames(previous, current []byte, width, height, tile int) ([]RemoteDesktopDeltaRect, error) {
+func encodeRegionPNG(data []byte, stride, x, y, w, h int) (string, error) {
+	if stride <= 0 || w <= 0 || h <= 0 {
+		return "", errors.New("invalid region dimensions")
+	}
+
+	start := y*stride + x*4
+	if start < 0 || start >= len(data) {
+		return "", errors.New("region start out of range")
+	}
+
+	needed := (h-1)*stride + w*4
+	if start+needed > len(data) {
+		return "", errors.New("region exceeds frame bounds")
+	}
+
+	region := image.RGBA{
+		Pix:    data[start : start+needed],
+		Stride: stride,
+		Rect:   image.Rect(0, 0, w, h),
+	}
+
+	bufPtr := imageBufferPool.Get().(*bytes.Buffer)
+	bufPtr.Reset()
+	defer imageBufferPool.Put(bufPtr)
+
+	if err := pngEncoder.Encode(bufPtr, &region); err != nil {
+		return "", err
+	}
+
+	encoded := base64.StdEncoding.EncodeToString(bufPtr.Bytes())
+	return encoded, nil
+}
+
+func diffFrames(previous, current []byte, width, height, tile int) ([]RemoteDesktopDeltaRect, bool, error) {
 	if len(previous) != len(current) {
-		return nil, errors.New("frame size mismatch")
+		return nil, false, errors.New("frame size mismatch")
 	}
 	if len(current) == 0 {
-		return nil, nil
+		return nil, false, nil
 	}
 
 	if bytes.Equal(previous, current) {
-		return nil, nil
+		return nil, false, nil
+	}
+
+	if tile <= 0 {
+		tile = 32
 	}
 
 	stride := width * 4
-	var deltas []RemoteDesktopDeltaRect
+	type tileRegion struct {
+		x int
+		y int
+		w int
+		h int
+	}
+
+	estimatedCols := (width + tile - 1) / tile
+	estimatedRows := (height + tile - 1) / tile
+	totalTiles := maxInt(1, estimatedCols*estimatedRows)
+	regions := make([]tileRegion, 0, maxInt(1, totalTiles/4))
+
+	maxRegions := maxInt(64, totalTiles/maxDeltaTileFactor)
+	maxPixels := int(float64(width*height) * maxDeltaCoverageRatio)
+	if maxPixels <= 0 {
+		maxPixels = width * height
+	}
+
+	changedPixels := 0
 
 	for y := 0; y < height; y += tile {
 		h := minInt(tile, height-y)
 		for x := 0; x < width; x += tile {
 			w := minInt(tile, width-x)
 			if regionChanged(previous, current, stride, x, y, w, h) {
-				region := extractRegion(current, stride, x, y, w, h)
-				encoded, err := encodePNG(w, h, region)
-				if err != nil {
-					return nil, err
+				regions = append(regions, tileRegion{x: x, y: y, w: w, h: h})
+				changedPixels += w * h
+				if len(regions) > maxRegions || changedPixels > maxPixels {
+					return nil, true, nil
 				}
-				deltas = append(deltas, RemoteDesktopDeltaRect{
-					X:        x,
-					Y:        y,
-					Width:    w,
-					Height:   h,
-					Encoding: remoteEncodingPNG,
-					Data:     encoded,
-				})
 			}
 		}
 	}
 
-	return deltas, nil
+	if len(regions) == 0 {
+		return nil, false, nil
+	}
+
+	deltas := make([]RemoteDesktopDeltaRect, len(regions))
+	workerCount := minInt(len(regions), maxInt(1, runtime.NumCPU()))
+	jobs := make(chan int, len(regions))
+	var wg sync.WaitGroup
+	var encodeErr error
+	var once sync.Once
+
+	for i := 0; i < workerCount; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+
+			for idx := range jobs {
+				region := regions[idx]
+				encoded, err := encodeRegionPNG(current, stride, region.x, region.y, region.w, region.h)
+				if err != nil {
+					once.Do(func() {
+						encodeErr = err
+					})
+					return
+				}
+				deltas[idx] = RemoteDesktopDeltaRect{
+					X:        region.x,
+					Y:        region.y,
+					Width:    region.w,
+					Height:   region.h,
+					Encoding: remoteEncodingPNG,
+					Data:     encoded,
+				}
+			}
+		}()
+	}
+
+	for i := range regions {
+		jobs <- i
+	}
+	close(jobs)
+
+	wg.Wait()
+	if encodeErr != nil {
+		return nil, false, encodeErr
+	}
+
+	return deltas, false, nil
 }
 
 func regionChanged(prev, curr []byte, stride, x, y, w, h int) bool {
@@ -1354,15 +1469,6 @@ func regionChanged(prev, curr []byte, stride, x, y, w, h int) bool {
 		}
 	}
 	return false
-}
-
-func extractRegion(data []byte, stride, x, y, w, h int) []byte {
-	region := make([]byte, w*h*4)
-	for row := 0; row < h; row++ {
-		srcStart := (y+row)*stride + x*4
-		copy(region[row*w*4:(row+1)*w*4], data[srcStart:srcStart+w*4])
-	}
-	return region
 }
 
 func (s *RemoteDesktopStreamer) refreshMonitorsLocked(session *RemoteDesktopSession, force bool) {
