@@ -541,11 +541,13 @@
 				{/if}
 				<Dialog.Footer>
 					<Button type="submit">Save ports</Button>
-					{#if selectedPorts.length > 0}
-						<Dialog.Close let:props>
-							<Button {...props as any} type="button" variant="outline">Cancel</Button>
-						</Dialog.Close>
-					{/if}
+                                        {#if selectedPorts.length > 0}
+                                                <Dialog.Close>
+                                                        {#snippet child({ props })}
+                                                                <Button {...props} type="button" variant="outline">Cancel</Button>
+                                                        {/snippet}
+                                                </Dialog.Close>
+                                        {/if}
 				</Dialog.Footer>
 			</form>
 		</Dialog.Content>

@@ -127,24 +127,28 @@ type PingCommandPayload struct {
 }
 
 type ShellCommandPayload struct {
-	Command        string `json:"command"`
-	TimeoutSeconds int    `json:"timeoutSeconds,omitempty"`
+	Command          string            `json:"command"`
+	TimeoutSeconds   int               `json:"timeoutSeconds,omitempty"`
+	WorkingDirectory string            `json:"workingDirectory,omitempty"`
+	Elevated         bool              `json:"elevated,omitempty"`
+	Environment      map[string]string `json:"environment,omitempty"`
 }
 
 type Agent struct {
-        id             string
-        key            string
-        baseURL        string
-        client         *http.Client
-        config         AgentConfig
-        logger         *log.Logger
-        resultMu       sync.Mutex
-        pendingResults []CommandResult
-        startTime      time.Time
-        metadata       AgentMetadata
-        sharedSecret   string
-        preferences    BuildPreferences
-        remoteDesktop  *RemoteDesktopStreamer
+	id             string
+	key            string
+	baseURL        string
+	client         *http.Client
+	config         AgentConfig
+	logger         *log.Logger
+	resultMu       sync.Mutex
+	pendingResults []CommandResult
+	startTime      time.Time
+	metadata       AgentMetadata
+	sharedSecret   string
+	preferences    BuildPreferences
+	remoteDesktop  *RemoteDesktopStreamer
+	systemInfo     *SystemInfoCollector
 }
 
 type BuildPreferences struct {
@@ -237,21 +241,22 @@ func main() {
 		logger.Fatalf("failed to register agent: %v", err)
 	}
 
-        agent := &Agent{
-                id:             registration.AgentID,
-                key:            registration.AgentKey,
-                baseURL:        serverURL,
-                client:         client,
-                config:         registration.Config,
-                logger:         logger,
-                pendingResults: make([]CommandResult, 0, 8),
-                startTime:      time.Now(),
-                metadata:       metadata,
-                sharedSecret:   sharedSecret,
-                preferences:    preferences,
-        }
+	agent := &Agent{
+		id:             registration.AgentID,
+		key:            registration.AgentKey,
+		baseURL:        serverURL,
+		client:         client,
+		config:         registration.Config,
+		logger:         logger,
+		pendingResults: make([]CommandResult, 0, 8),
+		startTime:      time.Now(),
+		metadata:       metadata,
+		sharedSecret:   sharedSecret,
+		preferences:    preferences,
+	}
 
-        agent.remoteDesktop = NewRemoteDesktopStreamer(agent)
+	agent.remoteDesktop = NewRemoteDesktopStreamer(agent)
+	agent.systemInfo = NewSystemInfoCollector(agent)
 
 	agent.applyPreferences()
 
@@ -260,15 +265,15 @@ func main() {
 
 	go agent.run(ctx)
 
-        <-ctx.Done()
-        logger.Println("shutting down")
+	<-ctx.Done()
+	logger.Println("shutting down")
 
-        shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
-        defer shutdownCancel()
-        agent.remoteDesktop.Shutdown()
-        if err := agent.sync(shutdownCtx, statusOffline); err != nil {
-                logger.Printf("failed to send offline heartbeat: %v", err)
-        }
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer shutdownCancel()
+	agent.remoteDesktop.Shutdown()
+	if err := agent.sync(shutdownCtx, statusOffline); err != nil {
+		logger.Printf("failed to send offline heartbeat: %v", err)
+	}
 }
 
 func (a *Agent) applyPreferences() {
@@ -521,26 +526,36 @@ func (a *Agent) processCommands(ctx context.Context, commands []Command) {
 }
 
 func (a *Agent) executeCommand(ctx context.Context, cmd Command) CommandResult {
-        switch cmd.Name {
-        case "ping":
-                return handlePingCommand(cmd)
-        case "shell":
-                return handleShellCommand(ctx, cmd)
-        case "remote-desktop":
-                if a.remoteDesktop == nil {
-                        return CommandResult{
-                                CommandID:   cmd.ID,
-                                Success:     false,
-                                Error:       "remote desktop subsystem not initialized",
-                                CompletedAt: time.Now().UTC().Format(time.RFC3339Nano),
-                        }
-                }
-                return a.remoteDesktop.HandleCommand(ctx, cmd)
-        default:
-                return CommandResult{
-                        CommandID:   cmd.ID,
-                        Success:     false,
-                        Error:       fmt.Sprintf("unsupported command: %s", cmd.Name),
+	switch cmd.Name {
+	case "ping":
+		return handlePingCommand(cmd)
+	case "shell":
+		return handleShellCommand(ctx, cmd)
+	case "remote-desktop":
+		if a.remoteDesktop == nil {
+			return CommandResult{
+				CommandID:   cmd.ID,
+				Success:     false,
+				Error:       "remote desktop subsystem not initialized",
+				CompletedAt: time.Now().UTC().Format(time.RFC3339Nano),
+			}
+		}
+		return a.remoteDesktop.HandleCommand(ctx, cmd)
+	case "system-info":
+		if a.systemInfo == nil {
+			return CommandResult{
+				CommandID:   cmd.ID,
+				Success:     false,
+				Error:       "system information subsystem not initialized",
+				CompletedAt: time.Now().UTC().Format(time.RFC3339Nano),
+			}
+		}
+		return a.systemInfo.HandleCommand(ctx, cmd)
+	default:
+		return CommandResult{
+			CommandID:   cmd.ID,
+			Success:     false,
+			Error:       fmt.Sprintf("unsupported command: %s", cmd.Name),
 			CompletedAt: time.Now().UTC().Format(time.RFC3339Nano),
 		}
 	}
@@ -559,6 +574,11 @@ func handlePingCommand(cmd Command) CommandResult {
 		Output:      response,
 		CompletedAt: time.Now().UTC().Format(time.RFC3339Nano),
 	}
+}
+
+type shellExecutionOptions struct {
+	workingDirectory string
+	environment      map[string]string
 }
 
 func handleShellCommand(ctx context.Context, cmd Command) CommandResult {
@@ -581,6 +601,41 @@ func handleShellCommand(ctx context.Context, cmd Command) CommandResult {
 		}
 	}
 
+	if payload.Elevated && !currentUserIsElevated() {
+		return CommandResult{
+			CommandID:   cmd.ID,
+			Success:     false,
+			Error:       "elevated execution requested but agent is not running with sufficient privileges",
+			CompletedAt: time.Now().UTC().Format(time.RFC3339Nano),
+		}
+	}
+
+	workingDirectory := strings.TrimSpace(payload.WorkingDirectory)
+	if workingDirectory != "" {
+		if !filepath.IsAbs(workingDirectory) {
+			if absPath, err := filepath.Abs(workingDirectory); err == nil {
+				workingDirectory = absPath
+			}
+		}
+		info, err := os.Stat(workingDirectory)
+		if err != nil {
+			return CommandResult{
+				CommandID:   cmd.ID,
+				Success:     false,
+				Error:       fmt.Sprintf("invalid working directory: %v", err),
+				CompletedAt: time.Now().UTC().Format(time.RFC3339Nano),
+			}
+		}
+		if !info.IsDir() {
+			return CommandResult{
+				CommandID:   cmd.ID,
+				Success:     false,
+				Error:       fmt.Sprintf("working directory is not a directory: %s", workingDirectory),
+				CompletedAt: time.Now().UTC().Format(time.RFC3339Nano),
+			}
+		}
+	}
+
 	timeout := fallbackShellTimeout()
 	if payload.TimeoutSeconds > 0 {
 		timeout = time.Duration(payload.TimeoutSeconds) * time.Second
@@ -589,7 +644,10 @@ func handleShellCommand(ctx context.Context, cmd Command) CommandResult {
 	commandCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
-	output, err := runShell(commandCtx, payload.Command)
+	output, err := runShell(commandCtx, payload.Command, shellExecutionOptions{
+		workingDirectory: workingDirectory,
+		environment:      payload.Environment,
+	})
 	result := CommandResult{
 		CommandID:   cmd.ID,
 		CompletedAt: time.Now().UTC().Format(time.RFC3339Nano),
@@ -606,16 +664,55 @@ func handleShellCommand(ctx context.Context, cmd Command) CommandResult {
 	return result
 }
 
-func runShell(ctx context.Context, command string) ([]byte, error) {
+func runShell(ctx context.Context, command string, options shellExecutionOptions) ([]byte, error) {
+	var execCmd *exec.Cmd
 	if runtime.GOOS == "windows" {
-		return exec.CommandContext(ctx, "cmd", "/C", command).CombinedOutput()
+		execCmd = exec.CommandContext(ctx, "cmd", "/C", command)
+	} else {
+		shell := os.Getenv("SHELL")
+		if shell == "" {
+			shell = "/bin/sh"
+		}
+		execCmd = exec.CommandContext(ctx, shell, "-c", command)
 	}
 
-	shell := os.Getenv("SHELL")
-	if shell == "" {
-		shell = "/bin/sh"
+	if options.workingDirectory != "" {
+		execCmd.Dir = options.workingDirectory
 	}
-	return exec.CommandContext(ctx, shell, "-c", command).CombinedOutput()
+
+	if len(options.environment) > 0 {
+		execCmd.Env = mergeEnvironments(os.Environ(), options.environment)
+	}
+
+	return execCmd.CombinedOutput()
+}
+
+func mergeEnvironments(base []string, overrides map[string]string) []string {
+	if len(overrides) == 0 {
+		return base
+	}
+
+	env := make([]string, 0, len(base)+len(overrides))
+	for _, kv := range base {
+		key := kv
+		if idx := strings.IndexRune(kv, '='); idx >= 0 {
+			key = kv[:idx]
+		}
+		if _, ok := overrides[key]; ok {
+			continue
+		}
+		env = append(env, kv)
+	}
+
+	for key, value := range overrides {
+		trimmed := strings.TrimSpace(key)
+		if trimmed == "" {
+			continue
+		}
+		env = append(env, fmt.Sprintf("%s=%s", trimmed, value))
+	}
+
+	return env
 }
 
 func (a *Agent) enqueueResult(result CommandResult) {

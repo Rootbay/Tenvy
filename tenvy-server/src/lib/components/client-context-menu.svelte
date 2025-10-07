@@ -22,7 +22,7 @@
 
 	const { client } = $props<{ client: Client }>();
 
-	let dialogTool: DialogToolId | null = null;
+        let dialogTool = $state<DialogToolId | null>(null);
 
 	function openTool(toolId: ClientToolId) {
 		const tool = getClientTool(toolId);

@@ -2,7 +2,7 @@ import type { AgentConfig } from './config';
 import type { AgentMetrics, AgentStatus } from './agent';
 import type { RemoteDesktopCommandPayload } from './remote-desktop';
 
-export type CommandName = 'ping' | 'shell' | 'remote-desktop';
+export type CommandName = 'ping' | 'shell' | 'remote-desktop' | 'system-info';
 
 export interface PingCommandPayload {
         message?: string;
@@ -11,12 +11,20 @@ export interface PingCommandPayload {
 export interface ShellCommandPayload {
         command: string;
         timeoutSeconds?: number;
+        workingDirectory?: string;
+        elevated?: boolean;
+        environment?: Record<string, string>;
+}
+
+export interface SystemInfoCommandPayload {
+        refresh?: boolean;
 }
 
 export type CommandPayload =
-	| PingCommandPayload
-	| ShellCommandPayload
-	| RemoteDesktopCommandPayload;
+        | PingCommandPayload
+        | ShellCommandPayload
+        | RemoteDesktopCommandPayload
+        | SystemInfoCommandPayload;
 
 export interface CommandInput {
         name: CommandName;

