@@ -1,10 +1,10 @@
 import { randomUUID } from 'crypto';
 import type {
-        RemoteDesktopFrameMetrics,
-        RemoteDesktopFramePacket,
-        RemoteDesktopMonitor,
-        RemoteDesktopSessionState,
-        RemoteDesktopSettings
+	RemoteDesktopFrameMetrics,
+	RemoteDesktopFramePacket,
+	RemoteDesktopMonitor,
+	RemoteDesktopSessionState,
+	RemoteDesktopSettings
 } from '$lib/types/remote-desktop';
 
 const encoder = new TextEncoder();
@@ -45,6 +45,7 @@ interface RemoteDesktopSessionRecord {
 	monitors: RemoteDesktopMonitor[];
 	metrics?: RemoteDesktopFrameMetrics;
 	history: RemoteDesktopFramePacket[];
+	hasKeyFrame: boolean;
 }
 
 interface RemoteDesktopSubscriber {
@@ -60,29 +61,63 @@ function cloneSettings(settings: RemoteDesktopSettings): RemoteDesktopSettings {
 }
 
 function cloneMonitors(monitors: readonly RemoteDesktopMonitor[]): RemoteDesktopMonitor[] {
-        return monitors.map((monitor) => ({ ...monitor }));
+	return monitors.map((monitor) => ({ ...monitor }));
 }
 
 function monitorsEqual(a: readonly RemoteDesktopMonitor[], b: readonly RemoteDesktopMonitor[]) {
-        if (a.length !== b.length) return false;
-        for (let i = 0; i < a.length; i += 1) {
-                const first = a[i];
-                const second = b[i];
-                if (!second) return false;
-                if (
-                        first.id !== second.id ||
-                        first.width !== second.width ||
-                        first.height !== second.height ||
-                        first.label !== second.label
-                ) {
-                        return false;
-                }
-        }
-        return true;
+	if (a.length !== b.length) return false;
+	for (let i = 0; i < a.length; i += 1) {
+		const first = a[i];
+		const second = b[i];
+		if (!second) return false;
+		if (
+			first.id !== second.id ||
+			first.width !== second.width ||
+			first.height !== second.height ||
+			first.label !== second.label
+		) {
+			return false;
+		}
+	}
+	return true;
 }
 
 function cloneFrame(frame: RemoteDesktopFramePacket): RemoteDesktopFramePacket {
-        return structuredClone(frame);
+	return structuredClone(frame);
+}
+
+function appendFrameHistory(record: RemoteDesktopSessionRecord, frame: RemoteDesktopFramePacket) {
+	if (frame.keyFrame) {
+		record.history = [frame];
+		record.hasKeyFrame = true;
+		return;
+	}
+
+	record.history.push(frame);
+
+	if (record.hasKeyFrame) {
+		if (record.history.length > HISTORY_LIMIT) {
+			const head = record.history[0];
+			const tailCount = Math.min(HISTORY_LIMIT - 1, Math.max(0, record.history.length - 1));
+			const tail = tailCount > 0 ? record.history.slice(record.history.length - tailCount) : [];
+			record.history = [head, ...tail];
+		}
+		return;
+	}
+
+	const keyIndex = record.history.findIndex((item) => item.keyFrame);
+	if (keyIndex >= 0) {
+		record.history = record.history.slice(keyIndex);
+		record.hasKeyFrame = true;
+		if (record.history.length > HISTORY_LIMIT) {
+			const head = record.history[0];
+			const tailCount = Math.min(HISTORY_LIMIT - 1, Math.max(0, record.history.length - 1));
+			const tail = tailCount > 0 ? record.history.slice(record.history.length - tailCount) : [];
+			record.history = [head, ...tail];
+		}
+	} else if (record.history.length > HISTORY_LIMIT) {
+		record.history = record.history.slice(record.history.length - HISTORY_LIMIT);
+	}
 }
 
 function resolveSettings(settings?: Partial<RemoteDesktopSettings>): RemoteDesktopSettings {
@@ -108,18 +143,18 @@ function resolveSettings(settings?: Partial<RemoteDesktopSettings>): RemoteDeskt
 }
 
 function applySettings(target: RemoteDesktopSettings, updates: Partial<RemoteDesktopSettings>) {
-        if (updates.quality) {
-                if (!qualities.has(updates.quality)) {
-                        throw new RemoteDesktopError('Invalid quality preset', 400);
-                }
+	if (updates.quality) {
+		if (!qualities.has(updates.quality)) {
+			throw new RemoteDesktopError('Invalid quality preset', 400);
+		}
 		target.quality = updates.quality;
 	}
-        if (typeof updates.monitor === 'number') {
-                if (updates.monitor < 0) {
-                        throw new RemoteDesktopError('Monitor index must be non-negative', 400);
-                }
-                target.monitor = Math.floor(updates.monitor);
-        }
+	if (typeof updates.monitor === 'number') {
+		if (updates.monitor < 0) {
+			throw new RemoteDesktopError('Monitor index must be non-negative', 400);
+		}
+		target.monitor = Math.floor(updates.monitor);
+	}
 	if (typeof updates.mouse === 'boolean') {
 		target.mouse = updates.mouse;
 	}
@@ -166,7 +201,8 @@ export class RemoteDesktopManager {
 			createdAt: new Date(),
 			settings: resolveSettings(settings),
 			monitors: cloneMonitors(defaultMonitors),
-			history: []
+			history: [],
+			hasKeyFrame: false
 		};
 
 		this.sessions.set(agentId, record);
@@ -186,17 +222,20 @@ export class RemoteDesktopManager {
 		return toSessionState(record);
 	}
 
-        updateSettings(agentId: string, updates: Partial<RemoteDesktopSettings>) {
-                const record = this.sessions.get(agentId);
-                if (!record || !record.active) {
-                        throw new RemoteDesktopError('No active remote desktop session', 404);
-                }
-                applySettings(record.settings, updates);
-                if (record.settings.monitor >= record.monitors.length) {
-                        record.settings.monitor = Math.max(0, Math.min(record.settings.monitor, record.monitors.length - 1));
-                }
-                this.broadcastSession(agentId);
-        }
+	updateSettings(agentId: string, updates: Partial<RemoteDesktopSettings>) {
+		const record = this.sessions.get(agentId);
+		if (!record || !record.active) {
+			throw new RemoteDesktopError('No active remote desktop session', 404);
+		}
+		applySettings(record.settings, updates);
+		if (record.settings.monitor >= record.monitors.length) {
+			record.settings.monitor = Math.max(
+				0,
+				Math.min(record.settings.monitor, record.monitors.length - 1)
+			);
+		}
+		this.broadcastSession(agentId);
+	}
 
 	closeSession(agentId: string) {
 		const record = this.sessions.get(agentId);
@@ -209,39 +248,36 @@ export class RemoteDesktopManager {
 		this.broadcast(agentId, 'end', { reason: 'closed' });
 	}
 
-        ingestFrame(agentId: string, frame: RemoteDesktopFramePacket) {
-                const record = this.sessions.get(agentId);
-                if (!record || !record.active) {
-                        throw new RemoteDesktopError('No active remote desktop session', 404);
-                }
-                if (frame.sessionId !== record.id) {
+	ingestFrame(agentId: string, frame: RemoteDesktopFramePacket) {
+		const record = this.sessions.get(agentId);
+		if (!record || !record.active) {
+			throw new RemoteDesktopError('No active remote desktop session', 404);
+		}
+		if (frame.sessionId !== record.id) {
 			throw new RemoteDesktopError('Session identifier mismatch', 409);
 		}
 
 		record.lastSequence = frame.sequence;
 		record.lastUpdatedAt = new Date();
-                if (frame.metrics) {
-                        record.metrics = { ...frame.metrics };
-                }
+		if (frame.metrics) {
+			record.metrics = { ...frame.metrics };
+		}
 
-                if (frame.monitors && frame.monitors.length > 0) {
-                        const next = cloneMonitors(frame.monitors);
-                        if (!monitorsEqual(record.monitors, next)) {
-                                record.monitors = next;
-                                if (record.settings.monitor >= record.monitors.length) {
-                                        record.settings.monitor = Math.max(
-                                                0,
-                                                Math.min(record.settings.monitor, record.monitors.length - 1)
-                                        );
-                                }
-                                this.broadcastSession(agentId);
-                        }
-                }
+		if (frame.monitors && frame.monitors.length > 0) {
+			const next = cloneMonitors(frame.monitors);
+			if (!monitorsEqual(record.monitors, next)) {
+				record.monitors = next;
+				if (record.settings.monitor >= record.monitors.length) {
+					record.settings.monitor = Math.max(
+						0,
+						Math.min(record.settings.monitor, record.monitors.length - 1)
+					);
+				}
+				this.broadcastSession(agentId);
+			}
+		}
 
-                record.history.push(cloneFrame(frame));
-                if (record.history.length > HISTORY_LIMIT) {
-                        record.history.shift();
-                }
+		appendFrameHistory(record, cloneFrame(frame));
 
 		this.broadcast(agentId, 'frame', { frame });
 	}
