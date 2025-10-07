@@ -573,13 +573,26 @@
 			return;
 		}
 
-		if (target === '_self') {
-			goto(url);
+	if (target === '_self') {
+		goto(url);
+		return;
+	}
+
+	if (target === '_blank') {
+		const newWindow = window.open(url, '_blank', 'noopener,noreferrer');
+
+		if (!newWindow) {
+			console.warn('Pop-up blocked when attempting to open client tool in a new tab.');
+			window.location.assign(url);
 			return;
 		}
 
-		window.open(url, target, 'noopener,noreferrer');
+		newWindow.opener = null;
+		return;
 	}
+
+	window.open(url, target, 'noopener,noreferrer');
+}
 </script>
 
 <svelte:head>
