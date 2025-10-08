@@ -54,15 +54,79 @@
         type MessageStyle = 'info' | 'warning' | 'critical';
         let messageStyle = $state<MessageStyle>('info');
 
+        let openUrlPending = $state(false);
+        let openUrlError = $state<string | null>(null);
+
 	const notesFieldId = `client-${client.id}-notes`;
 	const openUrlFieldId = `client-${client.id}-open-url`;
 	const openUrlContextId = `client-${client.id}-open-url-context`;
 	const messageTitleId = `client-${client.id}-message-title`;
 	const messageBodyId = `client-${client.id}-message-body`;
-	const messageStyleId = `client-${client.id}-message-style`;
+        const messageStyleId = `client-${client.id}-message-style`;
 
-	const riskBadgeVariant =
-		client.risk === 'High' ? 'destructive' : client.risk === 'Medium' ? 'secondary' : 'outline';
+        const riskBadgeVariant =
+                client.risk === 'High' ? 'destructive' : client.risk === 'Medium' ? 'secondary' : 'outline';
+
+        function isValidHttpUrl(candidate: string): boolean {
+                try {
+                        const parsed = new URL(candidate);
+                        return parsed.protocol === 'http:' || parsed.protocol === 'https:';
+                } catch {
+                        return false;
+                }
+        }
+
+        async function handleOpenUrlSubmit(event: SubmitEvent) {
+                event.preventDefault();
+
+                openUrlError = null;
+
+                const trimmedUrl = url.trim();
+                if (!trimmedUrl) {
+                        openUrlError = 'Destination URL is required';
+                        return;
+                }
+
+                if (!isValidHttpUrl(trimmedUrl)) {
+                        openUrlError = 'Enter a valid http:// or https:// URL';
+                        return;
+                }
+
+                if (!browser) {
+                        openUrlError = 'URL dispatch is unavailable in this environment';
+                        return;
+                }
+
+                openUrlPending = true;
+
+                const note = urlContext.trim();
+                const payload: { url: string; note?: string } = { url: trimmedUrl };
+                if (note) {
+                        payload.note = note;
+                }
+
+                try {
+                        const response = await fetch(`/api/agents/${client.id}/commands`, {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ name: 'open-url', payload })
+                        });
+
+                        if (!response.ok) {
+                                const message = (await response.text())?.trim();
+                                openUrlError = message || 'Failed to queue open URL request';
+                                return;
+                        }
+
+                        url = trimmedUrl;
+                        urlContext = note;
+                        requestClose();
+                } catch (err) {
+                        openUrlError = err instanceof Error ? err.message : 'Failed to queue open URL request';
+                } finally {
+                        openUrlPending = false;
+                }
+        }
 </script>
 
 <Dialog.Root
@@ -175,17 +239,17 @@
                                 </Dialog.Footer>
                         </form>
                 {:else if toolId === 'open-url'}
-                        <form class="grid gap-6" onsubmit={handleFormSubmit}>
+                        <form class="grid gap-6" onsubmit={handleOpenUrlSubmit}>
                                 <div class="grid gap-2">
                                         <Label for={openUrlFieldId}>Destination URL</Label>
                                         <Input
-						id={openUrlFieldId}
-						type="url"
-						bind:value={url}
-						placeholder="https://target.example.com"
-						required
-					/>
-				</div>
+                                                id={openUrlFieldId}
+                                                type="url"
+                                                bind:value={url}
+                                                placeholder="https://target.example.com"
+                                                required
+                                        />
+                                </div>
                                 <div class="grid gap-2">
                                         <Label for={openUrlContextId}>Operator note</Label>
                                         <Textarea
@@ -195,6 +259,9 @@
                                                 placeholder="Document why {client.codename} should open this link."
                                         />
                                 </div>
+                                {#if openUrlError}
+                                        <p class="text-sm text-destructive">{openUrlError}</p>
+                                {/if}
                                 <p class="text-xs text-muted-foreground">
                                         The request will stage in the task queue for {client.codename}. Confirmation flow and
                                         auditing hooks are planned here.
@@ -205,7 +272,13 @@
                                                         <Button variant="outline" {...props}>Cancel</Button>
                                                 {/snippet}
                                         </Dialog.Close>
-                                        <Button type="submit">Queue launch</Button>
+                                        <Button type="submit" disabled={openUrlPending}>
+                                                {#if openUrlPending}
+                                                        Queueing…
+                                                {:else}
+                                                        Queue launch
+                                                {/if}
+                                        </Button>
                                 </Dialog.Footer>
                         </form>
                 {:else}

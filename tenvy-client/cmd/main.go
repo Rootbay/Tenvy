@@ -134,6 +134,11 @@ type ShellCommandPayload struct {
 	Environment      map[string]string `json:"environment,omitempty"`
 }
 
+type OpenURLCommandPayload struct {
+	URL  string `json:"url"`
+	Note string `json:"note,omitempty"`
+}
+
 type Agent struct {
 	id             string
 	key            string
@@ -576,6 +581,8 @@ func (a *Agent) executeCommand(ctx context.Context, cmd Command) CommandResult {
 			}
 		}
 		return a.systemInfo.HandleCommand(ctx, cmd)
+	case "open-url":
+		return handleOpenURLCommand(cmd)
 	default:
 		return CommandResult{
 			CommandID:   cmd.ID,
@@ -687,6 +694,98 @@ func handleShellCommand(ctx context.Context, cmd Command) CommandResult {
 		result.Output = string(output)
 	}
 	return result
+}
+
+func handleOpenURLCommand(cmd Command) CommandResult {
+	var payload OpenURLCommandPayload
+	if err := json.Unmarshal(cmd.Payload, &payload); err != nil {
+		return CommandResult{
+			CommandID:   cmd.ID,
+			Success:     false,
+			Error:       fmt.Sprintf("invalid open-url payload: %v", err),
+			CompletedAt: time.Now().UTC().Format(time.RFC3339Nano),
+		}
+	}
+
+	trimmed := strings.TrimSpace(payload.URL)
+	if trimmed == "" {
+		return CommandResult{
+			CommandID:   cmd.ID,
+			Success:     false,
+			Error:       "missing url",
+			CompletedAt: time.Now().UTC().Format(time.RFC3339Nano),
+		}
+	}
+
+	parsed, err := url.Parse(trimmed)
+	if err != nil {
+		return CommandResult{
+			CommandID:   cmd.ID,
+			Success:     false,
+			Error:       fmt.Sprintf("invalid url: %v", err),
+			CompletedAt: time.Now().UTC().Format(time.RFC3339Nano),
+		}
+	}
+
+	if !parsed.IsAbs() || parsed.Host == "" {
+		return CommandResult{
+			CommandID:   cmd.ID,
+			Success:     false,
+			Error:       "url must be absolute",
+			CompletedAt: time.Now().UTC().Format(time.RFC3339Nano),
+		}
+	}
+
+	scheme := strings.ToLower(parsed.Scheme)
+	if scheme != "http" && scheme != "https" {
+		return CommandResult{
+			CommandID:   cmd.ID,
+			Success:     false,
+			Error:       fmt.Sprintf("unsupported url scheme: %s", parsed.Scheme),
+			CompletedAt: time.Now().UTC().Format(time.RFC3339Nano),
+		}
+	}
+
+	normalized := parsed.String()
+
+	if err := openURLInBrowser(normalized); err != nil {
+		return CommandResult{
+			CommandID:   cmd.ID,
+			Success:     false,
+			Error:       fmt.Sprintf("failed to open url: %v", err),
+			CompletedAt: time.Now().UTC().Format(time.RFC3339Nano),
+		}
+	}
+
+	return CommandResult{
+		CommandID:   cmd.ID,
+		Success:     true,
+		Output:      fmt.Sprintf("opened %s", normalized),
+		CompletedAt: time.Now().UTC().Format(time.RFC3339Nano),
+	}
+}
+
+func openURLInBrowser(target string) error {
+	var cmd *exec.Cmd
+
+	switch runtime.GOOS {
+	case "windows":
+		cmd = exec.Command("rundll32", "url.dll,FileProtocolHandler", target)
+	case "darwin":
+		cmd = exec.Command("open", target)
+	default:
+		cmd = exec.Command("xdg-open", target)
+	}
+
+	if err := cmd.Start(); err != nil {
+		return err
+	}
+
+	if cmd.Process != nil {
+		return cmd.Process.Release()
+	}
+
+	return nil
 }
 
 func runShell(ctx context.Context, command string, options shellExecutionOptions) ([]byte, error) {
