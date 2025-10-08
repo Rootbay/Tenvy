@@ -150,36 +150,37 @@ type RemoteDesktopClipFrame struct {
 }
 
 type RemoteDesktopSession struct {
-	ID             string
-	Settings       RemoteDesktopSettings
-	Width          int
-	Height         int
-	TileSize       int
-	ClipQuality    int
-	FrameInterval  time.Duration
-	Sequence       uint64
-	LastFrame      []byte
-	ForceKeyFrame  bool
-	BaseWidth      int
-	BaseHeight     int
-	NativeWidth    int
-	NativeHeight   int
-	AdaptiveScale  float64
-	MinScale       float64
-	MaxScale       float64
-	BaseInterval   time.Duration
-	MinInterval    time.Duration
-	MaxInterval    time.Duration
-	BaseTile       int
-	MinTile        int
-	MaxTile        int
-	MinClipQuality int
-	MaxClipQuality int
-	LastAdaptation time.Time
-	monitors       []remoteMonitor
-	monitorInfos   []RemoteDesktopMonitorInfo
-	monitorsDirty  bool
-	cancel         context.CancelFunc
+	ID                 string
+	Settings           RemoteDesktopSettings
+	Width              int
+	Height             int
+	TileSize           int
+	ClipQuality        int
+	FrameInterval      time.Duration
+	Sequence           uint64
+	LastFrame          []byte
+	ForceKeyFrame      bool
+	BaseWidth          int
+	BaseHeight         int
+	NativeWidth        int
+	NativeHeight       int
+	AdaptiveScale      float64
+	MinScale           float64
+	MaxScale           float64
+	BaseInterval       time.Duration
+	MinInterval        time.Duration
+	MaxInterval        time.Duration
+	BaseTile           int
+	MinTile            int
+	MaxTile            int
+	MinClipQuality     int
+	MaxClipQuality     int
+	LastAdaptation     time.Time
+	monitors           []remoteMonitor
+	monitorInfos       []RemoteDesktopMonitorInfo
+	monitorsDirty      bool
+	lastMonitorRefresh time.Time
+	cancel             context.CancelFunc
 }
 
 type remoteMonitor struct {
@@ -188,9 +189,86 @@ type remoteMonitor struct {
 }
 
 type RemoteDesktopStreamer struct {
+	controller *remoteDesktopSessionController
+}
+
+type remoteDesktopSessionController struct {
 	agent   *Agent
 	mu      sync.Mutex
 	session *RemoteDesktopSession
+}
+
+type remoteTileHasher struct {
+	tile      int
+	cols      int
+	rows      int
+	width     int
+	height    int
+	ready     bool
+	checksums []uint64
+}
+
+func (h *remoteTileHasher) reset() {
+	h.tile = 0
+	h.cols = 0
+	h.rows = 0
+	h.width = 0
+	h.height = 0
+	h.ready = false
+	h.checksums = h.checksums[:0]
+}
+
+func (h *remoteTileHasher) ensure(width, height, tile int) {
+	if tile <= 0 {
+		tile = 32
+	}
+
+	cols := (width + tile - 1) / tile
+	rows := (height + tile - 1) / tile
+	total := cols * rows
+
+	if h.tile != tile || h.cols != cols || h.rows != rows || h.width != width || h.height != height || len(h.checksums) != total {
+		if cap(h.checksums) < total {
+			h.checksums = make([]uint64, total)
+		} else {
+			h.checksums = h.checksums[:total]
+			for i := range h.checksums {
+				h.checksums[i] = 0
+			}
+		}
+		h.tile = tile
+		h.cols = cols
+		h.rows = rows
+		h.width = width
+		h.height = height
+		h.ready = false
+	}
+}
+
+func (h *remoteTileHasher) rebuild(data []byte, width, height, tile int) {
+	if data == nil || width <= 0 || height <= 0 {
+		h.reset()
+		return
+	}
+
+	h.ensure(width, height, tile)
+	stride := width * 4
+	idx := 0
+	for y := 0; y < height; y += h.tile {
+		hgt := minInt(h.tile, height-y)
+		for x := 0; x < width; x += h.tile {
+			wdt := minInt(h.tile, width-x)
+			h.checksums[idx] = tileChecksum(data, stride, x, y, wdt, hgt)
+			idx++
+		}
+	}
+	h.ready = true
+}
+
+func (c *remoteDesktopSessionController) Shutdown() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.stopLocked()
 }
 
 const (
@@ -208,12 +286,13 @@ const (
 	clipQualityStepUp      = 3
 )
 
+const monitorRefreshInterval = 3 * time.Second
+
 var (
 	pngEncoder      = png.Encoder{CompressionLevel: png.BestSpeed}
 	imageBufferPool = sync.Pool{New: func() interface{} { return new(bytes.Buffer) }}
 	frameBufferPool = sync.Pool{New: func() interface{} { return make([]byte, 0) }}
 	jpegOptionsPool = sync.Pool{New: func() interface{} { return new(jpeg.Options) }}
-	scaledImagePool = sync.Pool{New: func() interface{} { return image.NewRGBA(image.Rect(0, 0, 1, 1)) }}
 )
 
 const (
@@ -222,41 +301,47 @@ const (
 )
 
 func NewRemoteDesktopStreamer(agent *Agent) *RemoteDesktopStreamer {
-	return &RemoteDesktopStreamer{agent: agent}
+	return &RemoteDesktopStreamer{
+		controller: newRemoteDesktopSessionController(agent),
+	}
+}
+
+func newRemoteDesktopSessionController(agent *Agent) *remoteDesktopSessionController {
+	return &remoteDesktopSessionController{agent: agent}
 }
 
 func (s *RemoteDesktopStreamer) HandleCommand(ctx context.Context, cmd Command) CommandResult {
-	var payload RemoteDesktopCommandPayload
-	if err := json.Unmarshal(cmd.Payload, &payload); err != nil {
+	payload, err := decodeRemoteDesktopPayload(cmd.Payload)
+	if err != nil {
 		return CommandResult{
 			CommandID:   cmd.ID,
 			Success:     false,
-			Error:       fmt.Sprintf("invalid remote desktop payload: %v", err),
+			Error:       err.Error(),
 			CompletedAt: time.Now().UTC().Format(time.RFC3339Nano),
 		}
 	}
 
-	var err error
+	var actionErr error
 	switch strings.ToLower(strings.TrimSpace(payload.Action)) {
 	case "start":
-		err = s.startSession(ctx, payload)
+		actionErr = s.controller.Start(ctx, payload)
 	case "stop":
-		err = s.stopSession(payload.SessionID)
+		actionErr = s.controller.Stop(payload.SessionID)
 	case "configure":
-		err = s.configureSession(payload)
+		actionErr = s.controller.Configure(payload)
 	case "input":
-		err = s.handleInput(payload)
+		actionErr = s.controller.HandleInput(payload)
 	default:
-		err = fmt.Errorf("unsupported remote desktop action: %s", payload.Action)
+		actionErr = fmt.Errorf("unsupported remote desktop action: %s", payload.Action)
 	}
 
 	result := CommandResult{
 		CommandID:   cmd.ID,
 		CompletedAt: time.Now().UTC().Format(time.RFC3339Nano),
 	}
-	if err != nil {
+	if actionErr != nil {
 		result.Success = false
-		result.Error = err.Error()
+		result.Error = actionErr.Error()
 	} else {
 		result.Success = true
 		result.Output = fmt.Sprintf("remote desktop %s action processed", payload.Action)
@@ -265,26 +350,32 @@ func (s *RemoteDesktopStreamer) HandleCommand(ctx context.Context, cmd Command) 
 }
 
 func (s *RemoteDesktopStreamer) Shutdown() {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.stopLocked()
+	s.controller.Shutdown()
 }
 
-func (s *RemoteDesktopStreamer) startSession(ctx context.Context, payload RemoteDesktopCommandPayload) error {
+func decodeRemoteDesktopPayload(raw json.RawMessage) (RemoteDesktopCommandPayload, error) {
+	var payload RemoteDesktopCommandPayload
+	if err := json.Unmarshal(raw, &payload); err != nil {
+		return RemoteDesktopCommandPayload{}, fmt.Errorf("invalid remote desktop payload: %w", err)
+	}
+	return payload, nil
+}
+
+func (c *remoteDesktopSessionController) Start(ctx context.Context, payload RemoteDesktopCommandPayload) error {
 	sessionID := strings.TrimSpace(payload.SessionID)
 	if sessionID == "" {
 		return errors.New("missing session identifier")
 	}
 
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	c.mu.Lock()
+	defer c.mu.Unlock()
 
-	if s.session != nil && s.session.ID != sessionID {
-		s.stopLocked()
+	if c.session != nil && c.session.ID != sessionID {
+		c.stopLocked()
 	}
 
-	if s.session != nil && s.session.ID == sessionID {
-		s.applySettingsLocked(s.session, payload.Settings)
+	if c.session != nil && c.session.ID == sessionID {
+		c.applySettingsLocked(c.session, payload.Settings)
 		return nil
 	}
 
@@ -315,65 +406,65 @@ func (s *RemoteDesktopStreamer) startSession(ctx context.Context, payload Remote
 		monitorsDirty: true,
 		cancel:        cancel,
 	}
-	s.configureProfileLocked(session, monitorInfo, width, height, tile, interval, true)
-	s.session = session
+	c.configureProfileLocked(session, monitorInfo, width, height, tile, interval, true)
+	c.session = session
 
-	go s.stream(streamCtx, session)
-	s.agent.logger.Printf("remote desktop session %s started", sessionID)
+	go c.stream(streamCtx, session)
+	c.agent.logger.Printf("remote desktop session %s started", sessionID)
 	return nil
 }
 
-func (s *RemoteDesktopStreamer) stopSession(sessionID string) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+func (c *remoteDesktopSessionController) Stop(sessionID string) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
 
-	if s.session == nil {
+	if c.session == nil {
 		return nil
 	}
-	if strings.TrimSpace(sessionID) != "" && sessionID != s.session.ID {
+	if strings.TrimSpace(sessionID) != "" && sessionID != c.session.ID {
 		return fmt.Errorf("session %s not active", sessionID)
 	}
 
-	s.agent.logger.Printf("remote desktop session %s stopped", s.session.ID)
-	s.stopLocked()
+	c.agent.logger.Printf("remote desktop session %s stopped", c.session.ID)
+	c.stopLocked()
 	return nil
 }
 
-func (s *RemoteDesktopStreamer) configureSession(payload RemoteDesktopCommandPayload) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+func (c *remoteDesktopSessionController) Configure(payload RemoteDesktopCommandPayload) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
 
-	if s.session == nil {
+	if c.session == nil {
 		return errors.New("remote desktop session not active")
 	}
-	if strings.TrimSpace(payload.SessionID) != "" && payload.SessionID != s.session.ID {
+	if strings.TrimSpace(payload.SessionID) != "" && payload.SessionID != c.session.ID {
 		return fmt.Errorf("session %s not active", payload.SessionID)
 	}
 
-	s.applySettingsLocked(s.session, payload.Settings)
+	c.applySettingsLocked(c.session, payload.Settings)
 	return nil
 }
 
-func (s *RemoteDesktopStreamer) handleInput(payload RemoteDesktopCommandPayload) error {
+func (c *remoteDesktopSessionController) HandleInput(payload RemoteDesktopCommandPayload) error {
 	if len(payload.Events) == 0 {
 		return nil
 	}
 
 	sessionID := strings.TrimSpace(payload.SessionID)
 
-	s.mu.Lock()
-	if s.session == nil {
-		s.mu.Unlock()
+	c.mu.Lock()
+	if c.session == nil {
+		c.mu.Unlock()
 		return errors.New("remote desktop session not active")
 	}
-	if sessionID != "" && sessionID != s.session.ID {
-		s.mu.Unlock()
+	if sessionID != "" && sessionID != c.session.ID {
+		c.mu.Unlock()
 		return fmt.Errorf("session %s not active", sessionID)
 	}
 
-	settings := s.session.Settings
-	monitors := append([]remoteMonitor(nil), s.session.monitors...)
-	s.mu.Unlock()
+	settings := c.session.Settings
+	monitors := append([]remoteMonitor(nil), c.session.monitors...)
+	c.mu.Unlock()
 
 	filtered := make([]RemoteDesktopInputEvent, 0, len(payload.Events))
 	for _, event := range payload.Events {
@@ -399,16 +490,16 @@ func (s *RemoteDesktopStreamer) handleInput(payload RemoteDesktopCommandPayload)
 	return processRemoteInput(monitors, settings, filtered)
 }
 
-func (s *RemoteDesktopStreamer) stopLocked() {
-	if s.session != nil {
-		if s.session.cancel != nil {
-			s.session.cancel()
+func (c *remoteDesktopSessionController) stopLocked() {
+	if c.session != nil {
+		if c.session.cancel != nil {
+			c.session.cancel()
 		}
-		s.session = nil
+		c.session = nil
 	}
 }
 
-func (s *RemoteDesktopStreamer) applySettingsLocked(session *RemoteDesktopSession, patch *RemoteDesktopSettingsPatch) {
+func (c *remoteDesktopSessionController) applySettingsLocked(session *RemoteDesktopSession, patch *RemoteDesktopSettingsPatch) {
 	if session == nil || patch == nil {
 		return
 	}
@@ -442,7 +533,7 @@ func (s *RemoteDesktopStreamer) applySettingsLocked(session *RemoteDesktopSessio
 	}
 
 	if len(session.monitors) == 0 || len(session.monitorInfos) == 0 {
-		s.refreshMonitorsLocked(session, false)
+		c.refreshMonitorsLocked(session, false)
 	}
 
 	session.Settings.Monitor = clampMonitorIndex(session.monitors, session.Settings.Monitor)
@@ -450,10 +541,10 @@ func (s *RemoteDesktopStreamer) applySettingsLocked(session *RemoteDesktopSessio
 
 	width, height, tile, interval := qualityProfile(session.Settings.Quality, monitorInfo)
 	forceKey := session.Settings.Monitor != prevMonitor
-	s.configureProfileLocked(session, monitorInfo, width, height, tile, interval, forceKey)
+	c.configureProfileLocked(session, monitorInfo, width, height, tile, interval, forceKey)
 }
 
-func (s *RemoteDesktopStreamer) configureProfileLocked(
+func (c *remoteDesktopSessionController) configureProfileLocked(
 	session *RemoteDesktopSession,
 	monitor RemoteDesktopMonitorInfo,
 	width, height, tile int,
@@ -535,7 +626,7 @@ func (s *RemoteDesktopStreamer) configureProfileLocked(
 			session.MaxScale = session.MinScale
 		}
 		session.AdaptiveScale = clampFloat(session.AdaptiveScale, session.MinScale, session.MaxScale)
-		if s.applyAdaptiveScaleLocked(session, forceKey) {
+		if c.applyAdaptiveScaleLocked(session, forceKey) {
 			resolutionChanged = true
 		}
 	} else {
@@ -577,7 +668,7 @@ func (s *RemoteDesktopStreamer) configureProfileLocked(
 	}
 }
 
-func (s *RemoteDesktopStreamer) applyAdaptiveScaleLocked(session *RemoteDesktopSession, markKeyFrame bool) bool {
+func (c *remoteDesktopSessionController) applyAdaptiveScaleLocked(session *RemoteDesktopSession, markKeyFrame bool) bool {
 	if session == nil || session.Settings.Quality != RemoteQualityAuto {
 		return false
 	}
@@ -608,7 +699,7 @@ func (s *RemoteDesktopStreamer) applyAdaptiveScaleLocked(session *RemoteDesktopS
 	return true
 }
 
-func (s *RemoteDesktopStreamer) maybeAdaptQualityLocked(
+func (c *remoteDesktopSessionController) maybeAdaptQualityLocked(
 	session *RemoteDesktopSession,
 	metrics *RemoteDesktopFrameMetrics,
 	processing, frameDuration time.Duration,
@@ -690,7 +781,7 @@ func (s *RemoteDesktopStreamer) maybeAdaptQualityLocked(
 			newScale := clampFloat(session.AdaptiveScale*0.85, session.MinScale, session.MaxScale)
 			if newScale != session.AdaptiveScale {
 				session.AdaptiveScale = newScale
-				if s.applyAdaptiveScaleLocked(session, true) {
+				if c.applyAdaptiveScaleLocked(session, true) {
 					adapted = true
 				}
 			}
@@ -709,7 +800,7 @@ func (s *RemoteDesktopStreamer) maybeAdaptQualityLocked(
 		newScale := clampFloat(session.AdaptiveScale*1.1, session.MinScale, session.MaxScale)
 		if newScale != session.AdaptiveScale {
 			session.AdaptiveScale = newScale
-			if s.applyAdaptiveScaleLocked(session, true) {
+			if c.applyAdaptiveScaleLocked(session, true) {
 				adapted = true
 			}
 		}
@@ -734,7 +825,7 @@ func (s *RemoteDesktopStreamer) maybeAdaptQualityLocked(
 	}
 }
 
-func (s *RemoteDesktopStreamer) stream(ctx context.Context, session *RemoteDesktopSession) {
+func (c *remoteDesktopSessionController) stream(ctx context.Context, session *RemoteDesktopSession) {
 	var lastSent time.Time
 	timer := time.NewTimer(0)
 	defer timer.Stop()
@@ -744,6 +835,7 @@ func (s *RemoteDesktopStreamer) stream(ctx context.Context, session *RemoteDeskt
 	var clipStart time.Time
 	clipKeyPending := activeMode == RemoteStreamModeVideo
 	clipBytes := 0
+	var tileHasher remoteTileHasher
 
 	for {
 		select {
@@ -753,15 +845,15 @@ func (s *RemoteDesktopStreamer) stream(ctx context.Context, session *RemoteDeskt
 		}
 
 		clipQuality := defaultClipQuality
-		s.mu.Lock()
-		if s.session == nil || s.session.ID != session.ID {
+		c.mu.Lock()
+		if c.session == nil || c.session.ID != session.ID {
 			prev := session.LastFrame
-			s.mu.Unlock()
+			c.mu.Unlock()
 			releaseFrameBuffer(prev)
 			return
 		}
 
-		s.refreshMonitorsLocked(session, false)
+		c.refreshMonitorsLocked(session, false)
 
 		monitorIndex := clampMonitorIndex(session.monitors, session.Settings.Monitor)
 		session.Settings.Monitor = monitorIndex
@@ -787,6 +879,7 @@ func (s *RemoteDesktopStreamer) stream(ctx context.Context, session *RemoteDeskt
 				releaseFrameBuffer(session.LastFrame)
 				session.LastFrame = nil
 			}
+			tileHasher.reset()
 			session.ForceKeyFrame = true
 		}
 
@@ -809,7 +902,10 @@ func (s *RemoteDesktopStreamer) stream(ctx context.Context, session *RemoteDeskt
 			session.Sequence = sequence
 			session.ForceKeyFrame = false
 		}
-		s.mu.Unlock()
+		if forceKey {
+			tileHasher.reset()
+		}
+		c.mu.Unlock()
 
 		if targetInterval <= 0 {
 			targetInterval = 100 * time.Millisecond
@@ -818,10 +914,10 @@ func (s *RemoteDesktopStreamer) stream(ctx context.Context, session *RemoteDeskt
 		processStart := time.Now()
 		current, captureErr := captureMonitorFrame(monitor, width, height)
 		if captureErr != nil {
-			s.agent.logger.Printf("remote desktop capture error: %v", captureErr)
-			s.mu.Lock()
-			s.refreshMonitorsLocked(session, true)
-			s.mu.Unlock()
+			c.agent.logger.Printf("remote desktop capture error: %v", captureErr)
+			c.mu.Lock()
+			c.refreshMonitorsLocked(session, true)
+			c.mu.Unlock()
 			scheduleNextFrame(timer, targetInterval)
 			continue
 		}
@@ -855,7 +951,7 @@ func (s *RemoteDesktopStreamer) stream(ctx context.Context, session *RemoteDeskt
 
 			encoded, err := encodeJPEG(width, height, clipQuality, current)
 			if err != nil {
-				s.agent.logger.Printf("remote desktop clip encode error: %v", err)
+				c.agent.logger.Printf("remote desktop clip encode error: %v", err)
 				releaseFrameBuffer(current)
 				releaseFrameBuffer(prev)
 				scheduleNextFrame(timer, targetInterval)
@@ -945,18 +1041,18 @@ func (s *RemoteDesktopStreamer) stream(ctx context.Context, session *RemoteDeskt
 
 			nextInterval := targetInterval
 
-			s.mu.Lock()
-			if s.session != nil && s.session.ID == session.ID {
-				s.session.Sequence++
-				frame.Sequence = s.session.Sequence
-				s.maybeAdaptQualityLocked(s.session, metrics, processingDuration, frameDuration, clipBytes)
+			c.mu.Lock()
+			if c.session != nil && c.session.ID == session.ID {
+				c.session.Sequence++
+				frame.Sequence = c.session.Sequence
+				c.maybeAdaptQualityLocked(c.session, metrics, processingDuration, frameDuration, clipBytes)
 				if len(monitorsPayload) > 0 {
-					s.session.monitorsDirty = false
+					c.session.monitorsDirty = false
 				}
-				s.session.ForceKeyFrame = false
-				nextInterval = s.session.FrameInterval
+				c.session.ForceKeyFrame = false
+				nextInterval = c.session.FrameInterval
 			} else {
-				s.mu.Unlock()
+				c.mu.Unlock()
 				clipFrames = nil
 				clipStart = time.Time{}
 				clipBytes = 0
@@ -964,14 +1060,14 @@ func (s *RemoteDesktopStreamer) stream(ctx context.Context, session *RemoteDeskt
 				scheduleNextFrame(timer, targetInterval)
 				continue
 			}
-			s.mu.Unlock()
+			c.mu.Unlock()
 
 			sendCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
-			err = s.sendFrame(sendCtx, frame)
+			err = c.sendFrame(sendCtx, frame)
 			cancel()
 			if err != nil {
 				if !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
-					s.agent.logger.Printf("remote desktop clip send error: %v", err)
+					c.agent.logger.Printf("remote desktop clip send error: %v", err)
 				}
 				clipFrames = nil
 				clipStart = time.Time{}
@@ -998,7 +1094,7 @@ func (s *RemoteDesktopStreamer) stream(ctx context.Context, session *RemoteDeskt
 		if keyFrame {
 			encoded, err := encodePNG(width, height, current)
 			if err != nil {
-				s.agent.logger.Printf("remote desktop encode frame: %v", err)
+				c.agent.logger.Printf("remote desktop encode frame: %v", err)
 				releaseFrameBuffer(current)
 				scheduleNextFrame(timer, targetInterval)
 				continue
@@ -1006,9 +1102,9 @@ func (s *RemoteDesktopStreamer) stream(ctx context.Context, session *RemoteDeskt
 			imageData = encoded
 			bytesSent += len(encoded)
 		} else {
-			rects, fallback, err := diffFrames(prev, current, width, height, tile)
+			rects, fallback, err := diffFrames(prev, current, width, height, tile, &tileHasher)
 			if err != nil {
-				s.agent.logger.Printf("remote desktop diff error: %v", err)
+				c.agent.logger.Printf("remote desktop diff error: %v", err)
 				keyFrame = true
 			} else if fallback {
 				keyFrame = true
@@ -1029,7 +1125,7 @@ func (s *RemoteDesktopStreamer) stream(ctx context.Context, session *RemoteDeskt
 					imageData = encoded
 					bytesSent += len(encoded)
 				} else {
-					s.agent.logger.Printf("remote desktop fallback encode: %v", encErr)
+					c.agent.logger.Printf("remote desktop fallback encode: %v", encErr)
 					releaseFrameBuffer(current)
 					scheduleNextFrame(timer, targetInterval)
 					continue
@@ -1069,51 +1165,67 @@ func (s *RemoteDesktopStreamer) stream(ctx context.Context, session *RemoteDeskt
 
 		nextInterval := targetInterval
 
-		s.mu.Lock()
-		if s.session != nil && s.session.ID == session.ID {
-			s.maybeAdaptQualityLocked(s.session, metrics, processingDuration, frameDuration, bytesSent)
-			nextInterval = s.session.FrameInterval
+		c.mu.Lock()
+		if c.session != nil && c.session.ID == session.ID {
+			c.maybeAdaptQualityLocked(c.session, metrics, processingDuration, frameDuration, bytesSent)
+			nextInterval = c.session.FrameInterval
 		}
-		s.mu.Unlock()
+		c.mu.Unlock()
 
 		sendCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
-		err := s.sendFrame(sendCtx, frame)
+		err := c.sendFrame(sendCtx, frame)
 		cancel()
 		if err != nil {
 			if !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
-				s.agent.logger.Printf("remote desktop frame send error: %v", err)
+				c.agent.logger.Printf("remote desktop frame send error: %v", err)
 			}
 			releaseFrameBuffer(current)
 			scheduleNextFrame(timer, nextInterval)
 			continue
 		}
 
-		s.mu.Lock()
-		if s.session != nil && s.session.ID == session.ID {
-			s.session.LastFrame = current
+		c.mu.Lock()
+		updated := false
+		updatedTile := tile
+		updatedWidth := width
+		updatedHeight := height
+		if c.session != nil && c.session.ID == session.ID {
+			c.session.LastFrame = current
 			releaseFrameBuffer(prev)
 			if len(monitorsPayload) > 0 {
-				s.session.monitorsDirty = false
+				c.session.monitorsDirty = false
 			}
-			nextInterval = s.session.FrameInterval
+			nextInterval = c.session.FrameInterval
+			updatedTile = c.session.TileSize
+			updatedWidth = c.session.Width
+			updatedHeight = c.session.Height
+			updated = true
 		} else {
 			releaseFrameBuffer(current)
 			releaseFrameBuffer(prev)
 		}
-		s.mu.Unlock()
+		c.mu.Unlock()
+
+		if updated {
+			if updatedWidth != width || updatedHeight != height {
+				tileHasher.reset()
+			} else if keyFrame || updatedTile != tile {
+				tileHasher.rebuild(current, width, height, updatedTile)
+			}
+		}
 
 		scheduleNextFrame(timer, nextInterval)
 		lastSent = timestamp
 	}
 }
 
-func (s *RemoteDesktopStreamer) sendFrame(ctx context.Context, frame RemoteDesktopFramePacket) error {
+func (c *remoteDesktopSessionController) sendFrame(ctx context.Context, frame RemoteDesktopFramePacket) error {
 	data, err := json.Marshal(frame)
 	if err != nil {
 		return err
 	}
 
-	endpoint := fmt.Sprintf("%s/api/agents/%s/remote-desktop/frames", s.agent.baseURL, url.PathEscape(s.agent.id))
+	endpoint := fmt.Sprintf("%s/api/agents/%s/remote-desktop/frames", c.agent.baseURL, url.PathEscape(c.agent.id))
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(data))
 	if err != nil {
 		return err
@@ -1121,11 +1233,11 @@ func (s *RemoteDesktopStreamer) sendFrame(ctx context.Context, frame RemoteDeskt
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
 	req.Header.Set("User-Agent", userAgent())
-	if strings.TrimSpace(s.agent.key) != "" {
-		req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", s.agent.key))
+	if strings.TrimSpace(c.agent.key) != "" {
+		req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", c.agent.key))
 	}
 
-	resp, err := s.agent.client.Do(req)
+	resp, err := c.agent.client.Do(req)
 	if err != nil {
 		return err
 	}
@@ -1272,18 +1384,21 @@ func captureMonitorFrame(monitor remoteMonitor, width, height int) ([]byte, erro
 	if err != nil {
 		return nil, err
 	}
-	if img.Bounds().Dx() == 0 || img.Bounds().Dy() == 0 {
+	srcBounds := img.Bounds()
+	if srcBounds.Dx() == 0 || srcBounds.Dy() == 0 {
 		return nil, errors.New("empty monitor capture")
 	}
 
 	frameSize := width * height * 4
 	buffer := acquireFrameBuffer(frameSize)
 
-	if img.Bounds().Dx() != width || img.Bounds().Dy() != height {
-		rgba := acquireScaledImage(width, height)
-		xdraw.ApproxBiLinear.Scale(rgba, rgba.Bounds(), img, img.Bounds(), xdraw.Over, nil)
-		copyRGBAInto(buffer, rgba, width, height)
-		releaseScaledImage(rgba)
+	if srcBounds.Dx() != width || srcBounds.Dy() != height {
+		dest := image.RGBA{
+			Pix:    buffer,
+			Stride: width * 4,
+			Rect:   image.Rect(0, 0, width, height),
+		}
+		xdraw.ApproxBiLinear.Scale(&dest, dest.Rect, img, srcBounds, xdraw.Src, nil)
 		return buffer, nil
 	}
 
@@ -1306,24 +1421,6 @@ func copyRGBAInto(dst []byte, img *image.RGBA, width, height int) {
 		rowStart := y * stride
 		copy(dst[start:start+width*4], img.Pix[rowStart:rowStart+width*4])
 	}
-}
-
-func acquireScaledImage(width, height int) *image.RGBA {
-	value := scaledImagePool.Get()
-	if img, ok := value.(*image.RGBA); ok {
-		if img.Bounds().Dx() != width || img.Bounds().Dy() != height {
-			return image.NewRGBA(image.Rect(0, 0, width, height))
-		}
-		return img
-	}
-	return image.NewRGBA(image.Rect(0, 0, width, height))
-}
-
-func releaseScaledImage(img *image.RGBA) {
-	if img == nil {
-		return
-	}
-	scaledImagePool.Put(img)
 }
 
 func acquireFrameBuffer(size int) []byte {
@@ -1445,7 +1542,88 @@ func encodeRegionPNG(data []byte, stride, x, y, w, h int) (string, error) {
 	return encoded, nil
 }
 
-func diffFrames(previous, current []byte, width, height, tile int) ([]RemoteDesktopDeltaRect, bool, error) {
+type tileRegion struct {
+	x int
+	y int
+	w int
+	h int
+}
+
+func diffFrames(previous, current []byte, width, height, tile int, state *remoteTileHasher) ([]RemoteDesktopDeltaRect, bool, error) {
+	if state == nil {
+		return diffFramesLegacy(previous, current, width, height, tile)
+	}
+
+	if len(previous) != len(current) {
+		return nil, false, errors.New("frame size mismatch")
+	}
+	if len(current) == 0 {
+		return nil, false, nil
+	}
+
+	if bytes.Equal(previous, current) {
+		state.ready = true
+		return nil, false, nil
+	}
+
+	state.ensure(width, height, tile)
+	stride := width * 4
+	baselineReady := state.ready
+
+	estimatedCols := (width + tile - 1) / tile
+	estimatedRows := (height + tile - 1) / tile
+	totalTiles := maxInt(1, estimatedCols*estimatedRows)
+	regions := make([]tileRegion, 0, maxInt(1, totalTiles/4))
+
+	maxRegions := maxInt(64, totalTiles/maxDeltaTileFactor)
+	maxPixels := int(float64(width*height) * maxDeltaCoverageRatio)
+	if maxPixels <= 0 {
+		maxPixels = width * height
+	}
+
+	changedPixels := 0
+	idx := 0
+	for y := 0; y < height; y += tile {
+		h := minInt(tile, height-y)
+		for x := 0; x < width; x += tile {
+			w := minInt(tile, width-x)
+			sum := tileChecksum(current, stride, x, y, w, h)
+			prevSum := uint64(0)
+			if idx < len(state.checksums) {
+				prevSum = state.checksums[idx]
+			}
+			state.checksums[idx] = sum
+			idx++
+
+			if baselineReady && prevSum == sum {
+				continue
+			}
+
+			regions = append(regions, tileRegion{x: x, y: y, w: w, h: h})
+			changedPixels += w * h
+			if len(regions) > maxRegions || changedPixels > maxPixels {
+				state.ready = false
+				return nil, true, nil
+			}
+		}
+	}
+
+	if len(regions) == 0 {
+		state.ready = true
+		return nil, false, nil
+	}
+
+	deltas, err := encodeRegions(current, stride, regions)
+	if err != nil {
+		state.ready = false
+		return nil, false, err
+	}
+
+	state.ready = true
+	return deltas, false, nil
+}
+
+func diffFramesLegacy(previous, current []byte, width, height, tile int) ([]RemoteDesktopDeltaRect, bool, error) {
 	if len(previous) != len(current) {
 		return nil, false, errors.New("frame size mismatch")
 	}
@@ -1462,13 +1640,6 @@ func diffFrames(previous, current []byte, width, height, tile int) ([]RemoteDesk
 	}
 
 	stride := width * 4
-	type tileRegion struct {
-		x int
-		y int
-		w int
-		h int
-	}
-
 	estimatedCols := (width + tile - 1) / tile
 	estimatedRows := (height + tile - 1) / tile
 	totalTiles := maxInt(1, estimatedCols*estimatedRows)
@@ -1500,7 +1671,19 @@ func diffFrames(previous, current []byte, width, height, tile int) ([]RemoteDesk
 		return nil, false, nil
 	}
 
+	deltas, err := encodeRegions(current, stride, regions)
+	if err != nil {
+		return nil, false, err
+	}
+	return deltas, false, nil
+}
+
+func encodeRegions(data []byte, stride int, regions []tileRegion) ([]RemoteDesktopDeltaRect, error) {
 	deltas := make([]RemoteDesktopDeltaRect, len(regions))
+	if len(regions) == 0 {
+		return deltas, nil
+	}
+
 	workerCount := minInt(len(regions), maxInt(1, runtime.NumCPU()))
 	jobs := make(chan int, len(regions))
 	var wg sync.WaitGroup
@@ -1514,7 +1697,7 @@ func diffFrames(previous, current []byte, width, height, tile int) ([]RemoteDesk
 
 			for idx := range jobs {
 				region := regions[idx]
-				encoded, err := encodeRegionPNG(current, stride, region.x, region.y, region.w, region.h)
+				encoded, err := encodeRegionPNG(data, stride, region.x, region.y, region.w, region.h)
 				if err != nil {
 					once.Do(func() {
 						encodeErr = err
@@ -1540,10 +1723,10 @@ func diffFrames(previous, current []byte, width, height, tile int) ([]RemoteDesk
 
 	wg.Wait()
 	if encodeErr != nil {
-		return nil, false, encodeErr
+		return nil, encodeErr
 	}
 
-	return deltas, false, nil
+	return deltas, nil
 }
 
 func regionChanged(prev, curr []byte, stride, x, y, w, h int) bool {
@@ -1557,7 +1740,39 @@ func regionChanged(prev, curr []byte, stride, x, y, w, h int) bool {
 	return false
 }
 
-func (s *RemoteDesktopStreamer) refreshMonitorsLocked(session *RemoteDesktopSession, force bool) {
+func tileChecksum(data []byte, stride, x, y, w, h int) uint64 {
+	const (
+		offsetBasis = 1469598103934665603
+		prime       = 1099511628211
+	)
+
+	hash := uint64(offsetBasis)
+	rowWidth := w * 4
+	for row := 0; row < h; row++ {
+		start := (y+row)*stride + x*4
+		segment := data[start : start+rowWidth]
+		for _, b := range segment {
+			hash ^= uint64(b)
+			hash *= prime
+		}
+	}
+	return hash
+}
+
+func (c *remoteDesktopSessionController) refreshMonitorsLocked(session *RemoteDesktopSession, force bool) {
+	if session == nil {
+		return
+	}
+
+	if !force && !session.lastMonitorRefresh.IsZero() {
+		if time.Since(session.lastMonitorRefresh) < monitorRefreshInterval {
+			if len(session.monitorInfos) == 0 && len(session.monitors) > 0 {
+				session.monitorInfos = monitorInfos(session.monitors)
+			}
+			return
+		}
+	}
+
 	monitors := detectRemoteMonitors()
 	if len(monitors) == 0 {
 		rect := image.Rect(0, 0, 1280, 720)
@@ -1567,7 +1782,9 @@ func (s *RemoteDesktopStreamer) refreshMonitorsLocked(session *RemoteDesktopSess
 		}}
 	}
 
+	now := time.Now()
 	if !force && monitorsEquivalent(session.monitors, monitors) {
+		session.lastMonitorRefresh = now
 		if len(session.monitorInfos) == 0 {
 			session.monitorInfos = monitorInfos(monitors)
 		}
@@ -1580,6 +1797,7 @@ func (s *RemoteDesktopStreamer) refreshMonitorsLocked(session *RemoteDesktopSess
 	session.monitorsDirty = true
 	session.LastFrame = nil
 	session.ForceKeyFrame = true
+	session.lastMonitorRefresh = now
 }
 
 func monitorInfos(monitors []remoteMonitor) []RemoteDesktopMonitorInfo {
