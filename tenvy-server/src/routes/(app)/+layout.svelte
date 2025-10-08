@@ -144,10 +144,15 @@
 	const PORT_SYNC_CHANNEL_NAME = 'tenvy.rat-port-sync';
 	const PORT_SYNC_STORAGE_KEY = 'tenvy.rat-port-sync-message';
 
-	type PortSyncPayload =
-		| { type: 'state-request'; source: string }
-		| { type: 'state-update'; source: string; ports: number[]; remember: boolean }
-		| { type: 'state-clear'; source: string };
+        type PortSyncPayload =
+                | { type: 'state-request'; source: string }
+                | { type: 'state-update'; source: string; ports: number[]; remember: boolean }
+                | { type: 'state-clear'; source: string };
+
+        type PortSyncMessage =
+                | { type: 'state-request' }
+                | { type: 'state-update'; ports: number[]; remember: boolean }
+                | { type: 'state-clear' };
 
 	let portSyncChannel: BroadcastChannel | null = null;
 	let portSyncId: string | null = null;
@@ -160,12 +165,12 @@
 		return Math.random().toString(36).slice(2);
 	}
 
-	function postPortSync(message: Omit<PortSyncPayload, 'source'>) {
-		if (!browser || !portSyncId) {
-			return;
-		}
+        function postPortSync(message: PortSyncMessage) {
+                if (!browser || !portSyncId) {
+                        return;
+                }
 
-		const payload = { ...message, source: portSyncId } as PortSyncPayload;
+                const payload: PortSyncPayload = { ...message, source: portSyncId };
 
 		if (portSyncChannel) {
 			portSyncChannel.postMessage(payload);

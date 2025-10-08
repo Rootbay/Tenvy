@@ -3,9 +3,9 @@
 	import { cn } from '$lib/utils.js';
 	import { createEventDispatcher } from 'svelte';
 
-	export type $$Events = {
-		select: CustomEvent<void>;
-	};
+        export type $$Events = {
+                select: void;
+        };
 
 	let {
 		ref = $bindable(null),
@@ -18,22 +18,26 @@
 		variant?: 'default' | 'destructive';
 	} = $props();
 
-	const dispatch = createEventDispatcher<$$Events>();
+        const Item = ContextMenuPrimitive.Item as typeof ContextMenuPrimitive.Item & {
+                $$events_def: { select: CustomEvent<void> };
+        };
 
-	function forwardSelect() {
-		dispatch('select');
-	}
+        const dispatch = createEventDispatcher<$$Events>();
+
+        function forwardSelect() {
+                dispatch('select');
+        }
 </script>
 
-<ContextMenuPrimitive.Item
-	bind:ref
-	data-slot="context-menu-item"
-	data-inset={inset}
-	data-variant={variant}
-	on:select={forwardSelect}
-	class={cn(
-		"relative flex cursor-default items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-hidden select-none data-highlighted:bg-accent data-highlighted:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50 data-[inset]:pl-8 data-[variant=destructive]:text-destructive data-[variant=destructive]:data-highlighted:bg-destructive/10 data-[variant=destructive]:data-highlighted:text-destructive dark:data-[variant=destructive]:data-highlighted:bg-destructive/20 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 [&_svg:not([class*='text-'])]:text-muted-foreground data-[variant=destructive]:*:[svg]:!text-destructive",
-		className
-	)}
-	{...restProps}
+<Item
+        bind:ref
+        data-slot="context-menu-item"
+        data-inset={inset}
+        data-variant={variant}
+        on:select={forwardSelect}
+        class={cn(
+                "relative flex cursor-default items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-hidden select-none data-highlighted:bg-accent data-highlighted:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50 data-[inset]:pl-8 data-[variant=destructive]:text-destructive data-[variant=destructive]:data-highlighted:bg-destructive/10 data-[variant=destructive]:data-highlighted:text-destructive dark:data-[variant=destructive]:data-highlighted:bg-destructive/20 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 [&_svg:not([class*='text-'])]:text-muted-foreground data-[variant=destructive]:*:[svg]:!text-destructive",
+                className
+        )}
+        {...restProps}
 />
