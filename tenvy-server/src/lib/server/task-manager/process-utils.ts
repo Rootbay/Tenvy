@@ -4,6 +4,8 @@ import type {
         ProcessStatus,
         ProcessSummary
 } from '$lib/types/task-manager';
+
+type ProcessInfo = Awaited<ReturnType<typeof si.processes>>['list'][number];
 import { splitCommandLine } from '$lib/utils/command';
 
 function parseDate(value?: string | null): string | undefined {
@@ -60,7 +62,7 @@ export function normalizeStatus(input?: string | null): ProcessStatus {
         return 'unknown';
 }
 
-export function toSummary(process: si.Systeminformation.ProcessesProcessData): ProcessSummary {
+export function toSummary(process: ProcessInfo): ProcessSummary {
         const memoryBytes = Number.isFinite(process.memRss) ? process.memRss : 0;
         return {
                 pid: process.pid,
@@ -75,7 +77,7 @@ export function toSummary(process: si.Systeminformation.ProcessesProcessData): P
         } satisfies ProcessSummary;
 }
 
-export function toDetail(process: si.Systeminformation.ProcessesProcessData): ProcessDetail {
+export function toDetail(process: ProcessInfo): ProcessDetail {
         const summary = toSummary(process);
         const args = typeof process.params === 'string' && process.params.trim() !== '' ? splitCommandLine(process.params) : [];
         const cpuTime = Number.isFinite(process.cpuu) || Number.isFinite(process.cpus)
@@ -93,12 +95,12 @@ export function toDetail(process: si.Systeminformation.ProcessesProcessData): Pr
         } satisfies ProcessDetail;
 }
 
-export async function listProcesses(): Promise<si.Systeminformation.ProcessesProcessData[]> {
+export async function listProcesses(): Promise<ProcessInfo[]> {
         const { list } = await si.processes();
         return list;
 }
 
-export async function findProcess(pid: number): Promise<si.Systeminformation.ProcessesProcessData | undefined> {
+export async function findProcess(pid: number): Promise<ProcessInfo | undefined> {
         const processes = await listProcesses();
         return processes.find((item) => item.pid === pid);
 }
