@@ -273,6 +273,7 @@ func (c *remoteDesktopSessionController) Shutdown() {
 
 const (
 	remoteEncodingPNG      = "png"
+	remoteEncodingJPEG     = "jpeg"
 	remoteEncodingClip     = "clip"
 	remoteClipEncodingJPEG = "jpeg"
 	minClipDuration        = 120 * time.Millisecond
@@ -298,6 +299,8 @@ var (
 const (
 	maxDeltaCoverageRatio = 0.35
 	maxDeltaTileFactor    = 3
+	jpegKeyFrameMinPixels = 320 * 240
+	jpegDeltaMinPixels    = 32 * 32
 )
 
 func NewRemoteDesktopStreamer(agent *Agent) *RemoteDesktopStreamer {
@@ -1089,10 +1092,11 @@ func (c *remoteDesktopSessionController) stream(ctx context.Context, session *Re
 		keyFrame := forceKey || len(prev) != len(current) || len(prev) == 0
 		var imageData string
 		var deltas []RemoteDesktopDeltaRect
+		frameEncoding := remoteEncodingPNG
 		bytesSent := 0
 
 		if keyFrame {
-			encoded, err := encodePNG(width, height, current)
+			encoded, encoding, err := encodeKeyFrame(width, height, clipQuality, current)
 			if err != nil {
 				c.agent.logger.Printf("remote desktop encode frame: %v", err)
 				releaseFrameBuffer(current)
@@ -1100,9 +1104,10 @@ func (c *remoteDesktopSessionController) stream(ctx context.Context, session *Re
 				continue
 			}
 			imageData = encoded
+			frameEncoding = encoding
 			bytesSent += len(encoded)
 		} else {
-			rects, fallback, err := diffFrames(prev, current, width, height, tile, &tileHasher)
+			rects, fallback, err := diffFrames(prev, current, width, height, tile, &tileHasher, clipQuality)
 			if err != nil {
 				c.agent.logger.Printf("remote desktop diff error: %v", err)
 				keyFrame = true
@@ -1121,8 +1126,9 @@ func (c *remoteDesktopSessionController) stream(ctx context.Context, session *Re
 			}
 
 			if keyFrame && imageData == "" {
-				if encoded, encErr := encodePNG(width, height, current); encErr == nil {
+				if encoded, encoding, encErr := encodeKeyFrame(width, height, clipQuality, current); encErr == nil {
 					imageData = encoded
+					frameEncoding = encoding
 					bytesSent += len(encoded)
 				} else {
 					c.agent.logger.Printf("remote desktop fallback encode: %v", encErr)
@@ -1141,7 +1147,18 @@ func (c *remoteDesktopSessionController) stream(ctx context.Context, session *Re
 			}
 		}
 
-		metrics := computeMetrics(targetInterval, frameDuration, processingDuration, bytesSent, 0)
+		usedQuality := 0
+		if frameEncoding == remoteEncodingJPEG {
+			usedQuality = clipQuality
+		} else if len(deltas) > 0 {
+			for _, rect := range deltas {
+				if rect.Encoding == remoteEncodingJPEG {
+					usedQuality = clipQuality
+					break
+				}
+			}
+		}
+		metrics := computeMetrics(targetInterval, frameDuration, processingDuration, bytesSent, usedQuality)
 		timestamp := time.Now()
 		frame := RemoteDesktopFramePacket{
 			SessionID: session.ID,
@@ -1150,7 +1167,7 @@ func (c *remoteDesktopSessionController) stream(ctx context.Context, session *Re
 			Width:     width,
 			Height:    height,
 			KeyFrame:  keyFrame,
-			Encoding:  remoteEncodingPNG,
+			Encoding:  frameEncoding,
 			Metrics:   metrics,
 		}
 		if len(monitorsPayload) > 0 {
@@ -1509,6 +1526,38 @@ func encodeJPEG(width, height, quality int, data []byte) (string, error) {
 	return encoded, nil
 }
 
+func encodeKeyFrame(width, height, quality int, data []byte) (string, string, error) {
+	useJPEG := shouldUseJPEGForKeyFrame(width, height, quality)
+	if useJPEG {
+		if encoded, err := encodeJPEG(width, height, quality, data); err == nil {
+			return encoded, remoteEncodingJPEG, nil
+		}
+	}
+
+	encoded, err := encodePNG(width, height, data)
+	if err != nil {
+		return "", remoteEncodingPNG, err
+	}
+	return encoded, remoteEncodingPNG, nil
+}
+
+func shouldUseJPEGForKeyFrame(width, height, quality int) bool {
+	if width <= 0 || height <= 0 {
+		return false
+	}
+	area := width * height
+	if area >= jpegKeyFrameMinPixels {
+		return true
+	}
+	if quality <= 0 {
+		quality = defaultClipQuality
+	}
+	if quality >= 85 && area >= 240*180 {
+		return true
+	}
+	return false
+}
+
 func encodeRegionPNG(data []byte, stride, x, y, w, h int) (string, error) {
 	if stride <= 0 || w <= 0 || h <= 0 {
 		return "", errors.New("invalid region dimensions")
@@ -1542,6 +1591,93 @@ func encodeRegionPNG(data []byte, stride, x, y, w, h int) (string, error) {
 	return encoded, nil
 }
 
+func encodeRegionJPEG(data []byte, stride, x, y, w, h, quality int) (string, error) {
+	if stride <= 0 || w <= 0 || h <= 0 {
+		return "", errors.New("invalid region dimensions")
+	}
+
+	start := y*stride + x*4
+	if start < 0 || start >= len(data) {
+		return "", errors.New("region start out of range")
+	}
+
+	needed := (h-1)*stride + w*4
+	if start+needed > len(data) {
+		return "", errors.New("region exceeds frame bounds")
+	}
+
+	region := image.RGBA{
+		Pix:    data[start : start+needed],
+		Stride: stride,
+		Rect:   image.Rect(0, 0, w, h),
+	}
+
+	bufPtr := imageBufferPool.Get().(*bytes.Buffer)
+	bufPtr.Reset()
+	defer imageBufferPool.Put(bufPtr)
+
+	if quality <= 0 {
+		quality = defaultClipQuality
+	}
+	optsPtr := jpegOptionsPool.Get().(*jpeg.Options)
+	optsPtr.Quality = clampInt(quality, 1, 100)
+	err := jpeg.Encode(bufPtr, &region, optsPtr)
+	jpegOptionsPool.Put(optsPtr)
+	if err != nil {
+		return "", err
+	}
+
+	encoded := base64.StdEncoding.EncodeToString(bufPtr.Bytes())
+	return encoded, nil
+}
+
+func shouldUseJPEGForRegion(width, height, quality int) bool {
+	if width <= 0 || height <= 0 {
+		return false
+	}
+	area := width * height
+	if area >= jpegDeltaMinPixels {
+		return true
+	}
+	if quality <= 0 {
+		quality = defaultClipQuality
+	}
+	if quality >= 85 && area >= 24*24 {
+		return true
+	}
+	return false
+}
+
+func encodeTileRegion(data []byte, stride int, region tileRegion, quality int) (RemoteDesktopDeltaRect, error) {
+	preferJPEG := shouldUseJPEGForRegion(region.w, region.h, quality)
+	if preferJPEG {
+		if encoded, err := encodeRegionJPEG(data, stride, region.x, region.y, region.w, region.h, quality); err == nil {
+			return RemoteDesktopDeltaRect{
+				X:        region.x,
+				Y:        region.y,
+				Width:    region.w,
+				Height:   region.h,
+				Encoding: remoteEncodingJPEG,
+				Data:     encoded,
+			}, nil
+		}
+	}
+
+	encoded, err := encodeRegionPNG(data, stride, region.x, region.y, region.w, region.h)
+	if err != nil {
+		return RemoteDesktopDeltaRect{}, err
+	}
+
+	return RemoteDesktopDeltaRect{
+		X:        region.x,
+		Y:        region.y,
+		Width:    region.w,
+		Height:   region.h,
+		Encoding: remoteEncodingPNG,
+		Data:     encoded,
+	}, nil
+}
+
 type tileRegion struct {
 	x int
 	y int
@@ -1549,9 +1685,9 @@ type tileRegion struct {
 	h int
 }
 
-func diffFrames(previous, current []byte, width, height, tile int, state *remoteTileHasher) ([]RemoteDesktopDeltaRect, bool, error) {
+func diffFrames(previous, current []byte, width, height, tile int, state *remoteTileHasher, quality int) ([]RemoteDesktopDeltaRect, bool, error) {
 	if state == nil {
-		return diffFramesLegacy(previous, current, width, height, tile)
+		return diffFramesLegacy(previous, current, width, height, tile, quality)
 	}
 
 	if len(previous) != len(current) {
@@ -1613,7 +1749,9 @@ func diffFrames(previous, current []byte, width, height, tile int, state *remote
 		return nil, false, nil
 	}
 
-	deltas, err := encodeRegions(current, stride, regions)
+	regions = mergeTileRegions(regions)
+
+	deltas, err := encodeRegions(current, stride, regions, quality)
 	if err != nil {
 		state.ready = false
 		return nil, false, err
@@ -1623,7 +1761,7 @@ func diffFrames(previous, current []byte, width, height, tile int, state *remote
 	return deltas, false, nil
 }
 
-func diffFramesLegacy(previous, current []byte, width, height, tile int) ([]RemoteDesktopDeltaRect, bool, error) {
+func diffFramesLegacy(previous, current []byte, width, height, tile int, quality int) ([]RemoteDesktopDeltaRect, bool, error) {
 	if len(previous) != len(current) {
 		return nil, false, errors.New("frame size mismatch")
 	}
@@ -1671,14 +1809,36 @@ func diffFramesLegacy(previous, current []byte, width, height, tile int) ([]Remo
 		return nil, false, nil
 	}
 
-	deltas, err := encodeRegions(current, stride, regions)
+	regions = mergeTileRegions(regions)
+
+	deltas, err := encodeRegions(current, stride, regions, quality)
 	if err != nil {
 		return nil, false, err
 	}
 	return deltas, false, nil
 }
 
-func encodeRegions(data []byte, stride int, regions []tileRegion) ([]RemoteDesktopDeltaRect, error) {
+func mergeTileRegions(regions []tileRegion) []tileRegion {
+	if len(regions) <= 1 {
+		return regions
+	}
+
+	merged := regions[:0]
+	current := regions[0]
+	for i := 1; i < len(regions); i++ {
+		next := regions[i]
+		if next.y == current.y && next.h == current.h && next.x == current.x+current.w {
+			current.w += next.w
+			continue
+		}
+		merged = append(merged, current)
+		current = next
+	}
+	merged = append(merged, current)
+	return merged
+}
+
+func encodeRegions(data []byte, stride int, regions []tileRegion, quality int) ([]RemoteDesktopDeltaRect, error) {
 	deltas := make([]RemoteDesktopDeltaRect, len(regions))
 	if len(regions) == 0 {
 		return deltas, nil
@@ -1697,21 +1857,14 @@ func encodeRegions(data []byte, stride int, regions []tileRegion) ([]RemoteDeskt
 
 			for idx := range jobs {
 				region := regions[idx]
-				encoded, err := encodeRegionPNG(data, stride, region.x, region.y, region.w, region.h)
+				rect, err := encodeTileRegion(data, stride, region, quality)
 				if err != nil {
 					once.Do(func() {
 						encodeErr = err
 					})
 					return
 				}
-				deltas[idx] = RemoteDesktopDeltaRect{
-					X:        region.x,
-					Y:        region.y,
-					Width:    region.w,
-					Height:   region.h,
-					Encoding: remoteEncodingPNG,
-					Data:     encoded,
-				}
+				deltas[idx] = rect
 			}
 		}()
 	}

@@ -342,26 +342,35 @@
 			return;
 		}
 
-		if (frame.keyFrame) {
-			if (!frame.image) {
-				throw new Error('Missing key frame image data');
-			}
-			if (supportsImageBitmap) {
-				try {
-					const bitmap = await decodeBitmap(frame.image, 'image/png');
-					try {
-						context.drawImage(bitmap, 0, 0, frame.width, frame.height);
-					} finally {
-						bitmap.close();
-					}
-					return;
-				} catch (err) {
-					logBitmapFallback(err);
-				}
-			}
-			await drawWithImageElement(context, frame.image, 0, 0, frame.width, frame.height, 'png');
-			return;
-		}
+                if (frame.keyFrame) {
+                        if (!frame.image) {
+                                throw new Error('Missing key frame image data');
+                        }
+                        const mime = frame.encoding === 'jpeg' ? 'image/jpeg' : 'image/png';
+                        if (supportsImageBitmap) {
+                                try {
+                                        const bitmap = await decodeBitmap(frame.image, mime);
+                                        try {
+                                                context.drawImage(bitmap, 0, 0, frame.width, frame.height);
+                                        } finally {
+                                                bitmap.close();
+                                        }
+                                        return;
+                                } catch (err) {
+                                        logBitmapFallback(err);
+                                }
+                        }
+                        await drawWithImageElement(
+                                context,
+                                frame.image,
+                                0,
+                                0,
+                                frame.width,
+                                frame.height,
+                                frame.encoding === 'jpeg' ? 'jpeg' : 'png'
+                        );
+                        return;
+                }
 
 		if (frame.deltas && frame.deltas.length > 0) {
 			if (supportsImageBitmap) {
