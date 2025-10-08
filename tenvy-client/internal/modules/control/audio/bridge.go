@@ -1,7 +1,7 @@
 //go:build cgo
 // +build cgo
 
-package main
+package audio
 
 import (
 	"bytes"
@@ -20,7 +20,30 @@ import (
 	"unsafe"
 
 	"github.com/gen2brain/malgo"
+	"github.com/rootbay/tenvy-client/internal/protocol"
 )
+
+type (
+	Command       = protocol.Command
+	CommandResult = protocol.CommandResult
+)
+
+type Logger interface {
+	Printf(format string, args ...interface{})
+}
+
+type HTTPDoer interface {
+	Do(req *http.Request) (*http.Response, error)
+}
+
+type Config struct {
+	AgentID   string
+	BaseURL   string
+	AuthKey   string
+	Client    HTTPDoer
+	Logger    Logger
+	UserAgent string
+}
 
 type AudioDirection string
 
@@ -74,13 +97,13 @@ type AudioControlCommandPayload struct {
 }
 
 type AudioBridge struct {
-	agent    *Agent
+	cfg      atomic.Value // stores Config
 	mu       sync.Mutex
 	sessions map[string]*AudioStreamSession
 }
 
 type AudioStreamSession struct {
-	agent      *Agent
+	bridge     *AudioBridge
 	id         string
 	deviceID   string
 	deviceName string
@@ -101,11 +124,53 @@ type AudioStreamSession struct {
 	done        chan struct{}
 }
 
-func NewAudioBridge(agent *Agent) *AudioBridge {
-	return &AudioBridge{
-		agent:    agent,
+func (s *AudioStreamSession) logf(format string, args ...interface{}) {
+	if s == nil || s.bridge == nil {
+		return
+	}
+	s.bridge.logf(format, args...)
+}
+
+func NewAudioBridge(cfg Config) *AudioBridge {
+	bridge := &AudioBridge{
 		sessions: make(map[string]*AudioStreamSession),
 	}
+	bridge.updateConfig(cfg)
+	return bridge
+}
+
+func (b *AudioBridge) UpdateConfig(cfg Config) {
+	if b == nil {
+		return
+	}
+	b.updateConfig(cfg)
+}
+
+func (b *AudioBridge) updateConfig(cfg Config) {
+	b.cfg.Store(cfg)
+}
+
+func (b *AudioBridge) config() Config {
+	if value := b.cfg.Load(); value != nil {
+		return value.(Config)
+	}
+	return Config{}
+}
+
+func (b *AudioBridge) logf(format string, args ...interface{}) {
+	cfg := b.config()
+	if cfg.Logger == nil {
+		return
+	}
+	cfg.Logger.Printf(format, args...)
+}
+
+func (b *AudioBridge) userAgent() string {
+	ua := strings.TrimSpace(b.config().UserAgent)
+	if ua != "" {
+		return ua
+	}
+	return "tenvy-client"
 }
 
 func (b *AudioBridge) Shutdown() {
@@ -181,19 +246,31 @@ func (b *AudioBridge) publishInventory(ctx context.Context, requestID string) er
 		return err
 	}
 
-	endpoint := fmt.Sprintf("%s/api/agents/%s/audio/devices", b.agent.baseURL, url.PathEscape(b.agent.id))
+	cfg := b.config()
+
+	baseURL := strings.TrimRight(strings.TrimSpace(cfg.BaseURL), "/")
+	if baseURL == "" {
+		return errors.New("audio control: missing base URL")
+	}
+	if cfg.Client == nil {
+		return errors.New("audio control: missing http client")
+	}
+
+	endpoint := fmt.Sprintf("%s/api/agents/%s/audio/devices", baseURL, url.PathEscape(cfg.AgentID))
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(data))
 	if err != nil {
 		return err
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
-	req.Header.Set("User-Agent", userAgent())
-	if strings.TrimSpace(b.agent.key) != "" {
-		req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", b.agent.key))
+	if ua := strings.TrimSpace(b.userAgent()); ua != "" {
+		req.Header.Set("User-Agent", ua)
+	}
+	if key := strings.TrimSpace(cfg.AuthKey); key != "" {
+		req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", key))
 	}
 
-	resp, err := b.agent.client.Do(req)
+	resp, err := cfg.Client.Do(req)
 	if err != nil {
 		return err
 	}
@@ -240,8 +317,17 @@ func (b *AudioBridge) startSession(ctx context.Context, payload AudioControlComm
 		return fmt.Errorf("unsupported audio encoding: %s", encoding)
 	}
 
+	cfg := b.config()
+
+	if strings.TrimSpace(cfg.BaseURL) == "" {
+		return errors.New("audio control: missing base URL")
+	}
+	if cfg.Client == nil {
+		return errors.New("audio control: missing http client")
+	}
+
 	session := &AudioStreamSession{
-		agent:      b.agent,
+		bridge:     b,
 		id:         sessionID,
 		deviceID:   strings.TrimSpace(payload.DeviceID),
 		deviceName: strings.TrimSpace(payload.DeviceLabel),
@@ -377,8 +463,6 @@ func (s *AudioStreamSession) handleInput(input []byte) {
 func (s *AudioStreamSession) run() {
 	defer close(s.done)
 
-	endpoint := fmt.Sprintf("%s/api/agents/%s/audio/chunks", s.agent.baseURL, url.PathEscape(s.agent.id))
-
 	for {
 		select {
 		case <-s.runCtx.Done():
@@ -388,6 +472,21 @@ func (s *AudioStreamSession) run() {
 				continue
 			}
 
+			cfg := s.bridge.config()
+			baseURL := strings.TrimRight(strings.TrimSpace(cfg.BaseURL), "/")
+			if baseURL == "" {
+				s.logf("audio stream session %s missing base URL", s.id)
+				time.Sleep(500 * time.Millisecond)
+				continue
+			}
+			if cfg.Client == nil {
+				s.logf("audio stream session %s missing http client", s.id)
+				time.Sleep(500 * time.Millisecond)
+				continue
+			}
+
+			endpoint := fmt.Sprintf("%s/api/agents/%s/audio/chunks", baseURL, url.PathEscape(cfg.AgentID))
+
 			chunk := AudioStreamChunk{
 				SessionID: s.id,
 				Sequence:  atomic.AddUint64(&s.sequence, 1),
@@ -396,14 +495,14 @@ func (s *AudioStreamSession) run() {
 				Data:      base64.StdEncoding.EncodeToString(data),
 			}
 
-			if err := s.sendChunk(endpoint, chunk); err != nil {
-				s.agent.logger.Printf("audio stream send error: %v", err)
+			if err := s.sendChunk(cfg, endpoint, chunk); err != nil {
+				s.logf("audio stream send error: %v", err)
 			}
 		}
 	}
 }
 
-func (s *AudioStreamSession) sendChunk(endpoint string, chunk AudioStreamChunk) error {
+func (s *AudioStreamSession) sendChunk(cfg Config, endpoint string, chunk AudioStreamChunk) error {
 	payload, err := json.Marshal(chunk)
 	if err != nil {
 		return err
@@ -418,12 +517,14 @@ func (s *AudioStreamSession) sendChunk(endpoint string, chunk AudioStreamChunk) 
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
-	req.Header.Set("User-Agent", userAgent())
-	if strings.TrimSpace(s.agent.key) != "" {
-		req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", s.agent.key))
+	if ua := strings.TrimSpace(s.bridge.userAgent()); ua != "" {
+		req.Header.Set("User-Agent", ua)
+	}
+	if key := strings.TrimSpace(cfg.AuthKey); key != "" {
+		req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", key))
 	}
 
-	resp, err := s.agent.client.Do(req)
+	resp, err := cfg.Client.Do(req)
 	if err != nil {
 		return err
 	}

@@ -1,11 +1,37 @@
-package main
+package remote
 
 import (
 	"context"
 	"image"
+	"net/http"
 	"sync"
+	"sync/atomic"
 	"time"
+
+	"github.com/rootbay/tenvy-client/internal/protocol"
 )
+
+type (
+	Command       = protocol.Command
+	CommandResult = protocol.CommandResult
+)
+
+type Logger interface {
+	Printf(format string, args ...interface{})
+}
+
+type HTTPDoer interface {
+	Do(req *http.Request) (*http.Response, error)
+}
+
+type Config struct {
+	AgentID   string
+	BaseURL   string
+	AuthKey   string
+	Client    HTTPDoer
+	Logger    Logger
+	UserAgent string
+}
 
 type RemoteDesktopQuality string
 
@@ -192,7 +218,7 @@ type RemoteDesktopStreamer struct {
 }
 
 type remoteDesktopSessionController struct {
-	agent   *Agent
+	cfg     atomic.Value // stores Config
 	mu      sync.Mutex
 	session *RemoteDesktopSession
 }

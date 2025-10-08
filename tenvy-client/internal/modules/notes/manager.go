@@ -1,4 +1,4 @@
-package main
+package notes
 
 import (
 	"bytes"
@@ -21,6 +21,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/rootbay/tenvy-client/internal/protocol"
 )
 
 type Note struct {
@@ -74,7 +76,7 @@ var (
 	errNoteTampered = errors.New("note integrity check failed")
 )
 
-type NotesManager struct {
+type Manager struct {
 	mu           sync.RWMutex
 	path         string
 	localKey     []byte
@@ -85,7 +87,7 @@ type NotesManager struct {
 	syncInterval time.Duration
 }
 
-func NewNotesManager(path, localKeyMaterial, sharedKeyMaterial string) (*NotesManager, error) {
+func NewManager(path, localKeyMaterial, sharedKeyMaterial string) (*Manager, error) {
 	if strings.TrimSpace(path) == "" {
 		return nil, errors.New("notes path is required")
 	}
@@ -95,7 +97,7 @@ func NewNotesManager(path, localKeyMaterial, sharedKeyMaterial string) (*NotesMa
 		return nil, fmt.Errorf("create notes directory: %w", err)
 	}
 
-	manager := &NotesManager{
+	manager := &Manager{
 		path:         path,
 		localKey:     deriveKey(localKeyMaterial),
 		sharedKey:    deriveKey(sharedKeyMaterial),
@@ -115,7 +117,7 @@ func deriveKey(material string) []byte {
 	return sum[:]
 }
 
-func (m *NotesManager) loadFromDisk() error {
+func (m *Manager) loadFromDisk() error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -149,7 +151,7 @@ func (m *NotesManager) loadFromDisk() error {
 	return nil
 }
 
-func (m *NotesManager) persistLocked() error {
+func (m *Manager) persistLocked() error {
 	snapshot := noteFile{Notes: make([]storedNote, 0, len(m.notes))}
 	for _, note := range m.notes {
 		snapshot.Notes = append(snapshot.Notes, note)
@@ -175,7 +177,7 @@ func (m *NotesManager) persistLocked() error {
 	return nil
 }
 
-func (m *NotesManager) keyFor(shared bool) []byte {
+func (m *Manager) keyFor(shared bool) []byte {
 	if shared {
 		return m.sharedKey
 	}
@@ -262,7 +264,7 @@ func generateNoteID() (string, error) {
 	return base64.RawURLEncoding.EncodeToString(buf), nil
 }
 
-func (m *NotesManager) SaveNote(input Note, expectedVersion int) (Note, error) {
+func (m *Manager) SaveNote(input Note, expectedVersion int) (Note, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -324,7 +326,7 @@ func (m *NotesManager) SaveNote(input Note, expectedVersion int) (Note, error) {
 	}, nil
 }
 
-func (m *NotesManager) ListNotes() ([]Note, error) {
+func (m *Manager) ListNotes() ([]Note, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
@@ -354,7 +356,7 @@ func (m *NotesManager) ListNotes() ([]Note, error) {
 	return notes, nil
 }
 
-func (m *NotesManager) SyncShared(ctx context.Context, client *http.Client, baseURL, agentID, agentKey string) error {
+func (m *Manager) SyncShared(ctx context.Context, client *http.Client, baseURL, agentID, agentKey, userAgent string) error {
 	if client == nil || strings.TrimSpace(baseURL) == "" || strings.TrimSpace(agentID) == "" || strings.TrimSpace(agentKey) == "" {
 		return nil
 	}
@@ -406,7 +408,9 @@ func (m *NotesManager) SyncShared(ctx context.Context, client *http.Client, base
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
-	req.Header.Set("User-Agent", userAgent())
+	if ua := strings.TrimSpace(userAgent); ua != "" {
+		req.Header.Set("User-Agent", ua)
+	}
 	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", agentKey))
 
 	resp, err := client.Do(req)
@@ -420,7 +424,7 @@ func (m *NotesManager) SyncShared(ctx context.Context, client *http.Client, base
 	}
 
 	if resp.StatusCode == http.StatusUnauthorized {
-		return ErrUnauthorized
+		return protocol.ErrUnauthorized
 	}
 
 	if resp.StatusCode >= 400 {
@@ -480,7 +484,7 @@ func (m *NotesManager) SyncShared(ctx context.Context, client *http.Client, base
 	return nil
 }
 
-func defaultNotesPath() (string, error) {
+func DefaultPath() (string, error) {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return "", err

@@ -1,6 +1,6 @@
 //go:build windows
 
-package main
+package platform
 
 import (
 	"unsafe"
@@ -12,7 +12,7 @@ type tokenElevation struct {
 	TokenIsElevated uint32
 }
 
-func currentUserIsElevated() bool {
+func CurrentUserIsElevated() bool {
 	var token windows.Token
 	if err := windows.OpenProcessToken(windows.CurrentProcess(), windows.TOKEN_QUERY, &token); err != nil {
 		return false

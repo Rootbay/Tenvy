@@ -1,4 +1,4 @@
-package main
+package remote
 
 import (
 	"bytes"
@@ -213,7 +213,7 @@ func (c *remoteDesktopSessionController) stream(ctx context.Context, session *Re
 		processStart := time.Now()
 		current, captureErr := captureMonitorFrame(monitor, width, height)
 		if captureErr != nil {
-			c.agent.logger.Printf("remote desktop capture error: %v", captureErr)
+			c.logf("remote desktop capture error: %v", captureErr)
 			c.mu.Lock()
 			c.refreshMonitorsLocked(session, true)
 			c.mu.Unlock()
@@ -294,7 +294,7 @@ func (c *remoteDesktopSessionController) stream(ctx context.Context, session *Re
 			encodeStart := time.Now()
 			encoded, err := encodeJPEG(width, height, clipQuality, current)
 			if err != nil {
-				c.agent.logger.Printf("remote desktop clip encode error: %v", err)
+				c.logf("remote desktop clip encode error: %v", err)
 				releaseFrameBuffer(current)
 				releaseFrameBuffer(prev)
 				scheduleNextFrame(timer, targetInterval)
@@ -421,7 +421,7 @@ func (c *remoteDesktopSessionController) stream(ctx context.Context, session *Re
 			cancel()
 			if err != nil {
 				if !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
-					c.agent.logger.Printf("remote desktop clip send error: %v", err)
+					c.logf("remote desktop clip send error: %v", err)
 				}
 				c.mu.Lock()
 				if c.session != nil && c.session.ID == session.ID {
@@ -455,7 +455,7 @@ func (c *remoteDesktopSessionController) stream(ctx context.Context, session *Re
 			encodeStart := time.Now()
 			encoded, encoding, err := encodeKeyFrame(width, height, clipQuality, current)
 			if err != nil {
-				c.agent.logger.Printf("remote desktop encode frame: %v", err)
+				c.logf("remote desktop encode frame: %v", err)
 				releaseFrameBuffer(current)
 				scheduleNextFrame(timer, targetInterval)
 				continue
@@ -469,7 +469,7 @@ func (c *remoteDesktopSessionController) stream(ctx context.Context, session *Re
 			rects, fallback, err := diffFrames(prev, current, width, height, tile, &tileHasher, clipQuality)
 			encodeDuration += time.Since(diffStart)
 			if err != nil {
-				c.agent.logger.Printf("remote desktop diff error: %v", err)
+				c.logf("remote desktop diff error: %v", err)
 				keyFrame = true
 			} else if fallback {
 				keyFrame = true
@@ -493,7 +493,7 @@ func (c *remoteDesktopSessionController) stream(ctx context.Context, session *Re
 					bytesSent += len(encoded)
 					encodeDuration += time.Since(encodeStart)
 				} else {
-					c.agent.logger.Printf("remote desktop fallback encode: %v", encErr)
+					c.logf("remote desktop fallback encode: %v", encErr)
 					releaseFrameBuffer(current)
 					scheduleNextFrame(timer, targetInterval)
 					continue
@@ -566,7 +566,7 @@ func (c *remoteDesktopSessionController) stream(ctx context.Context, session *Re
 		cancel()
 		if err != nil {
 			if !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
-				c.agent.logger.Printf("remote desktop frame send error: %v", err)
+				c.logf("remote desktop frame send error: %v", err)
 			}
 			c.mu.Lock()
 			if c.session != nil && c.session.ID == session.ID {
@@ -619,19 +619,31 @@ func (c *remoteDesktopSessionController) sendFrame(ctx context.Context, frame Re
 		return err
 	}
 
-	endpoint := fmt.Sprintf("%s/api/agents/%s/remote-desktop/frames", c.agent.baseURL, url.PathEscape(c.agent.id))
+	cfg := c.config()
+
+	baseURL := strings.TrimRight(strings.TrimSpace(cfg.BaseURL), "/")
+	if baseURL == "" {
+		return errors.New("remote desktop: missing base URL")
+	}
+	if cfg.Client == nil {
+		return errors.New("remote desktop: missing http client")
+	}
+
+	endpoint := fmt.Sprintf("%s/api/agents/%s/remote-desktop/frames", baseURL, url.PathEscape(cfg.AgentID))
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(data))
 	if err != nil {
 		return err
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
-	req.Header.Set("User-Agent", userAgent())
-	if strings.TrimSpace(c.agent.key) != "" {
-		req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", c.agent.key))
+	if ua := strings.TrimSpace(c.userAgent()); ua != "" {
+		req.Header.Set("User-Agent", ua)
+	}
+	if key := strings.TrimSpace(cfg.AuthKey); key != "" {
+		req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", key))
 	}
 
-	resp, err := c.agent.client.Do(req)
+	resp, err := cfg.Client.Do(req)
 	if err != nil {
 		return err
 	}
