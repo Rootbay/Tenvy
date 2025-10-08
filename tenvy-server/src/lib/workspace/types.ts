@@ -1,4 +1,10 @@
-export type WorkspaceLogStatus = 'draft' | 'queued' | 'in-progress' | 'complete';
+export type WorkspaceLogStatus =
+        | 'draft'
+        | 'queued'
+        | 'pending'
+        | 'in-progress'
+        | 'complete'
+        | 'failed';
 
 export interface WorkspaceLogEntry {
         id: string;

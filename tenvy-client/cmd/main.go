@@ -29,6 +29,7 @@ import (
 
 	audioctrl "github.com/rootbay/tenvy-client/internal/modules/control/audio"
 	remotedesktop "github.com/rootbay/tenvy-client/internal/modules/control/remotedesktop"
+	clipboard "github.com/rootbay/tenvy-client/internal/modules/management/clipboard"
 	notes "github.com/rootbay/tenvy-client/internal/modules/notes"
 	systeminfo "github.com/rootbay/tenvy-client/internal/modules/systeminfo"
 	"github.com/rootbay/tenvy-client/internal/platform"
@@ -97,6 +98,7 @@ type Agent struct {
 	systemInfo     *systeminfo.Collector
 	notes          *notes.Manager
 	audioBridge    *audioctrl.AudioBridge
+	clipboard      *clipboard.Manager
 }
 
 func (a *Agent) AgentID() string {
@@ -232,6 +234,14 @@ func main() {
 		Logger:    agent.logger,
 		UserAgent: userAgent(),
 	})
+	agent.clipboard = clipboard.NewManager(clipboard.Config{
+		AgentID:   agent.id,
+		BaseURL:   agent.baseURL,
+		AuthKey:   agent.key,
+		Client:    agent.client,
+		Logger:    agent.logger,
+		UserAgent: userAgent(),
+	})
 
 	if notesPath, err := notes.DefaultPath(); err != nil {
 		logger.Printf("notes disabled (path error): %v", err)
@@ -259,6 +269,9 @@ func main() {
 
 	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer shutdownCancel()
+	if agent.clipboard != nil {
+		agent.clipboard.Shutdown()
+	}
 	agent.audioBridge.Shutdown()
 	agent.remoteDesktop.Shutdown()
 	if err := agent.sync(shutdownCtx, statusOffline); err != nil {
@@ -522,6 +535,16 @@ func (a *Agent) reRegister(ctx context.Context) error {
 			UserAgent: userAgent(),
 		})
 	}
+	if a.clipboard != nil {
+		a.clipboard.UpdateConfig(clipboard.Config{
+			AgentID:   a.id,
+			BaseURL:   a.baseURL,
+			AuthKey:   a.key,
+			Client:    a.client,
+			Logger:    a.logger,
+			UserAgent: userAgent(),
+		})
+	}
 
 	a.logger.Printf("re-registered as %s", a.id)
 	a.processCommands(ctx, registration.Commands)
@@ -582,6 +605,16 @@ func (a *Agent) executeCommand(ctx context.Context, cmd Command) CommandResult {
 			}
 		}
 		return a.systemInfo.HandleCommand(ctx, cmd)
+	case "clipboard":
+		if a.clipboard == nil {
+			return CommandResult{
+				CommandID:   cmd.ID,
+				Success:     false,
+				Error:       "clipboard subsystem not initialized",
+				CompletedAt: time.Now().UTC().Format(time.RFC3339Nano),
+			}
+		}
+		return a.clipboard.HandleCommand(ctx, cmd)
 	case "open-url":
 		return handleOpenURLCommand(cmd)
 	default:

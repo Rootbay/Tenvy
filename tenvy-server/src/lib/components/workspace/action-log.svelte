@@ -22,9 +22,11 @@
 
         const statusVariant: Record<WorkspaceLogStatus, 'default' | 'secondary' | 'outline' | 'destructive'> = {
                 queued: 'default',
+                pending: 'default',
                 draft: 'outline',
                 'in-progress': 'secondary',
-                complete: 'secondary'
+                complete: 'secondary',
+                failed: 'destructive'
         };
 
         function getStatusVariant(status: WorkspaceLogStatus) {
