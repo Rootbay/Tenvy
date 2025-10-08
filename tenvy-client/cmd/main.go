@@ -155,6 +155,7 @@ type Agent struct {
 	remoteDesktop  *RemoteDesktopStreamer
 	systemInfo     *SystemInfoCollector
 	notes          *NotesManager
+	audioBridge    *AudioBridge
 }
 
 type BuildPreferences struct {
@@ -263,6 +264,7 @@ func main() {
 
 	agent.remoteDesktop = NewRemoteDesktopStreamer(agent)
 	agent.systemInfo = NewSystemInfoCollector(agent)
+	agent.audioBridge = NewAudioBridge(agent)
 
 	if notesPath, err := defaultNotesPath(); err != nil {
 		logger.Printf("notes disabled (path error): %v", err)
@@ -290,6 +292,7 @@ func main() {
 
 	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer shutdownCancel()
+	agent.audioBridge.Shutdown()
 	agent.remoteDesktop.Shutdown()
 	if err := agent.sync(shutdownCtx, statusOffline); err != nil {
 		logger.Printf("failed to send offline heartbeat: %v", err)
@@ -571,6 +574,16 @@ func (a *Agent) executeCommand(ctx context.Context, cmd Command) CommandResult {
 			}
 		}
 		return a.remoteDesktop.HandleCommand(ctx, cmd)
+	case "audio-control":
+		if a.audioBridge == nil {
+			return CommandResult{
+				CommandID:   cmd.ID,
+				Success:     false,
+				Error:       "audio subsystem not initialized",
+				CompletedAt: time.Now().UTC().Format(time.RFC3339Nano),
+			}
+		}
+		return a.audioBridge.HandleCommand(ctx, cmd)
 	case "system-info":
 		if a.systemInfo == nil {
 			return CommandResult{
