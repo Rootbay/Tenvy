@@ -1119,6 +1119,16 @@ func (c *remoteDesktopSessionController) stream(ctx context.Context, session *Re
 			}
 			c.mu.Unlock()
 
+			if lastSent.IsZero() {
+				lastSent = time.Now()
+			} else {
+				nextSent := lastSent.Add(targetInterval)
+				if now := time.Now(); nextSent.After(now) {
+					nextSent = now
+				}
+				lastSent = nextSent
+			}
+
 			releaseFrameBuffer(current)
 			if mode == RemoteStreamModeVideo {
 				releaseFrameBuffer(prev)
@@ -2541,16 +2551,19 @@ func clampFloat(value, min, max float64) float64 {
 }
 
 func updateEMA(current, sample, alpha float64) float64 {
-	if sample <= 0 {
-		return current
-	}
-	if current <= 0 {
-		return sample
-	}
 	if alpha <= 0 {
 		return current
 	}
 	if alpha >= 1 {
+		if sample < 0 {
+			return 0
+		}
+		return sample
+	}
+	if sample < 0 {
+		sample = 0
+	}
+	if current <= 0 {
 		return sample
 	}
 	return current*(1-alpha) + sample*alpha
