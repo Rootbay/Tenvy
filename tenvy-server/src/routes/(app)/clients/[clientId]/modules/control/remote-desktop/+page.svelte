@@ -62,8 +62,8 @@
 	let quality = $state<RemoteDesktopSettings['quality']>('auto');
 	let mode = $state<RemoteDesktopSettings['mode']>('video');
 	let monitor = $state(0);
-	let mouseEnabled = $state(true);
-	let keyboardEnabled = $state(true);
+	let mouseEnabled = $state(false);
+	let keyboardEnabled = $state(false);
 	let fps = $state<number | null>(null);
 	let gpu = $state<number | null>(null);
 	let cpu = $state<number | null>(null);
@@ -73,7 +73,7 @@
 	let streamHeight = $state<number | null>(null);
 	let latencyMs = $state<number | null>(null);
 	let droppedFrames = $state(0);
-	let isStarting = $state(false);
+	let isStarting = $state(true);
 	let isStopping = $state(false);
 	let isUpdating = $state(false);
 	let errorMessage = $state<string | null>(null);
@@ -1050,6 +1050,8 @@
 	});
 </script>
 
+<svelte:window on:keydown={handleKeyDown} on:keyup={handleKeyUp} />
+
 <Tabs bind:value={activeTab} class="space-y-6">
 	<TabsList class="w-full max-w-md">
 		<TabsTrigger value="stream">Stream</TabsTrigger>
@@ -1066,6 +1068,8 @@
 						frames.
 					</CardDescription>
 				</div>
+			</CardHeader>
+			<CardContent>
 				<div class="flex items-center gap-2">
 					<Badge variant={sessionActive ? 'default' : 'outline'}>
 						{sessionActive ? 'Active' : 'Inactive'}
@@ -1074,36 +1078,31 @@
 						<span class="text-xs text-muted-foreground">Session ID: {sessionId}</span>
 					{/if}
 				</div>
-			</CardHeader>
-			<CardContent class="space-y-4">
-                                <div
-                                        bind:this={viewportEl}
-                                        class="relative overflow-hidden rounded-lg border border-border bg-muted/30 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
-                                        tabindex="0"
-                                        role="application"
-                                        aria-label="Remote desktop viewport"
-                                        on:focus={handleViewportFocus}
-                                        on:blur={handleViewportBlur}
-                                        on:pointerdown={handlePointerDown}
-                                        on:pointerup={handlePointerUp}
-                                        on:pointermove={handlePointerMove}
-                                        on:pointerleave={handlePointerLeave}
-                                        on:pointercancel={handlePointerLeave}
-                                        on:wheel|preventDefault={handleWheel}
-                                        on:keydown={handleKeyDown}
-                                        on:keyup={handleKeyUp}
-                                        on:contextmenu|preventDefault
-                                        style="touch-action: none;"
-                                >
-                                        <canvas bind:this={canvasEl} class="block h-full w-full bg-slate-950"></canvas>
-                                        {#if !sessionActive}
-                                                <div
-                                                        class="absolute inset-0 flex items-center justify-center text-sm text-muted-foreground"
-                                                >
-                                                        Session inactive · start streaming to receive frames
-                                                </div>
-                                        {/if}
-                                </div>
+				<div
+					tabindex="-1"
+					bind:this={viewportEl}
+					class="relative overflow-hidden rounded-lg border border-border bg-muted/30 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+					role="application"
+					aria-label="Remote desktop viewport"
+					onfocus={handleViewportFocus}
+					onblur={handleViewportBlur}
+					onpointerdown={handlePointerDown}
+					onpointerup={handlePointerUp}
+					onpointermove={handlePointerMove}
+					onpointerleave={handlePointerLeave}
+					onpointercancel={handlePointerLeave}
+					onwheel={handleWheel}
+					style="touch-action: none;"
+				>
+						<canvas bind:this={canvasEl} class="block h-full w-full bg-slate-950"></canvas>
+						{#if !sessionActive}
+								<div
+										class="absolute inset-0 flex items-center justify-center text-sm text-muted-foreground"
+								>
+										Session inactive · start streaming to receive frames
+								</div>
+						{/if}
+				</div>
 				<div class="grid gap-3 text-sm sm:grid-cols-2 lg:grid-cols-4">
 					<div class="rounded-lg border border-border/60 bg-background/60 p-3">
 						<p class="text-xs text-muted-foreground uppercase">FPS</p>
