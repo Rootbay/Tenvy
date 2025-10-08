@@ -37,13 +37,13 @@ const definitions = {
 		segments: ['control', 'webcam-control'],
 		target: '_blank'
 	},
-	'audio-control': {
-		id: 'audio-control',
-		title: 'Audio Control',
-		description: 'Stage audio capture, playback, and streaming features.',
-		segments: ['control', 'audio-control'],
-		target: '_blank'
-	},
+        'audio-control': {
+                id: 'audio-control',
+                title: 'Audio Control',
+                description: 'Enumerate agent audio hardware and bridge live microphone streams to the controller.',
+                segments: ['control', 'audio-control'],
+                target: '_blank'
+        },
 	'keylogger-online': {
 		id: 'keylogger-online',
 		title: 'Keylogger · Online',
