@@ -619,15 +619,17 @@ func (c *remoteDesktopSessionController) sendFrame(ctx context.Context, frame Re
 		return err
 	}
 
-	baseURL := strings.TrimRight(strings.TrimSpace(c.cfg.BaseURL), "/")
+	cfg := c.config()
+
+	baseURL := strings.TrimRight(strings.TrimSpace(cfg.BaseURL), "/")
 	if baseURL == "" {
 		return errors.New("remote desktop: missing base URL")
 	}
-	if c.cfg.Client == nil {
+	if cfg.Client == nil {
 		return errors.New("remote desktop: missing http client")
 	}
 
-	endpoint := fmt.Sprintf("%s/api/agents/%s/remote-desktop/frames", baseURL, url.PathEscape(c.cfg.AgentID))
+	endpoint := fmt.Sprintf("%s/api/agents/%s/remote-desktop/frames", baseURL, url.PathEscape(cfg.AgentID))
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(data))
 	if err != nil {
 		return err
@@ -637,11 +639,11 @@ func (c *remoteDesktopSessionController) sendFrame(ctx context.Context, frame Re
 	if ua := strings.TrimSpace(c.userAgent()); ua != "" {
 		req.Header.Set("User-Agent", ua)
 	}
-	if key := strings.TrimSpace(c.cfg.AuthKey); key != "" {
+	if key := strings.TrimSpace(cfg.AuthKey); key != "" {
 		req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", key))
 	}
 
-	resp, err := c.cfg.Client.Do(req)
+	resp, err := cfg.Client.Do(req)
 	if err != nil {
 		return err
 	}

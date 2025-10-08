@@ -502,6 +502,27 @@ func (a *Agent) reRegister(ctx context.Context) error {
 	a.pendingResults = a.pendingResults[:0]
 	a.resultMu.Unlock()
 
+	if a.remoteDesktop != nil {
+		a.remoteDesktop.UpdateConfig(remote.Config{
+			AgentID:   a.id,
+			BaseURL:   a.baseURL,
+			AuthKey:   a.key,
+			Client:    a.client,
+			Logger:    a.logger,
+			UserAgent: userAgent(),
+		})
+	}
+	if a.audioBridge != nil {
+		a.audioBridge.UpdateConfig(audioctrl.Config{
+			AgentID:   a.id,
+			BaseURL:   a.baseURL,
+			AuthKey:   a.key,
+			Client:    a.client,
+			Logger:    a.logger,
+			UserAgent: userAgent(),
+		})
+	}
+
 	a.logger.Printf("re-registered as %s", a.id)
 	a.processCommands(ctx, registration.Commands)
 	return nil

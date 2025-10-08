@@ -18,7 +18,16 @@ func NewRemoteDesktopStreamer(cfg Config) *RemoteDesktopStreamer {
 }
 
 func newRemoteDesktopSessionController(cfg Config) *remoteDesktopSessionController {
-	return &remoteDesktopSessionController{cfg: cfg}
+	controller := &remoteDesktopSessionController{}
+	controller.updateConfig(cfg)
+	return controller
+}
+
+func (s *RemoteDesktopStreamer) UpdateConfig(cfg Config) {
+	if s == nil || s.controller == nil {
+		return
+	}
+	s.controller.updateConfig(cfg)
 }
 
 func (s *RemoteDesktopStreamer) HandleCommand(ctx context.Context, cmd Command) CommandResult {
@@ -218,14 +227,15 @@ func (c *remoteDesktopSessionController) stopLocked() {
 }
 
 func (c *remoteDesktopSessionController) logf(format string, args ...interface{}) {
-	if c.cfg.Logger == nil {
+	cfg := c.config()
+	if cfg.Logger == nil {
 		return
 	}
-	c.cfg.Logger.Printf(format, args...)
+	cfg.Logger.Printf(format, args...)
 }
 
 func (c *remoteDesktopSessionController) userAgent() string {
-	ua := strings.TrimSpace(c.cfg.UserAgent)
+	ua := strings.TrimSpace(c.config().UserAgent)
 	if ua != "" {
 		return ua
 	}
@@ -663,4 +673,15 @@ func (c *remoteDesktopSessionController) maybeAdaptQualityLocked(
 			return
 		}
 	}
+}
+
+func (c *remoteDesktopSessionController) updateConfig(cfg Config) {
+	c.cfg.Store(cfg)
+}
+
+func (c *remoteDesktopSessionController) config() Config {
+	if value := c.cfg.Load(); value != nil {
+		return value.(Config)
+	}
+	return Config{}
 }

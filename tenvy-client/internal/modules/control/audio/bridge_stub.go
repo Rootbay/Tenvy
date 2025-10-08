@@ -41,6 +41,13 @@ func NewAudioBridge(cfg Config) *AudioBridge {
 	return &AudioBridge{cfg: cfg}
 }
 
+func (b *AudioBridge) UpdateConfig(cfg Config) {
+	if b == nil {
+		return
+	}
+	b.cfg = cfg
+}
+
 func (b *AudioBridge) Shutdown() {}
 
 func (b *AudioBridge) HandleCommand(ctx context.Context, cmd Command) CommandResult {

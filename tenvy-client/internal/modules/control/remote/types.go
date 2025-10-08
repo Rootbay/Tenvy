@@ -5,6 +5,7 @@ import (
 	"image"
 	"net/http"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/rootbay/tenvy-client/internal/protocol"
@@ -217,7 +218,7 @@ type RemoteDesktopStreamer struct {
 }
 
 type remoteDesktopSessionController struct {
-	cfg     Config
+	cfg     atomic.Value // stores Config
 	mu      sync.Mutex
 	session *RemoteDesktopSession
 }

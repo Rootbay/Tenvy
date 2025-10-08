@@ -97,7 +97,7 @@ type AudioControlCommandPayload struct {
 }
 
 type AudioBridge struct {
-	cfg      Config
+	cfg      atomic.Value // stores Config
 	mu       sync.Mutex
 	sessions map[string]*AudioStreamSession
 }
@@ -132,21 +132,41 @@ func (s *AudioStreamSession) logf(format string, args ...interface{}) {
 }
 
 func NewAudioBridge(cfg Config) *AudioBridge {
-	return &AudioBridge{
-		cfg:      cfg,
+	bridge := &AudioBridge{
 		sessions: make(map[string]*AudioStreamSession),
 	}
+	bridge.updateConfig(cfg)
+	return bridge
+}
+
+func (b *AudioBridge) UpdateConfig(cfg Config) {
+	if b == nil {
+		return
+	}
+	b.updateConfig(cfg)
+}
+
+func (b *AudioBridge) updateConfig(cfg Config) {
+	b.cfg.Store(cfg)
+}
+
+func (b *AudioBridge) config() Config {
+	if value := b.cfg.Load(); value != nil {
+		return value.(Config)
+	}
+	return Config{}
 }
 
 func (b *AudioBridge) logf(format string, args ...interface{}) {
-	if b.cfg.Logger == nil {
+	cfg := b.config()
+	if cfg.Logger == nil {
 		return
 	}
-	b.cfg.Logger.Printf(format, args...)
+	cfg.Logger.Printf(format, args...)
 }
 
 func (b *AudioBridge) userAgent() string {
-	ua := strings.TrimSpace(b.cfg.UserAgent)
+	ua := strings.TrimSpace(b.config().UserAgent)
 	if ua != "" {
 		return ua
 	}
@@ -226,15 +246,17 @@ func (b *AudioBridge) publishInventory(ctx context.Context, requestID string) er
 		return err
 	}
 
-	baseURL := strings.TrimRight(strings.TrimSpace(b.cfg.BaseURL), "/")
+	cfg := b.config()
+
+	baseURL := strings.TrimRight(strings.TrimSpace(cfg.BaseURL), "/")
 	if baseURL == "" {
 		return errors.New("audio control: missing base URL")
 	}
-	if b.cfg.Client == nil {
+	if cfg.Client == nil {
 		return errors.New("audio control: missing http client")
 	}
 
-	endpoint := fmt.Sprintf("%s/api/agents/%s/audio/devices", baseURL, url.PathEscape(b.cfg.AgentID))
+	endpoint := fmt.Sprintf("%s/api/agents/%s/audio/devices", baseURL, url.PathEscape(cfg.AgentID))
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(data))
 	if err != nil {
 		return err
@@ -244,11 +266,11 @@ func (b *AudioBridge) publishInventory(ctx context.Context, requestID string) er
 	if ua := strings.TrimSpace(b.userAgent()); ua != "" {
 		req.Header.Set("User-Agent", ua)
 	}
-	if key := strings.TrimSpace(b.cfg.AuthKey); key != "" {
+	if key := strings.TrimSpace(cfg.AuthKey); key != "" {
 		req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", key))
 	}
 
-	resp, err := b.cfg.Client.Do(req)
+	resp, err := cfg.Client.Do(req)
 	if err != nil {
 		return err
 	}
@@ -295,10 +317,12 @@ func (b *AudioBridge) startSession(ctx context.Context, payload AudioControlComm
 		return fmt.Errorf("unsupported audio encoding: %s", encoding)
 	}
 
-	if strings.TrimSpace(b.cfg.BaseURL) == "" {
+	cfg := b.config()
+
+	if strings.TrimSpace(cfg.BaseURL) == "" {
 		return errors.New("audio control: missing base URL")
 	}
-	if b.cfg.Client == nil {
+	if cfg.Client == nil {
 		return errors.New("audio control: missing http client")
 	}
 
@@ -439,18 +463,6 @@ func (s *AudioStreamSession) handleInput(input []byte) {
 func (s *AudioStreamSession) run() {
 	defer close(s.done)
 
-	baseURL := strings.TrimRight(strings.TrimSpace(s.bridge.cfg.BaseURL), "/")
-	if baseURL == "" {
-		s.logf("audio stream session %s missing base URL", s.id)
-		return
-	}
-	if s.bridge.cfg.Client == nil {
-		s.logf("audio stream session %s missing http client", s.id)
-		return
-	}
-
-	endpoint := fmt.Sprintf("%s/api/agents/%s/audio/chunks", baseURL, url.PathEscape(s.bridge.cfg.AgentID))
-
 	for {
 		select {
 		case <-s.runCtx.Done():
@@ -460,6 +472,21 @@ func (s *AudioStreamSession) run() {
 				continue
 			}
 
+			cfg := s.bridge.config()
+			baseURL := strings.TrimRight(strings.TrimSpace(cfg.BaseURL), "/")
+			if baseURL == "" {
+				s.logf("audio stream session %s missing base URL", s.id)
+				time.Sleep(500 * time.Millisecond)
+				continue
+			}
+			if cfg.Client == nil {
+				s.logf("audio stream session %s missing http client", s.id)
+				time.Sleep(500 * time.Millisecond)
+				continue
+			}
+
+			endpoint := fmt.Sprintf("%s/api/agents/%s/audio/chunks", baseURL, url.PathEscape(cfg.AgentID))
+
 			chunk := AudioStreamChunk{
 				SessionID: s.id,
 				Sequence:  atomic.AddUint64(&s.sequence, 1),
@@ -468,14 +495,14 @@ func (s *AudioStreamSession) run() {
 				Data:      base64.StdEncoding.EncodeToString(data),
 			}
 
-			if err := s.sendChunk(endpoint, chunk); err != nil {
+			if err := s.sendChunk(cfg, endpoint, chunk); err != nil {
 				s.logf("audio stream send error: %v", err)
 			}
 		}
 	}
 }
 
-func (s *AudioStreamSession) sendChunk(endpoint string, chunk AudioStreamChunk) error {
+func (s *AudioStreamSession) sendChunk(cfg Config, endpoint string, chunk AudioStreamChunk) error {
 	payload, err := json.Marshal(chunk)
 	if err != nil {
 		return err
@@ -493,11 +520,11 @@ func (s *AudioStreamSession) sendChunk(endpoint string, chunk AudioStreamChunk) 
 	if ua := strings.TrimSpace(s.bridge.userAgent()); ua != "" {
 		req.Header.Set("User-Agent", ua)
 	}
-	if key := strings.TrimSpace(s.bridge.cfg.AuthKey); key != "" {
+	if key := strings.TrimSpace(cfg.AuthKey); key != "" {
 		req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", key))
 	}
 
-	resp, err := s.bridge.cfg.Client.Do(req)
+	resp, err := cfg.Client.Do(req)
 	if err != nil {
 		return err
 	}
