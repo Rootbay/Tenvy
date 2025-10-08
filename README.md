@@ -114,6 +114,7 @@ Plugins are dynamically loadable and communicate via defined message schemas.
 - Real-time distributed control
 - Plugin registry (TypeScript + Go integration)
 - Unified telemetry and audit logging
+- Remote desktop streaming optimizations ([roadmap](./docs/remote-desktop-optimizations.md))
 
 ---
 

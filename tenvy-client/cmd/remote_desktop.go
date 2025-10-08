@@ -98,11 +98,13 @@ type RemoteDesktopInputEvent struct {
 }
 
 type RemoteDesktopFrameMetrics struct {
-	FPS           float64 `json:"fps,omitempty"`
-	BandwidthKbps float64 `json:"bandwidthKbps,omitempty"`
-	CPUPercent    float64 `json:"cpuPercent,omitempty"`
-	GPUPercent    float64 `json:"gpuPercent,omitempty"`
-	ClipQuality   int     `json:"clipQuality,omitempty"`
+	FPS               float64 `json:"fps,omitempty"`
+	BandwidthKbps     float64 `json:"bandwidthKbps,omitempty"`
+	CPUPercent        float64 `json:"cpuPercent,omitempty"`
+	GPUPercent        float64 `json:"gpuPercent,omitempty"`
+	ClipQuality       int     `json:"clipQuality,omitempty"`
+	TargetBitrateKbps float64 `json:"targetBitrateKbps,omitempty"`
+	LadderLevel       int     `json:"ladderLevel,omitempty"`
 }
 
 type RemoteDesktopMonitorInfo struct {
@@ -176,6 +178,12 @@ type RemoteDesktopSession struct {
 	MinClipQuality     int
 	MaxClipQuality     int
 	LastAdaptation     time.Time
+	qualityLadder      []remoteQualityProfile
+	ladderIndex        int
+	TargetBitrateKbps  int
+	bandwidthEMA       float64
+	fpsEMA             float64
+	processingEMA      float64
 	monitors           []remoteMonitor
 	monitorInfos       []RemoteDesktopMonitorInfo
 	monitorsDirty      bool
@@ -397,8 +405,6 @@ func (c *remoteDesktopSessionController) Start(ctx context.Context, payload Remo
 
 	settings.Monitor = clampMonitorIndex(monitors, settings.Monitor)
 	monitorInfo := infos[settings.Monitor]
-	width, height, tile, interval := qualityProfile(settings.Quality, monitorInfo)
-
 	streamCtx, cancel := context.WithCancel(context.Background())
 	session := &RemoteDesktopSession{
 		ID:            sessionID,
@@ -409,7 +415,10 @@ func (c *remoteDesktopSessionController) Start(ctx context.Context, payload Remo
 		monitorsDirty: true,
 		cancel:        cancel,
 	}
-	c.configureProfileLocked(session, monitorInfo, width, height, tile, interval, true)
+	profile, ladder, idx := selectQualityProfile(settings.Quality, monitorInfo)
+	session.qualityLadder = ladder
+	session.ladderIndex = idx
+	c.configureProfileLocked(session, monitorInfo, profile, true)
 	c.session = session
 
 	go c.stream(streamCtx, session)
@@ -509,9 +518,15 @@ func (c *remoteDesktopSessionController) applySettingsLocked(session *RemoteDesk
 
 	prevMonitor := session.Settings.Monitor
 	prevMode := session.Settings.Mode
+	prevQuality := session.Settings.Quality
+	qualityChanged := false
 
 	if patch.Quality != nil {
-		session.Settings.Quality = normalizeQuality(*patch.Quality)
+		nextQuality := normalizeQuality(*patch.Quality)
+		if nextQuality != session.Settings.Quality {
+			qualityChanged = true
+		}
+		session.Settings.Quality = nextQuality
 		session.AdaptiveScale = 1
 		session.LastAdaptation = time.Time{}
 		session.ClipQuality = 0
@@ -542,16 +557,20 @@ func (c *remoteDesktopSessionController) applySettingsLocked(session *RemoteDesk
 	session.Settings.Monitor = clampMonitorIndex(session.monitors, session.Settings.Monitor)
 	monitorInfo := session.monitorInfos[session.Settings.Monitor]
 
-	width, height, tile, interval := qualityProfile(session.Settings.Quality, monitorInfo)
-	forceKey := session.Settings.Monitor != prevMonitor
-	c.configureProfileLocked(session, monitorInfo, width, height, tile, interval, forceKey)
+	if patch.Quality != nil && session.Settings.Quality != prevQuality {
+		qualityChanged = true
+	}
+	profile, ladder, idx := selectQualityProfile(session.Settings.Quality, monitorInfo)
+	session.qualityLadder = ladder
+	session.ladderIndex = idx
+	forceKey := session.Settings.Monitor != prevMonitor || qualityChanged
+	c.configureProfileLocked(session, monitorInfo, profile, forceKey)
 }
 
 func (c *remoteDesktopSessionController) configureProfileLocked(
 	session *RemoteDesktopSession,
 	monitor RemoteDesktopMonitorInfo,
-	width, height, tile int,
-	interval time.Duration,
+	profile remoteQualityProfile,
 	forceKey bool,
 ) {
 	if session == nil {
@@ -562,6 +581,20 @@ func (c *remoteDesktopSessionController) configureProfileLocked(
 		session.Settings.Mode = RemoteStreamModeVideo
 	}
 
+	width := profile.width
+	height := profile.height
+	if width <= 0 {
+		width = monitor.Width
+	}
+	if height <= 0 {
+		height = monitor.Height
+	}
+	if width <= 0 {
+		width = 1280
+	}
+	if height <= 0 {
+		height = 720
+	}
 	baseWidth := maxInt(1, width)
 	baseHeight := maxInt(1, height)
 	session.BaseWidth = baseWidth
@@ -578,7 +611,7 @@ func (c *remoteDesktopSessionController) configureProfileLocked(
 	session.NativeWidth = nativeWidth
 	session.NativeHeight = nativeHeight
 
-	baseTile := tile
+	baseTile := profile.tile
 	if baseTile <= 0 {
 		baseTile = 40
 	}
@@ -589,7 +622,10 @@ func (c *remoteDesktopSessionController) configureProfileLocked(
 
 	session.MinClipQuality = minClipQuality
 	session.MaxClipQuality = maxClipQuality
-	baseClipQuality := clipQualityBaseline(session.Settings.Quality)
+	baseClipQuality := profile.clipQuality
+	if baseClipQuality <= 0 {
+		baseClipQuality = clipQualityBaseline(session.Settings.Quality)
+	}
 	if baseClipQuality <= 0 {
 		baseClipQuality = defaultClipQuality
 	}
@@ -604,7 +640,7 @@ func (c *remoteDesktopSessionController) configureProfileLocked(
 		}
 	}
 
-	baseInterval := interval
+	baseInterval := profile.interval
 	if baseInterval <= 0 {
 		baseInterval = 100 * time.Millisecond
 	}
@@ -612,6 +648,8 @@ func (c *remoteDesktopSessionController) configureProfileLocked(
 	session.MinInterval = maxDuration(50*time.Millisecond, baseInterval/2)
 	session.MaxInterval = minDuration(400*time.Millisecond, baseInterval*2)
 	session.FrameInterval = clampDuration(baseInterval, session.MinInterval, session.MaxInterval)
+
+	session.TargetBitrateKbps = maxInt(0, profile.bitrate)
 
 	resolutionChanged := false
 
@@ -668,6 +706,9 @@ func (c *remoteDesktopSessionController) configureProfileLocked(
 		session.LastFrame = nil
 		session.ForceKeyFrame = true
 		session.LastAdaptation = time.Time{}
+		session.bandwidthEMA = 0
+		session.fpsEMA = 0
+		session.processingEMA = 0
 	}
 }
 
@@ -711,9 +752,12 @@ func (c *remoteDesktopSessionController) maybeAdaptQualityLocked(
 	if session == nil || session.Settings.Quality != RemoteQualityAuto {
 		return
 	}
+	if len(session.qualityLadder) == 0 {
+		return
+	}
 
 	now := time.Now()
-	if !session.LastAdaptation.IsZero() && now.Sub(session.LastAdaptation) < 2*time.Second {
+	if !session.LastAdaptation.IsZero() && now.Sub(session.LastAdaptation) < 1200*time.Millisecond {
 		return
 	}
 
@@ -734,43 +778,80 @@ func (c *remoteDesktopSessionController) maybeAdaptQualityLocked(
 		}
 	}
 
-	slowThreshold := session.FrameInterval + session.FrameInterval/2
-	fastThreshold := session.FrameInterval * 3 / 4
+	const emaAlpha = 0.35
+	if fps > 0 {
+		session.fpsEMA = updateEMA(session.fpsEMA, fps, emaAlpha)
+	}
+	if bandwidth > 0 {
+		session.bandwidthEMA = updateEMA(session.bandwidthEMA, bandwidth, emaAlpha)
+	}
+	processingMs := processing.Seconds() * 1000
+	if processingMs > 0 {
+		session.processingEMA = updateEMA(session.processingEMA, processingMs, emaAlpha)
+	}
 
-	lowFps := fps > 0 && fps < 8
-	highBandwidth := bandwidth > 6000
-	slowProcessing := processing > slowThreshold
+	ladderIndex := clampInt(session.ladderIndex, 0, len(session.qualityLadder)-1)
+	currentProfile := session.qualityLadder[ladderIndex]
 
-	degrade := lowFps || highBandwidth || slowProcessing
+	processingBudget := float64(session.FrameInterval.Milliseconds())
+	if processingBudget <= 0 {
+		processingBudget = float64(currentProfile.interval.Milliseconds())
+	}
+	if processingBudget <= 0 {
+		processingBudget = 100
+	}
+
+	fpsSample := session.fpsEMA
+	if fpsSample <= 0 {
+		fpsSample = fps
+	}
+	bandwidthSample := session.bandwidthEMA
+	if bandwidthSample <= 0 {
+		bandwidthSample = bandwidth
+	}
+	processingSample := session.processingEMA
+	if processingSample <= 0 {
+		processingSample = processingMs
+	}
+
+	degrade := false
 	improve := false
-	if fps > 18 && processing < slowThreshold {
-		if bandwidth <= 0 || bandwidth < 2500 {
-			improve = true
-		}
+
+	if fpsSample > 0 && fpsSample < 12 {
+		degrade = true
 	}
-	if processing < fastThreshold && fps >= 20 {
-		if bandwidth <= 0 || bandwidth < 3500 {
-			improve = true
+	if bandwidthSample > 0 && currentProfile.bitrate > 0 && bandwidthSample > float64(currentProfile.bitrate)*1.15 {
+		degrade = true
+	}
+	if processingSample > 0 && processingBudget > 0 && processingSample > processingBudget*0.85 {
+		degrade = true
+	}
+	if session.FrameInterval > 0 && frameDuration > session.FrameInterval+session.FrameInterval/2 {
+		degrade = true
+	}
+
+	if !degrade && session.ladderIndex > 0 {
+		prevProfile := session.qualityLadder[session.ladderIndex-1]
+		targetBandwidth := float64(prevProfile.bitrate)
+		if targetBandwidth <= 0 {
+			targetBandwidth = float64(currentProfile.bitrate)
+		}
+		if fpsSample >= 22 && processingSample < processingBudget*0.65 {
+			if targetBandwidth <= 0 || bandwidthSample <= 0 || bandwidthSample < targetBandwidth*0.78 {
+				improve = true
+			}
 		}
 	}
 
-	if degrade && improve {
-		improve = false
-	}
-
-	adapted := false
 	clipAdjusted := false
-	clipAdjustedDegrade := false
-
 	if session.Settings.Mode == RemoteStreamModeVideo {
-		if degrade {
+		if degrade && session.ClipQuality > session.MinClipQuality {
 			nextQuality := clampInt(session.ClipQuality-clipQualityStepDown, session.MinClipQuality, session.MaxClipQuality)
 			if nextQuality != session.ClipQuality {
 				session.ClipQuality = nextQuality
 				clipAdjusted = true
-				clipAdjustedDegrade = true
 			}
-		} else if improve {
+		} else if improve && session.ClipQuality < session.MaxClipQuality {
 			nextQuality := clampInt(session.ClipQuality+clipQualityStepUp, session.MinClipQuality, session.MaxClipQuality)
 			if nextQuality != session.ClipQuality {
 				session.ClipQuality = nextQuality
@@ -779,51 +860,57 @@ func (c *remoteDesktopSessionController) maybeAdaptQualityLocked(
 		}
 	}
 
-	if degrade {
-		if slowProcessing || lowFps || !clipAdjustedDegrade {
-			newScale := clampFloat(session.AdaptiveScale*0.85, session.MinScale, session.MaxScale)
-			if newScale != session.AdaptiveScale {
-				session.AdaptiveScale = newScale
-				if c.applyAdaptiveScaleLocked(session, true) {
-					adapted = true
-				}
-			}
-			nextInterval := clampDuration(session.FrameInterval+15*time.Millisecond, session.MinInterval, session.MaxInterval)
-			if nextInterval != session.FrameInterval {
-				session.FrameInterval = nextInterval
-				adapted = true
-			}
-			nextTile := clampInt(session.TileSize+8, session.MinTile, session.MaxTile)
-			if nextTile != session.TileSize {
-				session.TileSize = nextTile
-				adapted = true
-			}
-		}
-	} else if improve {
-		newScale := clampFloat(session.AdaptiveScale*1.1, session.MinScale, session.MaxScale)
-		if newScale != session.AdaptiveScale {
-			session.AdaptiveScale = newScale
-			if c.applyAdaptiveScaleLocked(session, true) {
-				adapted = true
-			}
-		}
-		nextInterval := clampDuration(session.FrameInterval-10*time.Millisecond, session.MinInterval, session.MaxInterval)
+	if degrade && session.ladderIndex < len(session.qualityLadder)-1 {
+		session.ladderIndex++
+		monitorIndex := clampMonitorIndex(session.monitors, session.Settings.Monitor)
+		monitorInfo := monitorInfoAt(session, monitorIndex)
+		profile := session.qualityLadder[session.ladderIndex]
+		c.configureProfileLocked(session, monitorInfo, profile, true)
+		session.LastAdaptation = now
+		return
+	}
+
+	if improve && session.ladderIndex > 0 {
+		session.ladderIndex--
+		monitorIndex := clampMonitorIndex(session.monitors, session.Settings.Monitor)
+		monitorInfo := monitorInfoAt(session, monitorIndex)
+		profile := session.qualityLadder[session.ladderIndex]
+		c.configureProfileLocked(session, monitorInfo, profile, true)
+		session.LastAdaptation = now
+		return
+	}
+
+	if degrade && !clipAdjusted {
+		nextInterval := clampDuration(session.FrameInterval+12*time.Millisecond, session.MinInterval, session.MaxInterval)
 		if nextInterval != session.FrameInterval {
 			session.FrameInterval = nextInterval
-			adapted = true
+			session.LastAdaptation = now
+			return
+		}
+		nextTile := clampInt(session.TileSize+8, session.MinTile, session.MaxTile)
+		if nextTile != session.TileSize {
+			session.TileSize = nextTile
+			session.LastAdaptation = now
+			return
+		}
+	}
+
+	if improve && !clipAdjusted {
+		nextInterval := clampDuration(session.FrameInterval-8*time.Millisecond, session.MinInterval, session.MaxInterval)
+		if nextInterval != session.FrameInterval {
+			session.FrameInterval = nextInterval
+			session.LastAdaptation = now
+			return
 		}
 		nextTile := clampInt(session.TileSize-4, session.MinTile, session.MaxTile)
 		if nextTile != session.TileSize {
 			session.TileSize = nextTile
-			adapted = true
+			session.LastAdaptation = now
+			return
 		}
 	}
 
 	if clipAdjusted {
-		adapted = true
-	}
-
-	if adapted {
 		session.LastAdaptation = now
 	}
 }
@@ -1048,6 +1135,12 @@ func (c *remoteDesktopSessionController) stream(ctx context.Context, session *Re
 			if c.session != nil && c.session.ID == session.ID {
 				c.session.Sequence++
 				frame.Sequence = c.session.Sequence
+				if metrics != nil {
+					if c.session.TargetBitrateKbps > 0 {
+						metrics.TargetBitrateKbps = float64(c.session.TargetBitrateKbps)
+					}
+					metrics.LadderLevel = c.session.ladderIndex
+				}
 				c.maybeAdaptQualityLocked(c.session, metrics, processingDuration, frameDuration, clipBytes)
 				if len(monitorsPayload) > 0 {
 					c.session.monitorsDirty = false
@@ -1184,6 +1277,12 @@ func (c *remoteDesktopSessionController) stream(ctx context.Context, session *Re
 
 		c.mu.Lock()
 		if c.session != nil && c.session.ID == session.ID {
+			if metrics != nil {
+				if c.session.TargetBitrateKbps > 0 {
+					metrics.TargetBitrateKbps = float64(c.session.TargetBitrateKbps)
+				}
+				metrics.LadderLevel = c.session.ladderIndex
+			}
 			c.maybeAdaptQualityLocked(c.session, metrics, processingDuration, frameDuration, bytesSent)
 			nextInterval = c.session.FrameInterval
 		}
@@ -1321,7 +1420,59 @@ func normalizeStreamMode(value RemoteDesktopStreamMode) RemoteDesktopStreamMode 
 	}
 }
 
-func qualityProfile(quality RemoteDesktopQuality, monitor RemoteDesktopMonitorInfo) (int, int, int, time.Duration) {
+type remoteQualityProfile struct {
+	width       int
+	height      int
+	tile        int
+	interval    time.Duration
+	bitrate     int
+	clipQuality int
+}
+
+func selectQualityProfile(quality RemoteDesktopQuality, monitor RemoteDesktopMonitorInfo) (remoteQualityProfile, []remoteQualityProfile, int) {
+	ladder := buildQualityLadder(monitor)
+	if len(ladder) == 0 {
+		fallbackWidth := monitor.Width
+		fallbackHeight := monitor.Height
+		if fallbackWidth <= 0 {
+			fallbackWidth = 1280
+		}
+		if fallbackHeight <= 0 {
+			fallbackHeight = 720
+		}
+		tmpl := templateForWidth(fallbackWidth)
+		profile := remoteQualityProfile{
+			width:       alignEven(maxInt(320, fallbackWidth)),
+			height:      alignEven(maxInt(240, fallbackHeight)),
+			tile:        tmpl.tile,
+			interval:    tmpl.interval,
+			bitrate:     tmpl.bitrate,
+			clipQuality: clampInt(tmpl.clip, minClipQuality, maxClipQuality),
+		}
+		if profile.clipQuality <= 0 {
+			profile.clipQuality = clipQualityBaseline(quality)
+		}
+		return profile, []remoteQualityProfile{profile}, 0
+	}
+
+	index := defaultLadderIndex(quality, len(ladder))
+	if index < 0 {
+		index = 0
+	}
+	if index >= len(ladder) {
+		index = len(ladder) - 1
+	}
+
+	profile := ladder[index]
+	if profile.clipQuality <= 0 {
+		profile.clipQuality = clipQualityBaseline(quality)
+	}
+	profile.clipQuality = clampInt(profile.clipQuality, minClipQuality, maxClipQuality)
+	ladder[index] = profile
+	return profile, ladder, index
+}
+
+func buildQualityLadder(monitor RemoteDesktopMonitorInfo) []remoteQualityProfile {
 	width := monitor.Width
 	height := monitor.Height
 	if width <= 0 {
@@ -1330,53 +1481,125 @@ func qualityProfile(quality RemoteDesktopQuality, monitor RemoteDesktopMonitorIn
 	if height <= 0 {
 		height = 720
 	}
+	aspect := float64(height) / float64(width)
+	if aspect <= 0 {
+		aspect = 9.0 / 16.0
+	}
 
-	var targetWidth int
-	var interval time.Duration
-	var tile int
+	scales := []float64{1.0, 0.88, 0.76, 0.66, 0.56, 0.46, 0.38}
+	used := make(map[int]bool)
+	ladder := make([]remoteQualityProfile, 0, len(scales))
+	for _, scale := range scales {
+		candidateWidth := alignEven(int(math.Round(float64(width) * scale)))
+		if candidateWidth <= 0 {
+			continue
+		}
+		if candidateWidth > width {
+			candidateWidth = width
+		}
+		if candidateWidth < 320 {
+			continue
+		}
+		if used[candidateWidth] {
+			continue
+		}
+		used[candidateWidth] = true
 
+		candidateHeight := alignEven(int(math.Round(float64(candidateWidth) * aspect)))
+		if candidateHeight <= 0 {
+			candidateHeight = alignEven(int(math.Round(float64(height) * scale)))
+		}
+		if candidateHeight <= 0 {
+			candidateHeight = height
+		}
+		tmpl := templateForWidth(candidateWidth)
+		profile := remoteQualityProfile{
+			width:       candidateWidth,
+			height:      maxInt(240, candidateHeight),
+			tile:        clampInt(tmpl.tile, 24, 128),
+			interval:    tmpl.interval,
+			bitrate:     tmpl.bitrate,
+			clipQuality: clampInt(tmpl.clip, minClipQuality, maxClipQuality),
+		}
+		ladder = append(ladder, profile)
+	}
+
+	if len(ladder) == 0 {
+		return nil
+	}
+	return ladder
+}
+
+type qualityTemplate struct {
+	tile     int
+	interval time.Duration
+	bitrate  int
+	clip     int
+}
+
+func templateForWidth(width int) qualityTemplate {
+	switch {
+	case width >= 3200:
+		return qualityTemplate{tile: 28, interval: 65 * time.Millisecond, bitrate: 11000, clip: 92}
+	case width >= 2560:
+		return qualityTemplate{tile: 28, interval: 72 * time.Millisecond, bitrate: 9000, clip: 90}
+	case width >= 2048:
+		return qualityTemplate{tile: 30, interval: 80 * time.Millisecond, bitrate: 7600, clip: 88}
+	case width >= 1920:
+		return qualityTemplate{tile: 32, interval: 88 * time.Millisecond, bitrate: 6400, clip: 86}
+	case width >= 1700:
+		return qualityTemplate{tile: 34, interval: 96 * time.Millisecond, bitrate: 5600, clip: 84}
+	case width >= 1500:
+		return qualityTemplate{tile: 38, interval: 104 * time.Millisecond, bitrate: 5000, clip: 82}
+	case width >= 1366:
+		return qualityTemplate{tile: 42, interval: 116 * time.Millisecond, bitrate: 4200, clip: 80}
+	case width >= 1280:
+		return qualityTemplate{tile: 44, interval: 124 * time.Millisecond, bitrate: 3600, clip: 78}
+	case width >= 1100:
+		return qualityTemplate{tile: 48, interval: 138 * time.Millisecond, bitrate: 3000, clip: 76}
+	case width >= 960:
+		return qualityTemplate{tile: 52, interval: 150 * time.Millisecond, bitrate: 2300, clip: 74}
+	case width >= 820:
+		return qualityTemplate{tile: 56, interval: 168 * time.Millisecond, bitrate: 1800, clip: 72}
+	case width >= 700:
+		return qualityTemplate{tile: 60, interval: 186 * time.Millisecond, bitrate: 1350, clip: 70}
+	default:
+		return qualityTemplate{tile: 64, interval: 210 * time.Millisecond, bitrate: 950, clip: 68}
+	}
+}
+
+func defaultLadderIndex(quality RemoteDesktopQuality, length int) int {
+	if length <= 0 {
+		return 0
+	}
 	switch quality {
 	case RemoteQualityHigh:
-		targetWidth = minInt(width, 1920)
-		interval = 80 * time.Millisecond
-		tile = 32
+		return 0
 	case RemoteQualityMedium:
-		targetWidth = minInt(width, 1366)
-		interval = 120 * time.Millisecond
-		tile = 48
-	case RemoteQualityLow:
-		targetWidth = minInt(width, 1024)
-		interval = 180 * time.Millisecond
-		tile = 64
-	default:
-		targetWidth = width
-		interval = 100 * time.Millisecond
-		tile = 40
-		if width >= 2560 {
-			targetWidth = 1600
-			interval = 110 * time.Millisecond
-		} else if width > 1920 {
-			targetWidth = 1760
-			interval = 105 * time.Millisecond
-		} else if width > 1366 {
-			targetWidth = 1440
+		idx := length / 2
+		if idx <= 0 && length > 1 {
+			idx = 1
 		}
+		if idx >= length {
+			idx = length - 1
+		}
+		return idx
+	case RemoteQualityLow:
+		idx := length - 1
+		if idx < 0 {
+			idx = 0
+		}
+		return idx
+	default:
+		return 0
 	}
+}
 
-	if targetWidth <= 0 {
-		targetWidth = width
+func alignEven(value int) int {
+	if value%2 != 0 {
+		value++
 	}
-
-	scale := float64(targetWidth) / float64(width)
-	if scale <= 0 {
-		scale = 1
-	}
-	targetHeight := int(math.Round(float64(height) * scale))
-	if targetHeight <= 0 {
-		targetHeight = height
-	}
-
-	return targetWidth, targetHeight, tile, interval
+	return value
 }
 
 func clipQualityBaseline(preset RemoteDesktopQuality) int {
@@ -1961,6 +2184,33 @@ func monitorInfos(monitors []remoteMonitor) []RemoteDesktopMonitorInfo {
 	return infos
 }
 
+func monitorInfoAt(session *RemoteDesktopSession, index int) RemoteDesktopMonitorInfo {
+	if session == nil {
+		return RemoteDesktopMonitorInfo{ID: 0, Label: "Primary", Width: 1280, Height: 720}
+	}
+	if index >= 0 && index < len(session.monitorInfos) {
+		return session.monitorInfos[index]
+	}
+	if len(session.monitorInfos) > 0 {
+		return session.monitorInfos[0]
+	}
+	width := session.NativeWidth
+	height := session.NativeHeight
+	if width <= 0 {
+		width = session.BaseWidth
+	}
+	if width <= 0 {
+		width = 1280
+	}
+	if height <= 0 {
+		height = session.BaseHeight
+	}
+	if height <= 0 {
+		height = 720
+	}
+	return RemoteDesktopMonitorInfo{ID: 0, Label: "Primary", Width: width, Height: height}
+}
+
 func detectRemoteMonitors() []remoteMonitor {
 	count := safeNumDisplays()
 	monitors := make([]remoteMonitor, 0, count)
@@ -2128,6 +2378,22 @@ func clampFloat(value, min, max float64) float64 {
 		return max
 	}
 	return value
+}
+
+func updateEMA(current, sample, alpha float64) float64 {
+	if sample <= 0 {
+		return current
+	}
+	if current <= 0 {
+		return sample
+	}
+	if alpha <= 0 {
+		return current
+	}
+	if alpha >= 1 {
+		return sample
+	}
+	return current*(1-alpha) + sample*alpha
 }
 
 func clampDuration(value, min, max time.Duration) time.Duration {
