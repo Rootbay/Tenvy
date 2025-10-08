@@ -98,7 +98,7 @@ export interface RemoteDesktopFramePacket {
   width: number;
   height: number;
   keyFrame: boolean;
-  encoding: "png" | "clip";
+  encoding: "png" | "jpeg" | "clip";
   image?: string;
   deltas?: RemoteDesktopDeltaRect[];
   clip?: RemoteDesktopVideoClip;
