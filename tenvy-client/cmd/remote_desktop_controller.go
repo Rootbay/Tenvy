@@ -591,6 +591,16 @@ func (c *remoteDesktopSessionController) maybeAdaptQualityLocked(
 				return
 			}
 		}
+		if session.ladderIndex < len(session.qualityLadder)-1 {
+			session.ladderIndex++
+			session.AdaptiveScale = 1
+			monitorIndex := clampMonitorIndex(session.monitors, session.Settings.Monitor)
+			monitor := monitorInfoAt(session, monitorIndex)
+			profile := session.qualityLadder[session.ladderIndex]
+			c.configureProfileLocked(session, monitor, profile, true)
+			session.LastAdaptation = now
+			return
+		}
 	}
 
 	if improve {
@@ -619,6 +629,16 @@ func (c *remoteDesktopSessionController) maybeAdaptQualityLocked(
 					return
 				}
 			}
+		}
+		if session.ladderIndex > 0 {
+			session.ladderIndex--
+			session.AdaptiveScale = 1
+			monitorIndex := clampMonitorIndex(session.monitors, session.Settings.Monitor)
+			monitor := monitorInfoAt(session, monitorIndex)
+			profile := session.qualityLadder[session.ladderIndex]
+			c.configureProfileLocked(session, monitor, profile, true)
+			session.LastAdaptation = now
+			return
 		}
 	}
 }

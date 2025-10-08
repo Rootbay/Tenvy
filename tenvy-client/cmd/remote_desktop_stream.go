@@ -89,12 +89,6 @@ func (h *remoteTileHasher) rebuild(data []byte, width, height, tile int) {
 	h.ready = true
 }
 
-func (c *remoteDesktopSessionController) Shutdown() {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	c.stopLocked()
-}
-
 const (
 	remoteEncodingPNG      = "png"
 	remoteEncodingJPEG     = "jpeg"
