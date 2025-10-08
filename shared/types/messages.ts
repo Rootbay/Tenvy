@@ -2,6 +2,7 @@ import type { AgentConfig } from './config';
 import type { AgentMetrics, AgentStatus } from './agent';
 import type { RemoteDesktopCommandPayload } from './remote-desktop';
 import type { AudioControlCommandPayload } from './audio';
+import type { ClipboardCommandPayload } from './clipboard';
 
 export type CommandName =
         | 'ping'
@@ -9,7 +10,8 @@ export type CommandName =
         | 'remote-desktop'
         | 'system-info'
         | 'open-url'
-        | 'audio-control';
+        | 'audio-control'
+        | 'clipboard';
 
 export interface PingCommandPayload {
         message?: string;
@@ -38,7 +40,8 @@ export type CommandPayload =
         | RemoteDesktopCommandPayload
         | SystemInfoCommandPayload
         | OpenUrlCommandPayload
-        | AudioControlCommandPayload;
+        | AudioControlCommandPayload
+        | ClipboardCommandPayload;
 
 export interface CommandInput {
         name: CommandName;
