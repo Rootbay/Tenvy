@@ -61,8 +61,13 @@ export interface RemoteDesktopFrameMetrics {
   cpuPercent?: number;
   gpuPercent?: number;
   clipQuality?: number;
+  captureLatencyMs?: number;
+  encodeLatencyMs?: number;
+  processingLatencyMs?: number;
+  frameJitterMs?: number;
   targetBitrateKbps?: number;
   ladderLevel?: number;
+  frameLossPercent?: number;
 }
 
 export interface RemoteDesktopCursorState {
