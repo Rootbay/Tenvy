@@ -73,7 +73,7 @@
 	let streamHeight = $state<number | null>(null);
 	let latencyMs = $state<number | null>(null);
 	let droppedFrames = $state(0);
-	let isStarting = $state(true);
+let isStarting = $state(false);
 	let isStopping = $state(false);
 	let isUpdating = $state(false);
 	let errorMessage = $state<string | null>(null);

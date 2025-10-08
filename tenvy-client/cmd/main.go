@@ -28,7 +28,7 @@ import (
 	"time"
 
 	audioctrl "github.com/rootbay/tenvy-client/internal/modules/control/audio"
-	remote "github.com/rootbay/tenvy-client/internal/modules/control/remote"
+	remotedesktop "github.com/rootbay/tenvy-client/internal/modules/control/remotedesktop"
 	notes "github.com/rootbay/tenvy-client/internal/modules/notes"
 	systeminfo "github.com/rootbay/tenvy-client/internal/modules/systeminfo"
 	"github.com/rootbay/tenvy-client/internal/platform"
@@ -93,7 +93,7 @@ type Agent struct {
 	metadata       AgentMetadata
 	sharedSecret   string
 	preferences    BuildPreferences
-	remoteDesktop  *remote.RemoteDesktopStreamer
+	remoteDesktop  *remotedesktop.RemoteDesktopStreamer
 	systemInfo     *systeminfo.Collector
 	notes          *notes.Manager
 	audioBridge    *audioctrl.AudioBridge
@@ -215,7 +215,7 @@ func main() {
 		preferences:    preferences,
 	}
 
-	agent.remoteDesktop = remote.NewRemoteDesktopStreamer(remote.Config{
+	agent.remoteDesktop = remotedesktop.NewRemoteDesktopStreamer(remotedesktop.Config{
 		AgentID:   agent.id,
 		BaseURL:   agent.baseURL,
 		AuthKey:   agent.key,
@@ -503,7 +503,7 @@ func (a *Agent) reRegister(ctx context.Context) error {
 	a.resultMu.Unlock()
 
 	if a.remoteDesktop != nil {
-		a.remoteDesktop.UpdateConfig(remote.Config{
+		a.remoteDesktop.UpdateConfig(remotedesktop.Config{
 			AgentID:   a.id,
 			BaseURL:   a.baseURL,
 			AuthKey:   a.key,

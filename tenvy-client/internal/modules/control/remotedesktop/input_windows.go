@@ -1,6 +1,6 @@
 //go:build windows
 
-package remote
+package remotedesktop
 
 import (
 	"image"

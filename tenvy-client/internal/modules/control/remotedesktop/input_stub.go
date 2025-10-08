@@ -1,6 +1,6 @@
 //go:build !windows
 
-package remote
+package remotedesktop
 
 func processRemoteInput(monitors []remoteMonitor, settings RemoteDesktopSettings, events []RemoteDesktopInputEvent) error {
 	return nil
