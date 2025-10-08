@@ -1,0 +1,89 @@
+package protocol
+
+import (
+	"encoding/json"
+	"errors"
+)
+
+var ErrUnauthorized = errors.New("unauthorized")
+
+type AgentConfig struct {
+	PollIntervalMs int     `json:"pollIntervalMs"`
+	MaxBackoffMs   int     `json:"maxBackoffMs"`
+	JitterRatio    float64 `json:"jitterRatio"`
+}
+
+type AgentMetrics struct {
+	MemoryBytes   uint64 `json:"memoryBytes,omitempty"`
+	Goroutines    int    `json:"goroutines,omitempty"`
+	UptimeSeconds uint64 `json:"uptimeSeconds,omitempty"`
+}
+
+type Command struct {
+	ID        string          `json:"id"`
+	Name      string          `json:"name"`
+	Payload   json.RawMessage `json:"payload"`
+	CreatedAt string          `json:"createdAt"`
+}
+
+type CommandResult struct {
+	CommandID   string `json:"commandId"`
+	Success     bool   `json:"success"`
+	Output      string `json:"output,omitempty"`
+	Error       string `json:"error,omitempty"`
+	CompletedAt string `json:"completedAt"`
+}
+
+type AgentMetadata struct {
+	Hostname     string   `json:"hostname"`
+	Username     string   `json:"username"`
+	OS           string   `json:"os"`
+	Architecture string   `json:"architecture"`
+	IPAddress    string   `json:"ipAddress,omitempty"`
+	Tags         []string `json:"tags,omitempty"`
+	Version      string   `json:"version,omitempty"`
+}
+
+type AgentRegistrationRequest struct {
+	Token    string        `json:"token,omitempty"`
+	Metadata AgentMetadata `json:"metadata"`
+}
+
+type AgentRegistrationResponse struct {
+	AgentID    string      `json:"agentId"`
+	AgentKey   string      `json:"agentKey"`
+	Config     AgentConfig `json:"config"`
+	Commands   []Command   `json:"commands"`
+	ServerTime string      `json:"serverTime"`
+}
+
+type AgentSyncRequest struct {
+	Status    string          `json:"status"`
+	Timestamp string          `json:"timestamp"`
+	Metrics   *AgentMetrics   `json:"metrics,omitempty"`
+	Results   []CommandResult `json:"results,omitempty"`
+}
+
+type AgentSyncResponse struct {
+	AgentID    string      `json:"agentId"`
+	Commands   []Command   `json:"commands"`
+	Config     AgentConfig `json:"config"`
+	ServerTime string      `json:"serverTime"`
+}
+
+type PingCommandPayload struct {
+	Message string `json:"message,omitempty"`
+}
+
+type ShellCommandPayload struct {
+	Command          string            `json:"command"`
+	TimeoutSeconds   int               `json:"timeoutSeconds,omitempty"`
+	WorkingDirectory string            `json:"workingDirectory,omitempty"`
+	Elevated         bool              `json:"elevated,omitempty"`
+	Environment      map[string]string `json:"environment,omitempty"`
+}
+
+type OpenURLCommandPayload struct {
+	URL  string `json:"url"`
+	Note string `json:"note,omitempty"`
+}

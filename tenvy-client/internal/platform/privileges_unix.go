@@ -1,9 +1,9 @@
 //go:build !windows
 
-package main
+package platform
 
 import "os"
 
-func currentUserIsElevated() bool {
+func CurrentUserIsElevated() bool {
 	return os.Geteuid() == 0
 }

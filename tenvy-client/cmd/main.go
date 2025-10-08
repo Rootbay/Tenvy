@@ -26,6 +26,13 @@ import (
 	"sync"
 	"syscall"
 	"time"
+
+	audioctrl "github.com/rootbay/tenvy-client/internal/modules/control/audio"
+	remote "github.com/rootbay/tenvy-client/internal/modules/control/remote"
+	notes "github.com/rootbay/tenvy-client/internal/modules/notes"
+	systeminfo "github.com/rootbay/tenvy-client/internal/modules/systeminfo"
+	"github.com/rootbay/tenvy-client/internal/platform"
+	"github.com/rootbay/tenvy-client/internal/protocol"
 )
 
 var buildVersion = "dev"
@@ -49,7 +56,7 @@ const (
 	statusOffline = "offline"
 )
 
-var ErrUnauthorized = errors.New("unauthorized")
+var ErrUnauthorized = protocol.ErrUnauthorized
 
 const (
 	maxBufferedResults  = 50
@@ -58,86 +65,20 @@ const (
 	defaultShellTimeout = 30 * time.Second
 )
 
-type AgentConfig struct {
-	PollIntervalMs int     `json:"pollIntervalMs"`
-	MaxBackoffMs   int     `json:"maxBackoffMs"`
-	JitterRatio    float64 `json:"jitterRatio"`
-}
-
-type AgentMetrics struct {
-	MemoryBytes   uint64 `json:"memoryBytes,omitempty"`
-	Goroutines    int    `json:"goroutines,omitempty"`
-	UptimeSeconds uint64 `json:"uptimeSeconds,omitempty"`
-}
-
-type Command struct {
-	ID        string          `json:"id"`
-	Name      string          `json:"name"`
-	Payload   json.RawMessage `json:"payload"`
-	CreatedAt string          `json:"createdAt"`
-}
-
-type CommandResult struct {
-	CommandID   string `json:"commandId"`
-	Success     bool   `json:"success"`
-	Output      string `json:"output,omitempty"`
-	Error       string `json:"error,omitempty"`
-	CompletedAt string `json:"completedAt"`
-}
-
-type AgentMetadata struct {
-	Hostname     string   `json:"hostname"`
-	Username     string   `json:"username"`
-	OS           string   `json:"os"`
-	Architecture string   `json:"architecture"`
-	IPAddress    string   `json:"ipAddress,omitempty"`
-	Tags         []string `json:"tags,omitempty"`
-	Version      string   `json:"version,omitempty"`
-}
-
-type AgentRegistrationRequest struct {
-	Token    string        `json:"token,omitempty"`
-	Metadata AgentMetadata `json:"metadata"`
-}
-
-type AgentRegistrationResponse struct {
-	AgentID    string      `json:"agentId"`
-	AgentKey   string      `json:"agentKey"`
-	Config     AgentConfig `json:"config"`
-	Commands   []Command   `json:"commands"`
-	ServerTime string      `json:"serverTime"`
-}
-
-type AgentSyncRequest struct {
-	Status    string          `json:"status"`
-	Timestamp string          `json:"timestamp"`
-	Metrics   *AgentMetrics   `json:"metrics,omitempty"`
-	Results   []CommandResult `json:"results,omitempty"`
-}
-
-type AgentSyncResponse struct {
-	AgentID    string      `json:"agentId"`
-	Commands   []Command   `json:"commands"`
-	Config     AgentConfig `json:"config"`
-	ServerTime string      `json:"serverTime"`
-}
-
-type PingCommandPayload struct {
-	Message string `json:"message,omitempty"`
-}
-
-type ShellCommandPayload struct {
-	Command          string            `json:"command"`
-	TimeoutSeconds   int               `json:"timeoutSeconds,omitempty"`
-	WorkingDirectory string            `json:"workingDirectory,omitempty"`
-	Elevated         bool              `json:"elevated,omitempty"`
-	Environment      map[string]string `json:"environment,omitempty"`
-}
-
-type OpenURLCommandPayload struct {
-	URL  string `json:"url"`
-	Note string `json:"note,omitempty"`
-}
+type (
+	AgentConfig               = protocol.AgentConfig
+	AgentMetrics              = protocol.AgentMetrics
+	Command                   = protocol.Command
+	CommandResult             = protocol.CommandResult
+	AgentMetadata             = protocol.AgentMetadata
+	AgentRegistrationRequest  = protocol.AgentRegistrationRequest
+	AgentRegistrationResponse = protocol.AgentRegistrationResponse
+	AgentSyncRequest          = protocol.AgentSyncRequest
+	AgentSyncResponse         = protocol.AgentSyncResponse
+	PingCommandPayload        = protocol.PingCommandPayload
+	ShellCommandPayload       = protocol.ShellCommandPayload
+	OpenURLCommandPayload     = protocol.OpenURLCommandPayload
+)
 
 type Agent struct {
 	id             string
@@ -152,10 +93,22 @@ type Agent struct {
 	metadata       AgentMetadata
 	sharedSecret   string
 	preferences    BuildPreferences
-	remoteDesktop  *RemoteDesktopStreamer
-	systemInfo     *SystemInfoCollector
-	notes          *NotesManager
-	audioBridge    *AudioBridge
+	remoteDesktop  *remote.RemoteDesktopStreamer
+	systemInfo     *systeminfo.Collector
+	notes          *notes.Manager
+	audioBridge    *audioctrl.AudioBridge
+}
+
+func (a *Agent) AgentID() string {
+	return a.id
+}
+
+func (a *Agent) AgentMetadata() protocol.AgentMetadata {
+	return a.metadata
+}
+
+func (a *Agent) AgentStartTime() time.Time {
+	return a.startTime
 }
 
 type BuildPreferences struct {
@@ -262,18 +215,32 @@ func main() {
 		preferences:    preferences,
 	}
 
-	agent.remoteDesktop = NewRemoteDesktopStreamer(agent)
-	agent.systemInfo = NewSystemInfoCollector(agent)
-	agent.audioBridge = NewAudioBridge(agent)
+	agent.remoteDesktop = remote.NewRemoteDesktopStreamer(remote.Config{
+		AgentID:   agent.id,
+		BaseURL:   agent.baseURL,
+		AuthKey:   agent.key,
+		Client:    agent.client,
+		Logger:    agent.logger,
+		UserAgent: userAgent(),
+	})
+	agent.systemInfo = systeminfo.NewCollector(agent, buildVersion)
+	agent.audioBridge = audioctrl.NewAudioBridge(audioctrl.Config{
+		AgentID:   agent.id,
+		BaseURL:   agent.baseURL,
+		AuthKey:   agent.key,
+		Client:    agent.client,
+		Logger:    agent.logger,
+		UserAgent: userAgent(),
+	})
 
-	if notesPath, err := defaultNotesPath(); err != nil {
+	if notesPath, err := notes.DefaultPath(); err != nil {
 		logger.Printf("notes disabled (path error): %v", err)
 	} else {
 		sharedMaterial := sharedSecret
 		if strings.TrimSpace(sharedMaterial) == "" {
 			sharedMaterial = registration.AgentKey + "-shared"
 		}
-		if notesManager, err := NewNotesManager(notesPath, registration.AgentKey, sharedMaterial); err != nil {
+		if notesManager, err := notes.NewManager(notesPath, registration.AgentKey, sharedMaterial); err != nil {
 			logger.Printf("notes disabled (init failed): %v", err)
 		} else {
 			agent.notes = notesManager
@@ -448,7 +415,7 @@ func (a *Agent) sync(ctx context.Context, status string) error {
 	a.processCommands(ctx, payload.Commands)
 
 	if a.notes != nil {
-		if err := a.notes.SyncShared(ctx, a.client, a.baseURL, a.id, a.key); err != nil {
+		if err := a.notes.SyncShared(ctx, a.client, a.baseURL, a.id, a.key, userAgent()); err != nil {
 			if errors.Is(err, ErrUnauthorized) {
 				return err
 			}
@@ -646,7 +613,7 @@ func handleShellCommand(ctx context.Context, cmd Command) CommandResult {
 		}
 	}
 
-	if payload.Elevated && !currentUserIsElevated() {
+	if payload.Elevated && !platform.CurrentUserIsElevated() {
 		return CommandResult{
 			CommandID:   cmd.ID,
 			Success:     false,
@@ -1324,7 +1291,7 @@ func lockFileIsStale(path string) (bool, error) {
 		return true, nil
 	}
 
-	alive, err := processExists(pid)
+	alive, err := platform.ProcessExists(pid)
 	if err != nil {
 		return false, err
 	}
@@ -1356,7 +1323,7 @@ func enforcePrivilegeRequirement(required bool) error {
 	if !required {
 		return nil
 	}
-	if currentUserIsElevated() {
+	if platform.CurrentUserIsElevated() {
 		return nil
 	}
 	return errors.New("administrator privileges are required")

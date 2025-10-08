@@ -1,10 +1,10 @@
 //go:build windows
 
-package main
+package platform
 
 import "golang.org/x/sys/windows"
 
-func processExists(pid int) (bool, error) {
+func ProcessExists(pid int) (bool, error) {
 	if pid <= 0 {
 		return false, nil
 	}

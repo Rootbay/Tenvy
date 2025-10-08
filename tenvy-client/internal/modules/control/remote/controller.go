@@ -1,4 +1,4 @@
-package main
+package remote
 
 import (
 	"context"
@@ -11,14 +11,14 @@ import (
 	"time"
 )
 
-func NewRemoteDesktopStreamer(agent *Agent) *RemoteDesktopStreamer {
+func NewRemoteDesktopStreamer(cfg Config) *RemoteDesktopStreamer {
 	return &RemoteDesktopStreamer{
-		controller: newRemoteDesktopSessionController(agent),
+		controller: newRemoteDesktopSessionController(cfg),
 	}
 }
 
-func newRemoteDesktopSessionController(agent *Agent) *remoteDesktopSessionController {
-	return &remoteDesktopSessionController{agent: agent}
+func newRemoteDesktopSessionController(cfg Config) *remoteDesktopSessionController {
+	return &remoteDesktopSessionController{cfg: cfg}
 }
 
 func (s *RemoteDesktopStreamer) HandleCommand(ctx context.Context, cmd Command) CommandResult {
@@ -122,7 +122,7 @@ func (c *remoteDesktopSessionController) Start(ctx context.Context, payload Remo
 	c.session = session
 
 	go c.stream(streamCtx, session)
-	c.agent.logger.Printf("remote desktop session %s started", sessionID)
+	c.logf("remote desktop session %s started", sessionID)
 	return nil
 }
 
@@ -137,7 +137,7 @@ func (c *remoteDesktopSessionController) Stop(sessionID string) error {
 		return fmt.Errorf("session %s not active", sessionID)
 	}
 
-	c.agent.logger.Printf("remote desktop session %s stopped", c.session.ID)
+	c.logf("remote desktop session %s stopped", c.session.ID)
 	c.stopLocked()
 	return nil
 }
@@ -215,6 +215,28 @@ func (c *remoteDesktopSessionController) stopLocked() {
 		}
 		c.session = nil
 	}
+}
+
+func (c *remoteDesktopSessionController) logf(format string, args ...interface{}) {
+	if c.cfg.Logger == nil {
+		return
+	}
+	c.cfg.Logger.Printf(format, args...)
+}
+
+func (c *remoteDesktopSessionController) userAgent() string {
+	ua := strings.TrimSpace(c.cfg.UserAgent)
+	if ua != "" {
+		return ua
+	}
+	return "tenvy-client"
+}
+
+func minDuration(a, b time.Duration) time.Duration {
+	if a < b {
+		return a
+	}
+	return b
 }
 
 func (c *remoteDesktopSessionController) applySettingsLocked(session *RemoteDesktopSession, patch *RemoteDesktopSettingsPatch) {

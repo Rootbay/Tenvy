@@ -1,4 +1,4 @@
-package main
+package systeminfo
 
 import (
 	"context"
@@ -20,6 +20,13 @@ import (
 	"github.com/shirou/gopsutil/v3/mem"
 	gnet "github.com/shirou/gopsutil/v3/net"
 	"github.com/shirou/gopsutil/v3/process"
+
+	"github.com/rootbay/tenvy-client/internal/protocol"
+)
+
+type (
+	Command       = protocol.Command
+	CommandResult = protocol.CommandResult
 )
 
 type SystemInfoCommandPayload struct {
@@ -159,22 +166,30 @@ type SystemInfoAgent struct {
 	Tags          []string `json:"tags,omitempty"`
 }
 
-type SystemInfoCollector struct {
-	agent       *Agent
-	mu          sync.Mutex
-	cache       string
-	cacheExpiry time.Time
-	cacheTTL    time.Duration
+type AgentInfoProvider interface {
+	AgentID() string
+	AgentMetadata() protocol.AgentMetadata
+	AgentStartTime() time.Time
 }
 
-func NewSystemInfoCollector(agent *Agent) *SystemInfoCollector {
-	return &SystemInfoCollector{
-		agent:    agent,
-		cacheTTL: 10 * time.Second,
+type Collector struct {
+	provider     AgentInfoProvider
+	buildVersion string
+	mu           sync.Mutex
+	cache        string
+	cacheExpiry  time.Time
+	cacheTTL     time.Duration
+}
+
+func NewCollector(provider AgentInfoProvider, buildVersion string) *Collector {
+	return &Collector{
+		provider:     provider,
+		buildVersion: buildVersion,
+		cacheTTL:     10 * time.Second,
 	}
 }
 
-func (c *SystemInfoCollector) HandleCommand(ctx context.Context, cmd Command) CommandResult {
+func (c *Collector) HandleCommand(ctx context.Context, cmd Command) CommandResult {
 	result := CommandResult{
 		CommandID:   cmd.ID,
 		CompletedAt: time.Now().UTC().Format(time.RFC3339Nano),
@@ -207,7 +222,7 @@ func (c *SystemInfoCollector) HandleCommand(ctx context.Context, cmd Command) Co
 	return result
 }
 
-func (c *SystemInfoCollector) snapshot(ctx context.Context, refresh bool) (string, error) {
+func (c *Collector) snapshot(ctx context.Context, refresh bool) (string, error) {
 	c.mu.Lock()
 	if !refresh && c.cache != "" && time.Now().Before(c.cacheExpiry) {
 		cached := c.cache
@@ -235,10 +250,13 @@ func (c *SystemInfoCollector) snapshot(ctx context.Context, refresh bool) (strin
 	return cached, nil
 }
 
-func (c *SystemInfoCollector) collectReport(ctx context.Context) (*SystemInfoReport, error) {
+func (c *Collector) collectReport(ctx context.Context) (*SystemInfoReport, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
+
+	metadata := c.provider.AgentMetadata()
+	startTime := c.provider.AgentStartTime()
 
 	report := &SystemInfoReport{
 		CollectedAt: time.Now().UTC().Format(time.RFC3339Nano),
@@ -262,17 +280,17 @@ func (c *SystemInfoCollector) collectReport(ctx context.Context) (*SystemInfoRep
 			TempDir:       os.TempDir(),
 		},
 		Agent: SystemInfoAgent{
-			ID:            c.agent.id,
-			Version:       fallback(c.agent.metadata.Version, buildVersion),
-			StartTime:     c.agent.startTime.UTC().Format(time.RFC3339Nano),
-			UptimeSeconds: uint64(time.Since(c.agent.startTime).Round(time.Second) / time.Second),
-			Tags:          cloneStrings(c.agent.metadata.Tags),
+			ID:            c.provider.AgentID(),
+			Version:       fallback(metadata.Version, c.buildVersion),
+			StartTime:     startTime.UTC().Format(time.RFC3339Nano),
+			UptimeSeconds: uint64(time.Since(startTime).Round(time.Second) / time.Second),
+			Tags:          cloneStrings(metadata.Tags),
 		},
 	}
 
 	var warnings []string
 
-	if err := c.populateHost(ctx, report, &warnings); err != nil {
+	if err := c.populateHost(ctx, report, metadata, &warnings); err != nil {
 		warnings = append(warnings, err.Error())
 	}
 	if err := c.populateCPU(ctx, report, &warnings); err != nil {
@@ -290,7 +308,7 @@ func (c *SystemInfoCollector) collectReport(ctx context.Context) (*SystemInfoRep
 	if err := c.populateProcess(ctx, report, &warnings); err != nil {
 		warnings = append(warnings, err.Error())
 	}
-	c.populateEnvironment(report)
+	c.populateEnvironment(report, metadata)
 
 	if len(warnings) > 0 {
 		report.Warnings = warnings
@@ -299,21 +317,21 @@ func (c *SystemInfoCollector) collectReport(ctx context.Context) (*SystemInfoRep
 	return report, nil
 }
 
-func (c *SystemInfoCollector) populateHost(ctx context.Context, report *SystemInfoReport, warnings *[]string) error {
+func (c *Collector) populateHost(ctx context.Context, report *SystemInfoReport, metadata protocol.AgentMetadata, warnings *[]string) error {
 	hostInfo, err := host.InfoWithContext(ctx)
 	if err != nil {
-		report.Host.Hostname = fallback(report.Host.Hostname, c.agent.metadata.Hostname)
-		report.Host.IPAddress = fallback(report.Host.IPAddress, c.agent.metadata.IPAddress)
+		report.Host.Hostname = fallback(report.Host.Hostname, metadata.Hostname)
+		report.Host.IPAddress = fallback(report.Host.IPAddress, metadata.IPAddress)
 		return fmt.Errorf("host info: %w", err)
 	}
 
-	report.Host.Hostname = fallback(hostInfo.Hostname, c.agent.metadata.Hostname)
+	report.Host.Hostname = fallback(hostInfo.Hostname, metadata.Hostname)
 	report.Host.HostID = hostInfo.HostID
 	report.Host.UptimeSeconds = hostInfo.Uptime
 	if hostInfo.BootTime > 0 {
 		report.Host.BootTime = time.Unix(int64(hostInfo.BootTime), 0).UTC().Format(time.RFC3339Nano)
 	}
-	report.Host.IPAddress = fallback(c.agent.metadata.IPAddress, report.Host.IPAddress)
+	report.Host.IPAddress = fallback(metadata.IPAddress, report.Host.IPAddress)
 
 	if report.Host.Domain == "" {
 		report.Host.Domain = fallback(os.Getenv("USERDOMAIN"), os.Getenv("DOMAIN"))
@@ -339,7 +357,7 @@ func (c *SystemInfoCollector) populateHost(ctx context.Context, report *SystemIn
 	return nil
 }
 
-func (c *SystemInfoCollector) populateCPU(ctx context.Context, report *SystemInfoReport, warnings *[]string) error {
+func (c *Collector) populateCPU(ctx context.Context, report *SystemInfoReport, warnings *[]string) error {
 	physical, err := cpu.CountsWithContext(ctx, false)
 	if err == nil {
 		report.Hardware.PhysicalCores = physical
@@ -384,7 +402,7 @@ func (c *SystemInfoCollector) populateCPU(ctx context.Context, report *SystemInf
 	return nil
 }
 
-func (c *SystemInfoCollector) populateMemory(ctx context.Context, report *SystemInfoReport, warnings *[]string) error {
+func (c *Collector) populateMemory(ctx context.Context, report *SystemInfoReport, warnings *[]string) error {
 	vmStat, err := mem.VirtualMemoryWithContext(ctx)
 	if err != nil {
 		return fmt.Errorf("virtual memory: %w", err)
@@ -406,7 +424,7 @@ func (c *SystemInfoCollector) populateMemory(ctx context.Context, report *System
 	return nil
 }
 
-func (c *SystemInfoCollector) populateStorage(ctx context.Context, report *SystemInfoReport, warnings *[]string) error {
+func (c *Collector) populateStorage(ctx context.Context, report *SystemInfoReport, warnings *[]string) error {
 	partitions, err := disk.PartitionsWithContext(ctx, true)
 	if err != nil {
 		return fmt.Errorf("disk partitions: %w", err)
@@ -442,7 +460,7 @@ func (c *SystemInfoCollector) populateStorage(ctx context.Context, report *Syste
 	return nil
 }
 
-func (c *SystemInfoCollector) populateNetwork(ctx context.Context, report *SystemInfoReport, warnings *[]string) error {
+func (c *Collector) populateNetwork(ctx context.Context, report *SystemInfoReport, warnings *[]string) error {
 	interfaces, err := gnet.InterfacesWithContext(ctx)
 	if err != nil {
 		return fmt.Errorf("network interfaces: %w", err)
@@ -487,7 +505,7 @@ func (c *SystemInfoCollector) populateNetwork(ctx context.Context, report *Syste
 	return nil
 }
 
-func (c *SystemInfoCollector) populateProcess(ctx context.Context, report *SystemInfoReport, warnings *[]string) error {
+func (c *Collector) populateProcess(ctx context.Context, report *SystemInfoReport, warnings *[]string) error {
 	executable, err := os.Executable()
 	if err == nil {
 		report.Runtime.Process.Executable = executable
@@ -531,7 +549,7 @@ func (c *SystemInfoCollector) populateProcess(ctx context.Context, report *Syste
 	return nil
 }
 
-func (c *SystemInfoCollector) populateEnvironment(report *SystemInfoReport) {
+func (c *Collector) populateEnvironment(report *SystemInfoReport, metadata protocol.AgentMetadata) {
 	currentUser, err := user.Current()
 	if err == nil {
 		report.Environment.Username = currentUser.Username
@@ -557,7 +575,7 @@ func (c *SystemInfoCollector) populateEnvironment(report *SystemInfoReport) {
 		}
 	}
 	if report.Environment.Username == "" {
-		report.Environment.Username = c.agent.metadata.Username
+		report.Environment.Username = metadata.Username
 	}
 }
 
@@ -677,4 +695,11 @@ func cloneStrings(values []string) []string {
 	out := make([]string, len(values))
 	copy(out, values)
 	return out
+}
+
+func fallback(value, fallbackValue string) string {
+	if trimmed := strings.TrimSpace(value); trimmed != "" {
+		return trimmed
+	}
+	return fallbackValue
 }
