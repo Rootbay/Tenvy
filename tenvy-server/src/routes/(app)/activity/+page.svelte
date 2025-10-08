@@ -279,8 +279,11 @@
                                                                 placement: 'top-right'
                                                         }
                                                 }}
-                                        />
-                                        <ChartTooltip labelKey="label" indicator="line" />
+                                        >
+                                                {#snippet tooltip()}
+                                                        <ChartTooltip labelKey="label" indicator="line" />
+                                                {/snippet}
+                                        </AreaChart>
                                 </ChartContainer>
                         </CardContent>
                 </Card>
@@ -313,8 +316,11 @@
                                                                         `${numberFormatter.format(Number(value ?? 0))} ms`
                                                         }
                                                 }}
-                                        />
-                                        <ChartTooltip indicator="line" />
+                                        >
+                                                {#snippet tooltip()}
+                                                        <ChartTooltip indicator="line" />
+                                                {/snippet}
+                                        </LineChart>
                                 </ChartContainer>
                         </CardContent>
                 </Card>
@@ -341,8 +347,11 @@
                                                                 format: (value) => numberFormatter.format(Number(value ?? 0))
                                                         }
                                                 }}
-                                        />
-                                        <ChartTooltip />
+                                        >
+                                                {#snippet tooltip()}
+                                                        <ChartTooltip />
+                                                {/snippet}
+                                        </BarChart>
                                 </ChartContainer>
                         </CardContent>
                 </Card>
