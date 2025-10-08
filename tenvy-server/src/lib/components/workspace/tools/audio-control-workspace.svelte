@@ -40,6 +40,18 @@
 
         let log = $state<WorkspaceLogEntry[]>([]);
 
+        const heroMetadata = $derived([
+                {
+                        label: 'Inputs discovered',
+                        value: inventory ? inventory.inputs.length.toString() : pendingInventory ? 'Pending' : '0'
+                },
+                {
+                        label: 'Session state',
+                        value: session ? (session.active ? 'Active' : 'Stopped') : 'Idle',
+                        hint: listening ? 'Streaming live microphone audio to the controller.' : undefined
+                }
+        ]);
+
         let eventSource: EventSource | null = null;
         let audioContext: AudioContext | null = null;
         let playbackQueueTime = 0;
@@ -346,10 +358,12 @@
 </script>
 
 <div class="space-y-6">
-        <ClientWorkspaceHero
-                title={tool.title}
-                description="Review agent-side audio hardware, capture live microphone input, and bridge sound back to the controller."
-        />
+        <ClientWorkspaceHero {client} {tool} metadata={heroMetadata}>
+                <p>
+                        Review agent-side audio hardware, capture live microphone input, and bridge sound back to the
+                        controller. Inventory refreshes and streaming sessions are tracked here for quick diagnostics.
+                </p>
+        </ClientWorkspaceHero>
 
         <div class="grid gap-6 lg:grid-cols-[2fr,1fr]">
                 <Card>
@@ -364,7 +378,7 @@
                                         {#if pendingInventory}
                                                 <Badge variant="secondary">Pending update</Badge>
                                         {/if}
-                                        <Button on:click={refreshInventory} disabled={refreshingInventory}>Refresh</Button>
+                                        <Button onclick={refreshInventory} disabled={refreshingInventory}>Refresh</Button>
                                 </div>
                         </CardHeader>
                         <CardContent class="space-y-4">
@@ -399,7 +413,7 @@
                                                                                                         size="sm"
                                                                                                         variant="outline"
                                                                                                         disabled={refreshingInventory}
-                                                                                                        on:click={() => startListening(device)}
+                                                                                                        onclick={() => startListening(device)}
                                                                                                 >
                                                                                                         {listening && session?.deviceId === device.id ? 'Listening…' : 'Listen'}
                                                                                                 </Button>
@@ -464,7 +478,7 @@
                                 {/if}
                         </CardContent>
                         <CardFooter class="flex flex-col gap-2 sm:flex-row sm:justify-between">
-                                <Button variant="outline" on:click={() => stopListening(false)} disabled={!session?.active && !listening}>
+                                <Button variant="outline" onclick={() => stopListening(false)} disabled={!session?.active && !listening}>
                                         Stop session
                                 </Button>
                                 {#if session}
