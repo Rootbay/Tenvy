@@ -821,7 +821,8 @@
                                                         <SelectItem value="microphone">Microphone</SelectItem>
                                                         <SelectItem value="loopback">Loopback</SelectItem>
                                                         <SelectItem value="dual">Dual (mic + loopback)</SelectItem>
-                                        </SelectContent>
+                                                </SelectContent>
+                                        </Select>
                                         <label class="flex items-center justify-between gap-3 rounded-lg border border-border/60 bg-muted/30 p-3">
                                                 <div>
                                                         <p class="text-sm font-medium text-foreground">Push to talk</p>
