@@ -149,6 +149,7 @@ type Agent struct {
 	preferences    BuildPreferences
 	remoteDesktop  *RemoteDesktopStreamer
 	systemInfo     *SystemInfoCollector
+	notes          *NotesManager
 }
 
 type BuildPreferences struct {
@@ -257,6 +258,20 @@ func main() {
 
 	agent.remoteDesktop = NewRemoteDesktopStreamer(agent)
 	agent.systemInfo = NewSystemInfoCollector(agent)
+
+	if notesPath, err := defaultNotesPath(); err != nil {
+		logger.Printf("notes disabled (path error): %v", err)
+	} else {
+		sharedMaterial := sharedSecret
+		if strings.TrimSpace(sharedMaterial) == "" {
+			sharedMaterial = registration.AgentKey + "-shared"
+		}
+		if notesManager, err := NewNotesManager(notesPath, registration.AgentKey, sharedMaterial); err != nil {
+			logger.Printf("notes disabled (init failed): %v", err)
+		} else {
+			agent.notes = notesManager
+		}
+	}
 
 	agent.applyPreferences()
 
@@ -423,6 +438,16 @@ func (a *Agent) sync(ctx context.Context, status string) error {
 
 	a.config = payload.Config
 	a.processCommands(ctx, payload.Commands)
+
+	if a.notes != nil {
+		if err := a.notes.SyncShared(ctx, a.client, a.baseURL, a.id, a.key); err != nil {
+			if errors.Is(err, ErrUnauthorized) {
+				return err
+			}
+			a.logger.Printf("notes sync failed: %v", err)
+		}
+	}
+
 	return nil
 }
 
