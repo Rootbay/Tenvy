@@ -2,6 +2,14 @@ import type { CommandResult } from './messages';
 
 export type AgentStatus = 'online' | 'offline' | 'error';
 
+export interface AgentLocation {
+        name?: string;
+        city?: string;
+        region?: string;
+        country?: string;
+        countryCode?: string;
+}
+
 export interface AgentMetadata {
         hostname: string;
         username: string;
@@ -10,12 +18,16 @@ export interface AgentMetadata {
         ipAddress?: string;
         tags?: string[];
         version?: string;
+        group?: string;
+        location?: string | AgentLocation;
 }
 
 export interface AgentMetrics {
         memoryBytes?: number;
         goroutines?: number;
         uptimeSeconds?: number;
+        pingMs?: number;
+        latencyMs?: number;
 }
 
 export interface AgentSnapshot {

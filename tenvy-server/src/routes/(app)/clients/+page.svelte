@@ -1,7 +1,6 @@
 <script lang="ts">
 	import { browser } from '$app/environment';
 	import { goto, invalidateAll } from '$app/navigation';
-	import { Badge } from '$lib/components/ui/badge/index.js';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import {
 		Card,
@@ -46,6 +45,7 @@
 		SelectTrigger
 	} from '$lib/components/ui/select/index.js';
 	import ClientToolDialog from '$lib/components/client-tool-dialog.svelte';
+	import OsLogo from '$lib/components/os-logo.svelte';
 	import {
 		buildClientToolUrl,
 		getClientTool,
@@ -63,12 +63,6 @@
 		online: 'Online',
 		offline: 'Offline',
 		error: 'Error'
-	};
-
-	const statusClasses: Record<AgentSnapshot['status'], string> = {
-		online: 'border border-emerald-500/30 bg-emerald-500/10 text-emerald-500',
-		offline: 'border border-slate-500/30 bg-slate-500/10 text-slate-400',
-		error: 'border border-red-500/30 bg-red-500/10 text-red-500'
 	};
 
 	let { data } = $props<{ data: { agents: AgentSnapshot[] } }>();
@@ -309,32 +303,78 @@
 		return 'just now';
 	}
 
-	function formatBytes(value?: number): string {
-		if (!value) {
-			return '—';
+	type MetadataLocation = AgentSnapshot['metadata']['location'];
+
+	function countryCodeToFlag(code: string | null | undefined): string {
+		if (!code) {
+			return '🌐';
 		}
-		const units = ['B', 'KB', 'MB', 'GB', 'TB'];
-		let idx = 0;
-		let current = value;
-		while (current >= 1024 && idx < units.length - 1) {
-			current /= 1024;
-			idx += 1;
+		const normalized = code.trim().toUpperCase();
+		if (normalized.length !== 2) {
+			return '🌐';
 		}
-		return `${current.toFixed(idx === 0 ? 0 : 1)} ${units[idx]}`;
+
+		const codePoints = Array.from(normalized).map((char) => 0x1f1e6 + char.charCodeAt(0) - 65);
+		if (codePoints.some((point) => Number.isNaN(point))) {
+			return '🌐';
+		}
+
+		return String.fromCodePoint(...codePoints);
 	}
 
-	function formatDuration(seconds?: number): string {
-		if (!seconds) {
-			return '—';
+	function getLocationDisplay(location: MetadataLocation): { label: string; flag: string } {
+		const fallback = { label: 'Unknown', flag: '🌐' } as const;
+
+		if (!location) {
+			return fallback;
 		}
-		const hours = Math.floor(seconds / 3600);
-		const minutes = Math.floor((seconds % 3600) / 60);
-		const secs = Math.floor(seconds % 60);
-		const parts = [];
-		if (hours > 0) parts.push(`${hours}h`);
-		if (minutes > 0 || hours > 0) parts.push(`${minutes}m`);
-		parts.push(`${secs}s`);
-		return parts.join(' ');
+
+		if (typeof location === 'string') {
+			const trimmed = location.trim();
+			if (!trimmed || trimmed.toLowerCase() === 'unknown') {
+				return fallback;
+			}
+
+			const segments = trimmed
+				.split(',')
+				.map((segment) => segment.trim())
+				.filter(Boolean);
+			const potentialCode = segments.at(-1);
+			const isCountryCode = potentialCode ? /^[A-Za-z]{2}$/.test(potentialCode) : false;
+			const flag = isCountryCode ? countryCodeToFlag(potentialCode ?? null) : fallback.flag;
+
+			return { label: trimmed, flag };
+		}
+
+		const label =
+			location.name?.trim() ??
+			[location.city, location.region, location.country]
+				.map((part) => part?.trim())
+				.filter((part): part is string => Boolean(part && part.length > 0))
+				.join(', ');
+
+		const codeCandidate =
+			location.countryCode ??
+			(location.country && location.country.trim().length === 2 ? location.country : undefined);
+		const flag = countryCodeToFlag(codeCandidate ?? null);
+
+		return { label: label || fallback.label, flag: flag || fallback.flag };
+	}
+
+	function getAgentLocation(agent: AgentSnapshot): { label: string; flag: string } {
+		return getLocationDisplay(agent.metadata.location);
+	}
+
+	function getAgentGroup(agent: AgentSnapshot): string {
+		return agent.metadata.group?.trim() || '—';
+	}
+
+	function formatPing(agent: AgentSnapshot): string {
+		const ping = agent.metrics?.pingMs ?? agent.metrics?.latencyMs;
+		if (typeof ping === 'number' && Number.isFinite(ping) && ping >= 0) {
+			return `${Math.round(ping)} ms`;
+		}
+		return '—';
 	}
 
 	function findAgentById(agentId: string | null): AgentSnapshot | null {
@@ -539,7 +579,7 @@
 			codename: agent.metadata.hostname?.toUpperCase() ?? agent.id.toUpperCase(),
 			hostname: agent.metadata.hostname,
 			ip: agent.metadata.ipAddress ?? 'Unknown',
-			location: 'Unknown',
+			location: getAgentLocation(agent).label,
 			os: agent.metadata.os,
 			platform: inferClientPlatform(agent.metadata.os),
 			version: agent.metadata.version ?? 'Unknown',
@@ -730,7 +770,7 @@
 					<TableBody>
 						{#if paginatedAgents.length === 0}
 							<TableRow>
-								<TableCell colspan={7} class="py-12 text-center text-sm text-muted-foreground">
+								<TableCell colspan={8} class="py-12 text-center text-sm text-muted-foreground">
 									{#if agents.length === 0}
 										No agents connected yet.
 									{:else}
@@ -744,65 +784,43 @@
 									<ContextMenuTrigger>
 										<TableRow class="cursor-context-menu" tabindex={0}>
 											<TableCell>
-												<div class="flex flex-col gap-2">
-													<div class="flex flex-wrap items-center gap-x-3 gap-y-1">
-														<span class="font-medium">{agent.metadata.hostname}</span>
-														<span class="text-xs text-muted-foreground">
-															{agent.metadata.username}@{agent.metadata.os}
-														</span>
-														{#if agent.metadata.version}
-															<Badge variant="outline" class="text-[0.65rem]">
-																v{agent.metadata.version}
-															</Badge>
-														{/if}
-													</div>
-													<div
-														class="flex flex-wrap items-center gap-2 text-xs text-muted-foreground"
+												<div class="flex items-center gap-3">
+													<span class="text-2xl" aria-hidden="true"
+														>{getAgentLocation(agent).flag}</span
 													>
-														<span>Agent ID: <code>{agent.id}</code></span>
-														{#if agent.metadata.ipAddress}
-															<span aria-hidden="true">•</span>
-															<span>IP {agent.metadata.ipAddress}</span>
+													<div class="flex flex-col">
+														<span class="text-sm font-medium text-foreground"
+															>{getAgentLocation(agent).label}</span
+														>
+														{#if agent.metadata.hostname}
+															<span class="text-xs text-muted-foreground"
+																>{agent.metadata.hostname}</span
+															>
 														{/if}
 													</div>
-													{#if agent.metadata.tags?.length}
-														<div class="flex flex-wrap gap-2">
-															{#each agent.metadata.tags.slice(0, 3) as tag (tag)}
-																<Badge variant="outline" class="rounded-md text-[0.65rem]">
-																	{tag}
-																</Badge>
-															{/each}
-															{#if agent.metadata.tags.length > 3}
-																<Badge variant="outline" class="rounded-md text-[0.65rem]">
-																	+{agent.metadata.tags.length - 3}
-																</Badge>
-															{/if}
-														</div>
-													{/if}
 												</div>
 											</TableCell>
-											<TableCell>
-												<Badge
-													class={`rounded-md px-2 py-1 text-xs font-semibold ${statusClasses[agent.status]}`}
-												>
-													{statusLabels[agent.status]}
-												</Badge>
+											<TableCell class="text-sm text-muted-foreground">
+												{agent.metadata.ipAddress ?? 'Unknown'}
 											</TableCell>
-											<TableCell class="text-sm text-muted-foreground"
-												>{formatDate(agent.connectedAt)}</TableCell
-											>
-											<TableCell class="text-sm text-muted-foreground"
-												>{formatRelative(agent.lastSeen)}</TableCell
-											>
-											<TableCell class="text-center text-sm font-medium">
-												{agent.pendingCommands}
+											<TableCell class="text-sm text-muted-foreground">
+												{agent.metadata.username}
 											</TableCell>
-											<TableCell class="text-sm text-muted-foreground"
-												>{formatBytes(agent.metrics?.memoryBytes)}</TableCell
-											>
-											<TableCell class="text-sm text-muted-foreground"
-												>{formatDuration(agent.metrics?.uptimeSeconds)}</TableCell
-											>
+											<TableCell class="text-sm text-muted-foreground">
+												{getAgentGroup(agent)}
+											</TableCell>
+											<TableCell class="text-center">
+												<OsLogo os={agent.metadata.os} />
+											</TableCell>
+											<TableCell class="text-sm text-muted-foreground">
+												{formatPing(agent)}
+											</TableCell>
+											<TableCell class="text-sm text-muted-foreground">
+												{agent.metadata.version ?? '—'}
+											</TableCell>
+											<TableCell class="text-sm text-muted-foreground">
+												{formatDate(agent.connectedAt)}
+											</TableCell>
 										</TableRow>
 									</ContextMenuTrigger>
 									<ContextMenuContent class="w-56">
