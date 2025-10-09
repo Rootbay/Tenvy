@@ -53,13 +53,13 @@
 
 <div class="flex items-center justify-center" aria-hidden="false">
 	<span
-		class="inline-flex h-10 w-10 items-center justify-center rounded-md border border-border/60 bg-muted/40"
+		class="inline-flex h-10 w-10 items-center justify-center"
 		role="img"
 		aria-label={variant.label}
 		title={variant.label}
 	>
 		{#if variant.id === 'windows11'}
-			<svg viewBox="0 0 48 48" class="h-6 w-6 text-sky-400" aria-hidden="true">
+			<svg viewBox="0 0 48 48" class="h-6 w-6 text-sky-600" aria-hidden="true">
 				<rect x="4" y="6" width="18" height="18" rx="1.5" fill="currentColor" />
 				<rect x="26" y="4" width="18" height="18" rx="1.5" fill="currentColor" />
 				<rect x="4" y="26" width="18" height="18" rx="1.5" fill="currentColor" />
@@ -73,7 +73,7 @@
 				<rect x="26" y="24" width="18" height="18" rx="1.5" fill="currentColor" />
 			</svg>
 		{:else if variant.id === 'windows'}
-			<svg viewBox="0 0 48 48" class="h-6 w-6 text-slate-500" aria-hidden="true">
+			<svg viewBox="0 0 48 48" class="h-6 w-6 text-sky-600" aria-hidden="true">
 				<rect x="4" y="6" width="18" height="18" rx="1.5" fill="currentColor" />
 				<rect x="26" y="4" width="18" height="18" rx="1.5" fill="currentColor" />
 				<rect x="4" y="26" width="18" height="18" rx="1.5" fill="currentColor" />
