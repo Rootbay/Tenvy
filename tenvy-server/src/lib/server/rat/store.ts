@@ -33,26 +33,26 @@ class RegistryError extends Error {
 }
 
 interface AgentRecord {
-        id: string;
-        key: string;
-        metadata: AgentMetadata;
-        status: AgentStatus;
-        connectedAt: Date;
-        lastSeen: Date;
-        metrics?: AgentMetrics;
-        config: AgentConfig;
-        pendingCommands: Command[];
-        recentResults: CommandResult[];
-        sharedNotes: Map<string, SharedNoteRecord>;
+	id: string;
+	key: string;
+	metadata: AgentMetadata;
+	status: AgentStatus;
+	connectedAt: Date;
+	lastSeen: Date;
+	metrics?: AgentMetrics;
+	config: AgentConfig;
+	pendingCommands: Command[];
+	recentResults: CommandResult[];
+	sharedNotes: Map<string, SharedNoteRecord>;
 }
 
 interface SharedNoteRecord {
-        id: string;
-        ciphertext: string;
-        nonce: string;
-        digest: string;
-        version: number;
-        updatedAt: Date;
+	id: string;
+	ciphertext: string;
+	nonce: string;
+	digest: string;
+	version: number;
+	updatedAt: Date;
 }
 
 function ensureMetadata(metadata: AgentMetadata, fallbackAddress?: string): AgentMetadata {
@@ -94,18 +94,18 @@ export class AgentRegistry {
 		const id = randomUUID();
 		const key = randomBytes(32).toString('hex');
 
-                const record: AgentRecord = {
-                        id,
-                        key,
-                        metadata: ensureMetadata(payload.metadata, options.remoteAddress),
-                        status: 'online',
-                        connectedAt: now,
-                        lastSeen: now,
-                        config: { ...defaultAgentConfig },
-                        pendingCommands: [],
-                        recentResults: [],
-                        sharedNotes: new Map()
-                };
+		const record: AgentRecord = {
+			id,
+			key,
+			metadata: ensureMetadata(payload.metadata, options.remoteAddress),
+			status: 'online',
+			connectedAt: now,
+			lastSeen: now,
+			config: { ...defaultAgentConfig },
+			pendingCommands: [],
+			recentResults: [],
+			sharedNotes: new Map()
+		};
 
 		this.agents.set(id, record);
 
@@ -118,15 +118,15 @@ export class AgentRegistry {
 		};
 	}
 
-        syncAgent(id: string, key: string | undefined, payload: AgentSyncRequest): AgentSyncResponse {
-                const record = this.agents.get(id);
-                if (!record) {
-                        throw new RegistryError('Agent not found', 404);
-                }
+	syncAgent(id: string, key: string | undefined, payload: AgentSyncRequest): AgentSyncResponse {
+		const record = this.agents.get(id);
+		if (!record) {
+			throw new RegistryError('Agent not found', 404);
+		}
 
-                if (!key || key !== record.key) {
-                        throw new RegistryError('Invalid agent key', 401);
-                }
+		if (!key || key !== record.key) {
+			throw new RegistryError('Invalid agent key', 401);
+		}
 
 		record.lastSeen = new Date();
 		record.status = payload.status;
@@ -151,11 +151,11 @@ export class AgentRegistry {
 		};
 	}
 
-        queueCommand(id: string, input: CommandInput): CommandQueueResponse {
-                const record = this.agents.get(id);
-                if (!record) {
-                        throw new RegistryError('Agent not found', 404);
-                }
+	queueCommand(id: string, input: CommandInput): CommandQueueResponse {
+		const record = this.agents.get(id);
+		if (!record) {
+			throw new RegistryError('Agent not found', 404);
+		}
 
 		const command: Command = {
 			id: randomUUID(),
@@ -178,81 +178,84 @@ export class AgentRegistry {
 		if (!record) {
 			throw new RegistryError('Agent not found', 404);
 		}
-                return this.toSnapshot(record);
-        }
+		return this.toSnapshot(record);
+	}
 
-        authorizeAgent(id: string, key: string | undefined): void {
-                const record = this.agents.get(id);
-                if (!record) {
-                        throw new RegistryError('Agent not found', 404);
-                }
-                if (!key || key !== record.key) {
-                        throw new RegistryError('Invalid agent key', 401);
-                }
-                record.lastSeen = new Date();
-        }
+	authorizeAgent(id: string, key: string | undefined): void {
+		const record = this.agents.get(id);
+		if (!record) {
+			throw new RegistryError('Agent not found', 404);
+		}
+		if (!key || key !== record.key) {
+			throw new RegistryError('Invalid agent key', 401);
+		}
+		record.lastSeen = new Date();
+	}
 
-        peekCommands(id: string): Command[] {
-                const record = this.agents.get(id);
-                if (!record) {
-                        throw new RegistryError('Agent not found', 404);
-                }
+	peekCommands(id: string): Command[] {
+		const record = this.agents.get(id);
+		if (!record) {
+			throw new RegistryError('Agent not found', 404);
+		}
 		return [...record.pendingCommands];
-        }
+	}
 
-        syncSharedNotes(id: string, key: string | undefined, payload: NoteEnvelope[]): NoteEnvelope[] {
-                const record = this.agents.get(id);
-                if (!record) {
-                        throw new RegistryError('Agent not found', 404);
-                }
+	syncSharedNotes(id: string, key: string | undefined, payload: NoteEnvelope[]): NoteEnvelope[] {
+		const record = this.agents.get(id);
+		if (!record) {
+			throw new RegistryError('Agent not found', 404);
+		}
 
-                if (!key || key !== record.key) {
-                        throw new RegistryError('Invalid agent key', 401);
-                }
+		if (!key || key !== record.key) {
+			throw new RegistryError('Invalid agent key', 401);
+		}
 
-                const now = new Date();
-                for (const envelope of payload) {
-                        if (!envelope?.id) {
-                                continue;
-                        }
-                        const incomingUpdated = new Date(envelope.updatedAt ?? now.toISOString());
-                        const existing = record.sharedNotes.get(envelope.id);
+		const now = new Date();
+		for (const envelope of payload) {
+			if (!envelope?.id) {
+				continue;
+			}
+			const incomingUpdated = new Date(envelope.updatedAt ?? now.toISOString());
+			const existing = record.sharedNotes.get(envelope.id);
 
-                        if (!existing) {
-                                record.sharedNotes.set(envelope.id, {
-                                        id: envelope.id,
-                                        ciphertext: envelope.ciphertext,
-                                        nonce: envelope.nonce,
-                                        digest: envelope.digest,
-                                        version: envelope.version,
-                                        updatedAt: incomingUpdated
-                                });
-                                continue;
-                        }
+			if (!existing) {
+				record.sharedNotes.set(envelope.id, {
+					id: envelope.id,
+					ciphertext: envelope.ciphertext,
+					nonce: envelope.nonce,
+					digest: envelope.digest,
+					version: envelope.version,
+					updatedAt: incomingUpdated
+				});
+				continue;
+			}
 
-                        const shouldReplace =
-                                incomingUpdated.getTime() > existing.updatedAt.getTime() ||
-                                envelope.version > existing.version;
+			const shouldReplace =
+				incomingUpdated.getTime() > existing.updatedAt.getTime() ||
+				envelope.version > existing.version;
 
-                        if (shouldReplace) {
-                                existing.ciphertext = envelope.ciphertext;
-                                existing.nonce = envelope.nonce;
-                                existing.digest = envelope.digest;
-                                existing.version = envelope.version;
-                                existing.updatedAt = incomingUpdated;
-                        }
-                }
+			if (shouldReplace) {
+				existing.ciphertext = envelope.ciphertext;
+				existing.nonce = envelope.nonce;
+				existing.digest = envelope.digest;
+				existing.version = envelope.version;
+				existing.updatedAt = incomingUpdated;
+			}
+		}
 
-                return Array.from(record.sharedNotes.values()).map((note) => ({
-                        id: note.id,
-                        visibility: 'shared',
-                        ciphertext: note.ciphertext,
-                        nonce: note.nonce,
-                        digest: note.digest,
-                        version: note.version,
-                        updatedAt: note.updatedAt.toISOString()
-                } satisfies NoteEnvelope));
-        }
+		return Array.from(record.sharedNotes.values()).map(
+			(note) =>
+				({
+					id: note.id,
+					visibility: 'shared',
+					ciphertext: note.ciphertext,
+					nonce: note.nonce,
+					digest: note.digest,
+					version: note.version,
+					updatedAt: note.updatedAt.toISOString()
+				}) satisfies NoteEnvelope
+		);
+	}
 }
 
 export const registry = new AgentRegistry();

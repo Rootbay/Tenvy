@@ -832,9 +832,7 @@
 												<ContextMenuSub>
 													<ContextMenuSubTrigger>Keylogger</ContextMenuSubTrigger>
 													<ContextMenuSubContent class="w-48">
-														<ContextMenuItem
-															onSelect={() => openSection('keyloggerOnline', agent)}
-														>
+														<ContextMenuItem onSelect={() => openSection('keyloggerOnline', agent)}>
 															Online
 														</ContextMenuItem>
 														<ContextMenuItem

@@ -22,14 +22,14 @@
 	import { Badge } from '$lib/components/ui/badge/index.js';
 	import { Separator } from '$lib/components/ui/separator/index.js';
 	import type { Client } from '$lib/data/clients';
-        import type {
-                RemoteDesktopFramePacket,
-                RemoteDesktopInputEvent,
-                RemoteDesktopMonitor,
-                RemoteDesktopMouseButton,
-                RemoteDesktopSessionState,
-                RemoteDesktopSettings
-        } from '$lib/types/remote-desktop';
+	import type {
+		RemoteDesktopFramePacket,
+		RemoteDesktopInputEvent,
+		RemoteDesktopMonitor,
+		RemoteDesktopMouseButton,
+		RemoteDesktopSessionState,
+		RemoteDesktopSettings
+	} from '$lib/types/remote-desktop';
 
 	const fallbackMonitors = [
 		{ id: 0, label: 'Primary', width: 1280, height: 720 }
@@ -73,30 +73,30 @@
 	let streamHeight = $state<number | null>(null);
 	let latencyMs = $state<number | null>(null);
 	let droppedFrames = $state(0);
-let isStarting = $state(false);
+	let isStarting = $state(false);
 	let isStopping = $state(false);
 	let isUpdating = $state(false);
 	let errorMessage = $state<string | null>(null);
 	let infoMessage = $state<string | null>(null);
 	let monitors = $state<RemoteDesktopMonitor[]>(fallbackMonitors);
-        let sessionActive = $state(false);
-        let sessionId = $state('');
+	let sessionActive = $state(false);
+	let sessionId = $state('');
 
-        let viewportEl: HTMLDivElement | null = null;
-        let viewportFocused = false;
-        let pointerCaptured = false;
-        let activePointerId: number | null = null;
-        let inputQueue: RemoteDesktopInputEvent[] = [];
-        let inputFlushHandle: number | null = null;
-        let inputSending = false;
-        const pressedKeys = new Set<number>();
-        const pressedKeyMeta = new Map<number, { key?: string; code?: string }>();
+	let viewportEl: HTMLDivElement | null = null;
+	let viewportFocused = false;
+	let pointerCaptured = false;
+	let activePointerId: number | null = null;
+	let inputQueue: RemoteDesktopInputEvent[] = [];
+	let inputFlushHandle: number | null = null;
+	let inputSending = false;
+	const pressedKeys = new Set<number>();
+	const pressedKeyMeta = new Map<number, { key?: string; code?: string }>();
 
-        const pointerButtonMap: Record<number, RemoteDesktopMouseButton> = {
-                0: 'left',
-                1: 'middle',
-                2: 'right'
-        };
+	const pointerButtonMap: Record<number, RemoteDesktopMouseButton> = {
+		0: 'left',
+		1: 'middle',
+		2: 'right'
+	};
 
 	let canvasEl: HTMLCanvasElement | null = null;
 	let canvasContext: CanvasRenderingContext2D | null = null;
@@ -124,17 +124,17 @@ let isStarting = $state(false);
 		return `${found.label} · ${found.width}×${found.height}`;
 	};
 
-        const modeLabel = (value: string) => {
-                const found = modeOptions.find((item) => item.value === value);
-                return found ? found.label : value;
-        };
+	const modeLabel = (value: string) => {
+		const found = modeOptions.find((item) => item.value === value);
+		return found ? found.label : value;
+	};
 
-        const clamp = (value: number, min: number, max: number) => {
-                if (Number.isNaN(value)) return min;
-                if (value < min) return min;
-                if (value > max) return max;
-                return value;
-        };
+	const clamp = (value: number, min: number, max: number) => {
+		if (Number.isNaN(value)) return min;
+		if (value < min) return min;
+		if (value > max) return max;
+		return value;
+	};
 
 	function resetMetrics() {
 		fps = null;
@@ -342,35 +342,35 @@ let isStarting = $state(false);
 			return;
 		}
 
-                if (frame.keyFrame) {
-                        if (!frame.image) {
-                                throw new Error('Missing key frame image data');
-                        }
-                        const mime = frame.encoding === 'jpeg' ? 'image/jpeg' : 'image/png';
-                        if (supportsImageBitmap) {
-                                try {
-                                        const bitmap = await decodeBitmap(frame.image, mime);
-                                        try {
-                                                context.drawImage(bitmap, 0, 0, frame.width, frame.height);
-                                        } finally {
-                                                bitmap.close();
-                                        }
-                                        return;
-                                } catch (err) {
-                                        logBitmapFallback(err);
-                                }
-                        }
-                        await drawWithImageElement(
-                                context,
-                                frame.image,
-                                0,
-                                0,
-                                frame.width,
-                                frame.height,
-                                frame.encoding === 'jpeg' ? 'jpeg' : 'png'
-                        );
-                        return;
-                }
+		if (frame.keyFrame) {
+			if (!frame.image) {
+				throw new Error('Missing key frame image data');
+			}
+			const mime = frame.encoding === 'jpeg' ? 'image/jpeg' : 'image/png';
+			if (supportsImageBitmap) {
+				try {
+					const bitmap = await decodeBitmap(frame.image, mime);
+					try {
+						context.drawImage(bitmap, 0, 0, frame.width, frame.height);
+					} finally {
+						bitmap.close();
+					}
+					return;
+				} catch (err) {
+					logBitmapFallback(err);
+				}
+			}
+			await drawWithImageElement(
+				context,
+				frame.image,
+				0,
+				0,
+				frame.width,
+				frame.height,
+				frame.encoding === 'jpeg' ? 'jpeg' : 'png'
+			);
+			return;
+		}
 
 		if (frame.deltas && frame.deltas.length > 0) {
 			if (supportsImageBitmap) {
@@ -637,324 +637,324 @@ let isStarting = $state(false);
 		return `${Math.round(value)} ms`;
 	}
 
-        function formatTimestamp(value: string | null | undefined) {
-                if (!value) return '—';
-                const parsed = new Date(value);
-                if (Number.isNaN(parsed.getTime())) {
-                        return value;
-                }
-                return parsed.toLocaleTimeString();
-        }
+	function formatTimestamp(value: string | null | undefined) {
+		if (!value) return '—';
+		const parsed = new Date(value);
+		if (Number.isNaN(parsed.getTime())) {
+			return value;
+		}
+		return parsed.toLocaleTimeString();
+	}
 
-        function queueInput(event: RemoteDesktopInputEvent) {
-                if (!browser || !sessionActive || !sessionId || !client) {
-                        return;
-                }
-                inputQueue.push(event);
-                scheduleInputFlush();
-        }
+	function queueInput(event: RemoteDesktopInputEvent) {
+		if (!browser || !sessionActive || !sessionId || !client) {
+			return;
+		}
+		inputQueue.push(event);
+		scheduleInputFlush();
+	}
 
-        function queueInputBatch(events: RemoteDesktopInputEvent[]) {
-                if (!browser || !sessionActive || !sessionId || !client) {
-                        return;
-                }
-                if (events.length === 0) {
-                        return;
-                }
-                inputQueue.push(...events);
-                scheduleInputFlush();
-        }
+	function queueInputBatch(events: RemoteDesktopInputEvent[]) {
+		if (!browser || !sessionActive || !sessionId || !client) {
+			return;
+		}
+		if (events.length === 0) {
+			return;
+		}
+		inputQueue.push(...events);
+		scheduleInputFlush();
+	}
 
-        function scheduleInputFlush() {
-                if (!browser || inputQueue.length === 0) {
-                        return;
-                }
-                if (inputFlushHandle !== null) {
-                        return;
-                }
-                inputFlushHandle = requestAnimationFrame(() => {
-                        inputFlushHandle = null;
-                        void flushInputQueue();
-                });
-        }
+	function scheduleInputFlush() {
+		if (!browser || inputQueue.length === 0) {
+			return;
+		}
+		if (inputFlushHandle !== null) {
+			return;
+		}
+		inputFlushHandle = requestAnimationFrame(() => {
+			inputFlushHandle = null;
+			void flushInputQueue();
+		});
+	}
 
-        async function flushInputQueue() {
-                if (!browser || !client || !sessionId || !sessionActive) {
-                        inputSending = false;
-                        return;
-                }
-                if (inputSending || inputQueue.length === 0) {
-                        return;
-                }
-                inputSending = true;
-                const events = inputQueue.splice(0, inputQueue.length);
-                try {
-                        const response = await fetch(`/api/agents/${client.id}/remote-desktop/input`, {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({ sessionId, events }),
-                                keepalive: true
-                        });
-                        if (!response.ok) {
-                                inputQueue = [...events, ...inputQueue];
-                                const message = await response.text();
-                                console.warn('Remote desktop input dispatch failed', message);
-                        }
-                } catch (err) {
-                        inputQueue = [...events, ...inputQueue];
-                        console.error('Failed to send remote desktop input events', err);
-                } finally {
-                        inputSending = false;
-                        if (inputQueue.length > 0) {
-                                scheduleInputFlush();
-                        }
-                }
-        }
+	async function flushInputQueue() {
+		if (!browser || !client || !sessionId || !sessionActive) {
+			inputSending = false;
+			return;
+		}
+		if (inputSending || inputQueue.length === 0) {
+			return;
+		}
+		inputSending = true;
+		const events = inputQueue.splice(0, inputQueue.length);
+		try {
+			const response = await fetch(`/api/agents/${client.id}/remote-desktop/input`, {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ sessionId, events }),
+				keepalive: true
+			});
+			if (!response.ok) {
+				inputQueue = [...events, ...inputQueue];
+				const message = await response.text();
+				console.warn('Remote desktop input dispatch failed', message);
+			}
+		} catch (err) {
+			inputQueue = [...events, ...inputQueue];
+			console.error('Failed to send remote desktop input events', err);
+		} finally {
+			inputSending = false;
+			if (inputQueue.length > 0) {
+				scheduleInputFlush();
+			}
+		}
+	}
 
-        function clearInputQueue() {
-                inputQueue = [];
-                if (browser && inputFlushHandle !== null) {
-                        cancelAnimationFrame(inputFlushHandle);
-                        inputFlushHandle = null;
-                }
-        }
+	function clearInputQueue() {
+		inputQueue = [];
+		if (browser && inputFlushHandle !== null) {
+			cancelAnimationFrame(inputFlushHandle);
+			inputFlushHandle = null;
+		}
+	}
 
-        function releasePointerCapture() {
-                if (!viewportEl) {
-                        pointerCaptured = false;
-                        activePointerId = null;
-                        return;
-                }
-                if (!pointerCaptured || activePointerId === null) {
-                        pointerCaptured = false;
-                        activePointerId = null;
-                        return;
-                }
-                try {
-                        viewportEl.releasePointerCapture(activePointerId);
-                } catch {
-                        // ignore
-                }
-                pointerCaptured = false;
-                activePointerId = null;
-        }
+	function releasePointerCapture() {
+		if (!viewportEl) {
+			pointerCaptured = false;
+			activePointerId = null;
+			return;
+		}
+		if (!pointerCaptured || activePointerId === null) {
+			pointerCaptured = false;
+			activePointerId = null;
+			return;
+		}
+		try {
+			viewportEl.releasePointerCapture(activePointerId);
+		} catch {
+			// ignore
+		}
+		pointerCaptured = false;
+		activePointerId = null;
+	}
 
-        function pointerButtonFromEvent(button: number): RemoteDesktopMouseButton | null {
-                if (button === 0) return 'left';
-                if (button === 1) return 'middle';
-                if (button === 2) return 'right';
-                const mapped = pointerButtonMap[button];
-                return mapped ?? null;
-        }
+	function pointerButtonFromEvent(button: number): RemoteDesktopMouseButton | null {
+		if (button === 0) return 'left';
+		if (button === 1) return 'middle';
+		if (button === 2) return 'right';
+		const mapped = pointerButtonMap[button];
+		return mapped ?? null;
+	}
 
-        function handlePointerMove(event: PointerEvent) {
-                if (!browser || event.pointerType !== 'mouse') {
-                        return;
-                }
-                if (!mouseEnabled || !sessionActive) {
-                        return;
-                }
-                if (!canvasEl) {
-                        return;
-                }
-                const rect = canvasEl.getBoundingClientRect();
-                if (rect.width <= 0 || rect.height <= 0) {
-                        return;
-                }
-                const x = clamp((event.clientX - rect.left) / rect.width, 0, 1);
-                const y = clamp((event.clientY - rect.top) / rect.height, 0, 1);
-                queueInput({ type: 'mouse-move', x, y, normalized: true, monitor });
-        }
+	function handlePointerMove(event: PointerEvent) {
+		if (!browser || event.pointerType !== 'mouse') {
+			return;
+		}
+		if (!mouseEnabled || !sessionActive) {
+			return;
+		}
+		if (!canvasEl) {
+			return;
+		}
+		const rect = canvasEl.getBoundingClientRect();
+		if (rect.width <= 0 || rect.height <= 0) {
+			return;
+		}
+		const x = clamp((event.clientX - rect.left) / rect.width, 0, 1);
+		const y = clamp((event.clientY - rect.top) / rect.height, 0, 1);
+		queueInput({ type: 'mouse-move', x, y, normalized: true, monitor });
+	}
 
-        function handlePointerDown(event: PointerEvent) {
-                if (!browser || event.pointerType !== 'mouse') {
-                        return;
-                }
-                if (!mouseEnabled || !sessionActive) {
-                        return;
-                }
-                event.preventDefault();
-                viewportEl?.focus();
-                handlePointerMove(event);
-                const button = pointerButtonFromEvent(event.button);
-                if (button) {
-                        queueInput({ type: 'mouse-button', button, pressed: true, monitor });
-                }
-                const target = event.currentTarget as HTMLDivElement | null;
-                if (target) {
-                        try {
-                                target.setPointerCapture(event.pointerId);
-                                pointerCaptured = true;
-                                activePointerId = event.pointerId;
-                        } catch {
-                                pointerCaptured = false;
-                                activePointerId = null;
-                        }
-                }
-        }
+	function handlePointerDown(event: PointerEvent) {
+		if (!browser || event.pointerType !== 'mouse') {
+			return;
+		}
+		if (!mouseEnabled || !sessionActive) {
+			return;
+		}
+		event.preventDefault();
+		viewportEl?.focus();
+		handlePointerMove(event);
+		const button = pointerButtonFromEvent(event.button);
+		if (button) {
+			queueInput({ type: 'mouse-button', button, pressed: true, monitor });
+		}
+		const target = event.currentTarget as HTMLDivElement | null;
+		if (target) {
+			try {
+				target.setPointerCapture(event.pointerId);
+				pointerCaptured = true;
+				activePointerId = event.pointerId;
+			} catch {
+				pointerCaptured = false;
+				activePointerId = null;
+			}
+		}
+	}
 
-        function handlePointerUp(event: PointerEvent) {
-                if (!browser || event.pointerType !== 'mouse') {
-                        return;
-                }
-                if (!mouseEnabled || !sessionActive) {
-                        releasePointerCapture();
-                        return;
-                }
-                event.preventDefault();
-                const button = pointerButtonFromEvent(event.button);
-                if (button) {
-                        queueInput({ type: 'mouse-button', button, pressed: false, monitor });
-                }
-                if (pointerCaptured && activePointerId === event.pointerId) {
-                        releasePointerCapture();
-                }
-        }
+	function handlePointerUp(event: PointerEvent) {
+		if (!browser || event.pointerType !== 'mouse') {
+			return;
+		}
+		if (!mouseEnabled || !sessionActive) {
+			releasePointerCapture();
+			return;
+		}
+		event.preventDefault();
+		const button = pointerButtonFromEvent(event.button);
+		if (button) {
+			queueInput({ type: 'mouse-button', button, pressed: false, monitor });
+		}
+		if (pointerCaptured && activePointerId === event.pointerId) {
+			releasePointerCapture();
+		}
+	}
 
-        function handlePointerLeave() {
-                if (!pointerCaptured) {
-                        return;
-                }
-                releasePointerCapture();
-        }
+	function handlePointerLeave() {
+		if (!pointerCaptured) {
+			return;
+		}
+		releasePointerCapture();
+	}
 
-        function handleWheel(event: WheelEvent) {
-                if (!mouseEnabled || !sessionActive) {
-                        return;
-                }
-                queueInput({
-                        type: 'mouse-scroll',
-                        deltaX: event.deltaX,
-                        deltaY: event.deltaY,
-                        deltaMode: event.deltaMode,
-                        monitor
-                });
-        }
+	function handleWheel(event: WheelEvent) {
+		if (!mouseEnabled || !sessionActive) {
+			return;
+		}
+		queueInput({
+			type: 'mouse-scroll',
+			deltaX: event.deltaX,
+			deltaY: event.deltaY,
+			deltaMode: event.deltaMode,
+			monitor
+		});
+	}
 
-        function handleViewportFocus() {
-                viewportFocused = true;
-        }
+	function handleViewportFocus() {
+		viewportFocused = true;
+	}
 
-        function handleViewportBlur() {
-                viewportFocused = false;
-                releasePointerCapture();
-                releaseAllPressedKeys();
-        }
+	function handleViewportBlur() {
+		viewportFocused = false;
+		releasePointerCapture();
+		releaseAllPressedKeys();
+	}
 
-        function keyCodeFromEvent(event: KeyboardEvent) {
-                const raw = (event as KeyboardEvent & { which?: number }).keyCode ?? event.which;
-                if (typeof raw !== 'number' || Number.isNaN(raw)) {
-                        return 0;
-                }
-                return Math.trunc(raw);
-        }
+	function keyCodeFromEvent(event: KeyboardEvent) {
+		const raw = (event as KeyboardEvent & { which?: number }).keyCode ?? event.which;
+		if (typeof raw !== 'number' || Number.isNaN(raw)) {
+			return 0;
+		}
+		return Math.trunc(raw);
+	}
 
-        function createKeyEvent(
-                pressed: boolean,
-                keyCode: number,
-                event: KeyboardEvent,
-                meta?: { key?: string; code?: string }
-        ): RemoteDesktopInputEvent {
-                return {
-                        type: 'key',
-                        pressed,
-                        keyCode,
-                        key: event.key ?? meta?.key,
-                        code: event.code ?? meta?.code,
-                        repeat: pressed ? event.repeat : false,
-                        altKey: event.altKey,
-                        ctrlKey: event.ctrlKey,
-                        shiftKey: event.shiftKey,
-                        metaKey: event.metaKey
-                };
-        }
+	function createKeyEvent(
+		pressed: boolean,
+		keyCode: number,
+		event: KeyboardEvent,
+		meta?: { key?: string; code?: string }
+	): RemoteDesktopInputEvent {
+		return {
+			type: 'key',
+			pressed,
+			keyCode,
+			key: event.key ?? meta?.key,
+			code: event.code ?? meta?.code,
+			repeat: pressed ? event.repeat : false,
+			altKey: event.altKey,
+			ctrlKey: event.ctrlKey,
+			shiftKey: event.shiftKey,
+			metaKey: event.metaKey
+		};
+	}
 
-        function handleKeyDown(event: KeyboardEvent) {
-                if (!keyboardEnabled || !sessionActive || !viewportFocused) {
-                        return;
-                }
-                const keyCode = keyCodeFromEvent(event);
-                if (keyCode <= 0) {
-                        return;
-                }
-                event.preventDefault();
-                if (!event.repeat && !pressedKeys.has(keyCode)) {
-                        pressedKeys.add(keyCode);
-                        pressedKeyMeta.set(keyCode, { key: event.key, code: event.code });
-                }
-                const meta = pressedKeyMeta.get(keyCode);
-                queueInput(createKeyEvent(true, keyCode, event, meta));
-        }
+	function handleKeyDown(event: KeyboardEvent) {
+		if (!keyboardEnabled || !sessionActive || !viewportFocused) {
+			return;
+		}
+		const keyCode = keyCodeFromEvent(event);
+		if (keyCode <= 0) {
+			return;
+		}
+		event.preventDefault();
+		if (!event.repeat && !pressedKeys.has(keyCode)) {
+			pressedKeys.add(keyCode);
+			pressedKeyMeta.set(keyCode, { key: event.key, code: event.code });
+		}
+		const meta = pressedKeyMeta.get(keyCode);
+		queueInput(createKeyEvent(true, keyCode, event, meta));
+	}
 
-        function handleKeyUp(event: KeyboardEvent) {
-                const keyCode = keyCodeFromEvent(event);
-                if (keyCode <= 0) {
-                        return;
-                }
-                const meta = pressedKeyMeta.get(keyCode);
-                pressedKeys.delete(keyCode);
-                pressedKeyMeta.delete(keyCode);
-                if (!keyboardEnabled || !sessionActive) {
-                        return;
-                }
-                event.preventDefault();
-                queueInput(createKeyEvent(false, keyCode, event, meta));
-        }
+	function handleKeyUp(event: KeyboardEvent) {
+		const keyCode = keyCodeFromEvent(event);
+		if (keyCode <= 0) {
+			return;
+		}
+		const meta = pressedKeyMeta.get(keyCode);
+		pressedKeys.delete(keyCode);
+		pressedKeyMeta.delete(keyCode);
+		if (!keyboardEnabled || !sessionActive) {
+			return;
+		}
+		event.preventDefault();
+		queueInput(createKeyEvent(false, keyCode, event, meta));
+	}
 
-        function releaseAllPressedKeys() {
-                if (pressedKeys.size === 0) {
-                        pressedKeyMeta.clear();
-                        return;
-                }
-                const events: RemoteDesktopInputEvent[] = [];
-                for (const code of pressedKeys) {
-                        const meta = pressedKeyMeta.get(code);
-                        events.push({
-                                type: 'key',
-                                pressed: false,
-                                keyCode: code,
-                                key: meta?.key,
-                                code: meta?.code,
-                                altKey: false,
-                                ctrlKey: false,
-                                shiftKey: false,
-                                metaKey: false
-                        });
-                }
-                pressedKeys.clear();
-                pressedKeyMeta.clear();
-                queueInputBatch(events);
-        }
+	function releaseAllPressedKeys() {
+		if (pressedKeys.size === 0) {
+			pressedKeyMeta.clear();
+			return;
+		}
+		const events: RemoteDesktopInputEvent[] = [];
+		for (const code of pressedKeys) {
+			const meta = pressedKeyMeta.get(code);
+			events.push({
+				type: 'key',
+				pressed: false,
+				keyCode: code,
+				key: meta?.key,
+				code: meta?.code,
+				altKey: false,
+				ctrlKey: false,
+				shiftKey: false,
+				metaKey: false
+			});
+		}
+		pressedKeys.clear();
+		pressedKeyMeta.clear();
+		queueInputBatch(events);
+	}
 
-        $effect(() => {
-                mouseEnabled;
-                if (!mouseEnabled) {
-                        releasePointerCapture();
-                }
-        });
+	$effect(() => {
+		mouseEnabled;
+		if (!mouseEnabled) {
+			releasePointerCapture();
+		}
+	});
 
-        $effect(() => {
-                keyboardEnabled;
-                if (!keyboardEnabled) {
-                        releaseAllPressedKeys();
-                }
-        });
+	$effect(() => {
+		keyboardEnabled;
+		if (!keyboardEnabled) {
+			releaseAllPressedKeys();
+		}
+	});
 
-        $effect(() => {
-                sessionActive;
-                if (!sessionActive) {
-                        releasePointerCapture();
-                        releaseAllPressedKeys();
-                        clearInputQueue();
-                }
-        });
+	$effect(() => {
+		sessionActive;
+		if (!sessionActive) {
+			releasePointerCapture();
+			releaseAllPressedKeys();
+			clearInputQueue();
+		}
+	});
 
-        $effect(() => {
-                const current = session;
-                if (!current) {
-                        quality = 'auto';
-                        mode = 'video';
-                        monitor = 0;
+	$effect(() => {
+		const current = session;
+		if (!current) {
+			quality = 'auto';
+			mode = 'video';
+			monitor = 0;
 			mouseEnabled = true;
 			keyboardEnabled = true;
 			sessionActive = false;
@@ -1094,14 +1094,14 @@ let isStarting = $state(false);
 					onwheel={handleWheel}
 					style="touch-action: none;"
 				>
-						<canvas bind:this={canvasEl} class="block h-full w-full bg-slate-950"></canvas>
-						{#if !sessionActive}
-								<div
-										class="absolute inset-0 flex items-center justify-center text-sm text-muted-foreground"
-								>
-										Session inactive · start streaming to receive frames
-								</div>
-						{/if}
+					<canvas bind:this={canvasEl} class="block h-full w-full bg-slate-950"></canvas>
+					{#if !sessionActive}
+						<div
+							class="absolute inset-0 flex items-center justify-center text-sm text-muted-foreground"
+						>
+							Session inactive · start streaming to receive frames
+						</div>
+					{/if}
 				</div>
 				<div class="grid gap-3 text-sm sm:grid-cols-2 lg:grid-cols-4">
 					<div class="rounded-lg border border-border/60 bg-background/60 p-3">

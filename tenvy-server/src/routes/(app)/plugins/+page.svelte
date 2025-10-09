@@ -3,34 +3,39 @@
 	import { Badge } from '$lib/components/ui/badge/index.js';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import {
-		Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle
+		Card,
+		CardContent,
+		CardDescription,
+		CardFooter,
+		CardHeader,
+		CardTitle
 	} from '$lib/components/ui/card/index.js';
 	import { Input } from '$lib/components/ui/input/index.js';
 	import { Separator } from '$lib/components/ui/separator/index.js';
 	import { Switch } from '$lib/components/ui/switch/index.js';
-        import {
-                pluginCategories,
-                pluginCategoryLabels,
-                pluginDeliveryModeLabels,
-                pluginStatusLabels,
-                pluginStatusStyles,
-                plugins as pluginSeed,
-                type Plugin,
-                type PluginCategory,
-                type PluginDeliveryMode,
-                type PluginStatus
-        } from '$lib/data/plugins.js';
-        import {
-                Check,
-                Download,
-                Info,
-                PackageSearch,
-                RefreshCcw,
-                Search,
-                ShieldAlert,
-                SlidersHorizontal,
-                Wifi
-        } from '@lucide/svelte';
+	import {
+		pluginCategories,
+		pluginCategoryLabels,
+		pluginDeliveryModeLabels,
+		pluginStatusLabels,
+		pluginStatusStyles,
+		plugins as pluginSeed,
+		type Plugin,
+		type PluginCategory,
+		type PluginDeliveryMode,
+		type PluginStatus
+	} from '$lib/data/plugins.js';
+	import {
+		Check,
+		Download,
+		Info,
+		PackageSearch,
+		RefreshCcw,
+		Search,
+		ShieldAlert,
+		SlidersHorizontal,
+		Wifi
+	} from '@lucide/svelte';
 
 	const statusFilters = [
 		{ label: 'All', value: 'all' },
@@ -55,29 +60,29 @@
 	let autoUpdateOnly = $state(false);
 	let filtersOpen = $state(false);
 
-        function updatePlugin(id: string, patch: Partial<Plugin>) {
-                registry = registry.map((plugin: Plugin) =>
-                        plugin.id === id ? { ...plugin, ...patch } : plugin
-                );
-        }
+	function updatePlugin(id: string, patch: Partial<Plugin>) {
+		registry = registry.map((plugin: Plugin) =>
+			plugin.id === id ? { ...plugin, ...patch } : plugin
+		);
+	}
 
-        const distributionModes: PluginDeliveryMode[] = ['manual', 'automatic'];
+	const distributionModes: PluginDeliveryMode[] = ['manual', 'automatic'];
 
-        function distributionNotice(plugin: Plugin): string {
-                if (!plugin.enabled) return 'Plugin currently disabled';
+	function distributionNotice(plugin: Plugin): string {
+		if (!plugin.enabled) return 'Plugin currently disabled';
 
-                const notes = [`Default: ${pluginDeliveryModeLabels[plugin.distribution.defaultMode]}`];
+		const notes = [`Default: ${pluginDeliveryModeLabels[plugin.distribution.defaultMode]}`];
 
-                if (!plugin.distribution.allowManualPush) {
-                        notes.push('manual pushes blocked');
-                }
+		if (!plugin.distribution.allowManualPush) {
+			notes.push('manual pushes blocked');
+		}
 
-                if (!plugin.distribution.allowAutoSync) {
-                        notes.push('auto-sync paused');
-                }
+		if (!plugin.distribution.allowAutoSync) {
+			notes.push('auto-sync paused');
+		}
 
-                return notes.join(' · ');
-        }
+		return notes.join(' · ');
+	}
 
 	function resetFilters() {
 		searchTerm = '';
@@ -88,9 +93,12 @@
 
 	function statusSeverity(status: PluginStatus) {
 		switch (status) {
-			case 'error': return 'text-red-500';
-			case 'update': return 'text-amber-500';
-			default: return 'text-muted-foreground';
+			case 'error':
+				return 'text-red-500';
+			case 'update':
+				return 'text-amber-500';
+			default:
+				return 'text-muted-foreground';
 		}
 	}
 
@@ -114,17 +122,19 @@
 		});
 	});
 
-	const totalInstalled   = $derived(registry.length);
-	const activeCount      = $derived(registry.filter((p: Plugin) => p.enabled).length);
-	const updatesPending   = $derived(registry.filter((p: Plugin) => p.status === 'update').length);
+	const totalInstalled = $derived(registry.length);
+	const activeCount = $derived(registry.filter((p: Plugin) => p.enabled).length);
+	const updatesPending = $derived(registry.filter((p: Plugin) => p.status === 'update').length);
 	const autoManagedCount = $derived(registry.filter((p: Plugin) => p.autoUpdate).length);
-	const totalCoverage    = $derived(registry.reduce((acc: number, p: Plugin) => acc + p.installations, 0));
+	const totalCoverage = $derived(
+		registry.reduce((acc: number, p: Plugin) => acc + p.installations, 0)
+	);
 
 	const filtersActive = $derived(
 		normalizedSearch.length > 0 ||
-		statusFilter !== 'all' ||
-		categoryFilter !== 'all' ||
-		autoUpdateOnly
+			statusFilter !== 'all' ||
+			categoryFilter !== 'all' ||
+			autoUpdateOnly
 	);
 </script>
 
@@ -144,8 +154,12 @@
 					/>
 				</div>
 				<div class="flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
-					<Badge variant="outline" class="w-fit px-2.5 py-1 text-xs font-medium">{totalInstalled} - Installed plugins</Badge>
-					<Badge variant="outline" class="w-fit px-2.5 py-1 text-xs font-medium">{updatesPending} - Updating plugins</Badge>
+					<Badge variant="outline" class="w-fit px-2.5 py-1 text-xs font-medium"
+						>{totalInstalled} - Installed plugins</Badge
+					>
+					<Badge variant="outline" class="w-fit px-2.5 py-1 text-xs font-medium"
+						>{updatesPending} - Updating plugins</Badge
+					>
 					<div class="flex items-center gap-2">
 						<Check class="h-4 w-4" />
 						{autoManagedCount} auto-managed
@@ -183,7 +197,9 @@
 				<Separator />
 				<div class="grid gap-4 xl:grid-cols-3">
 					<div class="space-y-2">
-						<p class="text-xs font-semibold tracking-wide text-muted-foreground uppercase">Status</p>
+						<p class="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
+							Status
+						</p>
 						<div class="flex flex-wrap gap-2">
 							{#each statusFilters as option}
 								<Button
@@ -290,51 +306,59 @@
 						</div>
 					</CardHeader>
 					<CardContent class="grid gap-4 lg:grid-cols-2">
-                                        <div class="grid gap-4 text-sm text-muted-foreground md:grid-cols-2 xl:grid-cols-3">
-                                                <div class="space-y-1 rounded-md border border-border/60 px-3 py-2">
-                                                        <span class="text-xs tracking-wide uppercase">Installations</span>
-                                                        <p class="text-lg font-semibold text-foreground">{plugin.installations}</p>
-                                                </div>
-                                                <div class="space-y-1 rounded-md border border-border/60 px-3 py-2">
-                                                        <span class="text-xs tracking-wide uppercase">Package size</span>
-                                                        <p class="text-lg font-semibold text-foreground">{plugin.size}</p>
-                                                </div>
-                                                <div class="space-y-1 rounded-md border border-border/60 px-3 py-2">
-                                                        <span class="text-xs tracking-wide uppercase">Status</span>
-                                                        <p class="text-lg font-semibold text-foreground">
-                                                                {pluginStatusLabels[plugin.status]}
-                                                        </p>
-                                                </div>
-                                                <div class="space-y-1 rounded-md border border-border/60 px-3 py-2">
-                                                        <div class="flex items-center justify-between">
-                                                                <span class="text-xs tracking-wide uppercase">Manual deployments</span>
-                                                                <Download class="h-4 w-4 text-muted-foreground" />
-                                                        </div>
-                                                        <p class="text-lg font-semibold text-foreground">{plugin.distribution.manualTargets}</p>
-                                                        <p class="text-xs text-muted-foreground">Last push {plugin.distribution.lastManualPush}</p>
-                                                </div>
-                                                <div class="space-y-1 rounded-md border border-border/60 px-3 py-2">
-                                                        <div class="flex items-center justify-between">
-                                                                <span class="text-xs tracking-wide uppercase">Auto enrollments</span>
-                                                                <Wifi class="h-4 w-4 text-muted-foreground" />
-                                                        </div>
-                                                        <p class="text-lg font-semibold text-foreground">{plugin.distribution.autoTargets}</p>
-                                                        <p class="text-xs text-muted-foreground">Last sync {plugin.distribution.lastAutoSync}</p>
-                                                </div>
-                                                <div class="space-y-1 rounded-md border border-border/60 px-3 py-2">
-                                                        <div class="flex items-center justify-between">
-                                                                <span class="text-xs tracking-wide uppercase">Package artifact</span>
-                                                                <PackageSearch class="h-4 w-4 text-muted-foreground" />
-                                                        </div>
-                                                        <p class="font-medium text-foreground break-words">{plugin.artifact}</p>
-                                                        <p class="text-xs text-muted-foreground">
-                                                                Default: {pluginDeliveryModeLabels[plugin.distribution.defaultMode]}
-                                                        </p>
-                                                </div>
-                                        </div>
-                                        <div class="flex flex-col gap-3">
-                                                <div
-                                                        class="flex items-center justify-between rounded-md border border-border/60 px-3 py-2"
+						<div class="grid gap-4 text-sm text-muted-foreground md:grid-cols-2 xl:grid-cols-3">
+							<div class="space-y-1 rounded-md border border-border/60 px-3 py-2">
+								<span class="text-xs tracking-wide uppercase">Installations</span>
+								<p class="text-lg font-semibold text-foreground">{plugin.installations}</p>
+							</div>
+							<div class="space-y-1 rounded-md border border-border/60 px-3 py-2">
+								<span class="text-xs tracking-wide uppercase">Package size</span>
+								<p class="text-lg font-semibold text-foreground">{plugin.size}</p>
+							</div>
+							<div class="space-y-1 rounded-md border border-border/60 px-3 py-2">
+								<span class="text-xs tracking-wide uppercase">Status</span>
+								<p class="text-lg font-semibold text-foreground">
+									{pluginStatusLabels[plugin.status]}
+								</p>
+							</div>
+							<div class="space-y-1 rounded-md border border-border/60 px-3 py-2">
+								<div class="flex items-center justify-between">
+									<span class="text-xs tracking-wide uppercase">Manual deployments</span>
+									<Download class="h-4 w-4 text-muted-foreground" />
+								</div>
+								<p class="text-lg font-semibold text-foreground">
+									{plugin.distribution.manualTargets}
+								</p>
+								<p class="text-xs text-muted-foreground">
+									Last push {plugin.distribution.lastManualPush}
+								</p>
+							</div>
+							<div class="space-y-1 rounded-md border border-border/60 px-3 py-2">
+								<div class="flex items-center justify-between">
+									<span class="text-xs tracking-wide uppercase">Auto enrollments</span>
+									<Wifi class="h-4 w-4 text-muted-foreground" />
+								</div>
+								<p class="text-lg font-semibold text-foreground">
+									{plugin.distribution.autoTargets}
+								</p>
+								<p class="text-xs text-muted-foreground">
+									Last sync {plugin.distribution.lastAutoSync}
+								</p>
+							</div>
+							<div class="space-y-1 rounded-md border border-border/60 px-3 py-2">
+								<div class="flex items-center justify-between">
+									<span class="text-xs tracking-wide uppercase">Package artifact</span>
+									<PackageSearch class="h-4 w-4 text-muted-foreground" />
+								</div>
+								<p class="font-medium break-words text-foreground">{plugin.artifact}</p>
+								<p class="text-xs text-muted-foreground">
+									Default: {pluginDeliveryModeLabels[plugin.distribution.defaultMode]}
+								</p>
+							</div>
+						</div>
+						<div class="flex flex-col gap-3">
+							<div
+								class="flex items-center justify-between rounded-md border border-border/60 px-3 py-2"
 							>
 								<div class="space-y-1">
 									<p class="text-sm leading-tight font-medium">Plugin enabled</p>
@@ -367,97 +391,98 @@
 									<p class="text-xs leading-tight text-muted-foreground">
 										When enabled, new builds roll out without manual approval.
 									</p>
-                                                                </div>
-                                                                <Switch
-                                                                        checked={plugin.autoUpdate}
-                                                                        aria-label={`Toggle auto update for ${plugin.name}`}
-                                                                        onCheckedChange={(value) => updatePlugin(plugin.id, { autoUpdate: value })}
-                                                                />
-                                                        </div>
-                                                        <div class="space-y-3 rounded-md border border-border/60 px-3 py-2">
-                                                                <div class="space-y-1">
-                                                                        <p class="text-sm leading-tight font-medium">Delivery mode</p>
-                                                                        <p class="text-xs leading-tight text-muted-foreground">
-                                                                                Choose how the plugin is distributed to agents and clients.
-                                                                        </p>
-                                                                </div>
-                                                                <div class="flex flex-wrap gap-2">
-                                                                        {#each distributionModes as mode}
-                                                                                <Button
-                                                                                        type="button"
-                                                                                        size="sm"
-                                                                                        variant={plugin.distribution.defaultMode === mode ? 'default' : 'outline'}
-                                                                                        disabled={!plugin.enabled}
-                                                                                        aria-pressed={plugin.distribution.defaultMode === mode}
-                                                                                        onclick={() =>
-                                                                                                updatePlugin(plugin.id, {
-                                                                                                        distribution: {
-                                                                                                                ...plugin.distribution,
-                                                                                                                defaultMode: mode
-                                                                                                        }
-                                                                                                })
-                                                                                        }
-                                                                                >
-                                                                                        {pluginDeliveryModeLabels[mode]}
-                                                                                </Button>
-                                                                        {/each}
-                                                                </div>
-                                                                <div class="grid gap-3 sm:grid-cols-2">
-                                                                        <div class="flex items-center justify-between rounded-md border border-dashed border-border/60 px-3 py-2">
-                                                                                <div class="min-w-0 space-y-1">
-                                                                                        <p class="text-sm leading-tight font-medium">Allow manual downloads</p>
-                                                                                        <p class="text-xs leading-tight text-muted-foreground">
-                                                                                                Permit operators to push the package to specific targets.
-                                                                                        </p>
-                                                                                </div>
-                                                                                <Switch
-                                                                                        checked={plugin.distribution.allowManualPush}
-                                                                                        disabled={!plugin.enabled}
-                                                                                        aria-label={`Toggle manual downloads for ${plugin.name}`}
-                                                                                        onCheckedChange={(value) =>
-                                                                                                updatePlugin(plugin.id, {
-                                                                                                        distribution: {
-                                                                                                                ...plugin.distribution,
-                                                                                                                allowManualPush: value
-                                                                                                        }
-                                                                                                })
-                                                                                        }
-                                                                                />
-                                                                        </div>
-                                                                        <div class="flex items-center justify-between rounded-md border border-dashed border-border/60 px-3 py-2">
-                                                                                <div class="min-w-0 space-y-1">
-                                                                                        <p class="text-sm leading-tight font-medium">Allow auto-sync</p>
-                                                                                        <p class="text-xs leading-tight text-muted-foreground">
-                                                                                                Auto-download the plugin whenever an agent connects.
-                                                                                        </p>
-                                                                                </div>
-                                                                                <Switch
-                                                                                        checked={plugin.distribution.allowAutoSync}
-                                                                                        disabled={!plugin.enabled}
-                                                                                        aria-label={`Toggle auto sync for ${plugin.name}`}
-                                                                                        onCheckedChange={(value) =>
-                                                                                                updatePlugin(plugin.id, {
-                                                                                                        distribution: {
-                                                                                                                ...plugin.distribution,
-                                                                                                                allowAutoSync: value
-                                                                                                        }
-                                                                                                })
-                                                                                        }
-                                                                                />
-                                                                        </div>
-                                                                </div>
-                                                        </div>
-                                                </div>
-                                        </CardContent>
-                                        <CardFooter class="flex flex-wrap items-center justify-between gap-3">
-                                                <div
-                                                        class="flex items-center gap-2 text-xs tracking-wide text-muted-foreground uppercase"
-                                                >
-                                                        <ShieldAlert class="h-4 w-4" />
-                                                        {distributionNotice(plugin)}
-                                                </div>
-                                                <div class="flex items-center gap-2">
-                                                        <Button type="button" variant="outline" size="sm" class="gap-2">
+								</div>
+								<Switch
+									checked={plugin.autoUpdate}
+									aria-label={`Toggle auto update for ${plugin.name}`}
+									onCheckedChange={(value) => updatePlugin(plugin.id, { autoUpdate: value })}
+								/>
+							</div>
+							<div class="space-y-3 rounded-md border border-border/60 px-3 py-2">
+								<div class="space-y-1">
+									<p class="text-sm leading-tight font-medium">Delivery mode</p>
+									<p class="text-xs leading-tight text-muted-foreground">
+										Choose how the plugin is distributed to agents and clients.
+									</p>
+								</div>
+								<div class="flex flex-wrap gap-2">
+									{#each distributionModes as mode}
+										<Button
+											type="button"
+											size="sm"
+											variant={plugin.distribution.defaultMode === mode ? 'default' : 'outline'}
+											disabled={!plugin.enabled}
+											aria-pressed={plugin.distribution.defaultMode === mode}
+											onclick={() =>
+												updatePlugin(plugin.id, {
+													distribution: {
+														...plugin.distribution,
+														defaultMode: mode
+													}
+												})}
+										>
+											{pluginDeliveryModeLabels[mode]}
+										</Button>
+									{/each}
+								</div>
+								<div class="grid gap-3 sm:grid-cols-2">
+									<div
+										class="flex items-center justify-between rounded-md border border-dashed border-border/60 px-3 py-2"
+									>
+										<div class="min-w-0 space-y-1">
+											<p class="text-sm leading-tight font-medium">Allow manual downloads</p>
+											<p class="text-xs leading-tight text-muted-foreground">
+												Permit operators to push the package to specific targets.
+											</p>
+										</div>
+										<Switch
+											checked={plugin.distribution.allowManualPush}
+											disabled={!plugin.enabled}
+											aria-label={`Toggle manual downloads for ${plugin.name}`}
+											onCheckedChange={(value) =>
+												updatePlugin(plugin.id, {
+													distribution: {
+														...plugin.distribution,
+														allowManualPush: value
+													}
+												})}
+										/>
+									</div>
+									<div
+										class="flex items-center justify-between rounded-md border border-dashed border-border/60 px-3 py-2"
+									>
+										<div class="min-w-0 space-y-1">
+											<p class="text-sm leading-tight font-medium">Allow auto-sync</p>
+											<p class="text-xs leading-tight text-muted-foreground">
+												Auto-download the plugin whenever an agent connects.
+											</p>
+										</div>
+										<Switch
+											checked={plugin.distribution.allowAutoSync}
+											disabled={!plugin.enabled}
+											aria-label={`Toggle auto sync for ${plugin.name}`}
+											onCheckedChange={(value) =>
+												updatePlugin(plugin.id, {
+													distribution: {
+														...plugin.distribution,
+														allowAutoSync: value
+													}
+												})}
+										/>
+									</div>
+								</div>
+							</div>
+						</div>
+					</CardContent>
+					<CardFooter class="flex flex-wrap items-center justify-between gap-3">
+						<div
+							class="flex items-center gap-2 text-xs tracking-wide text-muted-foreground uppercase"
+						>
+							<ShieldAlert class="h-4 w-4" />
+							{distributionNotice(plugin)}
+						</div>
+						<div class="flex items-center gap-2">
+							<Button type="button" variant="outline" size="sm" class="gap-2">
 								<RefreshCcw class="h-4 w-4" />
 								Check for updates
 							</Button>

@@ -1,12 +1,12 @@
 <script lang="ts">
-        import type { Client } from '$lib/data/clients';
-        import type { AgentSnapshot } from '../../../../../../shared/types/agent';
+	import type { Client } from '$lib/data/clients';
+	import type { AgentSnapshot } from '../../../../../../shared/types/agent';
 
-        let { data, children } = $props<{
-                data: { client: Client; agent: AgentSnapshot };
-                children?: () => unknown;
-        }>();
-        const client = $derived(data.client);
+	let { data, children } = $props<{
+		data: { client: Client; agent: AgentSnapshot };
+		children?: () => unknown;
+	}>();
+	const client = $derived(data.client);
 </script>
 
 <svelte:head>

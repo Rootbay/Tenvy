@@ -3,24 +3,24 @@ import type { RequestHandler } from './$types';
 import { registry, RegistryError } from '$lib/server/rat/store';
 import { remoteDesktopManager, RemoteDesktopError } from '$lib/server/rat/remote-desktop';
 import type {
-        RemoteDesktopSessionResponse,
-        RemoteDesktopSettings
+	RemoteDesktopSessionResponse,
+	RemoteDesktopSettings
 } from '$lib/types/remote-desktop';
 import type { RemoteDesktopCommandPayload } from '$lib/types/remote-desktop';
 
 function normalizeSettings(input: Record<string, unknown>): Partial<RemoteDesktopSettings> {
-        const output: Partial<RemoteDesktopSettings> = {};
-        if (typeof input.quality === 'string') {
-                output.quality = input.quality as RemoteDesktopSettings['quality'];
-        }
-        if (typeof input.mode === 'string') {
-                output.mode = input.mode as RemoteDesktopSettings['mode'];
-        }
-        if (typeof input.monitor === 'number') {
-                output.monitor = input.monitor;
-        }
-        if (typeof input.mouse === 'boolean') {
-                output.mouse = input.mouse;
+	const output: Partial<RemoteDesktopSettings> = {};
+	if (typeof input.quality === 'string') {
+		output.quality = input.quality as RemoteDesktopSettings['quality'];
+	}
+	if (typeof input.mode === 'string') {
+		output.mode = input.mode as RemoteDesktopSettings['mode'];
+	}
+	if (typeof input.monitor === 'number') {
+		output.monitor = input.monitor;
+	}
+	if (typeof input.mouse === 'boolean') {
+		output.mouse = input.mouse;
 	}
 	if (typeof input.keyboard === 'boolean') {
 		output.keyboard = input.keyboard;

@@ -18,10 +18,10 @@ declare module '$lib/paraglide/server' {
 }
 
 declare module '$lib/paraglide/runtime' {
-        export function deLocalizeUrl(url: URL): URL;
+	export function deLocalizeUrl(url: URL): URL;
 }
 
 declare module 'systeminformation' {
-        const value: any;
-        export default value;
+	const value: any;
+	export default value;
 }
