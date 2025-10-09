@@ -2,7 +2,12 @@ import { readFile } from 'fs/promises';
 import JSZip from 'jszip';
 import { json, error } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { getRecoveryArchive, getRecoveryArchiveFilePath } from '$lib/server/recovery/storage';
+import {
+	RecoveryArchiveMetadataError,
+	getRecoveryArchive,
+	getRecoveryArchiveFilePath
+} from '$lib/server/recovery/storage';
+import { normalizeArchiveEntryPath } from '$lib/server/recovery/validation';
 
 const MAX_PREVIEW_BYTES = 2 * 1024 * 1024; // 2 MiB
 
@@ -35,7 +40,13 @@ export const GET: RequestHandler = async ({ params, url }) => {
 	if (!targetPath) {
 		throw error(400, 'Missing path parameter');
 	}
-	const normalizedPath = targetPath.replace(/^\/+/, '');
+	let normalizedPath: string;
+	try {
+		normalizedPath = normalizeArchiveEntryPath(targetPath);
+	} catch (err) {
+		const message = err instanceof Error ? err.message : 'Invalid path parameter';
+		throw error(400, message);
+	}
 
 	try {
 		const archive = await getRecoveryArchive(id, archiveId);
@@ -95,6 +106,10 @@ export const GET: RequestHandler = async ({ params, url }) => {
 		}
 		if (err instanceof Response) {
 			throw err;
+		}
+		if (err instanceof RecoveryArchiveMetadataError) {
+			console.error('Recovery archive metadata validation failed', err);
+			throw error(500, 'Recovery archive metadata failed validation');
 		}
 		throw error(500, 'Failed to read archive entry');
 	}
