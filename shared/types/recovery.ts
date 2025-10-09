@@ -31,6 +31,18 @@ export type RecoveryTargetType =
         | 'mailbird-data'
         | 'outlook-data'
         | 'thunderbird-data'
+        | 'cyberduck-data'
+        | 'filezilla-data'
+        | 'winscp-data'
+        | 'growtopia-data'
+        | 'roblox-data'
+        | 'battlenet-data'
+        | 'ea-app-data'
+        | 'epic-games-data'
+        | 'steam-data'
+        | 'ubisoft-connect-data'
+        | 'gog-galaxy-data'
+        | 'riot-client-data'
         | 'custom-path';
 
 export interface RecoveryTargetSelection {

