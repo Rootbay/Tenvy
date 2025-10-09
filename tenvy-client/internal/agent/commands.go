@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"sort"
 	"strings"
 	"time"
 
@@ -252,28 +253,83 @@ func runShell(ctx context.Context, command string, options shellExecutionOptions
 }
 
 func mergeEnvironments(base []string, overrides map[string]string) []string {
-	if len(overrides) == 0 {
-		return base
+	return mergeEnvironmentsWithComparer(base, overrides, runtime.GOOS == "windows")
+}
+
+func mergeEnvironmentsWithComparer(base []string, overrides map[string]string, caseInsensitive bool) []string {
+	type overrideEntry struct {
+		normalized string
+		key        string
+		value      string
 	}
 
-	env := make([]string, 0, len(base)+len(overrides))
-	for _, kv := range base {
-		key := kv
-		if idx := strings.IndexRune(kv, '='); idx >= 0 {
-			key = kv[:idx]
+	normalizeKey := func(key string) string {
+		if caseInsensitive {
+			return strings.ToLower(key)
 		}
-		if _, ok := overrides[key]; ok {
+		return key
+	}
+
+	overridesByKey := make(map[string]overrideEntry, len(overrides))
+	for key, value := range overrides {
+		trimmedKey := strings.TrimSpace(key)
+		if trimmedKey == "" {
 			continue
 		}
+		normalizedKey := normalizeKey(trimmedKey)
+		overridesByKey[normalizedKey] = overrideEntry{
+			normalized: normalizedKey,
+			key:        trimmedKey,
+			value:      value,
+		}
+	}
+
+	env := make([]string, 0, len(base)+len(overridesByKey))
+	seenBaseKeys := make(map[string]struct{}, len(base))
+	pendingOverrides := make([]overrideEntry, 0, len(overridesByKey))
+
+	for _, kv := range base {
+		keyPortion := kv
+		if idx := strings.IndexRune(kv, '='); idx >= 0 {
+			keyPortion = kv[:idx]
+		}
+		trimmedKey := strings.TrimSpace(keyPortion)
+		normalizedKey := normalizeKey(trimmedKey)
+
+		if normalizedKey == "" {
+			env = append(env, kv)
+			continue
+		}
+
+		if _, seen := seenBaseKeys[normalizedKey]; seen {
+			continue
+		}
+		seenBaseKeys[normalizedKey] = struct{}{}
+
+		if entry, overridden := overridesByKey[normalizedKey]; overridden {
+			pendingOverrides = append(pendingOverrides, entry)
+			delete(overridesByKey, normalizedKey)
+			continue
+		}
+
 		env = append(env, kv)
 	}
 
-	for key, value := range overrides {
-		trimmed := strings.TrimSpace(key)
-		if trimmed == "" {
-			continue
+	for _, entry := range pendingOverrides {
+		env = append(env, fmt.Sprintf("%s=%s", entry.key, entry.value))
+	}
+
+	if len(overridesByKey) > 0 {
+		remaining := make([]overrideEntry, 0, len(overridesByKey))
+		for _, entry := range overridesByKey {
+			remaining = append(remaining, entry)
 		}
-		env = append(env, fmt.Sprintf("%s=%s", trimmed, value))
+		sort.SliceStable(remaining, func(i, j int) bool {
+			return remaining[i].key < remaining[j].key
+		})
+		for _, entry := range remaining {
+			env = append(env, fmt.Sprintf("%s=%s", entry.key, entry.value))
+		}
 	}
 
 	return env

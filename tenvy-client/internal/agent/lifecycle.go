@@ -175,15 +175,37 @@ func (a *Agent) enqueueResult(result protocol.CommandResult) {
 	a.resultMu.Lock()
 	defer a.resultMu.Unlock()
 	a.pendingResults = append(a.pendingResults, result)
-	if len(a.pendingResults) > maxBufferedResults {
-		a.pendingResults = append([]protocol.CommandResult(nil), a.pendingResults[len(a.pendingResults)-maxBufferedResults:]...)
-	}
+	a.trimPendingResultsLocked()
 }
 
 func (a *Agent) enqueueResults(results []protocol.CommandResult) {
-	for _, result := range results {
-		a.enqueueResult(result)
+	if len(results) == 0 {
+		return
 	}
+
+	a.resultMu.Lock()
+	defer a.resultMu.Unlock()
+
+	if len(results) >= maxBufferedResults {
+		results = append([]protocol.CommandResult(nil), results[len(results)-maxBufferedResults:]...)
+	}
+
+	a.pendingResults = append(a.pendingResults, results...)
+	a.trimPendingResultsLocked()
+}
+
+func (a *Agent) trimPendingResultsLocked() {
+	if len(a.pendingResults) <= maxBufferedResults {
+		return
+	}
+
+	if maxBufferedResults == 0 {
+		a.pendingResults = a.pendingResults[:0]
+		return
+	}
+
+	keep := a.pendingResults[len(a.pendingResults)-maxBufferedResults:]
+	a.pendingResults = append([]protocol.CommandResult(nil), keep...)
 }
 
 func (a *Agent) consumeResults() []protocol.CommandResult {
