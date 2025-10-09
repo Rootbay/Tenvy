@@ -1,4 +1,5 @@
 import { pluginManifests } from './plugin-manifests.js';
+import { agentModuleIndex } from '../../../../shared/modules/index.js';
 import { validatePluginManifest } from '../../../../shared/types/plugin-manifest.js';
 
 export type PluginStatus = 'active' | 'disabled' | 'update' | 'error';
@@ -39,6 +40,44 @@ export type Plugin = {
 	capabilities: string[];
 	artifact: string;
 	distribution: PluginDistribution;
+	requiredModules: { id: string; title: string }[];
+};
+
+export const pluginCategories: PluginCategory[] = [
+	'collection',
+	'operations',
+	'persistence',
+	'exfiltration',
+	'transport',
+	'recovery'
+];
+
+export const pluginCategoryLabels: Record<PluginCategory, string> = {
+	collection: 'Collection',
+	operations: 'Operations',
+	persistence: 'Persistence',
+	exfiltration: 'Exfiltration',
+	transport: 'Transport',
+	recovery: 'Recovery'
+};
+
+export const pluginDeliveryModeLabels: Record<PluginDeliveryMode, string> = {
+	manual: 'Manual delivery',
+	automatic: 'Automatic sync'
+};
+
+export const pluginStatusLabels: Record<PluginStatus, string> = {
+	active: 'Active',
+	disabled: 'Disabled',
+	update: 'Update available',
+	error: 'Attention required'
+};
+
+export const pluginStatusStyles: Record<PluginStatus, string> = {
+	active: 'border-emerald-500/40 text-emerald-500',
+	disabled: 'border-muted text-muted-foreground',
+	update: 'border-amber-500/60 text-amber-500',
+	error: 'border-red-500/60 text-red-500'
 };
 
 type PluginRuntimeState = {
@@ -179,6 +218,11 @@ function derivePlugin(manifest: (typeof pluginManifests)[number]): Plugin {
 		lastAutoSync: state.lastAutoSync
 	};
 
+	const requiredModules = (manifest.requirements.requiredModules ?? [])
+		.map((moduleId) => agentModuleIndex.get(moduleId))
+		.filter((module): module is NonNullable<typeof module> => module != null)
+		.map((module) => ({ id: module.id, title: module.title }));
+
 	return {
 		id: manifest.id,
 		name: manifest.name,
@@ -195,7 +239,8 @@ function derivePlugin(manifest: (typeof pluginManifests)[number]): Plugin {
 		size: formatSize(manifest.package.sizeBytes),
 		capabilities: manifest.capabilities?.map((capability) => capability.name) ?? [],
 		artifact: manifest.package.artifact,
-		distribution
+		distribution,
+		requiredModules
 	};
 }
 
