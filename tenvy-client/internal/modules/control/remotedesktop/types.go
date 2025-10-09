@@ -174,6 +174,7 @@ type RemoteDesktopSession struct {
 	Height             int
 	TileSize           int
 	ClipQuality        int
+	BaseClipQuality    int
 	FrameInterval      time.Duration
 	Sequence           uint64
 	LastFrame          []byte
