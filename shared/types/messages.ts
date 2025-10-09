@@ -4,6 +4,7 @@ import type { RemoteDesktopCommandPayload } from './remote-desktop';
 import type { AudioControlCommandPayload } from './audio';
 import type { ClipboardCommandPayload } from './clipboard';
 import type { RecoveryCommandPayload } from './recovery';
+import type { FileManagerCommandPayload } from './file-manager';
 
 export type CommandName =
         | 'ping'
@@ -13,7 +14,8 @@ export type CommandName =
         | 'open-url'
         | 'audio-control'
         | 'clipboard'
-        | 'recovery';
+        | 'recovery'
+        | 'file-manager';
 
 export interface PingCommandPayload {
         message?: string;
@@ -44,7 +46,8 @@ export type CommandPayload =
         | OpenUrlCommandPayload
         | AudioControlCommandPayload
         | ClipboardCommandPayload
-        | RecoveryCommandPayload;
+        | RecoveryCommandPayload
+        | FileManagerCommandPayload;
 
 export interface CommandInput {
         name: CommandName;
