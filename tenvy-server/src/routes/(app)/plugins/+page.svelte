@@ -3,12 +3,7 @@
 	import { Badge } from '$lib/components/ui/badge/index.js';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import {
-		Card,
-		CardContent,
-		CardDescription,
-		CardFooter,
-		CardHeader,
-		CardTitle
+		Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle
 	} from '$lib/components/ui/card/index.js';
 	import { Input } from '$lib/components/ui/input/index.js';
 	import { Separator } from '$lib/components/ui/separator/index.js';
@@ -23,8 +18,7 @@
 		type PluginCategory,
 		type PluginStatus
 	} from '$lib/data/plugins.js';
-
-	import { Check, Info, RefreshCcw, Search, ShieldAlert } from '@lucide/svelte';
+	import { Check, Info, RefreshCcw, Search, ShieldAlert, SlidersHorizontal } from '@lucide/svelte';
 
 	const statusFilters = [
 		{ label: 'All', value: 'all' },
@@ -42,107 +36,67 @@
 		}))
 	] satisfies { label: string; value: 'all' | PluginCategory }[];
 
-	let registry: Plugin[] = pluginSeed.map((plugin) => ({ ...plugin }));
+	let registry = $state<Plugin[]>(pluginSeed.map((p) => ({ ...p })));
+	let searchTerm = $state('');
+	let statusFilter = $state<'all' | PluginStatus>('all');
+	let categoryFilter = $state<'all' | PluginCategory>('all');
+	let autoUpdateOnly = $state(false);
+	let filtersOpen = $state(false);
 
-	let searchTerm = '';
-	let statusFilter: (typeof statusFilters)[number]['value'] = 'all';
-	let categoryFilter: (typeof categoryFilters)[number]['value'] = 'all';
-	let autoUpdateOnly = false;
+	function updatePlugin(id: string, patch: Partial<Plugin>) {
+		registry = registry.map((plugin: Plugin) =>
+			plugin.id === id ? { ...plugin, ...patch } : plugin
+		);
+	}
 
-	const updatePlugin = (id: string, patch: Partial<Plugin>) => {
-		registry = registry.map((plugin) => (plugin.id === id ? { ...plugin, ...patch } : plugin));
-	};
-
-	const resetFilters = () => {
+	function resetFilters() {
 		searchTerm = '';
 		statusFilter = 'all';
 		categoryFilter = 'all';
 		autoUpdateOnly = false;
-	};
+	}
 
-	const statusSeverity = (status: PluginStatus) => {
+	function statusSeverity(status: PluginStatus) {
 		switch (status) {
-			case 'error':
-				return 'text-red-500';
-			case 'update':
-				return 'text-amber-500';
-			default:
-				return 'text-muted-foreground';
+			case 'error': return 'text-red-500';
+			case 'update': return 'text-amber-500';
+			default: return 'text-muted-foreground';
 		}
-	};
+	}
 
-	$: normalizedSearch = searchTerm.trim().toLowerCase();
+	const normalizedSearch = $derived(searchTerm.trim().toLowerCase());
 
-	$: filteredPlugins = registry.filter((plugin) => {
-		const matchesSearch =
-			normalizedSearch.length === 0 ||
-			[plugin.name, plugin.description, plugin.author, plugin.version, ...plugin.capabilities]
-				.join(' ')
-				.toLowerCase()
-				.includes(normalizedSearch);
+	const filteredPlugins: Plugin[] = $derived.by(() => {
+		const term = normalizedSearch;
+		return registry.filter((plugin: Plugin) => {
+			const matchesSearch =
+				term.length === 0 ||
+				[plugin.name, plugin.description, plugin.author, plugin.version, ...plugin.capabilities]
+					.join(' ')
+					.toLowerCase()
+					.includes(term);
 
-		const matchesStatus = statusFilter === 'all' || plugin.status === statusFilter;
-		const matchesCategory = categoryFilter === 'all' || plugin.category === categoryFilter;
-		const matchesAuto = !autoUpdateOnly || plugin.autoUpdate;
+			const matchesStatus = statusFilter === 'all' || plugin.status === statusFilter;
+			const matchesCategory = categoryFilter === 'all' || plugin.category === categoryFilter;
+			const matchesAuto = !autoUpdateOnly || plugin.autoUpdate;
 
-		return matchesSearch && matchesStatus && matchesCategory && matchesAuto;
+			return matchesSearch && matchesStatus && matchesCategory && matchesAuto;
+		});
 	});
 
-	$: totalInstalled = registry.length;
-	$: activeCount = registry.filter((plugin) => plugin.enabled).length;
-	$: updatesPending = registry.filter((plugin) => plugin.status === 'update').length;
-	$: autoManagedCount = registry.filter((plugin) => plugin.autoUpdate).length;
-	$: totalCoverage = registry.reduce((acc, plugin) => acc + plugin.installations, 0);
+	const totalInstalled   = $derived(registry.length);
+	const activeCount      = $derived(registry.filter((p: Plugin) => p.enabled).length);
+	const updatesPending   = $derived(registry.filter((p: Plugin) => p.status === 'update').length);
+	const autoManagedCount = $derived(registry.filter((p: Plugin) => p.autoUpdate).length);
+	const totalCoverage    = $derived(registry.reduce((acc: number, p: Plugin) => acc + p.installations, 0));
 
-	$: filtersActive =
+	const filtersActive = $derived(
 		normalizedSearch.length > 0 ||
 		statusFilter !== 'all' ||
 		categoryFilter !== 'all' ||
-		autoUpdateOnly;
+		autoUpdateOnly
+	);
 </script>
-
-<section class="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-	<Card class="border-border/60">
-		<CardHeader class="space-y-1">
-			<CardTitle class="text-sm font-medium">Installed plugins</CardTitle>
-			<CardDescription>Total modules currently registered.</CardDescription>
-		</CardHeader>
-		<CardContent class="space-y-1">
-			<div class="text-2xl font-semibold">{totalInstalled}</div>
-			<Badge variant="outline" class="w-fit px-2.5 py-1 text-xs font-medium">Registry</Badge>
-		</CardContent>
-	</Card>
-	<Card class="border-border/60">
-		<CardHeader class="space-y-1">
-			<CardTitle class="text-sm font-medium">Active</CardTitle>
-			<CardDescription>Enabled plugins delivering capability.</CardDescription>
-		</CardHeader>
-		<CardContent class="space-y-1">
-			<div class="text-2xl font-semibold">{activeCount}</div>
-			<Badge variant="outline" class="w-fit px-2.5 py-1 text-xs font-medium">Live</Badge>
-		</CardContent>
-	</Card>
-	<Card class="border-border/60">
-		<CardHeader class="space-y-1">
-			<CardTitle class="text-sm font-medium">Updates pending</CardTitle>
-			<CardDescription>Plugins waiting for rollout.</CardDescription>
-		</CardHeader>
-		<CardContent class="space-y-1">
-			<div class="text-2xl font-semibold">{updatesPending}</div>
-			<Badge variant="outline" class="w-fit px-2.5 py-1 text-xs font-medium">Maintenance</Badge>
-		</CardContent>
-	</Card>
-	<Card class="border-border/60">
-		<CardHeader class="space-y-1">
-			<CardTitle class="text-sm font-medium">Endpoint coverage</CardTitle>
-			<CardDescription>Clients receiving plugin capabilities.</CardDescription>
-		</CardHeader>
-		<CardContent class="space-y-1">
-			<div class="text-2xl font-semibold">{totalCoverage}</div>
-			<Badge variant="outline" class="w-fit px-2.5 py-1 text-xs font-medium">Installations</Badge>
-		</CardContent>
-	</Card>
-</section>
 
 <section class="space-y-6">
 	<Card class="border-border/60">
@@ -160,6 +114,8 @@
 					/>
 				</div>
 				<div class="flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
+					<Badge variant="outline" class="w-fit px-2.5 py-1 text-xs font-medium">{totalInstalled} - Installed plugins</Badge>
+					<Badge variant="outline" class="w-fit px-2.5 py-1 text-xs font-medium">{updatesPending} - Updating plugins</Badge>
 					<div class="flex items-center gap-2">
 						<Check class="h-4 w-4" />
 						{autoManagedCount} auto-managed
@@ -175,56 +131,75 @@
 						</Button>
 					{/if}
 				</div>
+				<div class="flex justify-end">
+					<Button
+						type="button"
+						size="icon"
+						variant="ghost"
+						class={cn(
+							'text-muted-foreground transition-colors',
+							filtersOpen && 'bg-muted text-foreground hover:bg-muted'
+						)}
+						aria-label={filtersOpen ? 'Hide filters' : 'Show filters'}
+						aria-pressed={filtersOpen}
+						aria-expanded={filtersOpen}
+						onclick={() => (filtersOpen = !filtersOpen)}
+					>
+						<SlidersHorizontal class="h-4 w-4" />
+					</Button>
+				</div>
 			</div>
-			<Separator />
-			<div class="grid gap-4 xl:grid-cols-3">
-				<div class="space-y-2">
-					<p class="text-xs font-semibold tracking-wide text-muted-foreground uppercase">Status</p>
-					<div class="flex flex-wrap gap-2">
-						{#each statusFilters as option}
-							<Button
-								type="button"
-								size="sm"
-								variant={statusFilter === option.value ? 'default' : 'outline'}
-								onclick={() => (statusFilter = option.value)}
-							>
-								{option.label}
-							</Button>
-						{/each}
+			{#if filtersOpen}
+				<Separator />
+				<div class="grid gap-4 xl:grid-cols-3">
+					<div class="space-y-2">
+						<p class="text-xs font-semibold tracking-wide text-muted-foreground uppercase">Status</p>
+						<div class="flex flex-wrap gap-2">
+							{#each statusFilters as option}
+								<Button
+									type="button"
+									size="sm"
+									variant={statusFilter === option.value ? 'default' : 'outline'}
+									onclick={() => (statusFilter = option.value)}
+								>
+									{option.label}
+								</Button>
+							{/each}
+						</div>
 					</div>
-				</div>
-				<div class="space-y-2">
-					<p class="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
-						Category
-					</p>
-					<div class="flex flex-wrap gap-2">
-						{#each categoryFilters as option}
-							<Button
-								type="button"
-								size="sm"
-								variant={categoryFilter === option.value ? 'default' : 'outline'}
-								onclick={() => (categoryFilter = option.value)}
-							>
-								{option.label}
-							</Button>
-						{/each}
+					<div class="space-y-2">
+						<p class="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
+							Category
+						</p>
+						<div class="flex flex-wrap gap-2">
+							{#each categoryFilters as option}
+								<Button
+									type="button"
+									size="sm"
+									variant={categoryFilter === option.value ? 'default' : 'outline'}
+									onclick={() => (categoryFilter = option.value)}
+								>
+									{option.label}
+								</Button>
+							{/each}
+						</div>
 					</div>
-				</div>
-				<div class="space-y-2">
-					<p class="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
-						Auto updates
-					</p>
-					<div class="flex items-center gap-3 rounded-md border border-border/60 px-3 py-2">
-						<Switch bind:checked={autoUpdateOnly} aria-label="Toggle auto update filter" />
-						<div class="min-w-0">
-							<p class="text-sm leading-tight font-medium">Only show auto-managed</p>
-							<p class="text-xs leading-tight text-muted-foreground">
-								Limit results to plugins with automatic updates enabled.
-							</p>
+					<div class="space-y-2">
+						<p class="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
+							Auto updates
+						</p>
+						<div class="flex items-center gap-3 rounded-md border border-border/60 px-3 py-2">
+							<Switch bind:checked={autoUpdateOnly} aria-label="Toggle auto update filter" />
+							<div class="min-w-0">
+								<p class="text-sm leading-tight font-medium">Only show auto-managed</p>
+								<p class="text-xs leading-tight text-muted-foreground">
+									Limit results to plugins with automatic updates enabled.
+								</p>
+							</div>
 						</div>
 					</div>
 				</div>
-			</div>
+			{/if}
 		</CardHeader>
 	</Card>
 
