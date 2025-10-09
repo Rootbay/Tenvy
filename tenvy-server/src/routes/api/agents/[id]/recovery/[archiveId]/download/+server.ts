@@ -1,7 +1,11 @@
 import { readFile } from 'fs/promises';
 import { error } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { getRecoveryArchive, getRecoveryArchiveFilePath } from '$lib/server/recovery/storage';
+import {
+	RecoveryArchiveMetadataError,
+	getRecoveryArchive,
+	getRecoveryArchiveFilePath
+} from '$lib/server/recovery/storage';
 
 function sanitizeFilename(name: string): string {
 	return name.replace(/[\r\n\t"\\]+/g, '_');
@@ -32,6 +36,10 @@ export const GET: RequestHandler = async ({ params }) => {
 	} catch (err) {
 		if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
 			throw error(404, 'Recovery archive not found');
+		}
+		if (err instanceof RecoveryArchiveMetadataError) {
+			console.error('Recovery archive metadata validation failed', err);
+			throw error(500, 'Recovery archive metadata failed validation');
 		}
 		throw error(500, 'Failed to download recovery archive');
 	}
