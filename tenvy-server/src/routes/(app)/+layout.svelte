@@ -445,53 +445,74 @@
 			</div>
 		</SidebarHeader>
 		<SidebarContent>
-			<ScrollArea class="-mr-2 pr-2">
-				<SidebarMenu>
-					{#each navGroups as group (group.label)}
-						{#each group.items as item (item.slug)}
-							<SidebarMenuItem>
-								<a href={item.href} data-sveltekit-preload-data="hover">
-									<SidebarMenuButton
-										isActive={item.slug === layoutData.activeNav}
-										tooltipContent={item.title}
-									>
-										<item.icon />
-										<div class="flex min-w-0 flex-col gap-0.5 text-left">
-											<span class="truncate text-sm font-medium">{item.title}</span>
-										</div>
-									</SidebarMenuButton>
-								</a>
-								{#if item.badge}
-									<SidebarMenuBadge
-										class={cn('bg-sidebar-accent text-sidebar-accent-foreground', item.badgeClass)}
-									>
-										{item.badge}
-									</SidebarMenuBadge>
-								{/if}
-							</SidebarMenuItem>
-						{/each}
+			<SidebarMenu class="px-2 pt-2">
+				{#each navGroups as group (group.label)}
+					{#each group.items as item (item.slug)}
+						<SidebarMenuItem>
+							<a href={item.href} data-sveltekit-preload-data="hover">
+								<SidebarMenuButton
+									isActive={item.slug === layoutData.activeNav}
+									tooltipContent={item.title}
+								>
+									<item.icon />
+									<div class="flex min-w-0 flex-col gap-0.5 text-left">
+										<span class="truncate text-sm font-medium">{item.title}</span>
+									</div>
+								</SidebarMenuButton>
+							</a>
+							{#if item.badge}
+								<SidebarMenuBadge
+									class={cn('bg-sidebar-accent text-sidebar-accent-foreground', item.badgeClass)}
+								>
+									{item.badge}
+								</SidebarMenuBadge>
+							{/if}
+						</SidebarMenuItem>
 					{/each}
-				</SidebarMenu>
-			</ScrollArea>
+				{/each}
+				<SidebarMenuItem class="hidden group-data-[state=collapsed]:block">
+					<a href="/settings" data-sveltekit-preload-data="hover">
+						<SidebarMenuButton
+							isActive={(layoutData as LayoutData).activeNav === 'settings'}
+							tooltipContent="Settings"
+						>
+							<Settings />
+							<div class="flex min-w-0 flex-col gap-0.5 text-left">
+								<span class="truncate text-sm font-medium">Settings</span>
+							</div>
+						</SidebarMenuButton>
+					</a>
+				</SidebarMenuItem>
+			</SidebarMenu>
 		</SidebarContent>
 		<SidebarFooter class="mt-auto border-t border-sidebar-border px-2 py-4">
-			<div class="flex w-full items-center gap-2">
-				<div class="flex-1">
+			<div
+				class={cn(
+					'grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-2',
+					'group-data-[state=collapsed]:grid-cols-1 group-data-[state=collapsed]:items-stretch group-data-[state=collapsed]:gap-3'
+				)}
+			>
+				<div class="min-w-0 group-data-[state=collapsed]:w-full">
 					<Popover>
 						<PopoverTrigger
 							type="button"
-							class="flex w-full items-center gap-3 rounded-md bg-sidebar-accent/60 px-3 py-2 text-left transition hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 focus-visible:ring-sidebar-ring focus-visible:outline-none"
+							class={cn(
+								'flex w-full min-w-0 items-center gap-3 rounded-md bg-sidebar-accent/60 px-3 py-2 text-left transition hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 focus-visible:ring-sidebar-ring focus-visible:outline-none',
+								'group-data-[state=collapsed]:justify-center group-data-[state=collapsed]:gap-2 group-data-[state=collapsed]:px-2 group-data-[state=collapsed]:py-3 group-data-[state=collapsed]:text-center'
+							)}
 						>
 							<Avatar class="h-9 w-9">
 								<AvatarFallback>{operatorInitials()}</AvatarFallback>
 							</Avatar>
-							<div class="min-w-0 flex-1">
+							<div class="min-w-0 flex-1 group-data-[state=collapsed]:hidden">
 								<p class="truncate text-sm leading-tight font-medium">{operatorLabel()}</p>
 								<p class="truncate text-xs leading-tight text-sidebar-foreground/70">
 									{voucherDescriptor()}
 								</p>
 							</div>
-							<div class="flex items-center justify-end text-sidebar-foreground/70">
+							<div
+								class="flex items-center justify-end text-sidebar-foreground/70 group-data-[state=collapsed]:hidden"
+							>
 								<User class="h-4 w-4" />
 							</div>
 							<span class="sr-only">Open operator menu</span>
@@ -558,7 +579,10 @@
 					type="button"
 					variant="ghost"
 					size="icon"
-					class="shrink-0 text-sidebar-foreground/70 hover:text-sidebar-accent-foreground"
+					class={cn(
+						'shrink-0 text-sidebar-foreground/70 hover:text-sidebar-accent-foreground',
+						'group-data-[state=collapsed]:hidden'
+					)}
 					onclick={navigateToSettings}
 				>
 					<Settings class="h-4 w-4" />
