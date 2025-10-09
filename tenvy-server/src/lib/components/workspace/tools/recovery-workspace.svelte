@@ -212,6 +212,66 @@
                         id: 'thunderbird-data',
                         label: 'Thunderbird data',
                         description: 'Collect Thunderbird profile directories and mail stores.'
+                },
+                {
+                        id: 'cyberduck-data',
+                        label: 'Cyberduck data',
+                        description: 'Gather Cyberduck bookmarks, preferences, and transfer logs.'
+                },
+                {
+                        id: 'filezilla-data',
+                        label: 'FileZilla data',
+                        description: 'Collect FileZilla site manager entries, queue data, and logs.'
+                },
+                {
+                        id: 'winscp-data',
+                        label: 'WinSCP data',
+                        description: 'Archive WinSCP session profiles, preferences, and cached credentials.'
+                },
+                {
+                        id: 'growtopia-data',
+                        label: 'Growtopia data',
+                        description: 'Copy Growtopia client configuration, logs, and local storage.'
+                },
+                {
+                        id: 'roblox-data',
+                        label: 'Roblox data',
+                        description: 'Collect Roblox launcher caches, settings, and saved telemetry.'
+                },
+                {
+                        id: 'battlenet-data',
+                        label: 'Battle.net data',
+                        description: 'Capture Battle.net launcher manifests, caches, and configuration.'
+                },
+                {
+                        id: 'ea-app-data',
+                        label: 'EA App / Origin data',
+                        description: 'Archive EA App and Origin launcher configuration and local caches.'
+                },
+                {
+                        id: 'epic-games-data',
+                        label: 'Epic Games Launcher data',
+                        description: 'Gather Epic Games Launcher manifests, installed titles, and settings.'
+                },
+                {
+                        id: 'steam-data',
+                        label: 'Steam data',
+                        description: 'Collect Steam client configuration, library metadata, and caches.'
+                },
+                {
+                        id: 'ubisoft-connect-data',
+                        label: 'Ubisoft Connect data',
+                        description: 'Capture Ubisoft Connect launcher profiles, logs, and cache directories.'
+                },
+                {
+                        id: 'gog-galaxy-data',
+                        label: 'GOG Galaxy data',
+                        description: 'Archive GOG Galaxy databases, manifests, and cached configuration.'
+                },
+                {
+                        id: 'riot-client-data',
+                        label: 'Riot Client data',
+                        description: 'Collect Riot Client launcher settings, manifests, and telemetry logs.'
                 }
         ];
 
