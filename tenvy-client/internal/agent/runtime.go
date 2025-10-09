@@ -6,12 +6,7 @@ import (
 	"strings"
 	"time"
 
-	audioctrl "github.com/rootbay/tenvy-client/internal/modules/control/audio"
-	remotedesktop "github.com/rootbay/tenvy-client/internal/modules/control/remotedesktop"
-	clipboard "github.com/rootbay/tenvy-client/internal/modules/management/clipboard"
 	notes "github.com/rootbay/tenvy-client/internal/modules/notes"
-	recovery "github.com/rootbay/tenvy-client/internal/modules/operations/recovery"
-	systeminfo "github.com/rootbay/tenvy-client/internal/modules/systeminfo"
 	"github.com/rootbay/tenvy-client/internal/protocol"
 )
 
@@ -72,40 +67,11 @@ func Run(ctx context.Context, opts RuntimeOptions) error {
 		timing:         opts.TimingOverride,
 	}
 
-	agent.remoteDesktop = remotedesktop.NewRemoteDesktopStreamer(remotedesktop.Config{
-		AgentID:   agent.id,
-		BaseURL:   agent.baseURL,
-		AuthKey:   agent.key,
-		Client:    agent.client,
-		Logger:    agent.logger,
-		UserAgent: agent.userAgent(),
-	})
-	agent.systemInfo = systeminfo.NewCollector(agent, opts.BuildVersion)
-	agent.audioBridge = audioctrl.NewAudioBridge(audioctrl.Config{
-		AgentID:   agent.id,
-		BaseURL:   agent.baseURL,
-		AuthKey:   agent.key,
-		Client:    agent.client,
-		Logger:    agent.logger,
-		UserAgent: agent.userAgent(),
-	})
-	agent.clipboard = clipboard.NewManager(clipboard.Config{
-		AgentID:   agent.id,
-		BaseURL:   agent.baseURL,
-		AuthKey:   agent.key,
-		Client:    agent.client,
-		Logger:    agent.logger,
-		UserAgent: agent.userAgent(),
-	})
-
-	agent.recovery = recovery.NewManager(recovery.Config{
-		AgentID:   agent.id,
-		BaseURL:   agent.baseURL,
-		AuthKey:   agent.key,
-		Client:    agent.client,
-		Logger:    agent.logger,
-		UserAgent: agent.userAgent(),
-	})
+	modules := newDefaultModuleRegistry()
+	if err := modules.Update(agent.moduleRuntime()); err != nil {
+		return fmt.Errorf("initialize modules: %w", err)
+	}
+	agent.modules = modules
 
 	if notesPath, err := notes.DefaultPath(); err != nil {
 		opts.Logger.Printf("notes disabled (path error): %v", err)

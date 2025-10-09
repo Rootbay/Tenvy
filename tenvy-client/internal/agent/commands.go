@@ -45,59 +45,14 @@ func (a *Agent) executeCommand(ctx context.Context, cmd protocol.Command) protoc
 		return handlePingCommand(cmd)
 	case "shell":
 		return a.handleShellCommand(ctx, cmd)
-	case "remote-desktop":
-		if a.remoteDesktop == nil {
-			return protocol.CommandResult{
-				CommandID:   cmd.ID,
-				Success:     false,
-				Error:       "remote desktop subsystem not initialized",
-				CompletedAt: time.Now().UTC().Format(time.RFC3339Nano),
-			}
-		}
-		return a.remoteDesktop.HandleCommand(ctx, cmd)
-	case "audio-control":
-		if a.audioBridge == nil {
-			return protocol.CommandResult{
-				CommandID:   cmd.ID,
-				Success:     false,
-				Error:       "audio subsystem not initialized",
-				CompletedAt: time.Now().UTC().Format(time.RFC3339Nano),
-			}
-		}
-		return a.audioBridge.HandleCommand(ctx, cmd)
-	case "system-info":
-		if a.systemInfo == nil {
-			return protocol.CommandResult{
-				CommandID:   cmd.ID,
-				Success:     false,
-				Error:       "system information subsystem not initialized",
-				CompletedAt: time.Now().UTC().Format(time.RFC3339Nano),
-			}
-		}
-		return a.systemInfo.HandleCommand(ctx, cmd)
-	case "clipboard":
-		if a.clipboard == nil {
-			return protocol.CommandResult{
-				CommandID:   cmd.ID,
-				Success:     false,
-				Error:       "clipboard subsystem not initialized",
-				CompletedAt: time.Now().UTC().Format(time.RFC3339Nano),
-			}
-		}
-		return a.clipboard.HandleCommand(ctx, cmd)
-	case "recovery":
-		if a.recovery == nil {
-			return protocol.CommandResult{
-				CommandID:   cmd.ID,
-				Success:     false,
-				Error:       "recovery subsystem not initialized",
-				CompletedAt: time.Now().UTC().Format(time.RFC3339Nano),
-			}
-		}
-		return a.recovery.HandleCommand(ctx, cmd)
 	case "open-url":
 		return handleOpenURLCommand(cmd)
 	default:
+		if a.modules != nil {
+			if handled, result := a.modules.HandleCommand(ctx, cmd); handled {
+				return result
+			}
+		}
 		return protocol.CommandResult{
 			CommandID:   cmd.ID,
 			Success:     false,

@@ -6,12 +6,7 @@ import (
 	"sync"
 	"time"
 
-	audioctrl "github.com/rootbay/tenvy-client/internal/modules/control/audio"
-	remotedesktop "github.com/rootbay/tenvy-client/internal/modules/control/remotedesktop"
-	clipboard "github.com/rootbay/tenvy-client/internal/modules/management/clipboard"
 	notes "github.com/rootbay/tenvy-client/internal/modules/notes"
-	recovery "github.com/rootbay/tenvy-client/internal/modules/operations/recovery"
-	systeminfo "github.com/rootbay/tenvy-client/internal/modules/systeminfo"
 	"github.com/rootbay/tenvy-client/internal/protocol"
 )
 
@@ -28,14 +23,10 @@ type Agent struct {
 	metadata       protocol.AgentMetadata
 	sharedSecret   string
 	preferences    BuildPreferences
-	remoteDesktop  *remotedesktop.RemoteDesktopStreamer
-	systemInfo     *systeminfo.Collector
 	notes          *notes.Manager
-	audioBridge    *audioctrl.AudioBridge
-	clipboard      *clipboard.Manager
-	recovery       *recovery.Manager
 	buildVersion   string
 	timing         TimingOverride
+	modules        *moduleRegistry
 }
 
 func (a *Agent) AgentID() string {

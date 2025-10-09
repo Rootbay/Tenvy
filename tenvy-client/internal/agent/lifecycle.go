@@ -14,10 +14,6 @@ import (
 	"strings"
 	"time"
 
-	audioctrl "github.com/rootbay/tenvy-client/internal/modules/control/audio"
-	remotedesktop "github.com/rootbay/tenvy-client/internal/modules/control/remotedesktop"
-	clipboard "github.com/rootbay/tenvy-client/internal/modules/management/clipboard"
-	recovery "github.com/rootbay/tenvy-client/internal/modules/operations/recovery"
 	"github.com/rootbay/tenvy-client/internal/protocol"
 )
 
@@ -164,45 +160,10 @@ func (a *Agent) reRegister(ctx context.Context) error {
 	a.pendingResults = a.pendingResults[:0]
 	a.resultMu.Unlock()
 
-	if a.remoteDesktop != nil {
-		a.remoteDesktop.UpdateConfig(remotedesktop.Config{
-			AgentID:   a.id,
-			BaseURL:   a.baseURL,
-			AuthKey:   a.key,
-			Client:    a.client,
-			Logger:    a.logger,
-			UserAgent: a.userAgent(),
-		})
-	}
-	if a.audioBridge != nil {
-		a.audioBridge.UpdateConfig(audioctrl.Config{
-			AgentID:   a.id,
-			BaseURL:   a.baseURL,
-			AuthKey:   a.key,
-			Client:    a.client,
-			Logger:    a.logger,
-			UserAgent: a.userAgent(),
-		})
-	}
-	if a.clipboard != nil {
-		a.clipboard.UpdateConfig(clipboard.Config{
-			AgentID:   a.id,
-			BaseURL:   a.baseURL,
-			AuthKey:   a.key,
-			Client:    a.client,
-			Logger:    a.logger,
-			UserAgent: a.userAgent(),
-		})
-	}
-	if a.recovery != nil {
-		a.recovery.UpdateConfig(recovery.Config{
-			AgentID:   a.id,
-			BaseURL:   a.baseURL,
-			AuthKey:   a.key,
-			Client:    a.client,
-			Logger:    a.logger,
-			UserAgent: a.userAgent(),
-		})
+	if a.modules != nil {
+		if err := a.modules.Update(a.moduleRuntime()); err != nil {
+			return fmt.Errorf("update modules: %w", err)
+		}
 	}
 
 	a.logger.Printf("re-registered as %s", a.id)
@@ -285,17 +246,8 @@ func (a *Agent) userAgent() string {
 }
 
 func (a *Agent) shutdown(ctx context.Context) {
-	if a.clipboard != nil {
-		a.clipboard.Shutdown()
-	}
-	if a.audioBridge != nil {
-		a.audioBridge.Shutdown()
-	}
-	if a.remoteDesktop != nil {
-		a.remoteDesktop.Shutdown()
-	}
-	if a.recovery != nil {
-		a.recovery.Shutdown()
+	if a.modules != nil {
+		a.modules.Shutdown(ctx)
 	}
 	if err := a.sync(ctx, statusOffline); err != nil {
 		a.logger.Printf("failed to send offline heartbeat: %v", err)
