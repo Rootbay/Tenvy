@@ -109,7 +109,14 @@
 		return registry.filter((plugin: Plugin) => {
 			const matchesSearch =
 				term.length === 0 ||
-				[plugin.name, plugin.description, plugin.author, plugin.version, ...plugin.capabilities]
+				[
+					plugin.name,
+					plugin.description,
+					plugin.author,
+					plugin.version,
+					...plugin.capabilities,
+					...plugin.requiredModules.map((module) => module.title)
+				]
 					.join(' ')
 					.toLowerCase()
 					.includes(term);
@@ -286,6 +293,21 @@
 										{capability}
 									</Badge>
 								{/each}
+								{#if plugin.requiredModules.length > 0}
+									<span
+										class="text-[10px] font-semibold tracking-wide text-muted-foreground uppercase"
+									>
+										Requires
+									</span>
+									{#each plugin.requiredModules as module (module.id)}
+										<Badge
+											variant="secondary"
+											class="border border-border/60 bg-background/60 text-foreground"
+										>
+											{module.title}
+										</Badge>
+									{/each}
+								{/if}
 							</div>
 						</div>
 						<div class="flex flex-col gap-4 text-sm text-muted-foreground">

