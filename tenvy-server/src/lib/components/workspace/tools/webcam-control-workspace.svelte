@@ -16,8 +16,6 @@
                 CardHeader,
                 CardTitle
         } from '$lib/components/ui/card/index.js';
-        import ClientWorkspaceHero from '$lib/components/workspace/workspace-hero.svelte';
-        import ActionLog from '$lib/components/workspace/action-log.svelte';
         import { getClientTool } from '$lib/data/client-tools';
         import type { Client } from '$lib/data/clients';
         import { appendWorkspaceLog, createWorkspaceLogEntry } from '$lib/workspace/utils';
@@ -792,36 +790,6 @@
 </script>
 
 <div class="space-y-6">
-        <ClientWorkspaceHero
-                {client}
-                {tool}
-                metadata={[
-                        {
-                                label: 'Preview status',
-                                value: previewActive ? 'Active' : 'Stopped',
-                                hint: previewActive
-                                        ? 'Live frames are streaming directly from the selected camera.'
-                                        : 'Start the preview to access capture and recording controls.'
-                        },
-                        {
-                                label: 'Active camera',
-                                value: cameraLabel(),
-                                hint: cameraHint()
-                        },
-                        {
-                                label: 'Recording',
-                                value: recordingActive ? `Recording (${formatSeconds(recordingSeconds)})` : 'Idle',
-                                hint: recordingActive ? 'Video is being recorded locally until you stop the session.' : undefined
-                        }
-                ]}
-        >
-                <p>
-                        Control the local webcam directly from the operator console. Start a live preview, adjust the capture
-                        profile, grab still images for quick intel, or record a clip for later analysis without leaving the
-                        workspace.
-                </p>
-        </ClientWorkspaceHero>
-
         <Card>
                 <CardHeader>
                         <CardTitle class="text-base">Live preview</CardTitle>
@@ -1072,6 +1040,4 @@
                         {/if}
                 </CardContent>
         </Card>
-
-        <ActionLog entries={log} />
 </div>

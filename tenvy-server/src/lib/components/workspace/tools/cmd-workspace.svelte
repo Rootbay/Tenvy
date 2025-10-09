@@ -14,8 +14,6 @@
         } from '$lib/components/ui/card/index.js';
         import { Badge } from '$lib/components/ui/badge/index.js';
         import { Textarea } from '$lib/components/ui/textarea/index.js';
-        import ClientWorkspaceHero from '$lib/components/workspace/workspace-hero.svelte';
-        import ActionLog from '$lib/components/workspace/action-log.svelte';
         import { getClientTool } from '$lib/data/client-tools';
         import type { Client } from '$lib/data/clients';
         import {
@@ -297,35 +295,6 @@
 </script>
 
 <div class="space-y-6">
-        <ClientWorkspaceHero
-                {client}
-                {tool}
-                metadata={[
-                        {
-                                label: 'Working directory',
-                                value: workingDirectory,
-                                hint: 'Commands run from this path unless overridden.'
-                        },
-                        {
-                                label: 'Elevation',
-                                value: elevated ? 'Requested' : 'Not requested'
-                        },
-                        {
-                                label: 'Last check-in',
-                                value: formatWorkspaceTimestamp(agentSnapshot.lastSeen),
-                                hint: 'Updated whenever the agent synchronizes with the controller.'
-                        }
-                ]}
-        >
-                <p>
-                        Dispatch remote shell commands and receive their output as soon as the agent reports back to the
-                        controller.
-                </p>
-                <p class="text-sm text-muted-foreground">
-                        Working directory, timeout, and elevation preferences are forwarded to the client runtime when supported.
-                </p>
-        </ClientWorkspaceHero>
-
         <Card>
                 <CardHeader>
                         <CardTitle class="text-base">Command template</CardTitle>
@@ -467,6 +436,4 @@
                         {/if}
                 </CardContent>
         </Card>
-
-        <ActionLog entries={log} />
 </div>

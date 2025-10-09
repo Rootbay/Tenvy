@@ -28,8 +28,6 @@
                 TableHeader,
                 TableRow
         } from '$lib/components/ui/table/index.js';
-        import ClientWorkspaceHero from '$lib/components/workspace/workspace-hero.svelte';
-        import ActionLog from '$lib/components/workspace/action-log.svelte';
         import { getClientTool } from '$lib/data/client-tools';
         import type { Client } from '$lib/data/clients';
         import { appendWorkspaceLog, createWorkspaceLogEntry } from '$lib/workspace/utils';
@@ -459,14 +457,6 @@
 </script>
 
 <div class="space-y-6">
-        <ClientWorkspaceHero {client} {tool} metadata={heroMetadata}>
-                <p>
-                        Inspect, triage, and orchestrate persistence entries configured to launch at boot or sign-in.
-                        Real-time telemetry highlights impact on startup performance and lets you take corrective action
-                        instantly.
-                </p>
-        </ClientWorkspaceHero>
-
         <Card>
                 <CardHeader>
                         <CardTitle class="text-base">Add startup entry</CardTitle>
@@ -860,6 +850,4 @@
                         {/if}
                 </CardContent>
         </Card>
-
-        <ActionLog entries={log} />
 </div>

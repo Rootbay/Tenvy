@@ -17,8 +17,6 @@
                 CardHeader,
                 CardTitle
         } from '$lib/components/ui/card/index.js';
-        import ClientWorkspaceHero from '$lib/components/workspace/workspace-hero.svelte';
-        import ActionLog from '$lib/components/workspace/action-log.svelte';
         import { getClientTool } from '$lib/data/client-tools';
         import type { Client } from '$lib/data/clients';
         import { appendWorkspaceLog, createWorkspaceLogEntry } from '$lib/workspace/utils';
@@ -71,20 +69,6 @@
 </script>
 
 <div class="space-y-6">
-        <ClientWorkspaceHero
-                {client}
-                {tool}
-                metadata={[
-                        { label: 'DNS lookup', value: includeDnsLookup ? 'Enabled' : 'Disabled' },
-                        { label: 'IPv6', value: includeIpv6 ? 'Included' : 'Ignored' }
-                ]}
-        >
-                <p>
-                        Prepare TCP connection auditing rules. The snapshot below is simulated until the network telemetry bridge
-                        is connected to the agent.
-                </p>
-        </ClientWorkspaceHero>
-
         <Card>
                 <CardHeader>
                         <CardTitle class="text-base">Filters</CardTitle>
@@ -170,6 +154,4 @@
                         </table>
                 </CardContent>
         </Card>
-
-        <ActionLog entries={log} />
 </div>

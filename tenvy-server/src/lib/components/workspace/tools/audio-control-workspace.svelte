@@ -10,8 +10,6 @@
                 CardHeader,
                 CardTitle
         } from '$lib/components/ui/card/index.js';
-        import ClientWorkspaceHero from '$lib/components/workspace/workspace-hero.svelte';
-        import ActionLog from '$lib/components/workspace/action-log.svelte';
         import { getClientTool } from '$lib/data/client-tools';
         import type { Client } from '$lib/data/clients';
         import type {
@@ -358,13 +356,6 @@
 </script>
 
 <div class="space-y-6">
-        <ClientWorkspaceHero {client} {tool} metadata={heroMetadata}>
-                <p>
-                        Review agent-side audio hardware, capture live microphone input, and bridge sound back to the
-                        controller. Inventory refreshes and streaming sessions are tracked here for quick diagnostics.
-                </p>
-        </ClientWorkspaceHero>
-
         <div class="grid gap-6 lg:grid-cols-[2fr,1fr]">
                 <Card>
                         <CardHeader class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
@@ -487,14 +478,4 @@
                         </CardFooter>
                 </Card>
         </div>
-
-        <Card>
-                <CardHeader>
-                        <CardTitle>Recent actions</CardTitle>
-                        <CardDescription>Track audio bridge activity for this client.</CardDescription>
-                </CardHeader>
-                <CardContent>
-                                <ActionLog entries={log} />
-                </CardContent>
-        </Card>
 </div>

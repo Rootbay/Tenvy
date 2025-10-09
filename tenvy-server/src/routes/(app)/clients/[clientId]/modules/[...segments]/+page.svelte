@@ -27,7 +27,6 @@
         import ReportWindowWorkspace from '$lib/components/workspace/tools/report-window-workspace.svelte';
         import IpGeolocationWorkspace from '$lib/components/workspace/tools/ip-geolocation-workspace.svelte';
         import EnvironmentVariablesWorkspace from '$lib/components/workspace/tools/environment-variables-workspace.svelte';
-        import SimpleActionWorkspace from '$lib/components/workspace/tools/simple-action-workspace.svelte';
 
         let { data } = $props<{ data: PageData }>();
         const client = $derived(data.client);
@@ -63,25 +62,13 @@
                 'keylogger-advanced-online': 'advanced-online'
         } as const;
 
-        const simpleActionVariants: Partial<Record<ClientToolId, 'system-control' | 'power'>> = {
-                reconnect: 'system-control',
-                disconnect: 'system-control',
-                shutdown: 'power',
-                restart: 'power',
-                sleep: 'power',
-                logoff: 'power'
-        };
-
         const activeComponent = $derived(componentMap[tool.id as keyof typeof componentMap]);
         const keyloggerMode = $derived(keyloggerModes[tool.id as keyof typeof keyloggerModes]);
-        const simpleVariant = $derived(simpleActionVariants[tool.id as keyof typeof simpleActionVariants]);
 </script>
 
 <div class="space-y-6">
         {#if keyloggerMode}
                 <KeyloggerWorkspace client={client} mode={keyloggerMode} />
-        {:else if simpleVariant}
-                <SimpleActionWorkspace client={client} toolId={tool.id} variant={simpleVariant} />
         {:else if tool.id === 'cmd'}
                 <CmdWorkspace client={client} agent={agent} />
         {:else if activeComponent}
@@ -102,38 +89,6 @@
                                         Add a dedicated workspace component for <span class="font-medium">{tool.title}</span> to elevate the
                                         operator experience when you are ready.
                                 </p>
-                        </CardContent>
-                </Card>
-        {/if}
-
-        {#if otherTools.length > 0}
-                <Card class="border-slate-200/80 dark:border-slate-800/80">
-                        <CardHeader>
-                                <CardTitle class="text-base">Explore other modules</CardTitle>
-                                <CardDescription>
-                                        Jump into another workspace in a new tab to continue planning capabilities.
-                                </CardDescription>
-                        </CardHeader>
-                        <CardContent>
-                                <div class="grid gap-3 md:grid-cols-2">
-                                        {#each otherTools as item (item.id)}
-                                                <a
-                                                        class="group flex flex-col rounded-lg border border-slate-200/70 bg-white/60 p-4 transition hover:border-sky-400 hover:shadow-sm dark:border-slate-800/70 dark:bg-slate-900/60 dark:hover:border-sky-500"
-                                                        href={buildClientToolUrl(client.id, item)}
-                                                        target={item.target === '_blank' ? '_blank' : undefined}
-                                                        rel={item.target === '_blank' ? 'noopener noreferrer' : undefined}
-                                                >
-                                                        <span
-                                                                class="text-sm font-semibold text-slate-900 transition group-hover:text-sky-600 dark:text-slate-100 dark:group-hover:text-sky-400"
-                                                        >
-                                                                {item.title}
-                                                        </span>
-                                                        <span class="mt-1 line-clamp-2 text-xs text-slate-600 dark:text-slate-400">
-                                                                {item.description}
-                                                        </span>
-                                                </a>
-                                        {/each}
-                                </div>
                         </CardContent>
                 </Card>
         {/if}

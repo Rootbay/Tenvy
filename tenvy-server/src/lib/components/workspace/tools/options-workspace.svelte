@@ -11,8 +11,6 @@
                 CardHeader,
                 CardTitle
         } from '$lib/components/ui/card/index.js';
-        import ClientWorkspaceHero from '$lib/components/workspace/workspace-hero.svelte';
-        import ActionLog from '$lib/components/workspace/action-log.svelte';
         import { getClientTool } from '$lib/data/client-tools';
         import type { Client } from '$lib/data/clients';
         import { appendWorkspaceLog, createWorkspaceLogEntry } from '$lib/workspace/utils';
@@ -43,20 +41,6 @@
 </script>
 
 <div class="space-y-6">
-        <ClientWorkspaceHero
-                {client}
-                {tool}
-                metadata={[
-                        { label: 'Beacon interval', value: `${beaconInterval}s` },
-                        { label: 'Safe mode', value: safeMode ? 'Enabled' : 'Disabled' }
-                ]}
-        >
-                <p>
-                        Draft runtime option changes such as beacon cadence, plugin permissions, and safety switches. Updates are
-                        simulated locally until the control channel supports live mutations.
-                </p>
-        </ClientWorkspaceHero>
-
         <Card>
                 <CardHeader>
                         <CardTitle class="text-base">Heartbeat</CardTitle>
@@ -128,6 +112,4 @@
                         <Button type="button" onclick={() => queue('queued')}>Queue update</Button>
                 </CardFooter>
         </Card>
-
-        <ActionLog entries={log} />
 </div>

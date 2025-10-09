@@ -25,8 +25,6 @@
                 AlertTitle
         } from '$lib/components/ui/alert/index.js';
         import { Badge } from '$lib/components/ui/badge/index.js';
-        import ClientWorkspaceHero from '$lib/components/workspace/workspace-hero.svelte';
-        import ActionLog from '$lib/components/workspace/action-log.svelte';
         import { getClientTool } from '$lib/data/client-tools';
         import type { Client } from '$lib/data/clients';
         import { appendWorkspaceLog, createWorkspaceLogEntry } from '$lib/workspace/utils';
@@ -430,13 +428,6 @@
 </script>
 
 <div class="space-y-6">
-        <ClientWorkspaceHero {client} {tool} metadata={heroMetadata}>
-                <p>
-                        Monitor active processes in real time, issue lifecycle controls, and inspect detailed telemetry. The view
-                        polls the controller host and will refresh automatically while auto refresh is enabled.
-                </p>
-        </ClientWorkspaceHero>
-
         <div class="grid gap-6 lg:grid-cols-[2fr_1fr]">
                 <div class="space-y-6">
                         <Card>
@@ -877,6 +868,4 @@
                         </Card>
                 </div>
         </div>
-
-        <ActionLog entries={log} />
 </div>

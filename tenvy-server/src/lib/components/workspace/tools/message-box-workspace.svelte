@@ -16,8 +16,6 @@
                 CardHeader,
                 CardTitle
         } from '$lib/components/ui/card/index.js';
-        import ClientWorkspaceHero from '$lib/components/workspace/workspace-hero.svelte';
-        import ActionLog from '$lib/components/workspace/action-log.svelte';
         import { getClientTool } from '$lib/data/client-tools';
         import type { Client } from '$lib/data/clients';
         import { appendWorkspaceLog, createWorkspaceLogEntry } from '$lib/workspace/utils';
@@ -47,20 +45,6 @@
 </script>
 
 <div class="space-y-6">
-        <ClientWorkspaceHero
-                {client}
-                {tool}
-                metadata={[
-                        { label: 'Delivery style', value: style },
-                        { label: 'Acknowledgement', value: requireAck ? 'Required' : 'Optional' }
-                ]}
-        >
-                <p>
-                        Extend the message box dialog with richer delivery semantics. The request remains local until acknowledgem
-                        ent capture is wired to the agent.
-                </p>
-        </ClientWorkspaceHero>
-
         <Card>
                 <CardHeader>
                         <CardTitle class="text-base">Message content</CardTitle>
@@ -123,6 +107,4 @@
                         <Button type="button" onclick={() => queue('queued')}>Queue message</Button>
                 </CardFooter>
         </Card>
-
-        <ActionLog entries={log} />
 </div>

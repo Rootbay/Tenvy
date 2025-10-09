@@ -11,8 +11,6 @@
                 CardHeader,
                 CardTitle
         } from '$lib/components/ui/card/index.js';
-        import ClientWorkspaceHero from '$lib/components/workspace/workspace-hero.svelte';
-        import ActionLog from '$lib/components/workspace/action-log.svelte';
         import { getClientTool } from '$lib/data/client-tools';
         import type { Client } from '$lib/data/clients';
         import { appendWorkspaceLog, createWorkspaceLogEntry } from '$lib/workspace/utils';
@@ -45,20 +43,6 @@
 </script>
 
 <div class="space-y-6">
-        <ClientWorkspaceHero
-                {client}
-                {tool}
-                metadata={[
-                        { label: 'Polling interval', value: `${pollInterval}s` },
-                        { label: 'Sync back', value: syncBack ? 'Enabled' : 'Disabled' }
-                ]}
-        >
-                <p>
-                        Configure clipboard capture and optional injection. Plans remain local until the clipboard bridge is wired
-                        to the client runtime.
-                </p>
-        </ClientWorkspaceHero>
-
         <Card>
                 <CardHeader>
                         <CardTitle class="text-base">Capture rules</CardTitle>
@@ -120,6 +104,4 @@
                         <Button type="button" onclick={() => queue('queued')}>Queue monitoring</Button>
                 </CardFooter>
         </Card>
-
-        <ActionLog entries={log} />
 </div>

@@ -9,8 +9,6 @@
                 CardHeader,
                 CardTitle
         } from '$lib/components/ui/card/index.js';
-        import ClientWorkspaceHero from '$lib/components/workspace/workspace-hero.svelte';
-        import ActionLog from '$lib/components/workspace/action-log.svelte';
         import { getClientTool } from '$lib/data/client-tools';
         import type { Client } from '$lib/data/clients';
         import { appendWorkspaceLog, createWorkspaceLogEntry, formatWorkspaceTimestamp } from '$lib/workspace/utils';
@@ -56,19 +54,6 @@
 </script>
 
 <div class="space-y-6">
-        <ClientWorkspaceHero
-                {client}
-                {tool}
-                metadata={[
-                        { label: 'Messages', value: messages.length.toString() }
-                ]}
-        >
-                <p>
-                        Prototype two-way chat interactions with clients. Messages are stored locally until the messaging channel
-                        is connected to the agent.
-                </p>
-        </ClientWorkspaceHero>
-
         <Card class="border-dashed">
                 <CardHeader>
                         <CardTitle class="text-base">Conversation preview</CardTitle>
@@ -110,6 +95,4 @@
                         </Button>
                 </CardFooter>
         </Card>
-
-        <ActionLog entries={log} />
 </div>

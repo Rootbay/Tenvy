@@ -24,8 +24,6 @@
                 AlertDescription,
                 AlertTitle
         } from '$lib/components/ui/alert/index.js';
-        import ClientWorkspaceHero from '$lib/components/workspace/workspace-hero.svelte';
-        import ActionLog from '$lib/components/workspace/action-log.svelte';
         import { getClientTool } from '$lib/data/client-tools';
         import type { Client } from '$lib/data/clients';
         import { appendWorkspaceLog, createWorkspaceLogEntry } from '$lib/workspace/utils';
@@ -550,13 +548,6 @@
 </script>
 
 <div class="space-y-6">
-        <ClientWorkspaceHero {client} {tool} metadata={heroMetadata()}>
-                <p>
-                        Browse and manage files on the connected agent. Create, edit, rename, move, and remove
-                        entries while inspecting metadata such as size and modification timestamps.
-                </p>
-        </ClientWorkspaceHero>
-
         {#if errorMessage}
                 <Alert variant="destructive">
                         <AlertTitle>File manager error</AlertTitle>
@@ -855,6 +846,4 @@
                         {/if}
                 </Card>
         {/if}
-
-        <ActionLog entries={log} />
 </div>

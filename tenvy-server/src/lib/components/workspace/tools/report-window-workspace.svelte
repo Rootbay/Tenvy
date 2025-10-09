@@ -17,8 +17,6 @@
                 CardTitle
         } from '$lib/components/ui/card/index.js';
         import { Switch } from '$lib/components/ui/switch/index.js';
-        import ClientWorkspaceHero from '$lib/components/workspace/workspace-hero.svelte';
-        import ActionLog from '$lib/components/workspace/action-log.svelte';
         import { getClientTool } from '$lib/data/client-tools';
         import type { Client } from '$lib/data/clients';
         import { appendWorkspaceLog, createWorkspaceLogEntry } from '$lib/workspace/utils';
@@ -53,20 +51,6 @@
 </script>
 
 <div class="space-y-6">
-        <ClientWorkspaceHero
-                {client}
-                {tool}
-                metadata={[
-                        { label: 'Feed mode', value: feed },
-                        { label: 'Refresh', value: `${refreshSeconds}s` }
-                ]}
-        >
-                <p>
-                        Prepare a reporting workspace that aggregates telemetry and command status. The snapshot below simulates
-                        the planned layout until live streaming hooks are ready.
-                </p>
-        </ClientWorkspaceHero>
-
         <Card>
                 <CardHeader>
                         <CardTitle class="text-base">Feed configuration</CardTitle>
@@ -132,6 +116,4 @@
                         {/each}
                 </CardContent>
         </Card>
-
-        <ActionLog entries={log} />
 </div>

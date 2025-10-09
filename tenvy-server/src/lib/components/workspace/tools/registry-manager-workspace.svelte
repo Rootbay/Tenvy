@@ -29,8 +29,6 @@
                 Root as Table
         } from '$lib/components/ui/table/index.js';
         import { RefreshCw, ArrowUpDown, Trash2, Plus, Save } from '@lucide/svelte';
-        import ClientWorkspaceHero from '$lib/components/workspace/workspace-hero.svelte';
-        import ActionLog from '$lib/components/workspace/action-log.svelte';
         import { getClientTool } from '$lib/data/client-tools';
         import type { Client } from '$lib/data/clients';
         import { createInitialRegistry, normalizeHive } from '$lib/data/mock-registry';
@@ -666,13 +664,6 @@
 </script>
 
 <div class="space-y-6">
-        <ClientWorkspaceHero {client} {tool} metadata={heroMetadata}>
-                <p>
-                        Explore and edit the registry hierarchy with live feedback, advanced filtering, and real-time
-                        updates. All changes are tracked locally until the agent execution pipeline is connected.
-                </p>
-        </ClientWorkspaceHero>
-
         <div class="grid gap-6 lg:grid-cols-[320px_1fr]">
                 <Card>
                         <CardHeader>
@@ -1136,6 +1127,4 @@
                         </div>
                 </div>
         </div>
-
-        <ActionLog entries={log} />
 </div>

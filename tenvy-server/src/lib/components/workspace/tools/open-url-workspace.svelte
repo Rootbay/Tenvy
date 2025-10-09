@@ -16,8 +16,6 @@
                 CardHeader,
                 CardTitle
         } from '$lib/components/ui/card/index.js';
-        import ClientWorkspaceHero from '$lib/components/workspace/workspace-hero.svelte';
-        import ActionLog from '$lib/components/workspace/action-log.svelte';
         import { getClientTool } from '$lib/data/client-tools';
         import type { Client } from '$lib/data/clients';
         import { appendWorkspaceLog, createWorkspaceLogEntry } from '$lib/workspace/utils';
@@ -47,20 +45,6 @@
 </script>
 
 <div class="space-y-6">
-        <ClientWorkspaceHero
-                {client}
-                {tool}
-                metadata={[
-                        { label: 'Browser', value: browserChoice },
-                        { label: 'Schedule', value: scheduleMinutes > 0 ? `${scheduleMinutes} minutes` : 'Immediate' }
-                ]}
-        >
-                <p>
-                        Extend the dialog workflow with richer options such as referer spoofing, delayed execution, and specific
-                        browser targets. Requests remain local until the dispatcher is wired to the agent.
-                </p>
-        </ClientWorkspaceHero>
-
         <Card>
                 <CardHeader>
                         <CardTitle class="text-base">Launch parameters</CardTitle>
@@ -120,6 +104,4 @@
                         <Button type="button" onclick={() => queue('queued')}>Queue launch</Button>
                 </CardFooter>
         </Card>
-
-        <ActionLog entries={log} />
 </div>

@@ -17,8 +17,6 @@
                 CardHeader,
                 CardTitle
         } from '$lib/components/ui/card/index.js';
-        import ClientWorkspaceHero from '$lib/components/workspace/workspace-hero.svelte';
-        import ActionLog from '$lib/components/workspace/action-log.svelte';
         import { getClientTool } from '$lib/data/client-tools';
         import type { Client } from '$lib/data/clients';
         import { appendWorkspaceLog, createWorkspaceLogEntry } from '$lib/workspace/utils';
@@ -47,20 +45,6 @@
 </script>
 
 <div class="space-y-6">
-        <ClientWorkspaceHero
-                {client}
-                {tool}
-                metadata={[
-                        { label: 'Provider', value: provider },
-                        { label: 'Cache', value: `${cacheHours} hours` }
-                ]}
-        >
-                <p>
-                        Plan IP geolocation lookups, including provider selection and caching strategies. The preview uses static
-                        data until a provider API is wired in.
-                </p>
-        </ClientWorkspaceHero>
-
         <Card>
                 <CardHeader>
                         <CardTitle class="text-base">Lookup configuration</CardTitle>
@@ -132,6 +116,4 @@
                         {/if}
                 </CardContent>
         </Card>
-
-        <ActionLog entries={log} />
 </div>
