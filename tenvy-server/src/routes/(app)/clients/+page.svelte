@@ -717,13 +717,14 @@
 				<Table>
 					<TableHeader>
 						<TableRow>
-							<TableHead class="w-[22rem]">Agent</TableHead>
-							<TableHead class="w-[8rem]">Status</TableHead>
-							<TableHead class="w-[12rem]">Connected</TableHead>
-							<TableHead class="w-[12rem]">Last seen</TableHead>
-							<TableHead class="w-[7rem] text-center">Pending</TableHead>
-							<TableHead class="w-[10rem]">Memory</TableHead>
-							<TableHead class="w-[9rem]">Uptime</TableHead>
+							<TableHead class="w-[22rem]">Location</TableHead>
+							<TableHead class="w-[8rem]">IP</TableHead>
+							<TableHead class="w-[12rem]">Username</TableHead>
+							<TableHead class="w-[12rem]">Group</TableHead>
+							<TableHead class="w-[7rem] text-center">OS</TableHead>
+							<TableHead class="w-[10rem]">Ping</TableHead>
+							<TableHead class="w-[9rem]">Version</TableHead>
+							<TableHead class="w-[9rem]">Date</TableHead>
 						</TableRow>
 					</TableHeader>
 					<TableBody>
