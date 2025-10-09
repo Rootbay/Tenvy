@@ -5,22 +5,7 @@
 	import { Label } from '$lib/components/ui/label/index.js';
 	import { Switch } from '$lib/components/ui/switch/index.js';
 	import { Textarea } from '$lib/components/ui/textarea/index.js';
-	import {
-		Select,
-		SelectContent,
-		SelectItem,
-		SelectTrigger
-	} from '$lib/components/ui/select/index.js';
-	import {
-		Card,
-		CardContent,
-		CardDescription,
-		CardFooter,
-		CardHeader,
-		CardTitle
-	} from '$lib/components/ui/card/index.js';
 	import { Alert, AlertDescription, AlertTitle } from '$lib/components/ui/alert/index.js';
-	import { getClientTool } from '$lib/data/client-tools';
 	import type { Client } from '$lib/data/clients';
 	import { appendWorkspaceLog, createWorkspaceLogEntry } from '$lib/workspace/utils';
 	import type { WorkspaceLogEntry } from '$lib/workspace/types';
@@ -31,10 +16,38 @@
 		FileOperationResponse,
 		FileSystemEntry
 	} from '$lib/types/file-manager';
+	import {
+		ArrowLeft,
+		ArrowRight,
+		ArrowUp,
+		ArrowUpDown,
+		RefreshCw,
+		FolderPlus,
+		FilePlus,
+		Pencil,
+		Trash2,
+		Loader2,
+		Search,
+		Folder,
+		File as FileIcon,
+		FileText,
+		Link,
+		ChevronDown,
+		ChevronRight,
+		ChevronUp
+	} from '@lucide/svelte';
 
 	const { client } = $props<{ client: Client }>();
 
-	const tool = getClientTool('file-manager');
+	const fileManagerEndpoint = $derived(`/api/agents/${encodeURIComponent(client.id)}/file-manager`);
+
+	type SortField = 'name' | 'modifiedAt' | 'type' | 'size';
+
+	interface BreadcrumbSegment {
+		label: string;
+		path: string;
+		isFile?: boolean;
+	}
 
 	let listing = $state<DirectoryListing | null>(null);
 	let filePreview = $state<FileContent | null>(null);
@@ -57,23 +70,45 @@
 	let renaming = $state(false);
 	let moving = $state(false);
 	let rootPath = $state('');
+	let searchQuery = $state('');
+	let addressValue = $state('');
+	let history = $state<string[]>([]);
+	let historyIndex = $state(-1);
+	let newEntryInputRef = $state<HTMLInputElement | null>(null);
+	let renameInputRef = $state<HTMLInputElement | null>(null);
+	let sortField = $state<SortField>('name');
+	let sortDirection = $state<'asc' | 'desc'>('asc');
 
-	const visibleEntries = $derived(
-		listing ? listing.entries.filter((entry) => includeHidden || !entry.isHidden) : []
-	);
+	function filteredEntriesList(): FileSystemEntry[] {
+		const entries = listing
+			? listing.entries.filter((entry) => includeHidden || !entry.isHidden)
+			: [];
+		const query = searchQuery.trim().toLowerCase();
+		const filtered = query
+			? entries.filter((entry) => entry.name.toLowerCase().includes(query))
+			: entries.slice();
 
-	function heroMetadata(): { label: string; value: string }[] {
-		const location = listing?.path ?? filePreview?.path ?? rootPath;
-		return [
-			{ label: 'Root', value: rootPath || '—' },
-			{ label: 'Location', value: location || '—' },
-			{ label: 'Entries', value: listing ? `${visibleEntries.length}` : '—' },
-			{
-				label: 'Selection',
-				value: selectedEntry ? selectedEntry.name : filePreview ? filePreview.name : 'None'
-			}
-		];
+		const sorted = filtered.sort((a, b) => compareEntries(a, b, sortField));
+		return sortDirection === 'asc' ? sorted : sorted.reverse();
 	}
+
+	const filteredEntries = $derived(filteredEntriesList());
+	const breadcrumbs = $derived(buildBreadcrumbs());
+
+	const canGoBack = $derived(historyIndex > 0);
+	const canGoForward = $derived(historyIndex >= 0 && historyIndex < history.length - 1);
+	const locationSummary = $derived(() => {
+		if (listing?.path) {
+			return listing.path;
+		}
+		if (filePreview?.path) {
+			return filePreview.path;
+		}
+		if (rootPath && rootPath.trim().length > 0) {
+			return rootPath;
+		}
+		return '—';
+	});
 
 	const sizeFormatter = new Intl.NumberFormat(undefined, { maximumFractionDigits: 1 });
 	const dateFormatter = new Intl.DateTimeFormat(undefined, {
@@ -145,13 +180,126 @@
 		}
 	}
 
+	function compareEntries(a: FileSystemEntry, b: FileSystemEntry, field: SortField): number {
+		if (field === 'name') {
+			const aIsDirectory = a.type === 'directory';
+			const bIsDirectory = b.type === 'directory';
+			if (aIsDirectory !== bIsDirectory) {
+				return aIsDirectory ? -1 : 1;
+			}
+			return a.name.localeCompare(b.name, undefined, { sensitivity: 'base' });
+		}
+		if (field === 'modifiedAt') {
+			const aTime = Date.parse(a.modifiedAt);
+			const bTime = Date.parse(b.modifiedAt);
+			if (Number.isNaN(aTime) || Number.isNaN(bTime)) {
+				return a.name.localeCompare(b.name, undefined, { sensitivity: 'base' });
+			}
+			return aTime - bTime;
+		}
+		if (field === 'type') {
+			return typeLabel(a.type).localeCompare(typeLabel(b.type), undefined, {
+				sensitivity: 'base'
+			});
+		}
+		const aSize = a.size ?? -1;
+		const bSize = b.size ?? -1;
+		return aSize - bSize;
+	}
+
+	function toggleSort(field: SortField) {
+		if (sortField === field) {
+			sortDirection = sortDirection === 'asc' ? 'desc' : 'asc';
+			return;
+		}
+		sortField = field;
+		sortDirection = 'asc';
+	}
+
+	function buildBreadcrumbs(): BreadcrumbSegment[] {
+		const directoryPath =
+			listing?.path ?? (filePreview ? parentPathOf(filePreview.path) : null) ?? rootPath;
+
+		const segments: BreadcrumbSegment[] = directoryPath
+			? createDirectorySegments(directoryPath)
+			: [];
+
+		if (filePreview) {
+			segments.push({
+				label: filePreview.name,
+				path: filePreview.path,
+				isFile: true
+			});
+		}
+
+		return segments;
+	}
+
+	function createDirectorySegments(path: string): BreadcrumbSegment[] {
+		if (/^[A-Za-z]:/.test(path)) {
+			const sanitized = path.replace(/\//g, '\\');
+			const parts = sanitized.split('\\').filter((part, index) => part.length > 0 || index === 0);
+			if (parts.length === 0) {
+				return [];
+			}
+			const [drivePart, ...restParts] = parts;
+			const driveLabel = drivePart.endsWith(':') ? drivePart : `${drivePart}:`;
+			const segments: BreadcrumbSegment[] = [{ label: driveLabel, path: `${driveLabel}\\` }];
+			let current = driveLabel;
+			for (const part of restParts) {
+				if (!part) {
+					continue;
+				}
+				current = `${current}\\${part}`;
+				segments.push({ label: part, path: current });
+			}
+			return segments;
+		}
+
+		if (path.startsWith('/')) {
+			const segments: BreadcrumbSegment[] = [{ label: 'Root', path: '/' }];
+			let current = '';
+			const parts = path.slice(1).split('/').filter(Boolean);
+			for (const part of parts) {
+				current = `${current}/${part}`;
+				const resolved = current || '/';
+				segments.push({ label: part, path: resolved });
+			}
+			return segments;
+		}
+
+		const segments: BreadcrumbSegment[] = [];
+		const parts = path.split(/[\\/]/).filter(Boolean);
+		let current = '';
+		for (const part of parts) {
+			current = current ? `${current}/${part}` : part;
+			segments.push({ label: part, path: current });
+		}
+		return segments;
+	}
+
+	async function handleBreadcrumbClick(segment: BreadcrumbSegment) {
+		if (!segment.path) {
+			return;
+		}
+		try {
+			if (segment.isFile) {
+				await loadFile(segment.path, { select: true }).catch(() => {});
+				return;
+			}
+			await loadDirectory(segment.path).catch(() => {});
+		} catch {
+			// errors handled by load helpers
+		}
+	}
+
 	async function fetchResource(path?: string): Promise<FileManagerResource> {
 		const params = new URLSearchParams();
 		if (path && path.trim() !== '') {
 			params.set('path', path);
 		}
 		const query = params.toString();
-		const response = await fetch(`/api/file-manager${query ? `?${query}` : ''}`);
+		const response = await fetch(`${fileManagerEndpoint}${query ? `?${query}` : ''}`);
 		if (!response.ok) {
 			const detail = await response.text().catch(() => '');
 			throw new Error(detail || `Request failed with status ${response.status}`);
@@ -165,7 +313,41 @@
 		editorContent = resource.encoding === 'utf-8' ? resource.content : '';
 	}
 
-	async function loadDirectory(path?: string, options: { silent?: boolean } = {}) {
+	function pushHistory(path: string) {
+		const trimmed = path.trim();
+		if (!trimmed) {
+			return;
+		}
+		const next = history.slice(0, historyIndex + 1);
+		if (next[next.length - 1] === trimmed) {
+			history = next;
+			historyIndex = next.length - 1;
+			return;
+		}
+		next.push(trimmed);
+		history = next;
+		historyIndex = next.length - 1;
+	}
+
+	function findEntryByName(
+		container: DirectoryListing | null,
+		name: string
+	): FileSystemEntry | null {
+		if (!container) {
+			return null;
+		}
+		const normalized = name.toLocaleLowerCase();
+		return container.entries.find((entry) => entry.name.toLocaleLowerCase() === normalized) ?? null;
+	}
+
+	function isEntryActive(entry: FileSystemEntry): boolean {
+		return selectedEntry?.path === entry.path || filePreview?.path === entry.path;
+	}
+
+	async function loadDirectory(
+		path?: string,
+		options: { silent?: boolean; fromHistory?: boolean } = {}
+	) {
 		if (!options.silent) {
 			loading = true;
 			errorMessage = null;
@@ -175,17 +357,31 @@
 			if (resource.type !== 'directory') {
 				if (!options.silent) {
 					applyFilePreview(resource);
+					selectedEntry =
+						listing?.entries.find((entry) => entry.path === resource.path) ?? fileToEntry(resource);
+					renameValue = selectedEntry ? selectedEntry.name : '';
+					moveDestination = parentPathOf(resource.path);
+					addressValue = resource.path;
+					if (!options.fromHistory) {
+						pushHistory(resource.path);
+					}
 				}
 				return null;
 			}
 			listing = resource;
 			rootPath = resource.root;
+			addressValue = resource.path;
 			if (!selectedEntry) {
 				moveDestination = resource.path;
 			}
 			if (!options.silent) {
 				filePreview = null;
 				selectedEntry = null;
+				renameValue = '';
+				moveDestination = resource.path;
+				if (!options.fromHistory) {
+					pushHistory(resource.path);
+				}
 			}
 			return resource;
 		} catch (err) {
@@ -200,7 +396,10 @@
 		}
 	}
 
-	async function loadFile(path: string, options: { select?: boolean; silent?: boolean } = {}) {
+	async function loadFile(
+		path: string,
+		options: { select?: boolean; silent?: boolean; fromHistory?: boolean } = {}
+	) {
 		if (!options.silent) {
 			loading = true;
 			errorMessage = null;
@@ -212,15 +411,28 @@
 				if (options.select) {
 					selectedEntry =
 						listing?.entries.find((entry) => entry.path === resource.path) ?? fileToEntry(resource);
-					renameValue = selectedEntry.name;
-					moveDestination = listing?.path ?? parentPathOf(resource.path);
+				} else {
+					selectedEntry = fileToEntry(resource);
+				}
+				renameValue = selectedEntry ? selectedEntry.name : '';
+				moveDestination = listing?.path ?? parentPathOf(resource.path);
+				addressValue = resource.path;
+				if (!options.silent && !options.fromHistory) {
+					pushHistory(resource.path);
 				}
 				return resource;
 			}
+			listing = resource;
+			rootPath = resource.root;
+			addressValue = resource.path;
 			if (!options.silent) {
-				listing = resource;
-				rootPath = resource.root;
 				filePreview = null;
+				selectedEntry = null;
+				renameValue = '';
+				moveDestination = resource.path;
+				if (!options.fromHistory) {
+					pushHistory(resource.path);
+				}
 			}
 			return null;
 		} catch (err) {
@@ -273,8 +485,8 @@
 		try {
 			const actionLabel = newEntryType === 'file' ? 'Create file' : 'Create folder';
 			const detail = `${trimmed} @ ${currentListing.path}`;
-			const data = await performOperation(actionLabel, detail, async () => {
-				const response = await fetch('/api/file-manager', {
+			await performOperation(actionLabel, detail, async () => {
+				const response = await fetch(fileManagerEndpoint, {
 					method: 'POST',
 					headers: { 'Content-Type': 'application/json' },
 					body: JSON.stringify({
@@ -291,23 +503,26 @@
 				return (await response.json()) as FileOperationResponse;
 			});
 			await loadDirectory(currentListing.path, { silent: true }).catch(() => {});
-			if (data.entry) {
-				selectedEntry = data.entry;
-				renameValue = data.entry.name;
-				moveDestination = currentListing.path;
+			const created = findEntryByName(listing, trimmed);
+			if (created) {
+				selectEntry(created);
 			}
 			if (newEntryType === 'file') {
 				newFileContent = '';
 			}
 			newEntryName = '';
+			moveDestination = currentListing.path;
 			errorMessage = null;
-			successMessage = `${newEntryType === 'file' ? 'File' : 'Folder'} created successfully.`;
+			successMessage = `${
+				newEntryType === 'file' ? 'File' : 'Folder'
+			} creation queued for the agent.`;
 		} catch (err) {
 			errorMessage = err instanceof Error ? err.message : 'Failed to create entry';
 		} finally {
 			creating = false;
 		}
 	}
+
 	async function handleRename() {
 		if (!selectedEntry) {
 			errorMessage = 'Select an entry to rename.';
@@ -322,38 +537,34 @@
 		renaming = true;
 		successMessage = null;
 		try {
-			const data = await performOperation(
-				'Rename entry',
-				`${target.name} → ${trimmed}`,
-				async () => {
-					const response = await fetch('/api/file-manager', {
-						method: 'PATCH',
-						headers: { 'Content-Type': 'application/json' },
-						body: JSON.stringify({
-							action: 'rename-entry',
-							path: target.path,
-							name: trimmed
-						})
-					});
-					if (!response.ok) {
-						const text = await response.text().catch(() => '');
-						throw new Error(text || 'Failed to rename entry');
-					}
-					return (await response.json()) as FileOperationResponse;
+			await performOperation('Rename entry', `${target.name} → ${trimmed}`, async () => {
+				const response = await fetch(fileManagerEndpoint, {
+					method: 'PATCH',
+					headers: { 'Content-Type': 'application/json' },
+					body: JSON.stringify({
+						action: 'rename-entry',
+						path: target.path,
+						name: trimmed
+					})
+				});
+				if (!response.ok) {
+					const text = await response.text().catch(() => '');
+					throw new Error(text || 'Failed to rename entry');
 				}
-			);
-			const nextDirectory = parentPathOf(data.path ?? target.path);
+				return (await response.json()) as FileOperationResponse;
+			});
+			const nextDirectory = parentPathOf(target.path);
 			await loadDirectory(nextDirectory, { silent: true }).catch(() => {});
-			if (data.entry) {
-				selectedEntry = data.entry;
-				renameValue = data.entry.name;
-				moveDestination = nextDirectory;
-				if (data.entry.type === 'file') {
-					await loadFile(data.entry.path, { select: true, silent: true }).catch(() => {});
-				}
+			const updated = findEntryByName(listing, trimmed);
+			if (updated) {
+				selectEntry(updated);
+			} else {
+				selectedEntry = null;
+				renameValue = '';
 			}
+			moveDestination = listing?.path ?? nextDirectory;
 			errorMessage = null;
-			successMessage = 'Entry renamed successfully.';
+			successMessage = 'Rename request queued for the agent.';
 		} catch (err) {
 			errorMessage = err instanceof Error ? err.message : 'Failed to rename entry';
 		} finally {
@@ -368,45 +579,48 @@
 		}
 		const target = selectedEntry;
 		const destination = moveDestination.trim();
+		const resolvedDestination = (
+			destination ||
+			parentPathOf(target.path) ||
+			listing?.path ||
+			rootPath ||
+			''
+		).trim();
+		if (!resolvedDestination) {
+			errorMessage = 'Provide a destination directory.';
+			return;
+		}
 		moving = true;
 		successMessage = null;
 		try {
-			const data = await performOperation(
-				'Move entry',
-				`${target.name} → ${destination || rootPath || '/'}`,
-				async () => {
-					const response = await fetch('/api/file-manager', {
-						method: 'PATCH',
-						headers: { 'Content-Type': 'application/json' },
-						body: JSON.stringify({
-							action: 'move-entry',
-							path: target.path,
-							destination,
-							name: target.name
-						})
-					});
-					if (!response.ok) {
-						const text = await response.text().catch(() => '');
-						throw new Error(text || 'Failed to move entry');
-					}
-					return (await response.json()) as FileOperationResponse;
+			await performOperation('Move entry', `${target.name} → ${resolvedDestination}`, async () => {
+				const response = await fetch(fileManagerEndpoint, {
+					method: 'PATCH',
+					headers: { 'Content-Type': 'application/json' },
+					body: JSON.stringify({
+						action: 'move-entry',
+						path: target.path,
+						destination: resolvedDestination,
+						name: target.name
+					})
+				});
+				if (!response.ok) {
+					const text = await response.text().catch(() => '');
+					throw new Error(text || 'Failed to move entry');
 				}
-			);
-			const nextDirectory = parentPathOf(data.path ?? destination);
-			await loadDirectory(nextDirectory, { silent: true }).catch(() => {});
-			if (data.entry) {
-				selectedEntry = data.entry;
-				renameValue = data.entry.name;
-				moveDestination = nextDirectory;
-				if (data.entry.type === 'file') {
-					await loadFile(data.entry.path, { select: true, silent: true }).catch(() => {});
-				}
+				return (await response.json()) as FileOperationResponse;
+			});
+			await loadDirectory(resolvedDestination, { silent: true }).catch(() => {});
+			const updated = findEntryByName(listing, target.name);
+			if (updated) {
+				selectEntry(updated);
 			} else {
 				selectedEntry = null;
 				renameValue = '';
 			}
+			moveDestination = resolvedDestination;
 			errorMessage = null;
-			successMessage = 'Entry moved successfully.';
+			successMessage = 'Move request queued for the agent.';
 		} catch (err) {
 			errorMessage = err instanceof Error ? err.message : 'Failed to move entry';
 		} finally {
@@ -424,7 +638,7 @@
 		successMessage = null;
 		try {
 			await performOperation('Delete entry', `${target.name} @ ${target.path}`, async () => {
-				const response = await fetch('/api/file-manager', {
+				const response = await fetch(fileManagerEndpoint, {
 					method: 'DELETE',
 					headers: { 'Content-Type': 'application/json' },
 					body: JSON.stringify({ path: target.path })
@@ -438,10 +652,10 @@
 			const nextDirectory = listing?.path ?? parentPathOf(target.path);
 			selectedEntry = null;
 			renameValue = '';
-			await loadDirectory(nextDirectory, { silent: true }).catch(() => {});
 			filePreview = null;
+			await loadDirectory(nextDirectory, { silent: true }).catch(() => {});
 			errorMessage = null;
-			successMessage = 'Entry deleted.';
+			successMessage = 'Delete request queued for the agent.';
 		} catch (err) {
 			errorMessage = err instanceof Error ? err.message : 'Failed to delete entry';
 		} finally {
@@ -463,7 +677,7 @@
 		successMessage = null;
 		try {
 			await performOperation('Update file', `${preview.name} @ ${preview.path}`, async () => {
-				const response = await fetch('/api/file-manager', {
+				const response = await fetch(fileManagerEndpoint, {
 					method: 'PATCH',
 					headers: { 'Content-Type': 'application/json' },
 					body: JSON.stringify({
@@ -481,7 +695,7 @@
 			await loadFile(preview.path, { select: true, silent: true }).catch(() => {});
 			await loadDirectory(parentPathOf(preview.path), { silent: true }).catch(() => {});
 			errorMessage = null;
-			successMessage = 'File saved successfully.';
+			successMessage = 'File update queued for the agent.';
 		} catch (err) {
 			errorMessage = err instanceof Error ? err.message : 'Failed to save file';
 		} finally {
@@ -493,6 +707,9 @@
 		selectedEntry = entry;
 		renameValue = entry.name;
 		moveDestination = listing?.path ?? parentPathOf(entry.path);
+		if (filePreview && filePreview.path !== entry.path) {
+			filePreview = null;
+		}
 	}
 
 	async function openEntry(entry: FileSystemEntry) {
@@ -511,9 +728,9 @@
 
 	async function refresh() {
 		if (listing) {
-			await loadDirectory(listing.path).catch(() => {});
+			await loadDirectory(listing.path, { fromHistory: true }).catch(() => {});
 		} else if (filePreview) {
-			await loadFile(filePreview.path, { select: true }).catch(() => {});
+			await loadFile(filePreview.path, { select: true, fromHistory: true }).catch(() => {});
 		} else {
 			await loadDirectory().catch(() => {});
 		}
@@ -523,6 +740,95 @@
 		selectedEntry = null;
 		renameValue = '';
 		moveDestination = listing?.path ?? '';
+		filePreview = null;
+	}
+
+	async function goBack() {
+		if (!canGoBack) {
+			return;
+		}
+		const targetIndex = historyIndex - 1;
+		const target = history[targetIndex];
+		if (!target) {
+			return;
+		}
+		try {
+			await loadDirectory(target, { fromHistory: true });
+			historyIndex = targetIndex;
+		} catch {
+			// errors handled inside loadDirectory
+		}
+	}
+
+	async function goForward() {
+		if (!canGoForward) {
+			return;
+		}
+		const targetIndex = historyIndex + 1;
+		const target = history[targetIndex];
+		if (!target) {
+			return;
+		}
+		try {
+			await loadDirectory(target, { fromHistory: true });
+			historyIndex = targetIndex;
+		} catch {
+			// errors handled inside loadDirectory
+		}
+	}
+
+	async function handleAddressSubmit(event: Event) {
+		event.preventDefault();
+		const target = addressValue.trim();
+		if (!target) {
+			if (listing?.path) {
+				await loadDirectory(listing.path, { fromHistory: true }).catch(() => {});
+			}
+			return;
+		}
+		try {
+			await loadDirectory(target);
+		} catch {
+			// errors handled internally
+		}
+	}
+
+	function stageNewEntry(type: 'file' | 'directory') {
+		if (newEntryType !== type) {
+			newEntryName = '';
+			if (type === 'file') {
+				newFileContent = '';
+			}
+		}
+		newEntryType = type;
+		queueMicrotask(() => {
+			newEntryInputRef?.focus();
+			newEntryInputRef?.select();
+		});
+	}
+
+	function focusRename() {
+		if (!selectedEntry) {
+			return;
+		}
+		queueMicrotask(() => {
+			renameInputRef?.focus();
+			renameInputRef?.select();
+		});
+	}
+
+	function handleRenameKeydown(event: KeyboardEvent) {
+		if (event.key === 'Enter') {
+			event.preventDefault();
+			handleRename();
+		}
+	}
+
+	function handleMoveKeydown(event: KeyboardEvent) {
+		if (event.key === 'Enter') {
+			event.preventDefault();
+			handleMove();
+		}
 	}
 
 	onMount(async () => {
@@ -534,7 +840,7 @@
 	});
 </script>
 
-<div class="space-y-6">
+<div class="space-y-4">
 	{#if errorMessage}
 		<Alert variant="destructive">
 			<AlertTitle>File manager error</AlertTitle>
@@ -544,286 +850,512 @@
 
 	{#if successMessage}
 		<Alert>
-			<AlertTitle>Success</AlertTitle>
+			<AlertTitle>Request queued</AlertTitle>
 			<AlertDescription>{successMessage}</AlertDescription>
 		</Alert>
 	{/if}
 
-	<Card>
-		<CardHeader>
-			<CardTitle class="text-base">Directory controls</CardTitle>
-			<CardDescription>
-				Navigate through the file system, toggle hidden entries, and stage new files or folders.
-			</CardDescription>
-		</CardHeader>
-		<CardContent class="space-y-6">
-			<div class="flex flex-wrap items-center gap-3">
-				<Button
-					type="button"
-					variant="outline"
-					onclick={goToParent}
-					disabled={loading || !listing?.parent}
-				>
-					Up one level
-				</Button>
-				<Button type="button" variant="outline" onclick={refresh} disabled={loading}>
-					Refresh
-				</Button>
-				<label class="flex items-center gap-2 text-sm text-muted-foreground">
-					<Switch bind:checked={includeHidden} />
-					<span>Show hidden entries</span>
-				</label>
+	<div class="overflow-hidden rounded-xl border bg-card text-card-foreground shadow-sm">
+		<div class="flex flex-wrap items-center gap-2 border-b bg-muted/50 px-4 py-2">
+			<Button
+				type="button"
+				variant="ghost"
+				size="icon"
+				aria-label="Go back"
+				onclick={goBack}
+				disabled={!canGoBack || loading}
+			>
+				<ArrowLeft class="h-4 w-4" />
+			</Button>
+			<Button
+				type="button"
+				variant="ghost"
+				size="icon"
+				aria-label="Go forward"
+				onclick={goForward}
+				disabled={!canGoForward || loading}
+			>
+				<ArrowRight class="h-4 w-4" />
+			</Button>
+			<Button
+				type="button"
+				variant="ghost"
+				size="icon"
+				aria-label="Go up"
+				onclick={goToParent}
+				disabled={loading || !listing?.parent}
+			>
+				<ArrowUp class="h-4 w-4" />
+			</Button>
+			<Button
+				type="button"
+				variant="ghost"
+				size="icon"
+				aria-label="Refresh"
+				onclick={refresh}
+				disabled={loading}
+			>
+				<RefreshCw class="h-4 w-4" />
+			</Button>
+			<div class="h-6 w-px bg-border" aria-hidden="true"></div>
+			<Button
+				type="button"
+				variant="ghost"
+				size="sm"
+				onclick={() => stageNewEntry('directory')}
+				disabled={loading || !listing}
+			>
+				<FolderPlus class="mr-2 h-4 w-4" />
+				New folder
+			</Button>
+			<Button
+				type="button"
+				variant="ghost"
+				size="sm"
+				onclick={() => stageNewEntry('file')}
+				disabled={loading || !listing}
+			>
+				<FilePlus class="mr-2 h-4 w-4" />
+				New file
+			</Button>
+			<div class="h-6 w-px bg-border" aria-hidden="true"></div>
+			<Button
+				type="button"
+				variant="ghost"
+				size="sm"
+				onclick={focusRename}
+				disabled={!selectedEntry}
+			>
+				<Pencil class="mr-2 h-4 w-4" />
+				Rename
+			</Button>
+			<Button
+				type="button"
+				variant="ghost"
+				size="sm"
+				onclick={handleDelete}
+				disabled={!selectedEntry || deleting || loading}
+			>
+				<Trash2 class="mr-2 h-4 w-4" />
+				Delete
+			</Button>
+			<div class="ms-auto flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
 				{#if loading}
-					<span class="text-xs text-muted-foreground">Loading…</span>
+					<span class="inline-flex items-center gap-2">
+						<Loader2 class="h-3.5 w-3.5 animate-spin" />
+						Loading…
+					</span>
 				{/if}
+				<label class="inline-flex items-center gap-2">
+					<Switch bind:checked={includeHidden} />
+					<span>Hidden items</span>
+				</label>
 			</div>
-
-			<div
-				class="rounded-lg border border-dashed border-border/70 bg-muted/40 p-3 font-mono text-xs text-muted-foreground"
-			>
-				<p class="text-foreground">Current directory: {listing?.path ?? '—'}</p>
-				{#if listing?.parent}
-					<p>Parent: {listing.parent}</p>
-				{/if}
-			</div>
-
-			<form
-				class="grid gap-4"
-				onsubmit={(event) => {
-					event.preventDefault();
-					handleCreateEntry();
-				}}
-			>
-				<div class="grid gap-4 md:grid-cols-[minmax(0,1fr)_180px] md:items-end">
-					<div class="grid gap-2">
-						<Label for="entry-name">Name</Label>
-						<Input
-							id="entry-name"
-							bind:value={newEntryName}
-							placeholder={newEntryType === 'file' ? 'report.txt' : 'Documents'}
-							autocomplete="off"
-						/>
-					</div>
-					<div class="grid gap-2">
-						<Label for="entry-type">Type</Label>
-						<Select
-							type="single"
-							value={newEntryType}
-							onValueChange={(value) => (newEntryType = value as 'file' | 'directory')}
-						>
-							<SelectTrigger id="entry-type" class="w-full">
-								<span class="capitalize">{newEntryType}</span>
-							</SelectTrigger>
-							<SelectContent>
-								<SelectItem value="file">File</SelectItem>
-								<SelectItem value="directory">Folder</SelectItem>
-							</SelectContent>
-						</Select>
-					</div>
-				</div>
-				{#if newEntryType === 'file'}
-					<div class="grid gap-2">
-						<Label for="entry-content">Initial content (optional)</Label>
-						<Textarea
-							id="entry-content"
-							bind:value={newFileContent}
-							class="h-36 font-mono text-xs"
-							placeholder="Enter initial file contents"
-						/>
-					</div>
-				{/if}
-				<div>
-					<Button type="submit" disabled={creating || loading}>
-						{creating ? 'Creating…' : `Create ${newEntryType}`}
-					</Button>
-				</div>
+		</div>
+		<div class="flex flex-wrap items-center gap-3 border-b px-4 py-3">
+			<form class="flex flex-1 items-center gap-2" onsubmit={handleAddressSubmit}>
+				<span class="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
+					Address
+				</span>
+				<Input
+					class="flex-1"
+					bind:value={addressValue}
+					placeholder={rootPath || '/'}
+					autocomplete="off"
+				/>
+				<Button type="submit" size="sm" variant="secondary" disabled={loading}>Go</Button>
 			</form>
-		</CardContent>
-	</Card>
-
-	<Card>
-		<CardHeader>
-			<CardTitle class="text-base">Directory contents</CardTitle>
-			<CardDescription>Open entries or select them for additional actions.</CardDescription>
-		</CardHeader>
-		<CardContent class="space-y-3">
-			<div class="overflow-hidden rounded-lg border">
-				<table class="min-w-full divide-y divide-border/70 text-sm">
-					<thead class="bg-muted/50 text-xs tracking-wide text-muted-foreground uppercase">
-						<tr>
-							<th class="px-3 py-2 text-left">Name</th>
-							<th class="px-3 py-2 text-left">Type</th>
-							<th class="px-3 py-2 text-left">Size</th>
-							<th class="px-3 py-2 text-left">Modified</th>
-							<th class="px-3 py-2 text-left">Actions</th>
-						</tr>
-					</thead>
-					<tbody>
-						{#if visibleEntries.length === 0}
+			<div class="relative w-full max-w-xs sm:ms-auto sm:w-auto">
+				<Search
+					class="pointer-events-none absolute top-1/2 left-2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
+				/>
+				<Input
+					class="w-full pl-8"
+					bind:value={searchQuery}
+					placeholder="Search this folder"
+					autocomplete="off"
+					disabled={!listing}
+				/>
+			</div>
+		</div>
+		{#if breadcrumbs.length > 0}
+			<nav class="flex flex-wrap items-center gap-1 border-b bg-muted/40 px-4 py-2 text-sm">
+				{#each breadcrumbs as segment, index (segment.path)}
+					<Button
+						type="button"
+						size="sm"
+						variant={index === breadcrumbs.length - 1 ? 'secondary' : 'ghost'}
+						class={`h-7 px-2 ${
+							index === breadcrumbs.length - 1
+								? 'text-secondary-foreground'
+								: 'text-foreground hover:bg-muted'
+						}`}
+						onclick={() => handleBreadcrumbClick(segment)}
+					>
+						{segment.label}
+					</Button>
+					{#if index < breadcrumbs.length - 1}
+						<ChevronRight class="h-3.5 w-3.5 text-muted-foreground" />
+					{/if}
+				{/each}
+			</nav>
+		{/if}
+		<div class="grid gap-px bg-border md:grid-cols-[minmax(0,2fr)_minmax(260px,1fr)]">
+			<div class="bg-background">
+				<div class="max-h-[480px] overflow-auto">
+					<table class="min-w-full text-sm">
+						<thead
+							class="sticky top-0 z-10 border-b bg-muted/60 text-xs tracking-wide text-muted-foreground uppercase"
+						>
 							<tr>
-								<td colspan="5" class="px-3 py-4 text-center text-sm text-muted-foreground">
-									{includeHidden ? 'Directory is empty.' : 'No entries match the current filters.'}
-								</td>
-							</tr>
-						{:else}
-							{#each visibleEntries as entry (entry.path)}
-								<tr
-									class={`border-b border-border/70 transition hover:bg-muted/40 ${
-										selectedEntry?.path === entry.path ? 'bg-muted/40' : 'bg-background'
-									}`}
+								<th
+									class="px-3 py-2 text-left font-medium"
+									aria-sort={sortField === 'name'
+										? sortDirection === 'asc'
+											? 'ascending'
+											: 'descending'
+										: 'none'}
 								>
-									<td class="px-3 py-2 font-medium text-foreground">
-										{entry.name}
-										{#if entry.isHidden}
-											<span class="ml-2 text-xs text-muted-foreground">hidden</span>
+									<button
+										type="button"
+										class="flex items-center gap-2 font-medium text-foreground"
+										onclick={() => toggleSort('name')}
+									>
+										<span>Name</span>
+										{#if sortField === 'name'}
+											{#if sortDirection === 'asc'}
+												<ChevronUp class="h-3.5 w-3.5" />
+											{:else}
+												<ChevronDown class="h-3.5 w-3.5" />
+											{/if}
+										{:else}
+											<ArrowUpDown class="h-3.5 w-3.5 text-muted-foreground" />
+										{/if}
+									</button>
+								</th>
+								<th
+									class="px-3 py-2 text-left font-medium"
+									aria-sort={sortField === 'modifiedAt'
+										? sortDirection === 'asc'
+											? 'ascending'
+											: 'descending'
+										: 'none'}
+								>
+									<button
+										type="button"
+										class="flex items-center gap-2 font-medium text-foreground"
+										onclick={() => toggleSort('modifiedAt')}
+									>
+										<span>Date modified</span>
+										{#if sortField === 'modifiedAt'}
+											{#if sortDirection === 'asc'}
+												<ChevronUp class="h-3.5 w-3.5" />
+											{:else}
+												<ChevronDown class="h-3.5 w-3.5" />
+											{/if}
+										{:else}
+											<ArrowUpDown class="h-3.5 w-3.5 text-muted-foreground" />
+										{/if}
+									</button>
+								</th>
+								<th
+									class="px-3 py-2 text-left font-medium"
+									aria-sort={sortField === 'type'
+										? sortDirection === 'asc'
+											? 'ascending'
+											: 'descending'
+										: 'none'}
+								>
+									<button
+										type="button"
+										class="flex items-center gap-2 font-medium text-foreground"
+										onclick={() => toggleSort('type')}
+									>
+										<span>Type</span>
+										{#if sortField === 'type'}
+											{#if sortDirection === 'asc'}
+												<ChevronUp class="h-3.5 w-3.5" />
+											{:else}
+												<ChevronDown class="h-3.5 w-3.5" />
+											{/if}
+										{:else}
+											<ArrowUpDown class="h-3.5 w-3.5 text-muted-foreground" />
+										{/if}
+									</button>
+								</th>
+								<th
+									class="px-3 py-2 text-left font-medium"
+									aria-sort={sortField === 'size'
+										? sortDirection === 'asc'
+											? 'ascending'
+											: 'descending'
+										: 'none'}
+								>
+									<button
+										type="button"
+										class="flex items-center gap-2 font-medium text-foreground"
+										onclick={() => toggleSort('size')}
+									>
+										<span>Size</span>
+										{#if sortField === 'size'}
+											{#if sortDirection === 'asc'}
+												<ChevronUp class="h-3.5 w-3.5" />
+											{:else}
+												<ChevronDown class="h-3.5 w-3.5" />
+											{/if}
+										{:else}
+											<ArrowUpDown class="h-3.5 w-3.5 text-muted-foreground" />
+										{/if}
+									</button>
+								</th>
+							</tr>
+						</thead>
+						<tbody>
+							{#if filteredEntries.length === 0}
+								<tr>
+									<td colspan="4" class="px-3 py-6 text-center text-sm text-muted-foreground">
+										{#if includeHidden}
+											{listing ? 'This folder is empty.' : 'No directory data available yet.'}
+										{:else}
+											No items match the current filters.
 										{/if}
 									</td>
-									<td class="px-3 py-2 text-muted-foreground">{typeLabel(entry.type)}</td>
-									<td class="px-3 py-2 text-muted-foreground">{formatSize(entry.size)}</td>
-									<td class="px-3 py-2 text-muted-foreground">{formatModified(entry.modifiedAt)}</td
-									>
-									<td class="px-3 py-2">
-										<div class="flex flex-wrap gap-2">
-											<Button
-												type="button"
-												size="sm"
-												variant="outline"
-												onclick={() => openEntry(entry)}
-												disabled={loading}
-											>
-												Open
-											</Button>
-											<Button
-												type="button"
-												size="sm"
-												variant="ghost"
-												onclick={() => selectEntry(entry)}
-											>
-												Select
-											</Button>
-										</div>
-									</td>
 								</tr>
-							{/each}
-						{/if}
-					</tbody>
-				</table>
-			</div>
-		</CardContent>
-	</Card>
-
-	<Card>
-		<CardHeader>
-			<CardTitle class="text-base">Selected entry</CardTitle>
-			<CardDescription>
-				Rename, move, or delete the currently selected file or folder.
-			</CardDescription>
-		</CardHeader>
-		<CardContent class="space-y-6 text-sm">
-			{#if selectedEntry}
-				<div
-					class="grid gap-1 rounded-lg border border-border/70 bg-muted/30 p-3 font-mono text-xs"
-				>
-					<p class="text-foreground">Path: {selectedEntry.path}</p>
-					<p>Type: {typeLabel(selectedEntry.type)}</p>
-					<p>Size: {formatSize(selectedEntry.size)}</p>
-					<p>Modified: {formatModified(selectedEntry.modifiedAt)}</p>
+							{:else}
+								{#each filteredEntries as entry (entry.path)}
+									<tr
+										class={`cursor-pointer border-b border-border/60 transition ${
+											isEntryActive(entry)
+												? 'bg-primary/5 text-foreground'
+												: 'bg-background hover:bg-muted/40'
+										}`}
+										onclick={() => selectEntry(entry)}
+										ondblclick={() => openEntry(entry)}
+									>
+										<td class="px-3 py-2">
+											<div class="flex items-center gap-2">
+												{#if entry.type === 'directory'}
+													<Folder class="h-4 w-4 text-muted-foreground" />
+												{:else if entry.type === 'file'}
+													<FileIcon class="h-4 w-4 text-muted-foreground" />
+												{:else if entry.type === 'symlink'}
+													<Link class="h-4 w-4 text-muted-foreground" />
+												{:else}
+													<FileText class="h-4 w-4 text-muted-foreground" />
+												{/if}
+												<span class="flex-1 truncate font-medium text-foreground">
+													{entry.name}
+												</span>
+												{#if entry.isHidden}
+													<span class="text-xs text-muted-foreground">hidden</span>
+												{/if}
+											</div>
+										</td>
+										<td class="px-3 py-2 text-muted-foreground">
+											{formatModified(entry.modifiedAt)}
+										</td>
+										<td class="px-3 py-2 text-muted-foreground">{typeLabel(entry.type)}</td>
+										<td class="px-3 py-2 text-muted-foreground">{formatSize(entry.size)}</td>
+									</tr>
+								{/each}
+							{/if}
+						</tbody>
+					</table>
 				</div>
-
-				<div class="grid gap-3 md:grid-cols-2">
-					<div class="grid gap-2">
-						<Label for="rename-entry">Rename</Label>
-						<div class="flex flex-col gap-2 sm:flex-row">
-							<Input id="rename-entry" bind:value={renameValue} class="flex-1" autocomplete="off" />
-							<Button type="button" onclick={handleRename} disabled={renaming || loading}>
-								{renaming ? 'Renaming…' : 'Rename'}
-							</Button>
-						</div>
+			</div>
+			<div class="space-y-6 bg-muted/20 p-4">
+				<section class="space-y-3">
+					<div class="flex items-center justify-between">
+						<h3 class="text-sm font-semibold text-foreground">Details</h3>
+						{#if selectedEntry}
+							<span class="text-xs text-muted-foreground">{typeLabel(selectedEntry.type)}</span>
+						{/if}
 					</div>
-					<div class="grid gap-2">
-						<Label for="move-entry">Move to directory</Label>
-						<div class="flex flex-col gap-2 sm:flex-row">
+					{#if selectedEntry}
+						<div
+							class="grid gap-1 rounded-lg border border-border/60 bg-background/60 p-3 font-mono text-xs"
+						>
+							<p class="truncate text-foreground">{selectedEntry.path}</p>
+							<p>Size: {formatSize(selectedEntry.size)}</p>
+							<p>Modified: {formatModified(selectedEntry.modifiedAt)}</p>
+						</div>
+						<div class="grid gap-2">
+							<Label for="rename-entry">Name</Label>
 							<Input
-								id="move-entry"
-								bind:value={moveDestination}
-								class="flex-1"
-								placeholder={rootPath || '/'}
+								id="rename-entry"
+								bind:value={renameValue}
+								autocomplete="off"
+								bind:ref={renameInputRef}
+								onkeydown={handleRenameKeydown}
 							/>
 							<Button
 								type="button"
+								size="sm"
+								variant="secondary"
+								onclick={handleRename}
+								disabled={renaming || loading}
+							>
+								{renaming ? 'Renaming…' : 'Apply rename'}
+							</Button>
+						</div>
+						<div class="grid gap-2">
+							<Label for="move-entry">Move to</Label>
+							<Input
+								id="move-entry"
+								bind:value={moveDestination}
+								placeholder={rootPath || '/'}
+								autocomplete="off"
+								onkeydown={handleMoveKeydown}
+							/>
+							<Button
+								type="button"
+								size="sm"
 								variant="secondary"
 								onclick={handleMove}
 								disabled={moving || loading}
 							>
-								{moving ? 'Moving…' : 'Move'}
+								{moving ? 'Moving…' : 'Move item'}
 							</Button>
 						</div>
-					</div>
-				</div>
-			{:else}
-				<p class="text-muted-foreground">Select an entry from the directory listing.</p>
-			{/if}
-		</CardContent>
-		<CardFooter class="flex flex-wrap gap-3">
-			<Button type="button" variant="outline" onclick={clearSelection} disabled={!selectedEntry}>
-				Clear selection
-			</Button>
-			<Button
-				type="button"
-				variant="destructive"
-				onclick={handleDelete}
-				disabled={!selectedEntry || deleting}
-			>
-				{deleting ? 'Deleting…' : 'Delete'}
-			</Button>
-		</CardFooter>
-	</Card>
-
-	{#if filePreview}
-		<Card>
-			<CardHeader>
-				<CardTitle class="text-base">File preview — {filePreview.name}</CardTitle>
-				<CardDescription>
-					{filePreview.encoding === 'utf-8'
-						? 'View and edit the contents of this text file.'
-						: 'Binary files are shown as base64 for inspection.'}
-				</CardDescription>
-			</CardHeader>
-			<CardContent class="space-y-4 text-sm">
-				<div class="grid gap-1 text-xs text-muted-foreground">
-					<p><span class="font-medium text-foreground">Path:</span> {filePreview.path}</p>
-					<p>
-						<span class="font-medium text-foreground">Size:</span>
-						{formatSize(filePreview.size)}
-					</p>
-					<p>
-						<span class="font-medium text-foreground">Modified:</span>
-						{formatModified(filePreview.modifiedAt)}
-					</p>
-				</div>
-				{#if filePreview.encoding === 'utf-8'}
-					<Textarea bind:value={editorContent} class="h-64 font-mono text-xs" spellcheck={false} />
-				{:else}
-					<div class="rounded-lg border border-border/70 bg-muted/30 p-3 text-xs">
-						<p class="text-muted-foreground">
-							Editing is disabled for binary files. The base64 payload is displayed below.
-						</p>
-						<div
-							class="mt-2 max-h-64 overflow-auto rounded border border-border/60 bg-background p-3 font-mono"
-						>
-							<pre
-								class="text-xs break-all whitespace-pre-wrap text-muted-foreground">{filePreview.content}</pre>
+						<div class="flex flex-wrap gap-2">
+							<Button type="button" variant="ghost" size="sm" onclick={clearSelection}>
+								Clear selection
+							</Button>
+							<Button
+								type="button"
+								variant="destructive"
+								size="sm"
+								onclick={handleDelete}
+								disabled={deleting || loading}
+							>
+								{deleting ? 'Deleting…' : 'Delete'}
+							</Button>
 						</div>
+					{:else}
+						<p class="text-sm text-muted-foreground">
+							Select an item to inspect its properties or double-click to open it.
+						</p>
+					{/if}
+				</section>
+				<section class="space-y-3">
+					<div class="flex items-center justify-between">
+						<h3 class="text-sm font-semibold text-foreground">New item</h3>
+						{#if listing}
+							<span class="max-w-[180px] truncate text-right text-xs text-muted-foreground">
+								{listing.path}
+							</span>
+						{/if}
 					</div>
+					<form
+						class="space-y-3"
+						onsubmit={(event) => {
+							event.preventDefault();
+							handleCreateEntry();
+						}}
+					>
+						<div class="grid gap-2">
+							<Label for="new-entry-name">Name</Label>
+							<Input
+								id="new-entry-name"
+								bind:value={newEntryName}
+								autocomplete="off"
+								placeholder={newEntryType === 'file' ? 'document.txt' : 'New folder'}
+								bind:ref={newEntryInputRef}
+							/>
+						</div>
+						<div class="flex flex-wrap items-center gap-2">
+							<span class="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
+								Type
+							</span>
+							<div class="flex gap-2">
+								<Button
+									type="button"
+									size="sm"
+									variant={newEntryType === 'file' ? 'secondary' : 'outline'}
+									onclick={() => stageNewEntry('file')}
+								>
+									<FilePlus class="mr-2 h-4 w-4" />
+									File
+								</Button>
+								<Button
+									type="button"
+									size="sm"
+									variant={newEntryType === 'directory' ? 'secondary' : 'outline'}
+									onclick={() => stageNewEntry('directory')}
+								>
+									<FolderPlus class="mr-2 h-4 w-4" />
+									Folder
+								</Button>
+							</div>
+						</div>
+						{#if newEntryType === 'file'}
+							<div class="grid gap-2">
+								<Label for="new-entry-content">Initial content</Label>
+								<Textarea
+									id="new-entry-content"
+									bind:value={newFileContent}
+									class="h-32 font-mono text-xs"
+									placeholder="Optional initial file contents"
+								/>
+							</div>
+						{/if}
+						<Button type="submit" disabled={creating || loading || !listing}>
+							{creating ? 'Creating…' : `Create ${newEntryType === 'file' ? 'file' : 'folder'}`}
+						</Button>
+					</form>
+				</section>
+				{#if filePreview}
+					<section class="space-y-3">
+						<div class="flex items-center justify-between">
+							<h3 class="text-sm font-semibold text-foreground">Preview</h3>
+							<span class="text-xs text-muted-foreground">
+								{filePreview.encoding === 'utf-8' ? 'Text' : 'Binary'}
+							</span>
+						</div>
+						<div
+							class="grid gap-1 rounded-lg border border-border/60 bg-background/60 p-3 text-xs text-muted-foreground"
+						>
+							<p class="truncate text-foreground">{filePreview.path}</p>
+							<p>Size: {formatSize(filePreview.size)}</p>
+							<p>Modified: {formatModified(filePreview.modifiedAt)}</p>
+						</div>
+						{#if filePreview.encoding === 'utf-8'}
+							<Textarea
+								bind:value={editorContent}
+								class="h-48 font-mono text-xs"
+								spellcheck={false}
+							/>
+							<Button type="button" onclick={handleSaveFile} disabled={savingFile || loading}>
+								{savingFile ? 'Saving…' : 'Save changes'}
+							</Button>
+						{:else}
+							<div class="rounded-lg border border-border/60 bg-background/60 p-3 text-xs">
+								<p class="text-muted-foreground">
+									Binary files are displayed as base64 for inspection and cannot be edited.
+								</p>
+								<div
+									class="mt-2 max-h-48 overflow-auto rounded border border-border/40 bg-background/80 p-3 font-mono"
+								>
+									<pre
+										class="text-xs break-all whitespace-pre-wrap text-muted-foreground">{filePreview.content}</pre>
+								</div>
+							</div>
+						{/if}
+					</section>
 				{/if}
-			</CardContent>
-			{#if filePreview.encoding === 'utf-8'}
-				<CardFooter>
-					<Button type="button" onclick={handleSaveFile} disabled={savingFile || loading}>
-						{savingFile ? 'Saving…' : 'Save file'}
-					</Button>
-				</CardFooter>
-			{/if}
-		</Card>
-	{/if}
+			</div>
+		</div>
+		<div
+			class="flex flex-wrap items-center gap-3 border-t bg-muted/50 px-4 py-2 text-xs text-muted-foreground"
+		>
+			<span>{filteredEntries.length} {filteredEntries.length === 1 ? 'item' : 'items'}</span>
+			<span>
+				Selected:
+				{selectedEntry ? selectedEntry.name : filePreview ? filePreview.name : 'None'}
+			</span>
+			<span class="ms-auto truncate">
+				Location: {locationSummary}
+			</span>
+		</div>
+	</div>
 </div>
