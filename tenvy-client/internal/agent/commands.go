@@ -85,6 +85,16 @@ func (a *Agent) executeCommand(ctx context.Context, cmd protocol.Command) protoc
 			}
 		}
 		return a.clipboard.HandleCommand(ctx, cmd)
+	case "recovery":
+		if a.recovery == nil {
+			return protocol.CommandResult{
+				CommandID:   cmd.ID,
+				Success:     false,
+				Error:       "recovery subsystem not initialized",
+				CompletedAt: time.Now().UTC().Format(time.RFC3339Nano),
+			}
+		}
+		return a.recovery.HandleCommand(ctx, cmd)
 	case "open-url":
 		return handleOpenURLCommand(cmd)
 	default:

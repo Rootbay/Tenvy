@@ -87,3 +87,31 @@ type OpenURLCommandPayload struct {
 	URL  string `json:"url"`
 	Note string `json:"note,omitempty"`
 }
+
+type RecoveryTargetSelection struct {
+	Type      string   `json:"type"`
+	Label     string   `json:"label,omitempty"`
+	Path      string   `json:"path,omitempty"`
+	Paths     []string `json:"paths,omitempty"`
+	Recursive bool     `json:"recursive,omitempty"`
+}
+
+type RecoveryCommandPayload struct {
+	RequestID   string                    `json:"requestId"`
+	Selections  []RecoveryTargetSelection `json:"selections"`
+	ArchiveName string                    `json:"archiveName,omitempty"`
+	Notes       string                    `json:"notes,omitempty"`
+}
+
+type RecoveryManifestEntry struct {
+	Path            string `json:"path"`
+	Size            int64  `json:"size"`
+	ModifiedAt      string `json:"modifiedAt"`
+	Mode            string `json:"mode"`
+	Type            string `json:"type"`
+	Target          string `json:"target"`
+	SourcePath      string `json:"sourcePath,omitempty"`
+	Preview         string `json:"preview,omitempty"`
+	PreviewEncoding string `json:"previewEncoding,omitempty"`
+	Truncated       bool   `json:"truncated,omitempty"`
+}

