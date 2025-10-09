@@ -118,15 +118,15 @@ export class AgentRegistry {
 		};
 	}
 
-	syncAgent(id: string, key: string | undefined, payload: AgentSyncRequest): AgentSyncResponse {
-		const record = this.agents.get(id);
-		if (!record) {
-			throw new RegistryError('Agent not found', 404);
-		}
+        syncAgent(id: string, key: string | undefined, payload: AgentSyncRequest): AgentSyncResponse {
+                const record = this.agents.get(id);
+                if (!record) {
+                        throw new RegistryError('Agent not found', 404);
+                }
 
-		if (!key || key !== record.key) {
-			throw new RegistryError('Invalid agent key', 401);
-		}
+                if (!key || key !== record.key) {
+                        throw new RegistryError('Invalid agent key', 401);
+                }
 
 		record.lastSeen = new Date();
 		record.status = payload.status;
@@ -178,14 +178,25 @@ export class AgentRegistry {
 		if (!record) {
 			throw new RegistryError('Agent not found', 404);
 		}
-		return this.toSnapshot(record);
-	}
+                return this.toSnapshot(record);
+        }
 
-	peekCommands(id: string): Command[] {
-		const record = this.agents.get(id);
-		if (!record) {
-			throw new RegistryError('Agent not found', 404);
-		}
+        authorizeAgent(id: string, key: string | undefined): void {
+                const record = this.agents.get(id);
+                if (!record) {
+                        throw new RegistryError('Agent not found', 404);
+                }
+                if (!key || key !== record.key) {
+                        throw new RegistryError('Invalid agent key', 401);
+                }
+                record.lastSeen = new Date();
+        }
+
+        peekCommands(id: string): Command[] {
+                const record = this.agents.get(id);
+                if (!record) {
+                        throw new RegistryError('Agent not found', 404);
+                }
 		return [...record.pendingCommands];
         }
 
