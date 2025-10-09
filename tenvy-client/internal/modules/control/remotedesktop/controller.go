@@ -368,6 +368,7 @@ func (c *remoteDesktopSessionController) configureProfileLocked(
 		baseClipQuality = defaultClipQuality
 	}
 	baseClipQuality = clampInt(baseClipQuality, session.MinClipQuality, session.MaxClipQuality)
+	session.BaseClipQuality = baseClipQuality
 	if session.Settings.Mode != RemoteStreamModeVideo {
 		session.ClipQuality = baseClipQuality
 	} else {
@@ -598,14 +599,44 @@ func (c *remoteDesktopSessionController) maybeAdaptQualityLocked(
 	}
 
 	if degrade {
-		if session.Settings.Quality == RemoteQualityAuto {
-			nextScale := clampFloat(session.AdaptiveScale*0.85, session.MinScale, session.MaxScale)
-			if nextScale < session.AdaptiveScale-0.01 {
-				session.AdaptiveScale = nextScale
-				if c.applyAdaptiveScaleLocked(session, true) {
-					session.LastAdaptation = now
-					return
-				}
+		if session.ClipQuality > session.MinClipQuality {
+			nextQuality := session.ClipQuality - clipQualityStepDown
+			if nextQuality < session.MinClipQuality {
+				nextQuality = session.MinClipQuality
+			}
+			nextQuality = clampInt(nextQuality, session.MinClipQuality, session.MaxClipQuality)
+			if nextQuality < session.ClipQuality {
+				session.ClipQuality = nextQuality
+				session.LastAdaptation = now
+				return
+			}
+		}
+		if session.Settings.Mode == RemoteStreamModeImages && session.TileSize < session.MaxTile {
+			nextTile := clampInt(session.TileSize+8, session.MinTile, session.MaxTile)
+			if nextTile > session.TileSize {
+				session.TileSize = nextTile
+				session.LastAdaptation = now
+				return
+			}
+		}
+		if session.FrameInterval < session.MaxInterval {
+			nextInterval := time.Duration(float64(session.FrameInterval) * 1.25)
+			if nextInterval <= session.FrameInterval {
+				nextInterval = session.FrameInterval + 15*time.Millisecond
+			}
+			nextInterval = clampDuration(nextInterval, session.MinInterval, session.MaxInterval)
+			if nextInterval > session.FrameInterval {
+				session.FrameInterval = nextInterval
+				session.LastAdaptation = now
+				return
+			}
+		}
+		nextScale := clampFloat(session.AdaptiveScale*0.85, session.MinScale, session.MaxScale)
+		if nextScale < session.AdaptiveScale-0.01 {
+			session.AdaptiveScale = nextScale
+			if c.applyAdaptiveScaleLocked(session, true) {
+				session.LastAdaptation = now
+				return
 			}
 		}
 		if session.TargetBitrateKbps > 0 {
@@ -636,6 +667,50 @@ func (c *remoteDesktopSessionController) maybeAdaptQualityLocked(
 	}
 
 	if improve {
+		if session.FrameInterval > session.MinInterval {
+			target := session.BaseInterval
+			if target <= 0 {
+				target = session.MinInterval
+			}
+			nextInterval := time.Duration(float64(session.FrameInterval) * 0.85)
+			if nextInterval < target {
+				nextInterval = target
+			}
+			nextInterval = clampDuration(nextInterval, session.MinInterval, session.MaxInterval)
+			if nextInterval < session.FrameInterval {
+				session.FrameInterval = nextInterval
+				session.LastAdaptation = now
+				return
+			}
+		}
+		if session.Settings.Mode == RemoteStreamModeImages && session.TileSize > session.MinTile {
+			baseline := clampInt(session.BaseTile, session.MinTile, session.MaxTile)
+			nextTile := clampInt(session.TileSize-6, session.MinTile, session.MaxTile)
+			if nextTile < baseline {
+				nextTile = baseline
+			}
+			if nextTile < session.TileSize {
+				session.TileSize = nextTile
+				session.LastAdaptation = now
+				return
+			}
+		}
+		if session.ClipQuality < session.MaxClipQuality {
+			targetQuality := session.BaseClipQuality
+			if targetQuality <= 0 {
+				targetQuality = session.MaxClipQuality
+			}
+			nextQuality := session.ClipQuality + clipQualityStepUp
+			if nextQuality > targetQuality {
+				nextQuality = targetQuality
+			}
+			nextQuality = clampInt(nextQuality, session.MinClipQuality, session.MaxClipQuality)
+			if nextQuality > session.ClipQuality {
+				session.ClipQuality = nextQuality
+				session.LastAdaptation = now
+				return
+			}
+		}
 		if session.TargetBitrateKbps > 0 {
 			upperBound := maxLadderBitrate
 			if upperBound <= 0 {
@@ -652,14 +727,12 @@ func (c *remoteDesktopSessionController) maybeAdaptQualityLocked(
 				return
 			}
 		}
-		if session.Settings.Quality == RemoteQualityAuto {
-			nextScale := clampFloat(session.AdaptiveScale+0.08, session.MinScale, session.MaxScale)
-			if nextScale > session.AdaptiveScale+0.01 {
-				session.AdaptiveScale = nextScale
-				if c.applyAdaptiveScaleLocked(session, true) {
-					session.LastAdaptation = now
-					return
-				}
+		nextScale := clampFloat(session.AdaptiveScale+0.08, session.MinScale, session.MaxScale)
+		if nextScale > session.AdaptiveScale+0.01 {
+			session.AdaptiveScale = nextScale
+			if c.applyAdaptiveScaleLocked(session, true) {
+				session.LastAdaptation = now
+				return
 			}
 		}
 		if session.ladderIndex > 0 {
