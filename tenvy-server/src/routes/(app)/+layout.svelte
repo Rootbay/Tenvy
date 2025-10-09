@@ -34,6 +34,7 @@
 		persistPortSelection
 	} from '$lib/utils/rat-port-preferences.js';
 	import { browser } from '$app/environment';
+	import { goto } from '$app/navigation';
 	import {
 		Activity,
 		Bell,
@@ -181,7 +182,7 @@
 			window.localStorage.setItem(PORT_SYNC_STORAGE_KEY, JSON.stringify(payload));
 			window.localStorage.removeItem(PORT_SYNC_STORAGE_KEY);
 		} catch {
-			// localStorage may be unavailable (e.g., Safari private mode); ignore silently.
+			// ignore silently
 		}
 	}
 
@@ -423,6 +424,11 @@
 		}
 		return 'Voucher status unavailable';
 	});
+
+	function navigateToSettings(event?: Event) {
+		event?.preventDefault();
+		void goto('/settings');
+	}
 </script>
 
 <SidebarProvider>
@@ -469,7 +475,7 @@
 			</ScrollArea>
 		</SidebarContent>
 		<SidebarFooter class="mt-auto border-t border-sidebar-border px-2 py-4">
-			<div class="flex items-center gap-2">
+			<div class="flex w-full items-center gap-2">
 				<div class="flex-1">
 					<Popover>
 						<PopoverTrigger
@@ -516,7 +522,13 @@
 									<User class="h-4 w-4" />
 									View profile
 								</Button>
-								<Button type="button" variant="ghost" size="sm" class="justify-start gap-2">
+								<Button
+									type="button"
+									variant="ghost"
+									size="sm"
+									class="justify-start gap-2"
+									onclick={navigateToSettings}
+								>
 									<Settings class="h-4 w-4" />
 									Console preferences
 								</Button>
@@ -543,10 +555,11 @@
 					</Popover>
 				</div>
 				<Button
+					type="button"
 					variant="ghost"
 					size="icon"
-					href="/settings"
 					class="shrink-0 text-sidebar-foreground/70 hover:text-sidebar-accent-foreground"
+					onclick={navigateToSettings}
 				>
 					<Settings class="h-4 w-4" />
 					<span class="sr-only">Open settings</span>
