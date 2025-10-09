@@ -263,8 +263,6 @@ func mergeEnvironmentsWithComparer(base []string, overrides map[string]string, c
 		value      string
 	}
 
-	overrideIndex := make(map[string]int, len(overrides))
-	overrideEntries := make([]overrideEntry, 0, len(overrides))
 	normalizeKey := func(key string) string {
 		if caseInsensitive {
 			return strings.ToLower(key)
@@ -272,27 +270,23 @@ func mergeEnvironmentsWithComparer(base []string, overrides map[string]string, c
 		return key
 	}
 
+	overridesByKey := make(map[string]overrideEntry, len(overrides))
 	for key, value := range overrides {
 		trimmedKey := strings.TrimSpace(key)
 		if trimmedKey == "" {
 			continue
 		}
 		normalizedKey := normalizeKey(trimmedKey)
-		entry := overrideEntry{normalized: normalizedKey, key: trimmedKey, value: value}
-		if idx, exists := overrideIndex[normalizedKey]; exists {
-			overrideEntries[idx] = entry
-			continue
+		overridesByKey[normalizedKey] = overrideEntry{
+			normalized: normalizedKey,
+			key:        trimmedKey,
+			value:      value,
 		}
-		overrideIndex[normalizedKey] = len(overrideEntries)
-		overrideEntries = append(overrideEntries, entry)
 	}
 
-	sort.SliceStable(overrideEntries, func(i, j int) bool {
-		return overrideEntries[i].key < overrideEntries[j].key
-	})
-
-	env := make([]string, 0, len(base)+len(overrideEntries))
-	seenKeys := make(map[string]struct{}, len(base))
+	env := make([]string, 0, len(base)+len(overridesByKey))
+	seenBaseKeys := make(map[string]struct{}, len(base))
+	pendingOverrides := make([]overrideEntry, 0, len(overridesByKey))
 
 	for _, kv := range base {
 		keyPortion := kv
@@ -301,20 +295,41 @@ func mergeEnvironmentsWithComparer(base []string, overrides map[string]string, c
 		}
 		trimmedKey := strings.TrimSpace(keyPortion)
 		normalizedKey := normalizeKey(trimmedKey)
-		if normalizedKey != "" {
-			if _, overridden := overrideIndex[normalizedKey]; overridden {
-				continue
-			}
-			if _, seen := seenKeys[normalizedKey]; seen {
-				continue
-			}
-			seenKeys[normalizedKey] = struct{}{}
+
+		if normalizedKey == "" {
+			env = append(env, kv)
+			continue
 		}
+
+		if _, seen := seenBaseKeys[normalizedKey]; seen {
+			continue
+		}
+		seenBaseKeys[normalizedKey] = struct{}{}
+
+		if entry, overridden := overridesByKey[normalizedKey]; overridden {
+			pendingOverrides = append(pendingOverrides, entry)
+			delete(overridesByKey, normalizedKey)
+			continue
+		}
+
 		env = append(env, kv)
 	}
 
-	for _, entry := range overrideEntries {
+	for _, entry := range pendingOverrides {
 		env = append(env, fmt.Sprintf("%s=%s", entry.key, entry.value))
+	}
+
+	if len(overridesByKey) > 0 {
+		remaining := make([]overrideEntry, 0, len(overridesByKey))
+		for _, entry := range overridesByKey {
+			remaining = append(remaining, entry)
+		}
+		sort.SliceStable(remaining, func(i, j int) bool {
+			return remaining[i].key < remaining[j].key
+		})
+		for _, entry := range remaining {
+			env = append(env, fmt.Sprintf("%s=%s", entry.key, entry.value))
+		}
 	}
 
 	return env

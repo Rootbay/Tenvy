@@ -40,3 +40,27 @@ func TestMergeEnvironmentsDeduplicatesBase(t *testing.T) {
 		t.Fatalf("unexpected environment merge result: got %v want %v", got, want)
 	}
 }
+
+func TestMergeEnvironmentsNewKeysDeterministic(t *testing.T) {
+	base := []string{"A=1"}
+	overrides := map[string]string{"C": "3", "B": "2"}
+
+	got := mergeEnvironmentsWithComparer(base, overrides, false)
+	want := []string{"A=1", "B=2", "C=3"}
+
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("unexpected environment merge result: got %v want %v", got, want)
+	}
+}
+
+func TestMergeEnvironmentsPreservesOverrideOrderFromBase(t *testing.T) {
+	base := []string{"PATH=/usr/bin", "PATH=/usr/local/bin", "HOME=/home/test"}
+	overrides := map[string]string{"PATH": "/custom/bin", "HOME": "/custom/home"}
+
+	got := mergeEnvironmentsWithComparer(base, overrides, false)
+	want := []string{"PATH=/custom/bin", "HOME=/custom/home"}
+
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("unexpected environment merge result: got %v want %v", got, want)
+	}
+}
