@@ -15,7 +15,7 @@
 	data-slot="sidebar-menu-badge"
 	data-sidebar="menu-badge"
 	class={cn(
-		'pointer-events-none absolute right-1 top-1/2 z-10 flex h-5 min-w-5 -translate-y-1/2 items-center justify-center rounded-md px-1 text-xs font-medium text-sidebar-foreground tabular-nums select-none',
+		'pointer-events-none absolute top-1/2 right-1 z-10 flex h-5 min-w-5 -translate-y-1/2 items-center justify-center rounded-md px-1 text-xs font-medium text-sidebar-foreground tabular-nums select-none',
 		'peer-hover/menu-button:text-sidebar-accent-foreground peer-data-[active=true]/menu-button:text-sidebar-accent-foreground',
 		'group-data-[collapsible=icon]:hidden',
 		className
