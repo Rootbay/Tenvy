@@ -3,7 +3,7 @@ import type { CommandResult } from './messages';
 export type AgentStatus = 'online' | 'offline' | 'error';
 
 export interface AgentLocation {
-        name?: string;
+        source?: string;
         city?: string;
         region?: string;
         country?: string;
@@ -19,7 +19,7 @@ export interface AgentMetadata {
         tags?: string[];
         version?: string;
         group?: string;
-        location?: string | AgentLocation;
+        location?: AgentLocation;
 }
 
 export interface AgentMetrics {

@@ -365,33 +365,20 @@
 			return fallback;
 		}
 
-		if (typeof location === 'string') {
-			const trimmed = location.trim();
-			if (!trimmed || trimmed.toLowerCase() === 'unknown') {
-				return fallback;
-			}
-
-			const segments = trimmed
-				.split(',')
-				.map((segment) => segment.trim())
-				.filter(Boolean);
-			const potentialCode = segments.at(-1);
-			const isCountryCode = potentialCode ? /^[A-Za-z]{2}$/.test(potentialCode) : false;
-			const flag = isCountryCode ? countryCodeToFlag(potentialCode ?? null) : fallback.flag;
-
-			return { label: trimmed, flag };
-		}
-
 		const label =
-			location.name?.trim() ??
+			location.source?.trim() ??
 			[location.city, location.region, location.country]
 				.map((part) => part?.trim())
 				.filter((part): part is string => Boolean(part && part.length > 0))
 				.join(', ');
 
+		const normalizedCountryCode = location.countryCode?.trim().toUpperCase();
 		const codeCandidate =
-			location.countryCode ??
-			(location.country && location.country.trim().length === 2 ? location.country : undefined);
+			normalizedCountryCode && normalizedCountryCode.length === 2
+				? normalizedCountryCode
+				: location.country && location.country.trim().length === 2
+					? location.country.trim().toUpperCase()
+					: undefined;
 		const flag = countryCodeToFlag(codeCandidate ?? null);
 
 		return { label: label || fallback.label, flag: flag || fallback.flag };
