@@ -12,6 +12,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
@@ -24,8 +25,9 @@ type temporaryError interface {
 }
 
 type registrationError struct {
-	err       error
-	temporary bool
+	err        error
+	temporary  bool
+	retryAfter time.Duration
 }
 
 func (e *registrationError) Error() string {
@@ -49,18 +51,20 @@ func (e *registrationError) Temporary() bool {
 	return e.temporary
 }
 
+func (e *registrationError) RetryAfter() time.Duration {
+	if e == nil {
+		return 0
+	}
+	return e.retryAfter
+}
+
 func registerAgentWithRetry(ctx context.Context, logger *log.Logger, client *http.Client, serverURL, token string, metadata protocol.AgentMetadata, maxBackoff time.Duration) (*protocol.AgentRegistrationResponse, error) {
 	if maxBackoff <= 0 {
 		maxBackoff = defaultBackoff
 	}
 
 	backoff := time.Second
-	if backoff <= 0 {
-		backoff = time.Second
-	}
-
-	attempt := 1
-	for {
+	for attempt := 1; ; attempt++ {
 		registration, err := registerAgent(ctx, client, serverURL, token, metadata)
 		if err == nil {
 			if attempt > 1 {
@@ -84,23 +88,36 @@ func registerAgentWithRetry(ctx context.Context, logger *log.Logger, client *htt
 
 		logger.Printf("registration attempt %d failed: %v", attempt, err)
 
-		wait := jitterDuration(backoff)
-		if wait > maxBackoff {
-			wait = maxBackoff
+		wait := minDuration(jitterDuration(backoff), maxBackoff)
+		if raErr, ok := err.(interface{ RetryAfter() time.Duration }); ok {
+			if hint := raErr.RetryAfter(); hint > 0 {
+				wait = minDuration(hint, maxBackoff)
+			}
+		}
+
+		if wait > 0 {
+			if deadline, ok := ctx.Deadline(); ok {
+				remaining := time.Until(deadline)
+				if remaining <= 0 {
+					return nil, ctx.Err()
+				}
+				if wait > remaining {
+					wait = remaining
+				}
+			}
+		}
+
+		if wait <= 0 {
+			wait = time.Second
 		}
 
 		logger.Printf("retrying registration in %s", wait)
 
-		select {
-		case <-ctx.Done():
-			return nil, ctx.Err()
-		case <-time.After(wait):
+		if err := sleepContext(ctx, wait); err != nil {
+			return nil, err
 		}
 
-		attempt++
-		if backoff < maxBackoff {
-			backoff = minDuration(backoff*2, maxBackoff)
-		}
+		backoff = minDuration(backoff*2, maxBackoff)
 	}
 }
 
@@ -130,34 +147,11 @@ func registerAgent(ctx context.Context, client *http.Client, serverURL, token st
 			return nil, err
 		}
 
-		temporary := false
-		var netErr net.Error
-		if errors.As(err, &netErr) {
-			temporary = netErr.Timeout() || netErr.Temporary()
-		}
-		if !temporary {
-			var opErr *net.OpError
-			if errors.As(err, &opErr) {
-				temporary = true
-			}
-		}
-		if !temporary {
-			var urlErr *url.Error
-			if errors.As(err, &urlErr) {
-				if urlErr.Timeout() {
-					temporary = true
-				}
-				if !temporary {
-					if _, ok := urlErr.Err.(*net.OpError); ok {
-						temporary = true
-					}
-				}
-			}
-		}
-
-		return nil, &registrationError{err: err, temporary: temporary}
+		return nil, &registrationError{err: err, temporary: isTemporaryNetworkError(err)}
 	}
 	defer resp.Body.Close()
+
+	hint := retryAfterDuration(resp)
 
 	if resp.StatusCode >= 400 {
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 1024))
@@ -166,21 +160,22 @@ func registerAgent(ctx context.Context, client *http.Client, serverURL, token st
 			message = fmt.Sprintf("status %d", resp.StatusCode)
 		}
 		return nil, &registrationError{
-			err:       fmt.Errorf("registration failed: %s", message),
-			temporary: isTemporaryStatus(resp.StatusCode),
+			err:        fmt.Errorf("registration failed: %s", message),
+			temporary:  isTemporaryStatus(resp.StatusCode),
+			retryAfter: hint,
 		}
 	}
 
 	var payload protocol.AgentRegistrationResponse
 	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
-		return nil, &registrationError{err: err, temporary: true}
+		return nil, &registrationError{err: err, temporary: true, retryAfter: hint}
 	}
 
 	if strings.TrimSpace(payload.AgentID) == "" {
-		return nil, &registrationError{err: errors.New("missing agent identifier in response"), temporary: true}
+		return nil, &registrationError{err: errors.New("missing agent identifier in response"), temporary: true, retryAfter: hint}
 	}
 	if strings.TrimSpace(payload.AgentKey) == "" {
-		return nil, &registrationError{err: errors.New("missing agent key in response"), temporary: true}
+		return nil, &registrationError{err: errors.New("missing agent key in response"), temporary: true, retryAfter: hint}
 	}
 
 	return &payload, nil
@@ -192,9 +187,42 @@ func isTemporaryStatus(status int) bool {
 		return true
 	case status == http.StatusTooManyRequests:
 		return true
+	case status == http.StatusRequestTimeout:
+		return true
+	case status == http.StatusTooEarly:
+		return true
 	default:
 		return false
 	}
+}
+
+func retryAfterDuration(resp *http.Response) time.Duration {
+	if resp == nil {
+		return 0
+	}
+
+	value := strings.TrimSpace(resp.Header.Get("Retry-After"))
+	if value == "" {
+		return 0
+	}
+
+	if seconds, err := strconv.Atoi(value); err == nil {
+		if seconds <= 0 {
+			return 0
+		}
+		return time.Duration(seconds) * time.Second
+	}
+
+	if when, err := http.ParseTime(value); err == nil {
+		if when.IsZero() {
+			return 0
+		}
+		if delay := time.Until(when); delay > 0 {
+			return delay
+		}
+	}
+
+	return 0
 }
 
 func jitterDuration(base time.Duration) time.Duration {
@@ -214,4 +242,34 @@ func jitterDuration(base time.Duration) time.Duration {
 	}
 
 	return wait
+}
+
+func isTemporaryNetworkError(err error) bool {
+	if err == nil {
+		return false
+	}
+
+	var netErr net.Error
+	if errors.As(err, &netErr) && (netErr.Timeout() || netErr.Temporary()) {
+		return true
+	}
+
+	var opErr *net.OpError
+	if errors.As(err, &opErr) {
+		return true
+	}
+
+	var urlErr *url.Error
+	if errors.As(err, &urlErr) {
+		if urlErr.Timeout() {
+			return true
+		}
+
+		var nestedOpErr *net.OpError
+		if errors.As(urlErr.Err, &nestedOpErr) {
+			return true
+		}
+	}
+
+	return false
 }
