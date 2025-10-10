@@ -206,7 +206,9 @@ type RemoteDesktopSession struct {
 	monitorInfos       []RemoteDesktopMonitorInfo
 	monitorsDirty      bool
 	lastMonitorRefresh time.Time
-	cancel             context.CancelFunc
+	ctx                context.Context
+	cancel             context.CancelCauseFunc
+	wg                 sync.WaitGroup
 }
 
 type remoteMonitor struct {
@@ -219,7 +221,8 @@ type RemoteDesktopStreamer struct {
 }
 
 type remoteDesktopSessionController struct {
-	cfg     atomic.Value // stores Config
-	mu      sync.Mutex
-	session *RemoteDesktopSession
+	cfg           atomic.Value // stores Config
+	mu            sync.Mutex
+	session       *RemoteDesktopSession
+	endpointCache atomic.Value
 }

@@ -13,7 +13,6 @@ import (
 	"io"
 	"math"
 	"net/http"
-	"net/url"
 	"runtime"
 	"strings"
 	"sync"
@@ -204,6 +203,17 @@ const (
 )
 
 func (c *remoteDesktopSessionController) stream(ctx context.Context, session *RemoteDesktopSession) {
+	defer func() {
+		if r := recover(); r != nil {
+			c.logf("remote desktop stream panic: %v", r)
+		}
+	}()
+	defer session.wg.Done()
+	defer func() {
+		releaseFrameBuffer(session.LastFrame)
+		session.LastFrame = nil
+	}()
+
 	timer := time.NewTimer(0)
 	defer timer.Stop()
 
@@ -757,35 +767,22 @@ func (c *remoteDesktopSessionController) forceMonitorRefresh(session *RemoteDesk
 }
 
 func (c *remoteDesktopSessionController) sendFrame(ctx context.Context, frame RemoteDesktopFramePacket) error {
-	data, err := json.Marshal(frame)
-	if err != nil {
-		return err
-	}
-
 	cfg := c.config()
 
-	baseURL := strings.TrimSpace(cfg.BaseURL)
-	if baseURL == "" {
-		return errors.New("remote desktop: missing base URL")
+	endpoint, err := c.frameEndpoint(cfg)
+	if err != nil {
+		return err
 	}
 	if cfg.Client == nil {
 		return errors.New("remote desktop: missing http client")
 	}
 
-	parsed, err := url.Parse(baseURL)
+	data, err := json.Marshal(frame)
 	if err != nil {
-		return fmt.Errorf("remote desktop: invalid base URL: %w", err)
+		return err
 	}
 
-	agentID := strings.TrimSpace(cfg.AgentID)
-	if agentID == "" {
-		return errors.New("remote desktop: missing agent identifier")
-	}
-
-	pathRef := &url.URL{Path: fmt.Sprintf("/api/agents/%s/remote-desktop/frames", url.PathEscape(agentID))}
-	endpoint := parsed.ResolveReference(pathRef)
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint.String(), bytes.NewReader(data))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(data))
 	if err != nil {
 		return err
 	}
@@ -818,8 +815,16 @@ func drainResponseBody(body io.Reader) error {
 	if body == nil {
 		return nil
 	}
-	_, err := io.Copy(io.Discard, body)
-	return err
+	const maxDrainBytes int64 = 1 << 20
+	limited := &io.LimitedReader{R: body, N: maxDrainBytes + 1}
+	n, err := io.Copy(io.Discard, limited)
+	if err != nil {
+		return err
+	}
+	if n > maxDrainBytes {
+		return fmt.Errorf("response body exceeded %d bytes", maxDrainBytes)
+	}
+	return nil
 }
 
 func captureMonitorFrame(monitor remoteMonitor, width, height int) ([]byte, error) {

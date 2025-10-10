@@ -7,9 +7,22 @@ import (
 	"fmt"
 	"image"
 	"math"
+	"net/url"
 	"strings"
 	"time"
 )
+
+var (
+	errSessionStopped  = errors.New("remote desktop session stopped")
+	errSessionReplaced = errors.New("remote desktop session replaced")
+	errSessionShutdown = errors.New("remote desktop subsystem shutdown")
+)
+
+type frameEndpointCache struct {
+	base     string
+	agentID  string
+	endpoint string
+}
 
 func NewRemoteDesktopStreamer(cfg Config) *RemoteDesktopStreamer {
 	return &RemoteDesktopStreamer{
@@ -87,15 +100,19 @@ func (c *remoteDesktopSessionController) Start(ctx context.Context, payload Remo
 		return errors.New("missing session identifier")
 	}
 
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
-	if c.session != nil && c.session.ID != sessionID {
-		c.stopLocked()
+	for {
+		c.mu.Lock()
+		if c.session == nil || c.session.ID == sessionID {
+			break
+		}
+		prev := c.stopLocked(errSessionReplaced)
+		c.mu.Unlock()
+		waitSession(prev)
 	}
 
 	if c.session != nil && c.session.ID == sessionID {
 		c.applySettingsLocked(c.session, payload.Settings)
+		c.mu.Unlock()
 		return nil
 	}
 
@@ -114,7 +131,7 @@ func (c *remoteDesktopSessionController) Start(ctx context.Context, payload Remo
 
 	settings.Monitor = clampMonitorIndex(monitors, settings.Monitor)
 	monitorInfo := infos[settings.Monitor]
-	streamCtx, cancel := context.WithCancel(context.Background())
+	streamCtx, cancel := context.WithCancelCause(context.Background())
 	session := &RemoteDesktopSession{
 		ID:            sessionID,
 		Settings:      settings,
@@ -122,13 +139,16 @@ func (c *remoteDesktopSessionController) Start(ctx context.Context, payload Remo
 		monitors:      monitors,
 		monitorInfos:  infos,
 		monitorsDirty: true,
+		ctx:           streamCtx,
 		cancel:        cancel,
 	}
+	session.wg.Add(1)
 	profile, ladder, idx := selectQualityProfile(settings.Quality, monitorInfo)
 	session.qualityLadder = ladder
 	session.ladderIndex = idx
 	c.configureProfileLocked(session, monitorInfo, profile, true)
 	c.session = session
+	c.mu.Unlock()
 
 	go c.stream(streamCtx, session)
 	c.logf("remote desktop session %s started", sessionID)
@@ -136,18 +156,24 @@ func (c *remoteDesktopSessionController) Start(ctx context.Context, payload Remo
 }
 
 func (c *remoteDesktopSessionController) Stop(sessionID string) error {
-	c.mu.Lock()
-	defer c.mu.Unlock()
+	trimmed := strings.TrimSpace(sessionID)
 
+	c.mu.Lock()
 	if c.session == nil {
+		c.mu.Unlock()
 		return nil
 	}
-	if strings.TrimSpace(sessionID) != "" && sessionID != c.session.ID {
-		return fmt.Errorf("session %s not active", sessionID)
+	if trimmed != "" && trimmed != c.session.ID {
+		c.mu.Unlock()
+		return fmt.Errorf("session %s not active", trimmed)
 	}
+	stopped := c.stopLocked(errSessionStopped)
+	c.mu.Unlock()
 
-	c.logf("remote desktop session %s stopped", c.session.ID)
-	c.stopLocked()
+	waitSession(stopped)
+	if stopped != nil {
+		c.logf("remote desktop session %s stopped", stopped.ID)
+	}
 	return nil
 }
 
@@ -213,17 +239,31 @@ func (c *remoteDesktopSessionController) HandleInput(payload RemoteDesktopComman
 
 func (c *remoteDesktopSessionController) Shutdown() {
 	c.mu.Lock()
-	defer c.mu.Unlock()
-	c.stopLocked()
+	stopped := c.stopLocked(errSessionShutdown)
+	c.mu.Unlock()
+	waitSession(stopped)
 }
 
-func (c *remoteDesktopSessionController) stopLocked() {
-	if c.session != nil {
-		if c.session.cancel != nil {
-			c.session.cancel()
-		}
-		c.session = nil
+func (c *remoteDesktopSessionController) stopLocked(cause error) *RemoteDesktopSession {
+	if c.session == nil {
+		return nil
 	}
+	session := c.session
+	if session.cancel != nil {
+		if cause == nil {
+			cause = errSessionStopped
+		}
+		session.cancel(cause)
+	}
+	c.session = nil
+	return session
+}
+
+func waitSession(session *RemoteDesktopSession) {
+	if session == nil {
+		return
+	}
+	session.wg.Wait()
 }
 
 func (c *remoteDesktopSessionController) logf(format string, args ...interface{}) {
@@ -749,7 +789,9 @@ func (c *remoteDesktopSessionController) maybeAdaptQualityLocked(
 }
 
 func (c *remoteDesktopSessionController) updateConfig(cfg Config) {
-	c.cfg.Store(cfg)
+	sanitized := sanitizeConfig(cfg)
+	c.cfg.Store(sanitized)
+	c.endpointCache.Store(frameEndpointCache{})
 }
 
 func (c *remoteDesktopSessionController) config() Config {
@@ -757,4 +799,41 @@ func (c *remoteDesktopSessionController) config() Config {
 		return value.(Config)
 	}
 	return Config{}
+}
+
+func sanitizeConfig(cfg Config) Config {
+	cfg.AgentID = strings.TrimSpace(cfg.AgentID)
+	cfg.BaseURL = strings.TrimSpace(cfg.BaseURL)
+	cfg.AuthKey = strings.TrimSpace(cfg.AuthKey)
+	return cfg
+}
+
+func (c *remoteDesktopSessionController) frameEndpoint(cfg Config) (string, error) {
+	base := strings.TrimSpace(cfg.BaseURL)
+	if base == "" {
+		return "", errors.New("remote desktop: missing base URL")
+	}
+
+	agentID := strings.TrimSpace(cfg.AgentID)
+	if agentID == "" {
+		return "", errors.New("remote desktop: missing agent identifier")
+	}
+
+	if value := c.endpointCache.Load(); value != nil {
+		if cached, ok := value.(frameEndpointCache); ok {
+			if cached.base == base && cached.agentID == agentID && cached.endpoint != "" {
+				return cached.endpoint, nil
+			}
+		}
+	}
+
+	parsed, err := url.Parse(base)
+	if err != nil {
+		return "", fmt.Errorf("remote desktop: invalid base URL: %w", err)
+	}
+
+	pathRef := &url.URL{Path: fmt.Sprintf("/api/agents/%s/remote-desktop/frames", url.PathEscape(agentID))}
+	endpoint := parsed.ResolveReference(pathRef).String()
+	c.endpointCache.Store(frameEndpointCache{base: base, agentID: agentID, endpoint: endpoint})
+	return endpoint, nil
 }
