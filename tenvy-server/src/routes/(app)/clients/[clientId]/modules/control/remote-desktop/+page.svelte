@@ -59,8 +59,6 @@
 	let mouseEnabled = $state(false);
 	let keyboardEnabled = $state(false);
 	let fps = $state<number | null>(null);
-	let gpu = $state<number | null>(null);
-	let cpu = $state<number | null>(null);
 	let bandwidth = $state<number | null>(null);
 	let clipQuality = $state<number | null>(null);
 	let streamWidth = $state<number | null>(null);
@@ -127,8 +125,6 @@
 
 	function resetMetrics() {
 		fps = null;
-		gpu = null;
-		cpu = null;
 		bandwidth = null;
 		clipQuality = null;
 		streamWidth = null;
@@ -285,8 +281,6 @@
 						fps = typeof metrics.fps === 'number' ? metrics.fps : fps;
 						bandwidth =
 							typeof metrics.bandwidthKbps === 'number' ? metrics.bandwidthKbps : bandwidth;
-						cpu = typeof metrics.cpuPercent === 'number' ? metrics.cpuPercent : cpu;
-						gpu = typeof metrics.gpuPercent === 'number' ? metrics.gpuPercent : gpu;
 						clipQuality =
 							typeof metrics.clipQuality === 'number' ? metrics.clipQuality : clipQuality;
 					}
@@ -963,8 +957,6 @@
 			current.monitors && current.monitors.length > 0 ? current.monitors : fallbackMonitors;
 		if (current.metrics) {
 			fps = typeof current.metrics.fps === 'number' ? current.metrics.fps : fps;
-			gpu = typeof current.metrics.gpuPercent === 'number' ? current.metrics.gpuPercent : gpu;
-			cpu = typeof current.metrics.cpuPercent === 'number' ? current.metrics.cpuPercent : cpu;
 			bandwidth =
 				typeof current.metrics.bandwidthKbps === 'number'
 					? current.metrics.bandwidthKbps
