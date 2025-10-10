@@ -928,7 +928,7 @@
 	});
 </script>
 
-<div class="mx-auto w-full max-w-6xl space-y-6 px-4 pb-10">
+<div class="mx-auto w-full space-y-6 px-4 pb-10">
 	<Card>
 		<CardHeader class="space-y-4">
 			<div class="flex flex-wrap items-center justify-between gap-3">
@@ -964,9 +964,7 @@
 							<TabsTrigger value="connection" class="flex-1 sm:flex-none">Connection</TabsTrigger>
 							<TabsTrigger value="persistence" class="flex-1 sm:flex-none">Persistence</TabsTrigger>
 							<TabsTrigger value="execution" class="flex-1 sm:flex-none">Execution</TabsTrigger>
-							<TabsTrigger value="presentation" class="flex-1 sm:flex-none"
-								>Presentation</TabsTrigger
-							>
+							<TabsTrigger value="presentation" class="flex-1 sm:flex-none">Presentation</TabsTrigger>
 						</TabsList>
 
 						<TabsContent value="connection" class="space-y-6">
