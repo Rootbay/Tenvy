@@ -32,6 +32,7 @@ type Config struct {
 	Logger         Logger
 	UserAgent      string
 	RequestTimeout time.Duration
+	authHeader     string
 }
 
 type RemoteDesktopQuality string
