@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { HttpError } from '@sveltejs/kit';
-import { normalizeBuildRequestPayload } from '../src/routes/api/build/+server.js';
+import { normalizeBuildRequestPayload } from '../src/routes/api/build/normalizer.js';
 
 describe('normalizeBuildRequestPayload', () => {
 	it('normalizes a minimal valid payload', () => {
@@ -31,7 +31,7 @@ describe('normalizeBuildRequestPayload', () => {
 	});
 
 	it('rejects unsupported extensions for the target OS', () => {
-		const invoke = () =>
+		try {
 			normalizeBuildRequestPayload({
 				host: 'example.local',
 				outputFilename: 'payload',
@@ -39,8 +39,16 @@ describe('normalizeBuildRequestPayload', () => {
 				targetOS: 'windows',
 				targetArch: 'amd64'
 			});
-
-		expect(invoke).toThrowError(/Extension .msi is not supported/);
+			throw new Error('Expected payload validation to fail');
+		} catch (error) {
+			const err = error as HttpError;
+			expect(err.status).toBe(400);
+			const message =
+				typeof err.body === 'object' && err.body && 'message' in err.body
+					? String(err.body.message)
+					: String(err);
+			expect(message).toContain('Extension .msi is not supported');
+		}
 	});
 
 	it('rejects payloads containing unsupported fields', () => {
