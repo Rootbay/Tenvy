@@ -19,6 +19,12 @@ var (
 	errSessionShutdown = errors.New("remote desktop subsystem shutdown")
 )
 
+const (
+	defaultFrameRequestTimeout = 10 * time.Second
+	minFrameRequestTimeout     = 2 * time.Second
+	maxFrameRequestTimeout     = 20 * time.Second
+)
+
 type frameEndpointCache struct {
 	base     string
 	agentID  string
@@ -806,7 +812,15 @@ func sanitizeConfig(cfg Config) Config {
 	cfg.AgentID = strings.TrimSpace(cfg.AgentID)
 	cfg.BaseURL = normalizeBaseURL(strings.TrimSpace(cfg.BaseURL))
 	cfg.AuthKey = strings.TrimSpace(cfg.AuthKey)
+	cfg.RequestTimeout = normalizeRequestTimeout(cfg.RequestTimeout)
 	return cfg
+}
+
+func normalizeRequestTimeout(value time.Duration) time.Duration {
+	if value <= 0 {
+		return defaultFrameRequestTimeout
+	}
+	return clampDuration(value, minFrameRequestTimeout, maxFrameRequestTimeout)
 }
 
 func normalizeBaseURL(raw string) string {

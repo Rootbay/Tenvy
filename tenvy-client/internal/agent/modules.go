@@ -190,13 +190,18 @@ func (m *remoteDesktopModule) Metadata() ModuleMetadata {
 }
 
 func (m *remoteDesktopModule) Update(runtime moduleRuntime) error {
+	var requestTimeout time.Duration
+	if runtime.HTTPClient != nil {
+		requestTimeout = runtime.HTTPClient.Timeout
+	}
 	cfg := remotedesktop.Config{
-		AgentID:   runtime.AgentID,
-		BaseURL:   runtime.BaseURL,
-		AuthKey:   runtime.AuthKey,
-		Client:    runtime.HTTPClient,
-		Logger:    runtime.Logger,
-		UserAgent: runtime.UserAgent,
+		AgentID:        runtime.AgentID,
+		BaseURL:        runtime.BaseURL,
+		AuthKey:        runtime.AuthKey,
+		Client:         runtime.HTTPClient,
+		Logger:         runtime.Logger,
+		UserAgent:      runtime.UserAgent,
+		RequestTimeout: requestTimeout,
 	}
 	if m.streamer == nil {
 		m.streamer = remotedesktop.NewRemoteDesktopStreamer(cfg)
