@@ -42,11 +42,6 @@
 		{ value: 'low', label: 'Low' }
 	] satisfies { value: RemoteDesktopSettings['quality']; label: string }[];
 
-	const modeOptions = [
-		{ value: 'video', label: 'Video clips (100–300 ms)' },
-		{ value: 'images', label: 'Still frames' }
-	] satisfies { value: RemoteDesktopSettings['mode']; label: string }[];
-
 	const MAX_FRAME_QUEUE = 24;
 	const supportsImageBitmap = browser && typeof createImageBitmap === 'function';
 	const IMAGE_BASE64_PREFIX = {
@@ -58,7 +53,6 @@
 
 	const client = $derived(data.client);
 	let session = $state<RemoteDesktopSessionState | null>(data.session ?? null);
-	let activeTab = $state<'stream' | 'controls'>('stream');
 	let quality = $state<RemoteDesktopSettings['quality']>('auto');
 	let mode = $state<RemoteDesktopSettings['mode']>('video');
 	let monitor = $state(0);
@@ -122,11 +116,6 @@
 			return `Monitor ${id + 1}`;
 		}
 		return `${found.label} · ${found.width}×${found.height}`;
-	};
-
-	const modeLabel = (value: string) => {
-		const found = modeOptions.find((item) => item.value === value);
-		return found ? found.label : value;
 	};
 
 	const clamp = (value: number, min: number, max: number) => {
@@ -1052,277 +1041,189 @@
 
 <svelte:window on:keydown={handleKeyDown} on:keyup={handleKeyUp} />
 
-<Tabs bind:value={activeTab} class="space-y-6">
-	<TabsList class="w-full max-w-md">
-		<TabsTrigger value="stream">Stream</TabsTrigger>
-		<TabsTrigger value="controls">Controls</TabsTrigger>
-	</TabsList>
-
-	<TabsContent value="stream" class="space-y-6">
-		<Card>
-			<CardHeader class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-				<div class="space-y-1">
-					<CardTitle class="text-base">Remote desktop session</CardTitle>
-					<CardDescription>
-						Monitor the active screen stream for {client.codename}. Start a session to receive
-						frames.
-					</CardDescription>
+<Card>
+	<CardHeader class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+		<div class="space-y-1">
+			<CardTitle class="text-base">Remote desktop session</CardTitle>
+			<CardDescription>
+				Monitor the active screen stream for {client.codename}. Start a session to receive
+				frames.
+			</CardDescription>
+		</div>
+	</CardHeader>
+	<CardContent>
+		<div class="flex items-center gap-2">
+			<Badge variant={sessionActive ? 'default' : 'outline'}>
+				{sessionActive ? 'Active' : 'Inactive'}
+			</Badge>
+			{#if sessionId}
+				<span class="text-xs text-muted-foreground">Session ID: {sessionId}</span>
+			{/if}
+		</div>
+		<div
+			tabindex="-1"
+			bind:this={viewportEl}
+			class="relative overflow-hidden rounded-lg border border-border bg-muted/30 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+			role="application"
+			aria-label="Remote desktop viewport"
+			onfocus={handleViewportFocus}
+			onblur={handleViewportBlur}
+			onpointerdown={handlePointerDown}
+			onpointerup={handlePointerUp}
+			onpointermove={handlePointerMove}
+			onpointerleave={handlePointerLeave}
+			onpointercancel={handlePointerLeave}
+			onwheel={handleWheel}
+			style="touch-action: none;"
+		>
+			<canvas bind:this={canvasEl} class="block h-full w-full bg-slate-950"></canvas>
+			{#if !sessionActive}
+				<div
+					class="absolute inset-0 flex items-center justify-center text-sm text-muted-foreground"
+				>
+					Session inactive · start streaming to receive frames
 				</div>
-			</CardHeader>
-			<CardContent>
-				<div class="flex items-center gap-2">
-					<Badge variant={sessionActive ? 'default' : 'outline'}>
-						{sessionActive ? 'Active' : 'Inactive'}
-					</Badge>
-					{#if sessionId}
-						<span class="text-xs text-muted-foreground">Session ID: {sessionId}</span>
-					{/if}
+			{/if}
+		</div>
+		<div class="grid gap-3 text-sm sm:grid-cols-2 lg:grid-cols-5">
+			<div class="rounded-lg border border-border/60 bg-background/60 p-3">
+				<p class="text-xs text-muted-foreground uppercase">FPS</p>
+				<p class="text-sm font-semibold text-foreground">{formatMetric(fps, 'fps')}</p>
+			</div>
+			<div class="rounded-lg border border-border/60 bg-background/60 p-3">
+				<p class="text-xs text-muted-foreground uppercase">Bandwidth</p>
+				<p class="text-sm font-semibold text-foreground">{formatMetric(bandwidth, 'kbps')}</p>
+			</div>
+			<div class="rounded-lg border border-border/60 bg-background/60 p-3">
+				<p class="text-xs text-muted-foreground">JPEG quality</p>
+				<p class="text-sm font-semibold text-foreground">
+					{clipQuality === null || Number.isNaN(clipQuality)
+						? '--'
+						: `Q${Math.round(clipQuality)}`}
+				</p>
+			</div>
+			<div class="rounded-lg border border-border/60 bg-background/60 p-3">
+				<p class="text-xs text-muted-foreground">Resolution</p>
+				<p class="text-sm font-semibold text-foreground">
+					{formatResolution(streamWidth, streamHeight)}
+				</p>
+			</div>
+			<div class="rounded-lg border border-border/60 bg-background/60 p-3">
+				<p class="text-xs text-muted-foreground">Latency</p>
+				<p class="text-sm font-semibold text-foreground">{formatLatency(latencyMs)}</p>
+			</div>
+		</div>
+		{#if errorMessage}
+			<p class="text-sm text-destructive">{errorMessage}</p>
+		{/if}
+		{#if infoMessage}
+			<p class="text-sm text-emerald-500">{infoMessage}</p>
+		{/if}
+	</CardContent>
+	<CardFooter
+		class="flex flex-wrap items-center justify-between gap-3 text-xs text-muted-foreground"
+	>
+		<div>
+			<span>Last frame: {formatTimestamp(session?.lastUpdatedAt)}</span>
+			{#if droppedFrames > 0}
+				<p class="text-xs text-muted-foreground">
+					Dropped {droppedFrames} frame{droppedFrames === 1 ? '' : 's'} to keep playback responsive.
+				</p>
+			{/if}
+		</div>
+		<div class="flex gap-4">
+			<div class="w-70">
+				<Label class="text-sm font-medium" for="quality-select">Quality</Label>
+				<Select
+					type="single"
+					value={quality}
+					onValueChange={(value) => {
+						quality = value as RemoteDesktopSettings['quality'];
+						if (sessionActive) {
+							void updateSession({ quality });
+						}
+					}}
+				>
+					<SelectTrigger
+						id="quality-select"
+						class="w-full"
+						disabled={isUpdating && sessionActive}
+					>
+						<span class="truncate">{qualityLabel(quality)}</span>
+					</SelectTrigger>
+					<SelectContent>
+						{#each qualityOptions as option (option.value)}
+							<SelectItem value={option.value}>{option.label}</SelectItem>
+						{/each}
+					</SelectContent>
+				</Select>
+			</div>
+			<div class="space-y-2 w-70">
+				<Label class="text-sm font-medium" for="monitor-select">Monitor</Label>
+				<Select
+					type="single"
+					value={monitor.toString()}
+					onValueChange={(value) => {
+						const next = Number.parseInt(value, 10);
+						monitor = Number.isNaN(next) ? 0 : next;
+						if (sessionActive) {
+							void updateSession({ monitor });
+						}
+					}}
+				>
+					<SelectTrigger
+						id="monitor-select"
+						class="w-full"
+						disabled={isUpdating && sessionActive}
+					>
+						<span class="truncate">{monitorLabel(monitor)}</span>
+					</SelectTrigger>
+					<SelectContent>
+						{#each monitors as item (item.id)}
+							<SelectItem value={item.id.toString()}>
+								Monitor {item.id + 1} · {item.width}×{item.height}
+							</SelectItem>
+						{/each}
+					</SelectContent>
+				</Select>
+			</div>
+			<div class="rounded-lg border border-border bg-muted/40 flex">	
+				<div
+					class="flex gap-2 p-3"
+				>
+					<div>
+						<p class="text-sm font-medium">Mouse control</p>
+					</div>
+					<Switch
+						bind:checked={mouseEnabled}
+						disabled={!sessionActive || isUpdating}
+						aria-label="Toggle mouse control"
+					/>
 				</div>
 				<div
-					tabindex="-1"
-					bind:this={viewportEl}
-					class="relative overflow-hidden rounded-lg border border-border bg-muted/30 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
-					role="application"
-					aria-label="Remote desktop viewport"
-					onfocus={handleViewportFocus}
-					onblur={handleViewportBlur}
-					onpointerdown={handlePointerDown}
-					onpointerup={handlePointerUp}
-					onpointermove={handlePointerMove}
-					onpointerleave={handlePointerLeave}
-					onpointercancel={handlePointerLeave}
-					onwheel={handleWheel}
-					style="touch-action: none;"
+					class="flex gap-2 p-3"
 				>
-					<canvas bind:this={canvasEl} class="block h-full w-full bg-slate-950"></canvas>
-					{#if !sessionActive}
-						<div
-							class="absolute inset-0 flex items-center justify-center text-sm text-muted-foreground"
-						>
-							Session inactive · start streaming to receive frames
-						</div>
-					{/if}
+					<div>
+						<p class="text-sm font-medium">Keyboard control</p>
+					</div>
+					<Switch
+						bind:checked={keyboardEnabled}
+						disabled={!sessionActive || isUpdating}
+						aria-label="Toggle keyboard control"
+					/>
 				</div>
-				<div class="grid gap-3 text-sm sm:grid-cols-2 lg:grid-cols-4">
-					<div class="rounded-lg border border-border/60 bg-background/60 p-3">
-						<p class="text-xs text-muted-foreground uppercase">FPS</p>
-						<p class="text-sm font-semibold text-foreground">{formatMetric(fps, 'fps')}</p>
-					</div>
-					<div class="rounded-lg border border-border/60 bg-background/60 p-3">
-						<p class="text-xs text-muted-foreground uppercase">GPU</p>
-						<p class="text-sm font-semibold text-foreground">{formatPercent(gpu)}</p>
-					</div>
-					<div class="rounded-lg border border-border/60 bg-background/60 p-3">
-						<p class="text-xs text-muted-foreground uppercase">CPU</p>
-						<p class="text-sm font-semibold text-foreground">{formatPercent(cpu)}</p>
-					</div>
-					<div class="rounded-lg border border-border/60 bg-background/60 p-3">
-						<p class="text-xs text-muted-foreground uppercase">Bandwidth</p>
-						<p class="text-sm font-semibold text-foreground">{formatMetric(bandwidth, 'kbps')}</p>
-					</div>
-				</div>
-				{#if errorMessage}
-					<p class="text-sm text-destructive">{errorMessage}</p>
-				{/if}
-				{#if infoMessage}
-					<p class="text-sm text-emerald-500">{infoMessage}</p>
-				{/if}
-			</CardContent>
-			<CardFooter
-				class="flex flex-wrap items-center justify-between gap-3 text-xs text-muted-foreground"
-			>
-				<span>Last frame: {formatTimestamp(session?.lastUpdatedAt)}</span>
-				<div class="flex gap-2">
-					{#if sessionActive}
-						<Button variant="destructive" disabled={isStopping} onclick={stopSession}>
-							{isStopping ? 'Stopping…' : 'Stop session'}
-						</Button>
-					{:else}
-						<Button disabled={isStarting} onclick={startSession}>
-							{isStarting ? 'Starting…' : 'Start session'}
-						</Button>
-					{/if}
-				</div>
-			</CardFooter>
-		</Card>
-	</TabsContent>
-
-	<TabsContent value="controls">
-		<Card>
-			<CardHeader>
-				<CardTitle class="text-base">Session controls</CardTitle>
-				<CardDescription>
-					Adjust encoder preferences and input sharing while the session is active.
-				</CardDescription>
-			</CardHeader>
-			<CardContent class="space-y-6">
-				<div class="grid gap-4 md:grid-cols-3">
-					<div class="space-y-2">
-						<Label class="text-sm font-medium" for="quality-select">Quality</Label>
-						<Select
-							type="single"
-							value={quality}
-							onValueChange={(value) => {
-								quality = value as RemoteDesktopSettings['quality'];
-								if (sessionActive) {
-									void updateSession({ quality });
-								}
-							}}
-						>
-							<SelectTrigger
-								id="quality-select"
-								class="w-full"
-								disabled={isUpdating && sessionActive}
-							>
-								<span class="truncate">{qualityLabel(quality)}</span>
-							</SelectTrigger>
-							<SelectContent>
-								{#each qualityOptions as option (option.value)}
-									<SelectItem value={option.value}>{option.label}</SelectItem>
-								{/each}
-							</SelectContent>
-						</Select>
-						<p class="text-xs text-muted-foreground">
-							Auto balances fidelity and responsiveness based on observed frame pacing.
-						</p>
-					</div>
-					<div class="space-y-2">
-						<Label class="text-sm font-medium" for="mode-select">Stream mode</Label>
-						<Select
-							type="single"
-							value={mode}
-							onValueChange={(value) => {
-								mode = value as RemoteDesktopSettings['mode'];
-								if (sessionActive) {
-									void updateSession({ mode });
-								}
-							}}
-						>
-							<SelectTrigger id="mode-select" class="w-full" disabled={isUpdating && sessionActive}>
-								<span class="truncate">{modeLabel(mode)}</span>
-							</SelectTrigger>
-							<SelectContent>
-								{#each modeOptions as option (option.value)}
-									<SelectItem value={option.value}>{option.label}</SelectItem>
-								{/each}
-							</SelectContent>
-						</Select>
-						<p class="text-xs text-muted-foreground">
-							Video clips bundle 100–300 ms of motion to improve smoothness.
-						</p>
-					</div>
-					<div class="space-y-2">
-						<Label class="text-sm font-medium" for="monitor-select">Monitor</Label>
-						<Select
-							type="single"
-							value={monitor.toString()}
-							onValueChange={(value) => {
-								const next = Number.parseInt(value, 10);
-								monitor = Number.isNaN(next) ? 0 : next;
-								if (sessionActive) {
-									void updateSession({ monitor });
-								}
-							}}
-						>
-							<SelectTrigger
-								id="monitor-select"
-								class="w-full"
-								disabled={isUpdating && sessionActive}
-							>
-								<span class="truncate">{monitorLabel(monitor)}</span>
-							</SelectTrigger>
-							<SelectContent>
-								{#each monitors as item (item.id)}
-									<SelectItem value={item.id.toString()}>
-										Monitor {item.id + 1} · {item.width}×{item.height}
-									</SelectItem>
-								{/each}
-							</SelectContent>
-						</Select>
-						<p class="text-xs text-muted-foreground">
-							Choose which display surface to capture when streaming.
-						</p>
-					</div>
-				</div>
-				<Separator />
-				<div class="grid gap-4 md:grid-cols-2">
-					<div
-						class="flex items-start justify-between gap-4 rounded-lg border border-border bg-muted/40 p-4"
-					>
-						<div>
-							<p class="text-sm font-medium">Mouse control</p>
-							<p class="text-xs text-muted-foreground">
-								Allow pointer events to be relayed to the remote system.
-							</p>
-						</div>
-						<Switch
-							bind:checked={mouseEnabled}
-							disabled={!sessionActive || isUpdating}
-							aria-label="Toggle mouse control"
-						/>
-					</div>
-					<div
-						class="flex items-start justify-between gap-4 rounded-lg border border-border bg-muted/40 p-4"
-					>
-						<div>
-							<p class="text-sm font-medium">Keyboard control</p>
-							<p class="text-xs text-muted-foreground">
-								Forward keyboard input when focus is inside the session viewport.
-							</p>
-						</div>
-						<Switch
-							bind:checked={keyboardEnabled}
-							disabled={!sessionActive || isUpdating}
-							aria-label="Toggle keyboard control"
-						/>
-					</div>
-				</div>
-				<Separator />
-				<div class="grid gap-3 text-sm">
-					<p class="text-xs text-muted-foreground uppercase">Current metrics</p>
-					<div class="grid gap-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6">
-						<div class="rounded-lg border border-border/60 bg-background/60 p-3">
-							<p class="text-xs text-muted-foreground">Frame rate</p>
-							<p class="text-sm font-semibold text-foreground">{formatMetric(fps, 'fps')}</p>
-						</div>
-						<div class="rounded-lg border border-border/60 bg-background/60 p-3">
-							<p class="text-xs text-muted-foreground">GPU usage</p>
-							<p class="text-sm font-semibold text-foreground">{formatPercent(gpu)}</p>
-						</div>
-						<div class="rounded-lg border border-border/60 bg-background/60 p-3">
-							<p class="text-xs text-muted-foreground">CPU usage</p>
-							<p class="text-sm font-semibold text-foreground">{formatPercent(cpu)}</p>
-						</div>
-						<div class="rounded-lg border border-border/60 bg-background/60 p-3">
-							<p class="text-xs text-muted-foreground">Bandwidth</p>
-							<p class="text-sm font-semibold text-foreground">{formatMetric(bandwidth, 'kbps')}</p>
-						</div>
-						<div class="rounded-lg border border-border/60 bg-background/60 p-3">
-							<p class="text-xs text-muted-foreground">JPEG quality</p>
-							<p class="text-sm font-semibold text-foreground">
-								{clipQuality === null || Number.isNaN(clipQuality)
-									? '--'
-									: `Q${Math.round(clipQuality)}`}
-							</p>
-						</div>
-						<div class="rounded-lg border border-border/60 bg-background/60 p-3">
-							<p class="text-xs text-muted-foreground">Resolution</p>
-							<p class="text-sm font-semibold text-foreground">
-								{formatResolution(streamWidth, streamHeight)}
-							</p>
-						</div>
-						<div class="rounded-lg border border-border/60 bg-background/60 p-3">
-							<p class="text-xs text-muted-foreground">Latency</p>
-							<p class="text-sm font-semibold text-foreground">{formatLatency(latencyMs)}</p>
-						</div>
-					</div>
-					{#if droppedFrames > 0}
-						<p class="text-xs text-muted-foreground">
-							Dropped {droppedFrames} frame{droppedFrames === 1 ? '' : 's'} to keep playback responsive.
-						</p>
-					{/if}
-				</div>
-			</CardContent>
-		</Card>
-	</TabsContent>
-</Tabs>
+			</div>
+		</div>
+		<div class="flex gap-2">
+			{#if sessionActive}
+				<Button variant="destructive" disabled={isStopping} onclick={stopSession}>
+					{isStopping ? 'Stopping…' : 'Stop session'}
+				</Button>
+			{:else}
+				<Button disabled={isStarting} onclick={startSession}>
+					{isStarting ? 'Starting…' : 'Start session'}
+				</Button>
+			{/if}
+		</div>
+	</CardFooter>
+</Card>
