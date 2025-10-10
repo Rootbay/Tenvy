@@ -2,6 +2,11 @@
 
 This note captures proposed optimizations for the Tenvy remote desktop pipeline. The goal is to reduce latency, increase visual quality, and keep bandwidth usage adaptive across diverse network conditions.
 
+## Recent Updates
+
+- Added a shared worker pool for region encoding so dirty-rectangle compression no longer spawns transient goroutines every frame, reducing scheduling jitter and stabilizing latency under load.
+- Hardened HTTP clients by ensuring TLS verification cannot be disabled and by wiping pooled JSON request buffers before reuse to avoid leaking captured desktop content across sessions.
+
 ## 1. GPU-Accelerated Video Encoding (H.265/HEVC)
 
 **Rationale**

@@ -88,6 +88,10 @@ func secureHTTPTransport(rt http.RoundTripper) http.RoundTripper {
 		transport.TLSClientConfig = cfg
 	}
 
+	if transport.TLSClientConfig != nil {
+		transport.TLSClientConfig.InsecureSkipVerify = false
+	}
+
 	return transport
 }
 
