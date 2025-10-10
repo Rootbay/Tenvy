@@ -9,19 +9,43 @@ function isNonEmptyString(value: unknown): value is string {
 	return typeof value === 'string' && value.trim().length > 0;
 }
 
+function normalizePath(path: string): string {
+	const trimmed = path.trim();
+	if (trimmed.length <= 1) {
+		return trimmed;
+	}
+
+	if (/^[a-zA-Z]:[\/]?$/.test(trimmed)) {
+		const slash = trimmed.includes('/') ? '/' : '\\';
+		return `${trimmed[0]}:${slash}`;
+	}
+
+	return trimmed.replace(/[\\/]+$/, (match, offset) => (offset === 0 ? match : ''));
+}
+
 function cloneEntry(entry: FileSystemEntry): FileSystemEntry {
-	return { ...entry };
+	return {
+		...entry,
+		path: normalizePath(entry.path)
+	} satisfies FileSystemEntry;
 }
 
 function cloneDirectory(listing: DirectoryListing): DirectoryListing {
 	return {
 		...listing,
+		root: normalizePath(listing.root),
+		path: normalizePath(listing.path),
+		parent: listing.parent ? normalizePath(listing.parent) : listing.parent,
 		entries: listing.entries.map((entry) => cloneEntry(entry))
 	} satisfies DirectoryListing;
 }
 
 function cloneFile(resource: FileContent): FileContent {
-	return { ...resource } satisfies FileContent;
+	return {
+		...resource,
+		root: normalizePath(resource.root),
+		path: normalizePath(resource.path)
+	} satisfies FileContent;
 }
 
 function assertEntry(entry: unknown): asserts entry is FileSystemEntry {
@@ -177,7 +201,8 @@ export class FileManagerStore {
 	getResource(agentId: string, path?: string | null): FileManagerResource {
 		ensureAgent(agentId);
 
-		const normalized = typeof path === 'string' && path.trim().length > 0 ? path.trim() : undefined;
+		const normalized =
+			typeof path === 'string' && path.trim().length > 0 ? normalizePath(path) : undefined;
 
 		const directoryMap = this.directories.get(agentId);
 		const fileMap = this.files.get(agentId);
@@ -220,7 +245,7 @@ export class FileManagerStore {
 		if (!isNonEmptyString(path)) {
 			throw new FileManagerError('Path is required for removal', 400);
 		}
-		const normalized = path.trim();
+		const normalized = normalizePath(path);
 		this.directories.get(agentId)?.delete(normalized);
 		this.files.get(agentId)?.delete(normalized);
 		const fallback = this.defaults.get(agentId);
