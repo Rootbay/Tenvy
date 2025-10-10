@@ -62,7 +62,13 @@
 					class="sm:flex-1"
 					bind:value={mutexName}
 				/>
-				<Button type="button" variant="outline" size="sm" class="shrink-0" onclick={assignMutexName}>
+				<Button
+					type="button"
+					variant="outline"
+					size="sm"
+					class="shrink-0"
+					onclick={assignMutexName}
+				>
 					<Wand2 class="h-4 w-4" />
 					Generate
 				</Button>
@@ -83,7 +89,9 @@
 		</p>
 	</div>
 	<div class="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
-		<div class="flex items-start justify-between gap-4 rounded-lg border border-border bg-muted/30 p-4">
+		<div
+			class="flex items-start justify-between gap-4 rounded-lg border border-border bg-muted/30 p-4"
+		>
 			<div>
 				<p class="text-sm font-medium">Melt after run</p>
 				<p class="text-xs text-muted-foreground">
@@ -95,7 +103,9 @@
 				aria-label="Toggle whether the temporary binary deletes itself"
 			/>
 		</div>
-		<div class="flex items-start justify-between gap-4 rounded-lg border border-border bg-muted/30 p-4">
+		<div
+			class="flex items-start justify-between gap-4 rounded-lg border border-border bg-muted/30 p-4"
+		>
 			<div>
 				<p class="text-sm font-medium">Startup on boot</p>
 				<p class="text-xs text-muted-foreground">
@@ -104,19 +114,20 @@
 			</div>
 			<Switch bind:checked={startupOnBoot} aria-label="Toggle startup persistence preference" />
 		</div>
-		<div class="flex items-start justify-between gap-4 rounded-lg border border-border bg-muted/30 p-4">
+		<div
+			class="flex items-start justify-between gap-4 rounded-lg border border-border bg-muted/30 p-4"
+		>
 			<div>
 				<p class="text-sm font-medium">Developer mode</p>
 				<p class="text-xs text-muted-foreground">
 					Keep the console window visible to surface runtime logs and errors.
 				</p>
 			</div>
-			<Switch
-				bind:checked={developerMode}
-				aria-label="Toggle developer mode console visibility"
-			/>
+			<Switch bind:checked={developerMode} aria-label="Toggle developer mode console visibility" />
 		</div>
-		<div class="flex items-start justify-between gap-4 rounded-lg border border-border bg-muted/30 p-4">
+		<div
+			class="flex items-start justify-between gap-4 rounded-lg border border-border bg-muted/30 p-4"
+		>
 			<div>
 				<p class="text-sm font-medium">Binary compression</p>
 				<p class="text-xs text-muted-foreground">
@@ -125,7 +136,9 @@
 			</div>
 			<Switch bind:checked={compressBinary} aria-label="Toggle binary compression" />
 		</div>
-		<div class="flex items-start justify-between gap-4 rounded-lg border border-border bg-muted/30 p-4">
+		<div
+			class="flex items-start justify-between gap-4 rounded-lg border border-border bg-muted/30 p-4"
+		>
 			<div>
 				<p class="text-sm font-medium">Require administrator</p>
 				<p class="text-xs text-muted-foreground">
@@ -134,7 +147,9 @@
 			</div>
 			<Switch bind:checked={forceAdmin} aria-label="Toggle administrator requirement" />
 		</div>
-		<div class="flex items-start justify-between gap-4 rounded-lg border border-border bg-muted/30 p-4">
+		<div
+			class="flex items-start justify-between gap-4 rounded-lg border border-border bg-muted/30 p-4"
+		>
 			<div class="w-full">
 				<p class="text-sm font-medium">Watchdog</p>
 				<p class="text-xs text-muted-foreground">
@@ -160,7 +175,9 @@
 			</div>
 			<Switch bind:checked={watchdogEnabled} aria-label="Toggle watchdog respawn" />
 		</div>
-		<div class="flex items-start justify-between gap-4 rounded-lg border border-border bg-muted/30 p-4">
+		<div
+			class="flex items-start justify-between gap-4 rounded-lg border border-border bg-muted/30 p-4"
+		>
 			<div class="w-full">
 				<p class="text-sm font-medium">File pumper</p>
 				<p class="text-xs text-muted-foreground">

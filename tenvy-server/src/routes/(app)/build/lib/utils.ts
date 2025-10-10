@@ -2,7 +2,6 @@ import {
 	DEFAULT_FILE_INFORMATION,
 	EXTENSION_SPOOF_PRESETS,
 	type CookieKV,
-	type Endpoint,
 	type HeaderKV
 } from './constants';
 
@@ -21,20 +20,6 @@ export function normalizeSpoofExtension(value: string): string | null {
 	return `.${alphanumeric}`;
 }
 
-export function normalizeHexColor(value: string, fallback: string): string {
-	const trimmed = value.trim();
-	if (!trimmed) {
-		return fallback;
-	}
-
-	const hex = trimmed.startsWith('#') ? trimmed.slice(1) : trimmed;
-	if (/^[0-9A-Fa-f]{6}$/.test(hex)) {
-		return `#${hex.toLowerCase()}`;
-	}
-
-	return fallback;
-}
-
 export function sanitizeFileInformation(info: Record<string, string>): Record<string, string> {
 	return Object.entries(info)
 		.map(([key, value]) => [key, value.trim()] as const)
@@ -45,33 +30,6 @@ export function sanitizeFileInformation(info: Record<string, string>): Record<st
 			}
 			return acc;
 		}, {});
-}
-
-export function normalizePortValue(value: string): string {
-	const trimmed = value.trim();
-	if (!trimmed) {
-		return '';
-	}
-	return trimmed.replace(/[^\d]/g, '');
-}
-
-export function addFallbackEndpoint(endpoints: Endpoint[]): Endpoint[] {
-	return [...endpoints, { host: '', port: '' }];
-}
-
-export function updateFallbackEndpoint(
-	endpoints: Endpoint[],
-	index: number,
-	key: 'host' | 'port',
-	value: string
-): Endpoint[] {
-	return endpoints.map((endpoint, current) =>
-		current === index ? { ...endpoint, [key]: value } : endpoint
-	);
-}
-
-export function removeFallbackEndpoint(endpoints: Endpoint[], index: number): Endpoint[] {
-	return endpoints.filter((_, current) => current !== index);
 }
 
 export function addCustomHeader(headers: HeaderKV[]): HeaderKV[] {
@@ -112,23 +70,6 @@ export function removeCustomCookie(cookies: CookieKV[], index: number): CookieKV
 	return cookies.filter((_, current) => current !== index);
 }
 
-export function formatFileSize(bytes: number | null): string {
-	if (!Number.isFinite(bytes) || bytes === null) {
-		return '';
-	}
-	if (bytes < 1024) {
-		return `${bytes} B`;
-	}
-	const units = ['KB', 'MB', 'GB', 'TB'] as const;
-	let size = bytes;
-	let unitIndex = 0;
-	while (size >= 1024 && unitIndex < units.length - 1) {
-		size /= 1024;
-		unitIndex += 1;
-	}
-	return `${size.toFixed(1)} ${units[unitIndex]}`;
-}
-
 export function inputValueFromEvent(event: Event): string {
 	const target = event.currentTarget as HTMLInputElement | HTMLTextAreaElement | null;
 	return target?.value ?? '';
@@ -152,29 +93,6 @@ export function toIsoDateTime(value: string): string | null {
 		return null;
 	}
 	return date.toISOString();
-}
-
-export async function readFileAsBase64(file: File): Promise<string> {
-	return new Promise((resolve, reject) => {
-		const reader = new FileReader();
-		reader.onload = () => {
-			const result = reader.result;
-			if (typeof result !== 'string') {
-				reject(new Error('Failed to process file payload.'));
-				return;
-			}
-			const base64Payload = result.split(',')[1];
-			if (!base64Payload) {
-				reject(new Error('File payload is empty.'));
-				return;
-			}
-			resolve(base64Payload);
-		};
-		reader.onerror = () => {
-			reject(new Error('Failed to read file.'));
-		};
-		reader.readAsDataURL(file);
-	});
 }
 
 export function generateMutexName(length = 16): string {
@@ -206,7 +124,7 @@ export function withPresetSpoofExtension(
 ): string {
 	if (!enabled) {
 		return '';
-}
+	}
 
 	const trimmedCustom = customValue.trim();
 	const customNormalized = normalizeSpoofExtension(trimmedCustom);
