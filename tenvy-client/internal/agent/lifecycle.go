@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/url"
 	"runtime"
+	"slices"
 	"strings"
 	"time"
 
@@ -22,10 +23,8 @@ func (a *Agent) run(ctx context.Context) {
 	backoff := pollInterval
 
 	for {
-		select {
-		case <-ctx.Done():
+		if err := sleepContext(ctx, a.withJitter(pollInterval)); err != nil {
 			return
-		case <-time.After(a.withJitter(pollInterval)):
 		}
 
 		if err := a.sync(ctx, statusOnline); err != nil {
@@ -45,10 +44,8 @@ func (a *Agent) run(ctx context.Context) {
 				a.logger.Printf("sync error: %v", err)
 			}
 			backoff = minDuration(backoff*2, a.maxBackoff())
-			select {
-			case <-ctx.Done():
+			if err := sleepContext(ctx, backoff); err != nil {
 				return
-			case <-time.After(backoff):
 			}
 			continue
 		}
@@ -86,7 +83,7 @@ func (a *Agent) sync(ctx context.Context, status string) error {
 func (a *Agent) performSync(ctx context.Context, status string, results []protocol.CommandResult) (*protocol.AgentSyncResponse, error) {
 	request := protocol.AgentSyncRequest{
 		Status:    status,
-		Timestamp: time.Now().UTC().Format(time.RFC3339Nano),
+		Timestamp: timestampNow(),
 		Metrics:   a.collectMetrics(),
 	}
 	if len(results) > 0 {
@@ -186,26 +183,29 @@ func (a *Agent) enqueueResults(results []protocol.CommandResult) {
 	a.resultMu.Lock()
 	defer a.resultMu.Unlock()
 
-	if len(results) >= maxBufferedResults {
-		results = append([]protocol.CommandResult(nil), results[len(results)-maxBufferedResults:]...)
+	trimmed := limitResults(results, maxBufferedResults)
+	if len(trimmed) == 0 {
+		return
 	}
 
-	a.pendingResults = append(a.pendingResults, results...)
+	a.pendingResults = append(a.pendingResults, trimmed...)
 	a.trimPendingResultsLocked()
 }
 
 func (a *Agent) trimPendingResultsLocked() {
+	if len(a.pendingResults) == 0 {
+		return
+	}
+	if maxBufferedResults <= 0 {
+		a.pendingResults = a.pendingResults[:0]
+		return
+	}
 	if len(a.pendingResults) <= maxBufferedResults {
 		return
 	}
 
-	if maxBufferedResults == 0 {
-		a.pendingResults = a.pendingResults[:0]
-		return
-	}
-
 	keep := a.pendingResults[len(a.pendingResults)-maxBufferedResults:]
-	a.pendingResults = append([]protocol.CommandResult(nil), keep...)
+	a.pendingResults = slices.Clone(keep)
 }
 
 func (a *Agent) consumeResults() []protocol.CommandResult {
@@ -214,8 +214,7 @@ func (a *Agent) consumeResults() []protocol.CommandResult {
 	if len(a.pendingResults) == 0 {
 		return nil
 	}
-	results := make([]protocol.CommandResult, len(a.pendingResults))
-	copy(results, a.pendingResults)
+	results := slices.Clone(a.pendingResults)
 	a.pendingResults = a.pendingResults[:0]
 	return results
 }
@@ -274,4 +273,14 @@ func (a *Agent) shutdown(ctx context.Context) {
 	if err := a.sync(ctx, statusOffline); err != nil {
 		a.logger.Printf("failed to send offline heartbeat: %v", err)
 	}
+}
+
+func limitResults(results []protocol.CommandResult, limit int) []protocol.CommandResult {
+	if limit <= 0 || len(results) == 0 {
+		return nil
+	}
+	if len(results) <= limit {
+		return results
+	}
+	return results[len(results)-limit:]
 }
