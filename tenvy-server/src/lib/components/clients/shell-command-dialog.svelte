@@ -16,7 +16,7 @@
 	import { createEventDispatcher } from 'svelte';
 	import type { AgentSnapshot } from '../../../../../shared/types/agent';
 
-	export type ShellDialogEvents = {
+	type ShellDialogEvents = {
 		close: void;
 		submit: void;
 		commandChange: string;

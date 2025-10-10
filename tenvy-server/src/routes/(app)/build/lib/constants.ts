@@ -27,23 +27,29 @@ const ARCHITECTURE_LABELS: Record<TargetArch, string> = {
 	arm64: 'ARM64'
 };
 
-export const ARCHITECTURE_OPTIONS_BY_OS: Record<
-	TargetOS,
-	readonly { value: TargetArch; label: string }[]
-> = Object.fromEntries(
-	TARGET_OS_VALUES.map((os) => [
-		os,
-		TARGET_ARCHITECTURES_BY_OS[os].map((arch) => ({
-			value: arch,
-			label:
-				os === 'darwin' && arch === 'amd64'
-					? 'Intel (x64)'
-					: os === 'darwin' && arch === 'arm64'
-						? 'Apple Silicon (ARM64)'
-						: ARCHITECTURE_LABELS[arch]
-		}))
-	])
-) as Record<TargetOS, readonly { value: TargetArch; label: string }[]>;
+const formatArchitectureLabel = (os: TargetOS, arch: TargetArch): string => {
+	if (os === 'darwin' && arch === 'amd64') {
+		return 'Intel (x64)';
+	}
+
+	if (os === 'darwin' && arch === 'arm64') {
+		return 'Apple Silicon (ARM64)';
+	}
+
+	return ARCHITECTURE_LABELS[arch];
+};
+
+const createArchitectureOptions = (os: TargetOS): readonly { value: TargetArch; label: string }[] =>
+	TARGET_ARCHITECTURES_BY_OS[os].map((arch) => ({
+		value: arch,
+		label: formatArchitectureLabel(os, arch)
+	}));
+
+export const ARCHITECTURE_OPTIONS_BY_OS = {
+	windows: createArchitectureOptions('windows'),
+	linux: createArchitectureOptions('linux'),
+	darwin: createArchitectureOptions('darwin')
+} satisfies Record<TargetOS, readonly { value: TargetArch; label: string }[]>;
 
 export const EXTENSION_SPOOF_PRESETS = [
 	'.jpg',

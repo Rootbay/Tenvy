@@ -16,7 +16,7 @@
 	import { createEventDispatcher } from 'svelte';
 	import type { AgentSnapshot } from '../../../../../shared/types/agent';
 
-	export type PingDialogEvents = {
+	type PingDialogEvents = {
 		close: void;
 		submit: void;
 		messageChange: string;

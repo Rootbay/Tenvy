@@ -11,12 +11,13 @@ import {
 	ALLOWED_EXTENSIONS_BY_OS,
 	TARGET_ARCHITECTURES_BY_OS,
 	TARGET_OS_VALUES,
-	buildRequestSchema,
 	type BuildRequest,
 	type BuildResponse,
 	type TargetArch,
-	type TargetOS
+	type TargetOS,
+	type WindowsFileInformation
 } from '../../../../../shared/types/build';
+import { buildRequestSchema } from '$lib/validation/build-schema';
 
 const allowedTargetOS = new Set<TargetOS>(TARGET_OS_VALUES);
 const architectureMatrix = new Map<TargetOS, Set<TargetArch>>(
@@ -27,7 +28,7 @@ const extensionMatrix = new Map<TargetOS, Set<string>>(
 );
 
 const mutexSanitizer = /[^A-Za-z0-9._-]/g;
-const allowedFileInfoKeys = new Map<string, string>([
+const allowedFileInfoEntries = [
 	['fileDescription', 'FileDescription'],
 	['productName', 'ProductName'],
 	['companyName', 'CompanyName'],
@@ -36,7 +37,9 @@ const allowedFileInfoKeys = new Map<string, string>([
 	['originalFilename', 'OriginalFilename'],
 	['internalName', 'InternalName'],
 	['legalCopyright', 'LegalCopyright']
-]);
+] as const satisfies readonly [keyof WindowsFileInformation, string][];
+
+const allowedFileInfoKeys = new Map(allowedFileInfoEntries);
 const maxVersionComponent = 65535;
 const maxMutexLength = 120;
 const maxIconBytes = 512 * 1024;

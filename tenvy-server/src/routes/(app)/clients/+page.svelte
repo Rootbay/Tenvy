@@ -817,31 +817,31 @@
 	{#if pingAgent}
 		<PingAgentDialog
 			agent={pingAgent}
-			message={pingMessages[pingAgent.id] ?? ''}
-			error={getError(`ping:${pingAgent.id}`)}
-			success={getSuccess(`ping:${pingAgent.id}`)}
-			pending={isPending(`ping:${pingAgent.id}`)}
+			message={pingMessages[pingAgent!.id] ?? ''}
+			error={getError(`ping:${pingAgent!.id}`)}
+			success={getSuccess(`ping:${pingAgent!.id}`)}
+			pending={isPending(`ping:${pingAgent!.id}`)}
 			on:close={closePingDialog}
 			on:submit={handlePingSubmit}
 			on:messageChange={(event) =>
-				(pingMessages = updateRecord(pingMessages, pingAgent.id, event.detail))}
+				(pingMessages = updateRecord(pingMessages, pingAgent!.id, event.detail))}
 		/>
 	{/if}
 
 	{#if shellAgent}
 		<ShellCommandDialog
 			agent={shellAgent}
-			command={shellCommands[shellAgent.id] ?? ''}
-			timeout={shellTimeouts[shellAgent.id]}
-			error={getError(`shell:${shellAgent.id}`)}
-			success={getSuccess(`shell:${shellAgent.id}`)}
-			pending={isPending(`shell:${shellAgent.id}`)}
+			command={shellCommands[shellAgent!.id] ?? ''}
+			timeout={shellTimeouts[shellAgent!.id]}
+			error={getError(`shell:${shellAgent!.id}`)}
+			success={getSuccess(`shell:${shellAgent!.id}`)}
+			pending={isPending(`shell:${shellAgent!.id}`)}
 			on:close={closeShellDialog}
 			on:submit={handleShellSubmit}
 			on:commandChange={(event) =>
-				(shellCommands = updateRecord(shellCommands, shellAgent.id, event.detail))}
+				(shellCommands = updateRecord(shellCommands, shellAgent!.id, event.detail))}
 			on:timeoutChange={(event) =>
-				(shellTimeouts = updateRecord(shellTimeouts, shellAgent.id, event.detail))}
+				(shellTimeouts = updateRecord(shellTimeouts, shellAgent!.id, event.detail))}
 		/>
 	{/if}
 </section>
