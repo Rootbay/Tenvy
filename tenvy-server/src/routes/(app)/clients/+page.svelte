@@ -22,39 +22,26 @@
 		TableRow
 	} from '$lib/components/ui/table/index.js';
 	import {
-		ContextMenu,
-		ContextMenuContent,
-		ContextMenuItem,
-		ContextMenuSeparator,
-		ContextMenuTrigger,
-		ContextMenuSub,
-		ContextMenuSubContent,
-		ContextMenuSubTrigger
-	} from '$lib/components/ui/context-menu/index.js';
-	import {
-		Dialog as DialogRoot,
-		DialogContent,
-		DialogDescription,
-		DialogFooter,
-		DialogHeader,
-		DialogTitle
-	} from '$lib/components/ui/dialog/index.js';
-	import {
 		Select,
 		SelectContent,
 		SelectItem,
 		SelectTrigger
 	} from '$lib/components/ui/select/index.js';
 	import ClientToolDialog from '$lib/components/client-tool-dialog.svelte';
-	import OsLogo from '$lib/components/os-logo.svelte';
+	import ClientsTableRow from '$lib/components/clients/clients-table-row.svelte';
+	import DeployAgentDialog from '$lib/components/clients/deploy-agent-dialog.svelte';
+	import PingAgentDialog from '$lib/components/clients/ping-agent-dialog.svelte';
+	import ShellCommandDialog from '$lib/components/clients/shell-command-dialog.svelte';
+	import { sectionToolMap, type SectionKey } from '$lib/client-sections';
+	import { createClientsTableStore } from '$lib/stores/clients-table';
 	import {
 		buildClientToolUrl,
 		getClientTool,
 		isDialogTool,
-		type ClientToolId,
 		type DialogToolId
 	} from '$lib/data/client-tools';
 	import type { Client } from '$lib/data/clients';
+	import { get } from 'svelte/store';
 	import { onDestroy } from 'svelte';
 	import ChevronLeft from '@lucide/svelte/icons/chevron-left';
 	import ChevronRight from '@lucide/svelte/icons/chevron-right';
@@ -70,60 +57,18 @@
 	};
 
 	let { data } = $props<{ data: { agents: AgentSnapshot[] } }>();
-	const agents = $derived((data.agents ?? []) as AgentSnapshot[]);
 
-	let searchQuery = $state('');
-	let statusFilter = $state<'all' | AgentSnapshot['status']>('all');
-	let tagFilter = $state<'all' | string>('all');
-	let perPage = $state(10);
-	let currentPage = $state(1);
+	const clientsTable = createClientsTableStore(data.agents ?? []);
+
+	$effect(() => {
+		clientsTable.setAgents(data.agents ?? []);
+	});
 
 	const perPageOptions = [10, 25, 50];
 
-	const sectionToolMap = {
-		systemInfo: 'system-info',
-		notes: 'notes',
-		hiddenVnc: 'hidden-vnc',
-		remoteDesktop: 'remote-desktop',
-		webcamControl: 'webcam-control',
-		audioControl: 'audio-control',
-		keyloggerOnline: 'keylogger-online',
-		keyloggerOffline: 'keylogger-offline',
-		keyloggerAdvanced: 'keylogger-advanced-online',
-		cmd: 'cmd',
-		fileManager: 'file-manager',
-		taskManager: 'task-manager',
-		registryManager: 'registry-manager',
-		startupManager: 'startup-manager',
-		clipboardManager: 'clipboard-manager',
-		tcpConnections: 'tcp-connections',
-		recovery: 'recovery',
-		options: 'options',
-		openUrl: 'open-url',
-		messageBox: 'message-box',
-		clientChat: 'client-chat',
-		reportWindow: 'report-window',
-		ipGeolocation: 'ip-geolocation',
-		environmentVariables: 'environment-variables',
-		reconnect: 'reconnect',
-		disconnect: 'disconnect',
-		shutdown: 'shutdown',
-		restart: 'restart',
-		sleep: 'sleep',
-		logoff: 'logoff'
-	} as const satisfies Record<string, ClientToolId>;
-
-	type SectionKey = keyof typeof sectionToolMap;
-
-	let availableTags = $state<string[]>([]);
-	let filteredAgents = $state<AgentSnapshot[]>([]);
-	let paginatedAgents = $state<AgentSnapshot[]>([]);
-	let pageRange = $state({ start: 0, end: 0 });
-	let totalPages = $state(1);
-	let paginationItems = $state<(number | 'ellipsis')[]>([]);
 	let toolDialog = $state<{ agentId: string; toolId: DialogToolId } | null>(null);
-	let toolDialogAgent = $derived(findAgentById(toolDialog?.agentId ?? null));
-	let toolDialogClient = $derived(toolDialogAgent ? mapAgentToClient(toolDialogAgent) : null);
+	let toolDialogAgent = $state<AgentSnapshot | null>(null);
+	let toolDialogClient = $state<Client | null>(null);
 
 	type PageAlertVariant = 'default' | 'destructive';
 
@@ -142,117 +87,11 @@
 	});
 
 	$effect(() => {
-		const tags = new Set<string>();
-		for (const agent of agents) {
-			for (const tag of agent.metadata.tags ?? []) {
-				tags.add(tag);
-			}
-		}
-		availableTags = Array.from(tags).sort((a, b) => a.localeCompare(b));
-	});
-
-	$effect(() => {
-		const query = searchQuery.trim().toLowerCase();
-
-		filteredAgents = agents.filter((agent) => {
-			const matchesStatus = statusFilter === 'all' ? true : agent.status === statusFilter;
-
-			const matchesTag =
-				tagFilter === 'all'
-					? true
-					: (agent.metadata.tags?.some((tag) => tag.toLowerCase() === tagFilter.toLowerCase()) ??
-						false);
-
-			if (!matchesStatus || !matchesTag) {
-				return false;
-			}
-
-			if (query === '') {
-				return true;
-			}
-
-			const haystack = [
-				agent.id,
-				agent.metadata.hostname,
-				agent.metadata.username,
-				agent.metadata.os,
-				agent.metadata.ipAddress,
-				...(agent.metadata.tags ?? [])
-			]
-				.filter(Boolean)
-				.map((value) => value!.toString().toLowerCase());
-
-			return haystack.some((value) => value.includes(query));
-		});
-	});
-
-	$effect(() => {
-		const startIndex = (currentPage - 1) * perPage;
-		const slice = filteredAgents.slice(startIndex, startIndex + perPage);
-		paginatedAgents = slice;
-
-		const total =
-			filteredAgents.length === 0 ? 1 : Math.max(1, Math.ceil(filteredAgents.length / perPage));
-		totalPages = total;
-
-		if (filteredAgents.length === 0) {
-			pageRange = { start: 0, end: 0 };
-		} else {
-			const start = startIndex + 1;
-			const end = Math.min(start + slice.length - 1, filteredAgents.length);
-			pageRange = { start, end };
-		}
-	});
-
-	$effect(() => {
-		searchQuery;
-		statusFilter;
-		tagFilter;
-		perPage;
-		currentPage = 1;
-	});
-
-	$effect(() => {
-		const total = totalPages;
-		if (currentPage > total) {
-			currentPage = total;
-		}
-	});
-
-	function buildPaginationItems(
-		total: number,
-		current: number,
-		siblingCount = 1
-	): (number | 'ellipsis')[] {
-		if (total <= 1) {
-			return [1];
-		}
-
-		const safeCurrent = Math.min(Math.max(current, 1), total);
-		const start = Math.max(2, safeCurrent - siblingCount);
-		const end = Math.min(total - 1, safeCurrent + siblingCount);
-
-		const items: (number | 'ellipsis')[] = [1];
-
-		if (start > 2) {
-			items.push('ellipsis');
-		}
-
-		for (let page = start; page <= end; page += 1) {
-			items.push(page);
-		}
-
-		if (end < total - 1) {
-			items.push('ellipsis');
-		}
-
-		items.push(total);
-
-		return items;
-	}
-
-	$effect(() => {
-		paginationItems = buildPaginationItems(totalPages, currentPage);
+		const agentId = toolDialog?.agentId ?? null;
+		const agents = $clientsTable.agents;
+		const agent = agentId ? (agents.find((item) => item.id === agentId) ?? null) : null;
+		toolDialogAgent = agent;
+		toolDialogClient = agent ? mapAgentToClient(agent) : null;
 	});
 
 	let pingMessages = $state<Record<string, string>>({});
@@ -269,11 +108,15 @@
 	let deployDialogOpen = $state(false);
 
 	$effect(() => {
-		pingAgent = findAgentById(pingDialogAgentId);
+		const agentId = pingDialogAgentId;
+		const agents = $clientsTable.agents;
+		pingAgent = agentId ? (agents.find((agent) => agent.id === agentId) ?? null) : null;
 	});
 
 	$effect(() => {
-		shellAgent = findAgentById(shellDialogAgentId);
+		const agentId = shellDialogAgentId;
+		const agents = $clientsTable.agents;
+		shellAgent = agentId ? (agents.find((agent) => agent.id === agentId) ?? null) : null;
 	});
 
 	type CopyFeedback = { message: string; variant: 'success' | 'error' } | null;
@@ -404,6 +247,7 @@
 		if (!agentId) {
 			return null;
 		}
+		const { agents } = get(clientsTable);
 		return agents.find((agent) => agent.id === agentId) ?? null;
 	}
 
@@ -525,6 +369,15 @@
 		commandSuccess = updateRecord(commandSuccess, `ping:${agentId}`, null);
 	}
 
+	function sendCommandError(agent: AgentSnapshot, action: string) {
+		const agentLabel = agent.metadata.hostname?.trim() || agent.id;
+		showConnectionAlert({
+			title: 'Connection unavailable',
+			description: `${agentLabel} is not currently connected. Re-establish the session to ${action}.`,
+			variant: 'destructive'
+		});
+	}
+
 	function openShellDialog(agentId: string) {
 		const agent = findAgentById(agentId);
 		if (!agent) {
@@ -532,12 +385,7 @@
 		}
 
 		if (!hasActiveConnection(agent)) {
-			const agentLabel = agent.metadata.hostname?.trim() || agent.id;
-			showConnectionAlert({
-				title: 'Connection unavailable',
-				description: `${agentLabel} is not currently connected. Re-establish the session to run shell commands.`,
-				variant: 'destructive'
-			});
+			sendCommandError(agent, 'run shell commands');
 			return;
 		}
 
@@ -719,7 +567,7 @@
 </svelte:head>
 
 <section class="space-y-6">
-	{#if agents.length === 0}
+	{#if $clientsTable.agents.length === 0}
 		<Card class="border-dashed border-border/60">
 			<CardHeader>
 				<CardTitle>No agents connected</CardTitle>
@@ -746,8 +594,8 @@
 					<Input
 						id="client-search"
 						placeholder="Hostname, user, ID, IP, or tag"
-						value={searchQuery}
-						oninput={(event) => (searchQuery = event.currentTarget.value)}
+						value={$clientsTable.searchQuery}
+						oninput={(event) => clientsTable.setSearchQuery(event.currentTarget.value)}
 						class="pl-10"
 					/>
 				</div>
@@ -757,12 +605,15 @@
 					<Label for="client-status-filter" class="text-sm font-medium">Status</Label>
 					<Select
 						type="single"
-						value={statusFilter}
-						onValueChange={(value) => (statusFilter = value as typeof statusFilter)}
+						value={$clientsTable.statusFilter}
+						onValueChange={(value) =>
+							clientsTable.setStatusFilter(value as 'all' | AgentSnapshot['status'])}
 					>
 						<SelectTrigger id="client-status-filter" class="w-full">
 							<span class="truncate">
-								{statusFilter === 'all' ? 'All statuses' : statusLabels[statusFilter]}
+								{$clientsTable.statusFilter === 'all'
+									? 'All statuses'
+									: statusLabels[$clientsTable.statusFilter]}
 							</span>
 						</SelectTrigger>
 						<SelectContent>
@@ -777,18 +628,18 @@
 					<Label for="client-tag-filter" class="text-sm font-medium">Tag</Label>
 					<Select
 						type="single"
-						value={tagFilter}
-						onValueChange={(value) => (tagFilter = value as typeof tagFilter)}
+						value={$clientsTable.tagFilter}
+						onValueChange={(value) => clientsTable.setTagFilter(value === 'all' ? 'all' : value)}
 					>
 						<SelectTrigger id="client-tag-filter" class="w-full">
 							<span class="truncate">
-								{tagFilter === 'all' ? 'All tags' : tagFilter}
+								{$clientsTable.tagFilter === 'all' ? 'All tags' : $clientsTable.tagFilter}
 							</span>
 						</SelectTrigger>
 						<SelectContent>
 							<SelectItem value="all">All tags</SelectItem>
-							{#if availableTags.length > 0}
-								{#each availableTags as tag (tag)}
+							{#if $clientsTable.availableTags.length > 0}
+								{#each $clientsTable.availableTags as tag (tag)}
 									<SelectItem value={tag}>{tag}</SelectItem>
 								{/each}
 							{:else}
@@ -801,14 +652,14 @@
 					<Label for="client-page-size" class="text-sm font-medium">Per page</Label>
 					<Select
 						type="single"
-						value={perPage.toString()}
+						value={$clientsTable.perPage.toString()}
 						onValueChange={(value) => {
 							const next = Number.parseInt(value, 10);
-							perPage = Number.isNaN(next) ? 10 : next;
+							clientsTable.setPerPage(Number.isNaN(next) ? perPageOptions[0] : next);
 						}}
 					>
 						<SelectTrigger id="client-page-size" class="w-full">
-							<span>{perPage} rows</span>
+							<span>{$clientsTable.perPage} rows</span>
 						</SelectTrigger>
 						<SelectContent>
 							{#each perPageOptions as option (option)}
@@ -863,10 +714,10 @@
 						</TableRow>
 					</TableHeader>
 					<TableBody>
-						{#if paginatedAgents.length === 0}
+						{#if $clientsTable.paginatedAgents.length === 0}
 							<TableRow>
 								<TableCell colspan={8} class="py-12 text-center text-sm text-muted-foreground">
-									{#if agents.length === 0}
+									{#if $clientsTable.agents.length === 0}
 										No agents connected yet.
 									{:else}
 										No agents match your current filters.
@@ -874,203 +725,16 @@
 								</TableCell>
 							</TableRow>
 						{:else}
-							{#each paginatedAgents as agent (agent.id)}
-								<ContextMenu>
-									<ContextMenuTrigger>
-										<TableRow class="cursor-context-menu" tabindex={0}>
-											<TableCell>
-												<div class="flex items-center gap-3">
-													<span class="text-2xl" aria-hidden="true"
-														>{getAgentLocation(agent).flag}</span
-													>
-													<div class="flex flex-col">
-														<span class="text-sm font-medium text-foreground"
-															>{getAgentLocation(agent).label}</span
-														>
-														{#if agent.metadata.hostname}
-															<span class="text-xs text-muted-foreground"
-																>{agent.metadata.hostname}</span
-															>
-														{/if}
-													</div>
-												</div>
-											</TableCell>
-											<TableCell class="text-sm text-muted-foreground">
-												{agent.metadata.ipAddress ?? 'Unknown'}
-											</TableCell>
-											<TableCell class="text-sm text-muted-foreground">
-												{agent.metadata.username}
-											</TableCell>
-											<TableCell class="text-sm text-muted-foreground">
-												{getAgentGroup(agent)}
-											</TableCell>
-											<TableCell class="text-center">
-												<OsLogo os={agent.metadata.os} />
-											</TableCell>
-											<TableCell class="text-sm text-muted-foreground">
-												{formatPing(agent)}
-											</TableCell>
-											<TableCell class="text-sm text-muted-foreground">
-												{agent.metadata.version ?? '—'}
-											</TableCell>
-											<TableCell class="text-sm text-muted-foreground">
-												{formatDate(agent.connectedAt)}
-											</TableCell>
-										</TableRow>
-									</ContextMenuTrigger>
-									<ContextMenuContent class="w-56">
-										<ContextMenuItem onSelect={() => openSection('systemInfo', agent)}>
-											System Info
-										</ContextMenuItem>
-										<ContextMenuItem onSelect={() => openSection('notes', agent)}>
-											Notes
-										</ContextMenuItem>
-
-										<ContextMenuSeparator />
-
-										<ContextMenuSub>
-											<ContextMenuSubTrigger>Control</ContextMenuSubTrigger>
-											<ContextMenuSubContent class="w-48">
-												<ContextMenuItem onSelect={() => openSection('hiddenVnc', agent)}>
-													Hidden VNC
-												</ContextMenuItem>
-												<ContextMenuItem onSelect={() => openSection('remoteDesktop', agent)}>
-													Remote Desktop
-												</ContextMenuItem>
-												<ContextMenuItem onSelect={() => openSection('webcamControl', agent)}>
-													Webcam Control
-												</ContextMenuItem>
-												<ContextMenuItem onSelect={() => openSection('audioControl', agent)}>
-													Audio Control
-												</ContextMenuItem>
-												<ContextMenuSub>
-													<ContextMenuSubTrigger>Keylogger</ContextMenuSubTrigger>
-													<ContextMenuSubContent class="w-48">
-														<ContextMenuItem onSelect={() => openSection('keyloggerOnline', agent)}>
-															Online
-														</ContextMenuItem>
-														<ContextMenuItem
-															onSelect={() => openSection('keyloggerOffline', agent)}
-														>
-															Offline
-														</ContextMenuItem>
-														<ContextMenuItem
-															onSelect={() => openSection('keyloggerAdvanced', agent)}
-														>
-															Advanced Online
-														</ContextMenuItem>
-													</ContextMenuSubContent>
-												</ContextMenuSub>
-												<ContextMenuItem onSelect={() => openSection('cmd', agent)}>
-													CMD
-												</ContextMenuItem>
-											</ContextMenuSubContent>
-										</ContextMenuSub>
-
-										<ContextMenuSeparator />
-
-										<ContextMenuSub>
-											<ContextMenuSubTrigger>Management</ContextMenuSubTrigger>
-											<ContextMenuSubContent class="w-48">
-												<ContextMenuItem onSelect={() => openSection('fileManager', agent)}>
-													File Manager
-												</ContextMenuItem>
-												<ContextMenuItem onSelect={() => openSection('taskManager', agent)}>
-													Task Manager
-												</ContextMenuItem>
-												<ContextMenuItem onSelect={() => openSection('registryManager', agent)}>
-													Registry Manager
-												</ContextMenuItem>
-												<ContextMenuItem onSelect={() => openSection('startupManager', agent)}>
-													Startup Manager
-												</ContextMenuItem>
-												<ContextMenuItem onSelect={() => openSection('clipboardManager', agent)}>
-													Clipboard Manager
-												</ContextMenuItem>
-												<ContextMenuItem onSelect={() => openSection('tcpConnections', agent)}>
-													TCP Connections
-												</ContextMenuItem>
-											</ContextMenuSubContent>
-										</ContextMenuSub>
-
-										<ContextMenuSeparator />
-
-										<ContextMenuItem onSelect={() => openSection('recovery', agent)}>
-											Recovery
-										</ContextMenuItem>
-										<ContextMenuItem onSelect={() => openSection('options', agent)}>
-											Options
-										</ContextMenuItem>
-
-										<ContextMenuSeparator />
-
-										<ContextMenuSub>
-											<ContextMenuSubTrigger>Miscellaneous</ContextMenuSubTrigger>
-											<ContextMenuSubContent class="w-48">
-												<ContextMenuItem onSelect={() => openSection('openUrl', agent)}>
-													Open URL
-												</ContextMenuItem>
-												<ContextMenuItem onSelect={() => openSection('messageBox', agent)}>
-													Message Box
-												</ContextMenuItem>
-												<ContextMenuItem onSelect={() => openSection('clientChat', agent)}>
-													Client Chat
-												</ContextMenuItem>
-												<ContextMenuItem onSelect={() => openSection('reportWindow', agent)}>
-													Report Window
-												</ContextMenuItem>
-												<ContextMenuItem onSelect={() => openSection('ipGeolocation', agent)}>
-													IP Geolocation
-												</ContextMenuItem>
-												<ContextMenuItem
-													onSelect={() => openSection('environmentVariables', agent)}
-												>
-													Environment Variables
-												</ContextMenuItem>
-											</ContextMenuSubContent>
-										</ContextMenuSub>
-
-										<ContextMenuSeparator />
-
-										<ContextMenuSub>
-											<ContextMenuSubTrigger>System Controls</ContextMenuSubTrigger>
-											<ContextMenuSubContent class="w-48">
-												<ContextMenuItem onSelect={() => openSection('reconnect', agent)}>
-													Reconnect
-												</ContextMenuItem>
-												<ContextMenuItem onSelect={() => openSection('disconnect', agent)}>
-													Disconnect
-												</ContextMenuItem>
-											</ContextMenuSubContent>
-										</ContextMenuSub>
-
-										<ContextMenuSeparator />
-
-										<ContextMenuSub>
-											<ContextMenuSubTrigger>Power</ContextMenuSubTrigger>
-											<ContextMenuSubContent class="w-48">
-												<ContextMenuItem onSelect={() => openSection('shutdown', agent)}>
-													Shutdown
-												</ContextMenuItem>
-												<ContextMenuItem onSelect={() => openSection('restart', agent)}>
-													Restart
-												</ContextMenuItem>
-												<ContextMenuItem onSelect={() => openSection('sleep', agent)}>
-													Sleep
-												</ContextMenuItem>
-												<ContextMenuItem onSelect={() => openSection('logoff', agent)}>
-													Logoff
-												</ContextMenuItem>
-											</ContextMenuSubContent>
-										</ContextMenuSub>
-
-										<ContextMenuSeparator />
-
-										<ContextMenuItem onSelect={() => copyAgentId(agent.id)}>
-											Copy agent ID
-										</ContextMenuItem>
-									</ContextMenuContent>
-								</ContextMenu>
+							{#each $clientsTable.paginatedAgents as agent (agent.id)}
+								<ClientsTableRow
+									{agent}
+									{formatDate}
+									{formatPing}
+									{getAgentGroup}
+									{getAgentLocation}
+									{openSection}
+									{copyAgentId}
+								/>
 							{/each}
 						{/if}
 					</TableBody>
@@ -1079,15 +743,16 @@
 		</ScrollArea>
 
 		<div class="px-4 text-sm text-muted-foreground">
-			{#if filteredAgents.length === 0}
+			{#if $clientsTable.filteredAgents.length === 0}
 				No agents to display.
 			{:else}
-				Showing {pageRange.start}–{pageRange.end} of {filteredAgents.length}
-				{filteredAgents.length === 1 ? ' agent' : ' agents'}.
+				Showing {$clientsTable.pageRange.start}–{$clientsTable.pageRange.end} of {$clientsTable
+					.filteredAgents.length}
+				{$clientsTable.filteredAgents.length === 1 ? ' agent' : ' agents'}.
 			{/if}
 		</div>
 
-		{#if filteredAgents.length > 0 && totalPages > 1}
+		{#if $clientsTable.filteredAgents.length > 0 && $clientsTable.totalPages > 1}
 			<nav class="flex justify-center">
 				<ul class="flex flex-row items-center gap-1">
 					<li>
@@ -1095,27 +760,25 @@
 							type="button"
 							variant="ghost"
 							class="flex h-9 items-center gap-1 px-2.5 sm:pl-2.5"
-							onclick={() => (currentPage = Math.max(1, currentPage - 1))}
-							disabled={currentPage <= 1}
+							onclick={() => clientsTable.previousPage()}
+							disabled={$clientsTable.currentPage <= 1}
 						>
 							<ChevronLeft class="size-4" />
 							<span class="sr-only sm:not-sr-only">Previous</span>
 						</Button>
 					</li>
-					{#each paginationItems as item, index}
+					{#each $clientsTable.paginationItems as item}
 						<li>
 							{#if item === 'ellipsis'}
-								<span
-									class="flex h-9 w-9 items-center justify-center text-sm text-muted-foreground"
+								<span class="flex h-9 w-9 items-center justify-center text-sm text-muted-foreground"
+									>…</span
 								>
-									…
-								</span>
 							{:else}
 								<Button
 									type="button"
-									variant={item === currentPage ? 'outline' : 'ghost'}
+									variant={item === $clientsTable.currentPage ? 'outline' : 'ghost'}
 									class="h-9 w-9 px-0"
-									onclick={() => (currentPage = item)}
+									onclick={() => clientsTable.goToPage(item)}
 								>
 									{item}
 								</Button>
@@ -1127,8 +790,8 @@
 							type="button"
 							variant="ghost"
 							class="flex h-9 items-center gap-1 px-2.5 sm:pl-2.5"
-							onclick={() => (currentPage = Math.min(totalPages, currentPage + 1))}
-							disabled={currentPage >= totalPages}
+							onclick={() => clientsTable.nextPage()}
+							disabled={$clientsTable.currentPage >= $clientsTable.totalPages}
 						>
 							<span class="sr-only sm:not-sr-only">Next</span>
 							<ChevronRight class="size-4" />
@@ -1149,162 +812,36 @@
 		{/key}
 	{/if}
 
-	<DialogRoot open={deployDialogOpen} onOpenChange={(value: boolean) => (deployDialogOpen = value)}>
-		<DialogContent class="sm:max-w-md">
-			<DialogHeader>
-				<DialogTitle>Connect an agent</DialogTitle>
-				<DialogDescription>
-					Generate a deployment command, execute it on the target system, and the agent will appear
-					in this list once it connects.
-				</DialogDescription>
-			</DialogHeader>
-			<div class="space-y-3 text-sm text-muted-foreground">
-				<p>Install the client binary, provide the controller URL, and confirm network access.</p>
-				<p>
-					Agents automatically authenticate and begin reporting metrics immediately after launch.
-				</p>
-			</div>
-			<DialogFooter>
-				<Button type="button" variant="ghost" onclick={() => (deployDialogOpen = false)}>
-					Close
-				</Button>
-			</DialogFooter>
-		</DialogContent>
-	</DialogRoot>
+	<DeployAgentDialog open={deployDialogOpen} on:close={() => (deployDialogOpen = false)} />
 
 	{#if pingAgent}
-		<DialogRoot open onOpenChange={(value: boolean) => (!value ? closePingDialog() : null)}>
-			<DialogContent class="sm:max-w-md">
-				<DialogHeader>
-					<DialogTitle>Send ping</DialogTitle>
-					<DialogDescription>
-						Queue a keep-alive message for {pingAgent.metadata.hostname}.
-					</DialogDescription>
-				</DialogHeader>
-				<div class="space-y-4">
-					<div class="space-y-2">
-						<Label for="ping-message" class="text-sm font-medium">Message</Label>
-						<Input
-							id="ping-message"
-							placeholder="Optional message"
-							value={pingMessages[pingAgent!.id] ?? ''}
-							oninput={(event) =>
-								(pingMessages = updateRecord(
-									pingMessages,
-									pingAgent!.id,
-									event.currentTarget.value
-								))}
-						/>
-					</div>
-					{#if getError(`ping:${pingAgent!.id}`)}
-						<Alert variant="destructive">
-							<AlertCircle class="h-4 w-4" />
-							<AlertTitle>Ping failed</AlertTitle>
-							<AlertDescription>{getError(`ping:${pingAgent!.id}`)}</AlertDescription>
-						</Alert>
-					{:else if getSuccess(`ping:${pingAgent!.id}`)}
-						<Alert class="border-emerald-500/40 bg-emerald-500/10 text-emerald-500">
-							<CheckCircle2 class="h-4 w-4" />
-							<AlertTitle>Ping queued</AlertTitle>
-							<AlertDescription>{getSuccess(`ping:${pingAgent!.id}`)}</AlertDescription>
-						</Alert>
-					{/if}
-				</div>
-				<DialogFooter class="gap-2 sm:justify-between">
-					<Button type="button" variant="ghost" onclick={closePingDialog}>Cancel</Button>
-					<Button
-						type="button"
-						onclick={handlePingSubmit}
-						disabled={isPending(`ping:${pingAgent!.id}`)}
-					>
-						{#if isPending(`ping:${pingAgent!.id}`)}
-							Sending…
-						{:else}
-							Queue ping
-						{/if}
-					</Button>
-				</DialogFooter>
-			</DialogContent>
-		</DialogRoot>
+		<PingAgentDialog
+			agent={pingAgent}
+			message={pingMessages[pingAgent.id] ?? ''}
+			error={getError(`ping:${pingAgent.id}`)}
+			success={getSuccess(`ping:${pingAgent.id}`)}
+			pending={isPending(`ping:${pingAgent.id}`)}
+			on:close={closePingDialog}
+			on:submit={handlePingSubmit}
+			on:messageChange={(event) =>
+				(pingMessages = updateRecord(pingMessages, pingAgent.id, event.detail))}
+		/>
 	{/if}
 
 	{#if shellAgent}
-		<DialogRoot open onOpenChange={(value: boolean) => (!value ? closeShellDialog() : null)}>
-			<DialogContent class="sm:max-w-lg">
-				<DialogHeader>
-					<DialogTitle>Run shell command</DialogTitle>
-					<DialogDescription>
-						Dispatch a command for {shellAgent.metadata.hostname} to execute.
-					</DialogDescription>
-				</DialogHeader>
-				<div class="space-y-4">
-					<div class="space-y-2">
-						<Label for="shell-command" class="text-sm font-medium">Command</Label>
-						<textarea
-							id="shell-command"
-							class="min-h-28 w-full rounded-md border border-border/60 bg-background px-3 py-2 text-sm focus:ring-2 focus:ring-primary focus:outline-none"
-							rows={4}
-							placeholder="whoami"
-							value={shellCommands[shellAgent!.id] ?? ''}
-							oninput={(event) =>
-								(shellCommands = updateRecord(
-									shellCommands,
-									shellAgent!.id,
-									event.currentTarget.value
-								))}
-						></textarea>
-					</div>
-					<div class="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
-						<div class="space-y-2">
-							<Label for="shell-timeout" class="text-sm font-medium">Timeout (seconds)</Label>
-							<Input
-								id="shell-timeout"
-								type="number"
-								min={1}
-								placeholder="Optional timeout"
-								value={shellTimeouts[shellAgent!.id] ?? ''}
-								oninput={(event) => {
-									const raw = event.currentTarget.value;
-									const value = Number.parseInt(raw, 10);
-									shellTimeouts = updateRecord(
-										shellTimeouts,
-										shellAgent!.id,
-										raw.trim() === '' || Number.isNaN(value) ? undefined : value
-									);
-								}}
-							/>
-						</div>
-						<p class="text-xs text-muted-foreground">Leave blank to use the agent default.</p>
-					</div>
-					{#if getError(`shell:${shellAgent!.id}`)}
-						<Alert variant="destructive">
-							<AlertCircle class="h-4 w-4" />
-							<AlertTitle>Shell dispatch failed</AlertTitle>
-							<AlertDescription>{getError(`shell:${shellAgent!.id}`)}</AlertDescription>
-						</Alert>
-					{:else if getSuccess(`shell:${shellAgent!.id}`)}
-						<Alert class="border-emerald-500/40 bg-emerald-500/10 text-emerald-500">
-							<CheckCircle2 class="h-4 w-4" />
-							<AlertTitle>Shell command queued</AlertTitle>
-							<AlertDescription>{getSuccess(`shell:${shellAgent!.id}`)}</AlertDescription>
-						</Alert>
-					{/if}
-				</div>
-				<DialogFooter class="gap-2 sm:justify-between">
-					<Button type="button" variant="ghost" onclick={closeShellDialog}>Cancel</Button>
-					<Button
-						type="button"
-						onclick={handleShellSubmit}
-						disabled={isPending(`shell:${shellAgent!.id}`)}
-					>
-						{#if isPending(`shell:${shellAgent!.id}`)}
-							Dispatching…
-						{:else}
-							Queue command
-						{/if}
-					</Button>
-				</DialogFooter>
-			</DialogContent>
-		</DialogRoot>
+		<ShellCommandDialog
+			agent={shellAgent}
+			command={shellCommands[shellAgent.id] ?? ''}
+			timeout={shellTimeouts[shellAgent.id]}
+			error={getError(`shell:${shellAgent.id}`)}
+			success={getSuccess(`shell:${shellAgent.id}`)}
+			pending={isPending(`shell:${shellAgent.id}`)}
+			on:close={closeShellDialog}
+			on:submit={handleShellSubmit}
+			on:commandChange={(event) =>
+				(shellCommands = updateRecord(shellCommands, shellAgent.id, event.detail))}
+			on:timeoutChange={(event) =>
+				(shellTimeouts = updateRecord(shellTimeouts, shellAgent.id, event.detail))}
+		/>
 	{/if}
 </section>
