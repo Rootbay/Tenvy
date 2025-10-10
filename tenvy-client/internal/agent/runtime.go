@@ -73,6 +73,12 @@ func Run(ctx context.Context, opts RuntimeOptions) error {
 	}
 	agent.modules = modules
 
+	router, err := newDefaultCommandRouter()
+	if err != nil {
+		return fmt.Errorf("initialize commands: %w", err)
+	}
+	agent.commands = router
+
 	if notesPath, err := notes.DefaultPath(); err != nil {
 		opts.Logger.Printf("notes disabled (path error): %v", err)
 	} else {

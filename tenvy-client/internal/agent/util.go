@@ -8,3 +8,7 @@ func minDuration(a, b time.Duration) time.Duration {
 	}
 	return b
 }
+
+func timestampNow() string {
+	return time.Now().UTC().Format(time.RFC3339Nano)
+}

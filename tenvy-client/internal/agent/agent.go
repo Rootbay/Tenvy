@@ -27,6 +27,7 @@ type Agent struct {
 	buildVersion   string
 	timing         TimingOverride
 	modules        *moduleRegistry
+	commands       *commandRouter
 }
 
 func (a *Agent) AgentID() string {
