@@ -187,12 +187,13 @@ const (
 const monitorRefreshInterval = 3 * time.Second
 
 var (
-	pngEncoder      = png.Encoder{CompressionLevel: png.BestSpeed}
-	imageBufferPool = sync.Pool{New: func() interface{} { return new(bytes.Buffer) }}
-	frameBufferPool = sync.Pool{New: func() interface{} { return make([]byte, 0) }}
-	jpegOptionsPool = sync.Pool{New: func() interface{} { return new(jpeg.Options) }}
-	jsonBodyPool    = sync.Pool{New: func() interface{} { return &jsonRequestBody{Buffer: new(bytes.Buffer)} }}
-	tileHashPool    = sync.Pool{New: func() interface{} { return new(maphash.Hash) }}
+	pngEncoder       = png.Encoder{CompressionLevel: png.BestSpeed}
+	imageBufferPool  = sync.Pool{New: func() interface{} { return new(bytes.Buffer) }}
+	frameBufferPool  = sync.Pool{New: func() interface{} { return make([]byte, 0) }}
+	jpegOptionsPool  = sync.Pool{New: func() interface{} { return new(jpeg.Options) }}
+	jsonBodyPool     = sync.Pool{New: func() interface{} { return &jsonRequestBody{Buffer: new(bytes.Buffer)} }}
+	tileHashPool     = sync.Pool{New: func() interface{} { return new(maphash.Hash) }}
+	maxEncodeWorkers = maxInt(1, runtime.GOMAXPROCS(0))
 )
 
 type jsonRequestBody struct {
@@ -401,6 +402,11 @@ func (c *remoteDesktopSessionController) handleVideoFrame(
 		c.forceMonitorRefresh(session)
 		return interval, time.Time{}
 	}
+	if ctx.Err() != nil {
+		releaseFrameBuffer(current)
+		releaseFrameBuffer(snapshot.previousFrame)
+		return interval, time.Time{}
+	}
 	captureDuration := time.Since(processStart)
 	encodeDuration := time.Duration(0)
 
@@ -585,6 +591,11 @@ func (c *remoteDesktopSessionController) handleImageFrame(
 	if err != nil {
 		c.logf("remote desktop capture error: %v", err)
 		c.forceMonitorRefresh(session)
+		return interval, time.Time{}
+	}
+	if ctx.Err() != nil {
+		releaseFrameBuffer(current)
+		releaseFrameBuffer(snapshot.previousFrame)
 		return interval, time.Time{}
 	}
 	captureDuration := time.Since(processStart)
@@ -1315,7 +1326,18 @@ func encodeRegions(data []byte, stride int, regions []tileRegion, quality int) (
 		return deltas, nil
 	}
 
-	workerCount := minInt(len(regions), maxInt(1, runtime.NumCPU()))
+	workerCount := minInt(len(regions), maxEncodeWorkers)
+	if workerCount <= 1 {
+		for idx, region := range regions {
+			rect, err := encodeTileRegion(data, stride, region, quality)
+			if err != nil {
+				return nil, err
+			}
+			deltas[idx] = rect
+		}
+		return deltas, nil
+	}
+
 	jobs := make(chan int, len(regions))
 	var wg sync.WaitGroup
 	var encodeErr error

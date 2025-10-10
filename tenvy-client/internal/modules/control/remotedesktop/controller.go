@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"image"
 	"math"
+	"net"
 	"net/url"
 	"strings"
 	"time"
@@ -803,9 +804,34 @@ func (c *remoteDesktopSessionController) config() Config {
 
 func sanitizeConfig(cfg Config) Config {
 	cfg.AgentID = strings.TrimSpace(cfg.AgentID)
-	cfg.BaseURL = strings.TrimSpace(cfg.BaseURL)
+	cfg.BaseURL = normalizeBaseURL(strings.TrimSpace(cfg.BaseURL))
 	cfg.AuthKey = strings.TrimSpace(cfg.AuthKey)
 	return cfg
+}
+
+func normalizeBaseURL(raw string) string {
+	if raw == "" {
+		return raw
+	}
+
+	parsed, err := url.Parse(raw)
+	if err != nil {
+		return raw
+	}
+
+	if parsed.Scheme == "" {
+		parsed.Scheme = "https"
+	}
+	parsed.Fragment = ""
+	if parsed.User != nil {
+		// Credentials should never be embedded in the base URL for security reasons.
+		parsed.User = nil
+	}
+	parsed.Path = strings.TrimRight(parsed.Path, "/")
+	if parsed.Path == "/" {
+		parsed.Path = ""
+	}
+	return parsed.String()
 }
 
 func (c *remoteDesktopSessionController) frameEndpoint(cfg Config) (string, error) {
@@ -832,8 +858,52 @@ func (c *remoteDesktopSessionController) frameEndpoint(cfg Config) (string, erro
 		return "", fmt.Errorf("remote desktop: invalid base URL: %w", err)
 	}
 
+	if err := enforceEndpointSecurity(parsed); err != nil {
+		return "", err
+	}
+
 	pathRef := &url.URL{Path: fmt.Sprintf("/api/agents/%s/remote-desktop/frames", url.PathEscape(agentID))}
 	endpoint := parsed.ResolveReference(pathRef).String()
 	c.endpointCache.Store(frameEndpointCache{base: base, agentID: agentID, endpoint: endpoint})
 	return endpoint, nil
+}
+
+func enforceEndpointSecurity(u *url.URL) error {
+	scheme := strings.ToLower(u.Scheme)
+	switch scheme {
+	case "":
+		u.Scheme = "https"
+		scheme = "https"
+	case "https":
+	case "http":
+		if !isLoopbackHost(u.Hostname()) {
+			return fmt.Errorf("remote desktop: insecure http base URL %q", u.Redacted())
+		}
+	default:
+		return fmt.Errorf("remote desktop: unsupported URL scheme %q", scheme)
+	}
+
+	if u.User != nil {
+		return errors.New("remote desktop: base URL must not include credentials")
+	}
+
+	host := strings.TrimSpace(u.Hostname())
+	if host == "" {
+		return errors.New("remote desktop: invalid base URL host")
+	}
+
+	return nil
+}
+
+func isLoopbackHost(host string) bool {
+	if host == "" {
+		return false
+	}
+	if strings.EqualFold(host, "localhost") {
+		return true
+	}
+	if ip := net.ParseIP(host); ip != nil {
+		return ip.IsLoopback()
+	}
+	return false
 }
