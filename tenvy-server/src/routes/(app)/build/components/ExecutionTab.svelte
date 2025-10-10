@@ -62,7 +62,11 @@
 		</div>
 		<div class="grid gap-2">
 			<Label for="execution-locales">Allowed locales</Label>
-			<Input id="execution-locales" placeholder="en-US, fr-FR" bind:value={executionAllowedLocales} />
+			<Input
+				id="execution-locales"
+				placeholder="en-US, fr-FR"
+				bind:value={executionAllowedLocales}
+			/>
 			<p class="text-xs text-muted-foreground">
 				Restrict execution to systems with matching locale identifiers.
 			</p>
@@ -76,7 +80,9 @@
 			<Input id="execution-end" type="datetime-local" bind:value={executionEndDate} />
 		</div>
 	</div>
-	<div class="flex items-center justify-between gap-4 rounded-md border border-border/60 bg-muted/30 px-4 py-3 text-xs">
+	<div
+		class="flex items-center justify-between gap-4 rounded-md border border-border/60 bg-muted/30 px-4 py-3 text-xs"
+	>
 		<div>
 			<p class="font-medium">Require internet connectivity</p>
 			<p class="text-muted-foreground">Delay execution until a network connection is available.</p>

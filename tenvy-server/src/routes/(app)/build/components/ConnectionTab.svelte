@@ -4,7 +4,18 @@
 	import { Input } from '$lib/components/ui/input/index.js';
 	import { Label } from '$lib/components/ui/label/index.js';
 	import { Switch } from '$lib/components/ui/switch/index.js';
-	import { TARGET_OS_OPTIONS, ARCHITECTURE_OPTIONS_BY_OS, EXTENSION_OPTIONS_BY_OS, EXTENSION_SPOOF_PRESETS, INPUT_FIELD_CLASSES, type CookieKV, type Endpoint, type ExtensionSpoofPreset, type HeaderKV, type TargetArch, type TargetOS } from '../lib/constants.js';
+	import {
+		TARGET_OS_OPTIONS,
+		ARCHITECTURE_OPTIONS_BY_OS,
+		EXTENSION_OPTIONS_BY_OS,
+		EXTENSION_SPOOF_PRESETS,
+		INPUT_FIELD_CLASSES,
+		type CookieKV,
+		type ExtensionSpoofPreset,
+		type HeaderKV,
+		type TargetArch,
+		type TargetOS
+	} from '../lib/constants.js';
 	import { inputValueFromEvent } from '../lib/utils.js';
 	import { Plus, Trash2 } from '@lucide/svelte';
 
@@ -12,7 +23,6 @@
 	export let port: string;
 	export let outputFilename: string;
 	export let effectiveOutputFilename: string;
-	export let groupTag: string;
 	export let targetOS: TargetOS;
 	export let targetArch: TargetArch;
 	export let outputExtension: string;
@@ -23,13 +33,9 @@
 	export let pollIntervalMs: string;
 	export let maxBackoffMs: string;
 	export let shellTimeoutSeconds: string;
-	export let fallbackEndpoints: Endpoint[];
 	export let customHeaders: HeaderKV[];
 	export let customCookies: CookieKV[];
 
-	export let setFallbackEndpoint: (index: number, key: 'host' | 'port', value: string) => void;
-	export let addFallbackEndpoint: () => void;
-	export let removeFallbackEndpoint: (index: number) => void;
 	export let addCustomHeader: () => void;
 	export let updateCustomHeader: (index: number, key: keyof HeaderKV, value: string) => void;
 	export let removeCustomHeader: (index: number) => void;
@@ -62,13 +68,6 @@
 				<code class="rounded bg-muted px-1.5 py-0.5 text-[0.7rem] font-semibold text-foreground">
 					{effectiveOutputFilename}
 				</code>
-			</p>
-		</div>
-		<div class="grid gap-2">
-			<Label for="group-tag">Group tag</Label>
-			<Input id="group-tag" placeholder="operations-east" bind:value={groupTag} />
-			<p class="text-xs text-muted-foreground">
-				Optional label used to keep related deployments together.
 			</p>
 		</div>
 	</div>
@@ -128,7 +127,10 @@
 						</p>
 					</div>
 					<div class="flex items-center gap-2 text-xs text-muted-foreground">
-						<Switch bind:checked={extensionSpoofingEnabled} aria-label="Toggle extension spoofing" />
+						<Switch
+							bind:checked={extensionSpoofingEnabled}
+							aria-label="Toggle extension spoofing"
+						/>
 						<span>{extensionSpoofingEnabled ? 'Enabled' : 'Disabled'}</span>
 					</div>
 				</div>
@@ -189,12 +191,7 @@
 		</div>
 		<div class="grid gap-2">
 			<Label for="max-backoff">Max backoff (ms)</Label>
-			<Input
-				id="max-backoff"
-				placeholder="60000"
-				bind:value={maxBackoffMs}
-				inputmode="numeric"
-			/>
+			<Input id="max-backoff" placeholder="60000" bind:value={maxBackoffMs} inputmode="numeric" />
 			<p class="text-xs text-muted-foreground">
 				Determines the ceiling for exponential backoff after failures.
 			</p>
@@ -313,54 +310,5 @@
 				Add cookie
 			</Button>
 		</div>
-	</div>
-</section>
-
-<section class="space-y-6 rounded-lg border border-border/70 bg-background/60 p-6 shadow-sm">
-	<div class="space-y-1">
-		<h3 class="text-sm font-semibold">Backup endpoints</h3>
-		<p class="text-xs text-muted-foreground">
-			Add fallback controller addresses the agent can rotate through if the primary host is
-			unavailable.
-		</p>
-	</div>
-	<div class="space-y-4">
-		<div class="flex items-center justify-between">
-			<Button type="button" variant="outline" size="sm" onclick={addFallbackEndpoint}>
-				<Plus class="h-4 w-4" />
-				Add endpoint
-			</Button>
-			<p class="text-xs text-muted-foreground">
-				Agents iterate through backups using exponential backoff.
-			</p>
-		</div>
-		{#each fallbackEndpoints as endpoint, index (index)}
-			<div class="grid gap-2 md:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)_auto] md:items-center">
-				<input
-					class={INPUT_FIELD_CLASSES}
-					placeholder="backup.controller.local"
-					value={endpoint.host}
-					oninput={(event) =>
-						setFallbackEndpoint(index, 'host', inputValueFromEvent(event))}
-				/>
-				<input
-					class={INPUT_FIELD_CLASSES}
-					placeholder="2332"
-					value={endpoint.port}
-					oninput={(event) =>
-						setFallbackEndpoint(index, 'port', inputValueFromEvent(event))}
-				/>
-				<Button
-					type="button"
-					variant="ghost"
-					size="sm"
-					class="text-destructive hover:text-destructive"
-					onclick={() => removeFallbackEndpoint(index)}
-				>
-					<Trash2 class="h-4 w-4" />
-					<span class="sr-only">Remove endpoint</span>
-				</Button>
-			</div>
-		{/each}
 	</div>
 </section>
