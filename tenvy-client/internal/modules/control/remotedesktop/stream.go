@@ -195,9 +195,7 @@ func (h *remoteTileHasher) ensure(width, height, tile int) {
 			h.checksums = make([]uint64, total)
 		} else {
 			h.checksums = h.checksums[:total]
-			for i := range h.checksums {
-				h.checksums[i] = 0
-			}
+			clear(h.checksums)
 		}
 		h.tile = tile
 		h.cols = cols
@@ -591,9 +589,7 @@ func (c *remoteDesktopSessionController) handleVideoFrame(
 		return interval, time.Time{}
 	}
 
-	sendCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
-	err = c.sendFrame(sendCtx, frame)
-	cancel()
+	err = c.sendFrame(ctx, frame)
 	if err != nil {
 		if !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
 			c.logf("remote desktop clip send error: %v", err)
@@ -775,9 +771,7 @@ func (c *remoteDesktopSessionController) handleImageFrame(
 		return interval, time.Time{}
 	}
 
-	sendCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
-	err = c.sendFrame(sendCtx, frame)
-	cancel()
+	err = c.sendFrame(ctx, frame)
 	if err != nil {
 		if !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
 			c.logf("remote desktop frame send error: %v", err)
@@ -879,8 +873,18 @@ func (c *remoteDesktopSessionController) sendFrame(ctx context.Context, frame Re
 	if err != nil {
 		return err
 	}
-	if cfg.Client == nil {
+	client := cfg.Client
+	if client == nil {
 		return errors.New("remote desktop: missing http client")
+	}
+
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if timeout := cfg.RequestTimeout; timeout > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, timeout)
+		defer cancel()
 	}
 
 	body := acquireJSONBody()
@@ -913,7 +917,7 @@ func (c *remoteDesktopSessionController) sendFrame(ctx context.Context, frame Re
 		req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", key))
 	}
 
-	resp, err := cfg.Client.Do(req)
+	resp, err := client.Do(req)
 	if err != nil {
 		return err
 	}

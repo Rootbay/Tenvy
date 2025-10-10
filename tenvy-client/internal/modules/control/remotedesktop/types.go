@@ -25,12 +25,13 @@ type HTTPDoer interface {
 }
 
 type Config struct {
-	AgentID   string
-	BaseURL   string
-	AuthKey   string
-	Client    HTTPDoer
-	Logger    Logger
-	UserAgent string
+	AgentID        string
+	BaseURL        string
+	AuthKey        string
+	Client         HTTPDoer
+	Logger         Logger
+	UserAgent      string
+	RequestTimeout time.Duration
 }
 
 type RemoteDesktopQuality string
