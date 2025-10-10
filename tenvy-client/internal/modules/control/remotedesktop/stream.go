@@ -10,6 +10,7 @@ import (
 	"image"
 	"image/jpeg"
 	"image/png"
+	"io"
 	"math"
 	"net/http"
 	"net/url"
@@ -30,6 +31,84 @@ type remoteTileHasher struct {
 	height    int
 	ready     bool
 	checksums []uint64
+}
+
+type streamLoopState struct {
+	activeMode     RemoteDesktopStreamMode
+	lastSent       time.Time
+	clipFrames     []RemoteDesktopClipFrame
+	clipStart      time.Time
+	clipBytes      int
+	clipKeyPending bool
+	tileHasher     remoteTileHasher
+}
+
+type sessionSnapshot struct {
+	sessionID       string
+	monitor         remoteMonitor
+	monitorsPayload []RemoteDesktopMonitorInfo
+	width           int
+	height          int
+	tile            int
+	frameInterval   time.Duration
+	mode            RemoteDesktopStreamMode
+	forceKey        bool
+	minClipQuality  int
+	maxClipQuality  int
+	clipQuality     int
+	sequence        uint64
+	previousFrame   []byte
+}
+
+func newStreamLoopState(mode RemoteDesktopStreamMode) *streamLoopState {
+	state := &streamLoopState{activeMode: mode}
+	if mode == RemoteStreamModeVideo {
+		state.clipKeyPending = true
+	}
+	return state
+}
+
+func (s *streamLoopState) resetClipBuffer() {
+	s.clipFrames = nil
+	s.clipStart = time.Time{}
+	s.clipBytes = 0
+}
+
+func (s *streamLoopState) onModeChange(session *RemoteDesktopSession, nextMode RemoteDesktopStreamMode) {
+	if s.activeMode == nextMode {
+		return
+	}
+	s.activeMode = nextMode
+	s.resetClipBuffer()
+	s.clipKeyPending = nextMode == RemoteStreamModeVideo
+	releaseFrameBuffer(session.LastFrame)
+	session.LastFrame = nil
+	s.tileHasher.reset()
+	session.ForceKeyFrame = true
+}
+
+func (s *streamLoopState) shouldDropFrame(interval time.Duration) bool {
+	if interval <= 0 || s.lastSent.IsZero() {
+		return false
+	}
+	dropThreshold := time.Duration(frameDropBacklogMultiplier) * interval
+	return time.Since(s.lastSent) > dropThreshold
+}
+
+func (s *streamLoopState) markDropped(interval time.Duration) {
+	if s.lastSent.IsZero() {
+		s.lastSent = time.Now()
+		return
+	}
+	nextSent := s.lastSent.Add(interval)
+	if now := time.Now(); nextSent.After(now) {
+		nextSent = now
+	}
+	s.lastSent = nextSent
+}
+
+func (s *streamLoopState) markSent(ts time.Time) {
+	s.lastSent = ts
 }
 
 func (h *remoteTileHasher) reset() {
@@ -125,16 +204,10 @@ const (
 )
 
 func (c *remoteDesktopSessionController) stream(ctx context.Context, session *RemoteDesktopSession) {
-	var lastSent time.Time
 	timer := time.NewTimer(0)
 	defer timer.Stop()
 
-	activeMode := normalizeStreamMode(session.Settings.Mode)
-	var clipFrames []RemoteDesktopClipFrame
-	var clipStart time.Time
-	clipKeyPending := activeMode == RemoteStreamModeVideo
-	clipBytes := 0
-	var tileHasher remoteTileHasher
+	state := newStreamLoopState(normalizeStreamMode(session.Settings.Mode))
 
 	for {
 		select {
@@ -143,474 +216,544 @@ func (c *remoteDesktopSessionController) stream(ctx context.Context, session *Re
 		case <-timer.C:
 		}
 
-		clipQuality := defaultClipQuality
-		c.mu.Lock()
-		if c.session == nil || c.session.ID != session.ID {
-			prev := session.LastFrame
-			c.mu.Unlock()
-			releaseFrameBuffer(prev)
+		snapshot, ok := c.prepareSnapshot(session, state)
+		if !ok {
 			return
 		}
 
-		c.refreshMonitorsLocked(session, false)
-
-		monitorIndex := clampMonitorIndex(session.monitors, session.Settings.Monitor)
-		session.Settings.Monitor = monitorIndex
-
-		var monitorsPayload []RemoteDesktopMonitorInfo
-		if session.monitorsDirty {
-			monitorsPayload = append([]RemoteDesktopMonitorInfo(nil), session.monitorInfos...)
+		interval := snapshot.frameInterval
+		if interval <= 0 {
+			interval = 100 * time.Millisecond
 		}
 
-		monitor := session.monitors[monitorIndex]
-		width := session.Width
-		height := session.Height
-		tile := session.TileSize
-		targetInterval := session.FrameInterval
-		mode := normalizeStreamMode(session.Settings.Mode)
-		if mode != activeMode {
-			activeMode = mode
-			clipFrames = nil
-			clipStart = time.Time{}
-			clipBytes = 0
-			clipKeyPending = mode == RemoteStreamModeVideo
-			if session.LastFrame != nil {
-				releaseFrameBuffer(session.LastFrame)
-				session.LastFrame = nil
+		if state.shouldDropFrame(interval) {
+			c.handleFrameDrop(session, snapshot.mode)
+			state.markDropped(interval)
+			if snapshot.mode == RemoteStreamModeVideo {
+				releaseFrameBuffer(snapshot.previousFrame)
 			}
-			tileHasher.reset()
-			session.ForceKeyFrame = true
-		}
-
-		minAllowed := session.MinClipQuality
-		maxAllowed := session.MaxClipQuality
-		if minAllowed <= 0 || minAllowed >= maxAllowed {
-			minAllowed = minClipQuality
-			maxAllowed = maxClipQuality
-		}
-		clipQuality = clampInt(session.ClipQuality, minAllowed, maxAllowed)
-		if clipQuality <= 0 {
-			clipQuality = clampInt(defaultClipQuality, minAllowed, maxAllowed)
-		}
-
-		forceKey := session.ForceKeyFrame || len(session.LastFrame) == 0
-		prev := session.LastFrame
-		var sequence uint64
-		if mode == RemoteStreamModeImages {
-			sequence = session.Sequence + 1
-			session.Sequence = sequence
-			session.ForceKeyFrame = false
-		}
-		if forceKey {
-			tileHasher.reset()
-		}
-		c.mu.Unlock()
-
-		if targetInterval <= 0 {
-			targetInterval = 100 * time.Millisecond
-		}
-
-		processStart := time.Now()
-		current, captureErr := captureMonitorFrame(monitor, width, height)
-		if captureErr != nil {
-			c.logf("remote desktop capture error: %v", captureErr)
-			c.mu.Lock()
-			c.refreshMonitorsLocked(session, true)
-			c.mu.Unlock()
-			scheduleNextFrame(timer, targetInterval)
+			scheduleNextFrame(timer, interval)
 			continue
 		}
 
-		captureDuration := time.Since(processStart)
-		encodeDuration := time.Duration(0)
-
-		shouldDrop := false
-		if !lastSent.IsZero() {
-			backlog := time.Since(lastSent)
-			if targetInterval <= 0 {
-				targetInterval = 100 * time.Millisecond
+		if snapshot.mode == RemoteStreamModeVideo {
+			nextInterval, sent := c.handleVideoFrame(ctx, session, snapshot, state, interval)
+			if nextInterval <= 0 {
+				nextInterval = interval
 			}
-			dropThreshold := time.Duration(frameDropBacklogMultiplier) * targetInterval
-			if backlog > dropThreshold {
-				shouldDrop = true
-			}
-		}
-
-		if shouldDrop {
-			c.mu.Lock()
-			if c.session != nil && c.session.ID == session.ID {
-				c.session.frameDropEMA = updateEMA(c.session.frameDropEMA, 1, frameDropEMAAlpha)
-				if mode == RemoteStreamModeVideo {
-					c.session.LastFrame = nil
-				}
-			}
-			c.mu.Unlock()
-
-			if lastSent.IsZero() {
-				lastSent = time.Now()
-			} else {
-				nextSent := lastSent.Add(targetInterval)
-				if now := time.Now(); nextSent.After(now) {
-					nextSent = now
-				}
-				lastSent = nextSent
-			}
-
-			releaseFrameBuffer(current)
-			if mode == RemoteStreamModeVideo {
-				releaseFrameBuffer(prev)
-			}
-			scheduleNextFrame(timer, targetInterval)
-			continue
-		}
-
-		if mode == RemoteStreamModeVideo {
-			clipDuration := clampDuration(targetInterval*2, minClipDuration, maxClipDuration)
-			if clipDuration <= 0 {
-				clipDuration = defaultClipDuration
-			}
-
-			if forceKey {
-				clipFrames = nil
-				clipStart = time.Now()
-				clipBytes = 0
-				clipKeyPending = true
-			} else if clipStart.IsZero() {
-				clipStart = time.Now()
-			}
-
-			if len(monitorsPayload) > 0 {
-				clipKeyPending = true
-			}
-
-			offsetMs := 0
-			if !clipStart.IsZero() {
-				offsetMs = int(time.Since(clipStart).Milliseconds())
-				if offsetMs < 0 {
-					offsetMs = 0
-				}
-			}
-
-			encodeStart := time.Now()
-			encoded, err := encodeJPEG(width, height, clipQuality, current)
-			if err != nil {
-				c.logf("remote desktop clip encode error: %v", err)
-				releaseFrameBuffer(current)
-				releaseFrameBuffer(prev)
-				scheduleNextFrame(timer, targetInterval)
-				continue
-			}
-			encodeDuration += time.Since(encodeStart)
-
-			clipBytes += len(encoded)
-			clipFrames = append(clipFrames, RemoteDesktopClipFrame{
-				OffsetMs: offsetMs,
-				Width:    width,
-				Height:   height,
-				Encoding: remoteClipEncodingJPEG,
-				Data:     encoded,
-			})
-
-			releaseFrameBuffer(current)
-			releaseFrameBuffer(prev)
-
-			clipElapsed := time.Since(clipStart)
-			intervalMs := targetInterval.Milliseconds()
-			if intervalMs <= 0 {
-				intervalMs = 80
-			}
-			clipMs := clipDuration.Milliseconds()
-			if clipMs <= 0 {
-				clipMs = defaultClipDuration.Milliseconds()
-			}
-			frameCap := int(clipMs/int64(intervalMs)) + 1
-			if frameCap < 2 {
-				frameCap = 2
-			}
-			if frameCap > maxClipFrames {
-				frameCap = maxClipFrames
-			}
-
-			shouldFlush := false
-			if clipElapsed >= clipDuration || len(clipFrames) >= frameCap {
-				shouldFlush = true
-			}
-			if clipKeyPending && len(clipFrames) > 0 {
-				shouldFlush = true
-			}
-			if len(monitorsPayload) > 0 && len(clipFrames) > 0 {
-				shouldFlush = true
-			}
-
-			if !shouldFlush {
-				scheduleNextFrame(timer, targetInterval)
-				continue
-			}
-
-			framesCopy := append([]RemoteDesktopClipFrame(nil), clipFrames...)
-			durationMs := framesCopy[len(framesCopy)-1].OffsetMs
-			if durationMs <= 0 {
-				durationMs = int(clipElapsed.Milliseconds())
-			}
-			if durationMs <= 0 {
-				durationMs = int(targetInterval.Milliseconds())
-			}
-
-			processingDuration := time.Since(processStart)
-			frameDuration := targetInterval
-			if !lastSent.IsZero() {
-				if elapsed := time.Since(lastSent); elapsed > 0 {
-					frameDuration = elapsed
-				}
-			}
-
-			metrics := computeMetrics(targetInterval, frameDuration, captureDuration, encodeDuration, processingDuration, clipBytes, clipQuality)
-			timestamp := time.Now()
-			frame := RemoteDesktopFramePacket{
-				SessionID: session.ID,
-				Timestamp: timestamp.UTC().Format(time.RFC3339Nano),
-				Width:     width,
-				Height:    height,
-				KeyFrame:  clipKeyPending,
-				Encoding:  remoteEncodingClip,
-				Clip: &RemoteDesktopVideoClip{
-					DurationMs: durationMs,
-					Frames:     framesCopy,
-				},
-				Metrics: metrics,
-			}
-			if len(monitorsPayload) > 0 {
-				frame.Monitors = monitorsPayload
-			}
-
-			nextInterval := targetInterval
-
-			c.mu.Lock()
-			if c.session != nil && c.session.ID == session.ID {
-				c.session.Sequence++
-				frame.Sequence = c.session.Sequence
-				if metrics != nil {
-					if c.session.TargetBitrateKbps > 0 {
-						metrics.TargetBitrateKbps = float64(c.session.TargetBitrateKbps)
-					}
-					metrics.LadderLevel = c.session.ladderIndex
-				}
-				c.maybeAdaptQualityLocked(c.session, metrics, processingDuration, frameDuration, clipBytes)
-				if len(monitorsPayload) > 0 {
-					c.session.monitorsDirty = false
-				}
-				c.session.frameDropEMA = updateEMA(c.session.frameDropEMA, 0, frameDropRecoveryAlpha)
-				if metrics != nil {
-					metrics.FrameLossPercent = math.Round(clampFloat(c.session.frameDropEMA, 0, 1)*1000) / 10
-				}
-				c.session.ForceKeyFrame = false
-				nextInterval = c.session.FrameInterval
-			} else {
-				c.mu.Unlock()
-				clipFrames = nil
-				clipStart = time.Time{}
-				clipBytes = 0
-				clipKeyPending = true
-				scheduleNextFrame(timer, targetInterval)
-				continue
-			}
-			c.mu.Unlock()
-
-			sendCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
-			err = c.sendFrame(sendCtx, frame)
-			cancel()
-			if err != nil {
-				if !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
-					c.logf("remote desktop clip send error: %v", err)
-				}
-				c.mu.Lock()
-				if c.session != nil && c.session.ID == session.ID {
-					c.session.frameDropEMA = updateEMA(c.session.frameDropEMA, 1, frameDropEMAAlpha)
-				}
-				c.mu.Unlock()
-				clipFrames = nil
-				clipStart = time.Time{}
-				clipBytes = 0
-				clipKeyPending = true
-				scheduleNextFrame(timer, nextInterval)
-				continue
-			}
-
-			clipFrames = nil
-			clipStart = time.Time{}
-			clipBytes = 0
-			clipKeyPending = false
 			scheduleNextFrame(timer, nextInterval)
-			lastSent = timestamp
+			if sent.IsZero() {
+				continue
+			}
+			state.markSent(sent)
 			continue
 		}
 
-		keyFrame := forceKey || len(prev) != len(current) || len(prev) == 0
-		var imageData string
-		var deltas []RemoteDesktopDeltaRect
-		frameEncoding := remoteEncodingPNG
-		bytesSent := 0
+		nextInterval, sent := c.handleImageFrame(ctx, session, snapshot, state, interval)
+		if nextInterval <= 0 {
+			nextInterval = interval
+		}
+		scheduleNextFrame(timer, nextInterval)
+		if !sent.IsZero() {
+			state.markSent(sent)
+		}
+	}
+}
 
-		if keyFrame {
-			encodeStart := time.Now()
-			encoded, encoding, err := encodeKeyFrame(width, height, clipQuality, current)
-			if err != nil {
-				c.logf("remote desktop encode frame: %v", err)
-				releaseFrameBuffer(current)
-				scheduleNextFrame(timer, targetInterval)
-				continue
+func (c *remoteDesktopSessionController) prepareSnapshot(session *RemoteDesktopSession, state *streamLoopState) (sessionSnapshot, bool) {
+	c.mu.Lock()
+	snapshot, ok, stale := c.prepareSnapshotLocked(session, state)
+	c.mu.Unlock()
+	if !ok {
+		releaseFrameBuffer(stale)
+	}
+	return snapshot, ok
+}
+
+func (c *remoteDesktopSessionController) prepareSnapshotLocked(session *RemoteDesktopSession, state *streamLoopState) (sessionSnapshot, bool, []byte) {
+	if c.session == nil || c.session.ID != session.ID {
+		return sessionSnapshot{}, false, session.LastFrame
+	}
+
+	c.refreshMonitorsLocked(session, false)
+
+	monitorIndex := clampMonitorIndex(session.monitors, session.Settings.Monitor)
+	session.Settings.Monitor = monitorIndex
+
+	var monitorsPayload []RemoteDesktopMonitorInfo
+	if session.monitorsDirty {
+		monitorsPayload = append([]RemoteDesktopMonitorInfo(nil), session.monitorInfos...)
+	}
+
+	mode := normalizeStreamMode(session.Settings.Mode)
+	state.onModeChange(session, mode)
+
+	width := session.Width
+	height := session.Height
+	tile := session.TileSize
+	interval := session.FrameInterval
+
+	minAllowed := session.MinClipQuality
+	maxAllowed := session.MaxClipQuality
+	if minAllowed <= 0 || minAllowed >= maxAllowed {
+		minAllowed = minClipQuality
+		maxAllowed = maxClipQuality
+	}
+
+	clipQuality := clampInt(session.ClipQuality, minAllowed, maxAllowed)
+	if clipQuality <= 0 {
+		clipQuality = clampInt(defaultClipQuality, minAllowed, maxAllowed)
+	}
+
+	forceKey := session.ForceKeyFrame || len(session.LastFrame) == 0
+	previous := session.LastFrame
+	sequence := session.Sequence
+	if mode == RemoteStreamModeImages {
+		sequence++
+		session.Sequence = sequence
+		session.ForceKeyFrame = false
+	}
+	if forceKey {
+		state.tileHasher.reset()
+	}
+
+	snapshot := sessionSnapshot{
+		sessionID:       session.ID,
+		monitor:         session.monitors[monitorIndex],
+		monitorsPayload: monitorsPayload,
+		width:           width,
+		height:          height,
+		tile:            tile,
+		frameInterval:   interval,
+		mode:            mode,
+		forceKey:        forceKey,
+		minClipQuality:  minAllowed,
+		maxClipQuality:  maxAllowed,
+		clipQuality:     clipQuality,
+		sequence:        sequence,
+		previousFrame:   previous,
+	}
+
+	if mode == RemoteStreamModeVideo && len(monitorsPayload) > 0 {
+		state.clipKeyPending = true
+	}
+
+	return snapshot, true, nil
+}
+
+func (c *remoteDesktopSessionController) handleFrameDrop(session *RemoteDesktopSession, mode RemoteDesktopStreamMode) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.session == nil || c.session.ID != session.ID {
+		return
+	}
+	c.session.frameDropEMA = updateEMA(c.session.frameDropEMA, 1, frameDropEMAAlpha)
+	if mode == RemoteStreamModeVideo {
+		c.session.LastFrame = nil
+	}
+}
+
+func (c *remoteDesktopSessionController) handleVideoFrame(
+	ctx context.Context,
+	session *RemoteDesktopSession,
+	snapshot sessionSnapshot,
+	state *streamLoopState,
+	interval time.Duration,
+) (time.Duration, time.Time) {
+	processStart := time.Now()
+	current, err := captureMonitorFrame(snapshot.monitor, snapshot.width, snapshot.height)
+	if err != nil {
+		c.logf("remote desktop capture error: %v", err)
+		c.forceMonitorRefresh(session)
+		return interval, time.Time{}
+	}
+	captureDuration := time.Since(processStart)
+	encodeDuration := time.Duration(0)
+
+	clipDuration := clampDuration(interval*2, minClipDuration, maxClipDuration)
+	if clipDuration <= 0 {
+		clipDuration = defaultClipDuration
+	}
+
+	if snapshot.forceKey {
+		state.resetClipBuffer()
+		state.clipStart = time.Now()
+		state.clipKeyPending = true
+	} else if state.clipStart.IsZero() {
+		state.clipStart = time.Now()
+	}
+
+	if len(snapshot.monitorsPayload) > 0 {
+		state.clipKeyPending = true
+	}
+
+	offsetMs := 0
+	if !state.clipStart.IsZero() {
+		offsetMs = int(time.Since(state.clipStart).Milliseconds())
+		if offsetMs < 0 {
+			offsetMs = 0
+		}
+	}
+
+	encodeStart := time.Now()
+	encoded, err := encodeJPEG(snapshot.width, snapshot.height, snapshot.clipQuality, current)
+	if err != nil {
+		c.logf("remote desktop clip encode error: %v", err)
+		releaseFrameBuffer(current)
+		releaseFrameBuffer(snapshot.previousFrame)
+		return interval, time.Time{}
+	}
+	encodeDuration += time.Since(encodeStart)
+
+	state.clipBytes += len(encoded)
+	state.clipFrames = append(state.clipFrames, RemoteDesktopClipFrame{
+		OffsetMs: offsetMs,
+		Width:    snapshot.width,
+		Height:   snapshot.height,
+		Encoding: remoteClipEncodingJPEG,
+		Data:     encoded,
+	})
+
+	releaseFrameBuffer(current)
+	releaseFrameBuffer(snapshot.previousFrame)
+
+	clipElapsed := time.Since(state.clipStart)
+	intervalMs := interval.Milliseconds()
+	if intervalMs <= 0 {
+		intervalMs = 80
+	}
+	clipMs := clipDuration.Milliseconds()
+	if clipMs <= 0 {
+		clipMs = defaultClipDuration.Milliseconds()
+	}
+	frameCap := int(clipMs/int64(intervalMs)) + 1
+	if frameCap < 2 {
+		frameCap = 2
+	}
+	if frameCap > maxClipFrames {
+		frameCap = maxClipFrames
+	}
+
+	shouldFlush := clipElapsed >= clipDuration || len(state.clipFrames) >= frameCap
+	if state.clipKeyPending && len(state.clipFrames) > 0 {
+		shouldFlush = true
+	}
+	if len(snapshot.monitorsPayload) > 0 && len(state.clipFrames) > 0 {
+		shouldFlush = true
+	}
+
+	if !shouldFlush {
+		return interval, time.Time{}
+	}
+
+	framesCopy := append([]RemoteDesktopClipFrame(nil), state.clipFrames...)
+	durationMs := framesCopy[len(framesCopy)-1].OffsetMs
+	if durationMs <= 0 {
+		durationMs = int(clipElapsed.Milliseconds())
+	}
+	if durationMs <= 0 {
+		durationMs = int(interval.Milliseconds())
+	}
+
+	processingDuration := time.Since(processStart)
+	frameDuration := interval
+	if !state.lastSent.IsZero() {
+		if elapsed := time.Since(state.lastSent); elapsed > 0 {
+			frameDuration = elapsed
+		}
+	}
+
+	metrics := computeMetrics(interval, frameDuration, captureDuration, encodeDuration, processingDuration, state.clipBytes, snapshot.clipQuality)
+	timestamp := time.Now()
+	frame := RemoteDesktopFramePacket{
+		SessionID: snapshot.sessionID,
+		Timestamp: timestamp.UTC().Format(time.RFC3339Nano),
+		Width:     snapshot.width,
+		Height:    snapshot.height,
+		KeyFrame:  state.clipKeyPending,
+		Encoding:  remoteEncodingClip,
+		Clip: &RemoteDesktopVideoClip{
+			DurationMs: durationMs,
+			Frames:     framesCopy,
+		},
+		Metrics: metrics,
+	}
+	if len(snapshot.monitorsPayload) > 0 {
+		frame.Monitors = snapshot.monitorsPayload
+	}
+
+	nextInterval, ok := c.commitVideoFrame(session, &frame, metrics, processingDuration, frameDuration, state.clipBytes)
+	if !ok {
+		state.resetClipBuffer()
+		state.clipKeyPending = true
+		return interval, time.Time{}
+	}
+
+	sendCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	err = c.sendFrame(sendCtx, frame)
+	cancel()
+	if err != nil {
+		if !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
+			c.logf("remote desktop clip send error: %v", err)
+		}
+		c.markFrameFailure(session)
+		state.resetClipBuffer()
+		state.clipKeyPending = true
+		return nextInterval, time.Time{}
+	}
+
+	state.resetClipBuffer()
+	state.clipKeyPending = false
+	return nextInterval, timestamp
+}
+
+func (c *remoteDesktopSessionController) commitVideoFrame(
+	session *RemoteDesktopSession,
+	frame *RemoteDesktopFramePacket,
+	metrics *RemoteDesktopFrameMetrics,
+	processingDuration, frameDuration time.Duration,
+	clipBytes int,
+) (time.Duration, bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if c.session == nil || c.session.ID != session.ID {
+		return 0, false
+	}
+
+	c.session.Sequence++
+	frame.Sequence = c.session.Sequence
+	if metrics != nil {
+		if c.session.TargetBitrateKbps > 0 {
+			metrics.TargetBitrateKbps = float64(c.session.TargetBitrateKbps)
+		}
+		metrics.LadderLevel = c.session.ladderIndex
+	}
+
+	c.maybeAdaptQualityLocked(c.session, metrics, processingDuration, frameDuration, clipBytes)
+	c.session.frameDropEMA = updateEMA(c.session.frameDropEMA, 0, frameDropRecoveryAlpha)
+	if metrics != nil {
+		metrics.FrameLossPercent = math.Round(clampFloat(c.session.frameDropEMA, 0, 1)*1000) / 10
+	}
+	c.session.ForceKeyFrame = false
+	return c.session.FrameInterval, true
+}
+
+func (c *remoteDesktopSessionController) handleImageFrame(
+	ctx context.Context,
+	session *RemoteDesktopSession,
+	snapshot sessionSnapshot,
+	state *streamLoopState,
+	interval time.Duration,
+) (time.Duration, time.Time) {
+	processStart := time.Now()
+	current, err := captureMonitorFrame(snapshot.monitor, snapshot.width, snapshot.height)
+	if err != nil {
+		c.logf("remote desktop capture error: %v", err)
+		c.forceMonitorRefresh(session)
+		return interval, time.Time{}
+	}
+	captureDuration := time.Since(processStart)
+	encodeDuration := time.Duration(0)
+
+	prev := snapshot.previousFrame
+	keyFrame := snapshot.forceKey || len(prev) != len(current) || len(prev) == 0
+	var imageData string
+	var deltas []RemoteDesktopDeltaRect
+	frameEncoding := remoteEncodingPNG
+	bytesSent := 0
+
+	if keyFrame {
+		encodeStart := time.Now()
+		encoded, encoding, err := encodeKeyFrame(snapshot.width, snapshot.height, snapshot.clipQuality, current)
+		if err != nil {
+			c.logf("remote desktop encode frame: %v", err)
+			releaseFrameBuffer(current)
+			return interval, time.Time{}
+		}
+		encodeDuration += time.Since(encodeStart)
+		imageData = encoded
+		frameEncoding = encoding
+		bytesSent += len(encoded)
+	} else {
+		diffStart := time.Now()
+		rects, fallback, err := diffFrames(prev, current, snapshot.width, snapshot.height, snapshot.tile, &state.tileHasher, snapshot.clipQuality)
+		encodeDuration += time.Since(diffStart)
+		if err != nil {
+			c.logf("remote desktop diff error: %v", err)
+			keyFrame = true
+		} else if fallback {
+			keyFrame = true
+		} else {
+			deltas = rects
+			for _, rect := range rects {
+				bytesSent += len(rect.Data)
 			}
-			encodeDuration += time.Since(encodeStart)
+			if len(rects) == 0 {
+				if !state.lastSent.IsZero() && time.Since(state.lastSent) > 3*interval {
+					keyFrame = true
+				}
+			}
+		}
+
+		if keyFrame && imageData == "" {
+			encodeStart := time.Now()
+			encoded, encoding, encErr := encodeKeyFrame(snapshot.width, snapshot.height, snapshot.clipQuality, current)
+			if encErr != nil {
+				c.logf("remote desktop fallback encode: %v", encErr)
+				releaseFrameBuffer(current)
+				return interval, time.Time{}
+			}
 			imageData = encoded
 			frameEncoding = encoding
 			bytesSent += len(encoded)
-		} else {
-			diffStart := time.Now()
-			rects, fallback, err := diffFrames(prev, current, width, height, tile, &tileHasher, clipQuality)
-			encodeDuration += time.Since(diffStart)
-			if err != nil {
-				c.logf("remote desktop diff error: %v", err)
-				keyFrame = true
-			} else if fallback {
-				keyFrame = true
-			} else {
-				deltas = rects
-				for _, rect := range rects {
-					bytesSent += len(rect.Data)
-				}
-				if len(rects) == 0 {
-					if time.Since(lastSent) > 3*targetInterval {
-						keyFrame = true
-					}
-				}
-			}
-
-			if keyFrame && imageData == "" {
-				encodeStart := time.Now()
-				if encoded, encoding, encErr := encodeKeyFrame(width, height, clipQuality, current); encErr == nil {
-					imageData = encoded
-					frameEncoding = encoding
-					bytesSent += len(encoded)
-					encodeDuration += time.Since(encodeStart)
-				} else {
-					c.logf("remote desktop fallback encode: %v", encErr)
-					releaseFrameBuffer(current)
-					scheduleNextFrame(timer, targetInterval)
-					continue
-				}
-			}
+			encodeDuration += time.Since(encodeStart)
 		}
-
-		processingDuration := time.Since(processStart)
-		frameDuration := targetInterval
-		if !lastSent.IsZero() {
-			if elapsed := time.Since(lastSent); elapsed > 0 {
-				frameDuration = elapsed
-			}
-		}
-
-		usedQuality := 0
-		if frameEncoding == remoteEncodingJPEG {
-			usedQuality = clipQuality
-		} else if len(deltas) > 0 {
-			for _, rect := range deltas {
-				if rect.Encoding == remoteEncodingJPEG {
-					usedQuality = clipQuality
-					break
-				}
-			}
-		}
-		metrics := computeMetrics(targetInterval, frameDuration, captureDuration, encodeDuration, processingDuration, bytesSent, usedQuality)
-		timestamp := time.Now()
-		frame := RemoteDesktopFramePacket{
-			SessionID: session.ID,
-			Sequence:  sequence,
-			Timestamp: timestamp.UTC().Format(time.RFC3339Nano),
-			Width:     width,
-			Height:    height,
-			KeyFrame:  keyFrame,
-			Encoding:  frameEncoding,
-			Metrics:   metrics,
-		}
-		if len(monitorsPayload) > 0 {
-			frame.Monitors = monitorsPayload
-		}
-		if keyFrame {
-			frame.Image = imageData
-			frame.Deltas = nil
-		} else {
-			frame.Deltas = deltas
-		}
-
-		nextInterval := targetInterval
-
-		c.mu.Lock()
-		if c.session != nil && c.session.ID == session.ID {
-			if metrics != nil {
-				if c.session.TargetBitrateKbps > 0 {
-					metrics.TargetBitrateKbps = float64(c.session.TargetBitrateKbps)
-				}
-				metrics.LadderLevel = c.session.ladderIndex
-			}
-			c.maybeAdaptQualityLocked(c.session, metrics, processingDuration, frameDuration, bytesSent)
-			c.session.frameDropEMA = updateEMA(c.session.frameDropEMA, 0, frameDropRecoveryAlpha)
-			if metrics != nil {
-				metrics.FrameLossPercent = math.Round(clampFloat(c.session.frameDropEMA, 0, 1)*1000) / 10
-			}
-			nextInterval = c.session.FrameInterval
-		}
-		c.mu.Unlock()
-
-		sendCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
-		err := c.sendFrame(sendCtx, frame)
-		cancel()
-		if err != nil {
-			if !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
-				c.logf("remote desktop frame send error: %v", err)
-			}
-			c.mu.Lock()
-			if c.session != nil && c.session.ID == session.ID {
-				c.session.frameDropEMA = updateEMA(c.session.frameDropEMA, 1, frameDropEMAAlpha)
-			}
-			c.mu.Unlock()
-			releaseFrameBuffer(current)
-			scheduleNextFrame(timer, nextInterval)
-			continue
-		}
-
-		c.mu.Lock()
-		updated := false
-		updatedTile := tile
-		updatedWidth := width
-		updatedHeight := height
-		if c.session != nil && c.session.ID == session.ID {
-			c.session.LastFrame = current
-			releaseFrameBuffer(prev)
-			if len(monitorsPayload) > 0 {
-				c.session.monitorsDirty = false
-			}
-			nextInterval = c.session.FrameInterval
-			updatedTile = c.session.TileSize
-			updatedWidth = c.session.Width
-			updatedHeight = c.session.Height
-			updated = true
-		} else {
-			releaseFrameBuffer(current)
-			releaseFrameBuffer(prev)
-		}
-		c.mu.Unlock()
-
-		if updated {
-			if updatedWidth != width || updatedHeight != height {
-				tileHasher.reset()
-			} else if keyFrame || updatedTile != tile {
-				tileHasher.rebuild(current, width, height, updatedTile)
-			}
-		}
-
-		scheduleNextFrame(timer, nextInterval)
-		lastSent = timestamp
 	}
+
+	processingDuration := time.Since(processStart)
+	frameDuration := interval
+	if !state.lastSent.IsZero() {
+		if elapsed := time.Since(state.lastSent); elapsed > 0 {
+			frameDuration = elapsed
+		}
+	}
+
+	usedQuality := 0
+	if frameEncoding == remoteEncodingJPEG {
+		usedQuality = snapshot.clipQuality
+	} else if len(deltas) > 0 {
+		for _, rect := range deltas {
+			if rect.Encoding == remoteEncodingJPEG {
+				usedQuality = snapshot.clipQuality
+				break
+			}
+		}
+	}
+
+	metrics := computeMetrics(interval, frameDuration, captureDuration, encodeDuration, processingDuration, bytesSent, usedQuality)
+	timestamp := time.Now()
+	frame := RemoteDesktopFramePacket{
+		SessionID: snapshot.sessionID,
+		Sequence:  snapshot.sequence,
+		Timestamp: timestamp.UTC().Format(time.RFC3339Nano),
+		Width:     snapshot.width,
+		Height:    snapshot.height,
+		Encoding:  frameEncoding,
+		KeyFrame:  keyFrame,
+		Image:     imageData,
+		Deltas:    deltas,
+		Metrics:   metrics,
+	}
+	if len(snapshot.monitorsPayload) > 0 {
+		frame.Monitors = snapshot.monitorsPayload
+	}
+	if keyFrame {
+		frame.Deltas = nil
+	}
+
+	nextInterval, ok := c.prepareImageFrameSend(session, metrics, processingDuration, frameDuration, bytesSent)
+	if !ok {
+		releaseFrameBuffer(current)
+		releaseFrameBuffer(prev)
+		return interval, time.Time{}
+	}
+
+	sendCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	err = c.sendFrame(sendCtx, frame)
+	cancel()
+	if err != nil {
+		if !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
+			c.logf("remote desktop frame send error: %v", err)
+		}
+		c.markFrameFailure(session)
+		releaseFrameBuffer(current)
+		return nextInterval, time.Time{}
+	}
+
+	updatedInterval, updatedTile, updatedWidth, updatedHeight, updated := c.commitImageFrameSuccess(session, snapshot, current, prev)
+	if !updated {
+		releaseFrameBuffer(current)
+		releaseFrameBuffer(prev)
+		return nextInterval, timestamp
+	}
+
+	if updatedInterval > 0 {
+		nextInterval = updatedInterval
+	}
+
+	if updatedWidth != snapshot.width || updatedHeight != snapshot.height {
+		state.tileHasher.reset()
+	} else if keyFrame || updatedTile != snapshot.tile {
+		state.tileHasher.rebuild(session.LastFrame, snapshot.width, snapshot.height, updatedTile)
+	}
+
+	return nextInterval, timestamp
+}
+
+func (c *remoteDesktopSessionController) prepareImageFrameSend(
+	session *RemoteDesktopSession,
+	metrics *RemoteDesktopFrameMetrics,
+	processingDuration, frameDuration time.Duration,
+	bytesSent int,
+) (time.Duration, bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if c.session == nil || c.session.ID != session.ID {
+		return 0, false
+	}
+
+	if metrics != nil {
+		if c.session.TargetBitrateKbps > 0 {
+			metrics.TargetBitrateKbps = float64(c.session.TargetBitrateKbps)
+		}
+		metrics.LadderLevel = c.session.ladderIndex
+	}
+	c.maybeAdaptQualityLocked(c.session, metrics, processingDuration, frameDuration, bytesSent)
+	c.session.frameDropEMA = updateEMA(c.session.frameDropEMA, 0, frameDropRecoveryAlpha)
+	if metrics != nil {
+		metrics.FrameLossPercent = math.Round(clampFloat(c.session.frameDropEMA, 0, 1)*1000) / 10
+	}
+	return c.session.FrameInterval, true
+}
+
+func (c *remoteDesktopSessionController) commitImageFrameSuccess(
+	session *RemoteDesktopSession,
+	snapshot sessionSnapshot,
+	current, prev []byte,
+) (time.Duration, int, int, int, bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if c.session == nil || c.session.ID != session.ID {
+		return 0, 0, 0, 0, false
+	}
+
+	c.session.LastFrame = current
+	releaseFrameBuffer(prev)
+	if len(snapshot.monitorsPayload) > 0 {
+		c.session.monitorsDirty = false
+	}
+	return c.session.FrameInterval, c.session.TileSize, c.session.Width, c.session.Height, true
+}
+
+func (c *remoteDesktopSessionController) markFrameFailure(session *RemoteDesktopSession) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.session == nil || c.session.ID != session.ID {
+		return
+	}
+	c.session.frameDropEMA = updateEMA(c.session.frameDropEMA, 1, frameDropEMAAlpha)
+}
+
+func (c *remoteDesktopSessionController) forceMonitorRefresh(session *RemoteDesktopSession) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.session == nil || c.session.ID != session.ID {
+		return
+	}
+	c.refreshMonitorsLocked(c.session, true)
 }
 
 func (c *remoteDesktopSessionController) sendFrame(ctx context.Context, frame RemoteDesktopFramePacket) error {
@@ -621,7 +764,7 @@ func (c *remoteDesktopSessionController) sendFrame(ctx context.Context, frame Re
 
 	cfg := c.config()
 
-	baseURL := strings.TrimRight(strings.TrimSpace(cfg.BaseURL), "/")
+	baseURL := strings.TrimSpace(cfg.BaseURL)
 	if baseURL == "" {
 		return errors.New("remote desktop: missing base URL")
 	}
@@ -629,8 +772,20 @@ func (c *remoteDesktopSessionController) sendFrame(ctx context.Context, frame Re
 		return errors.New("remote desktop: missing http client")
 	}
 
-	endpoint := fmt.Sprintf("%s/api/agents/%s/remote-desktop/frames", baseURL, url.PathEscape(cfg.AgentID))
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(data))
+	parsed, err := url.Parse(baseURL)
+	if err != nil {
+		return fmt.Errorf("remote desktop: invalid base URL: %w", err)
+	}
+
+	agentID := strings.TrimSpace(cfg.AgentID)
+	if agentID == "" {
+		return errors.New("remote desktop: missing agent identifier")
+	}
+
+	pathRef := &url.URL{Path: fmt.Sprintf("/api/agents/%s/remote-desktop/frames", url.PathEscape(agentID))}
+	endpoint := parsed.ResolveReference(pathRef)
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint.String(), bytes.NewReader(data))
 	if err != nil {
 		return err
 	}
@@ -649,10 +804,22 @@ func (c *remoteDesktopSessionController) sendFrame(ctx context.Context, frame Re
 	}
 	defer resp.Body.Close()
 
+	drainErr := drainResponseBody(resp.Body)
 	if resp.StatusCode >= 300 {
+		if drainErr != nil {
+			return fmt.Errorf("frame upload failed: status %d: %w", resp.StatusCode, drainErr)
+		}
 		return fmt.Errorf("frame upload failed: status %d", resp.StatusCode)
 	}
-	return nil
+	return drainErr
+}
+
+func drainResponseBody(body io.Reader) error {
+	if body == nil {
+		return nil
+	}
+	_, err := io.Copy(io.Discard, body)
+	return err
 }
 
 func captureMonitorFrame(monitor remoteMonitor, width, height int) ([]byte, error) {
