@@ -4,9 +4,9 @@ import {
 	TARGET_OS_VALUES,
 	type TargetArch,
 	type TargetOS
-} from '../../../../../shared/types/build';
+} from '../../../../../../shared/types/build';
 
-export type { TargetArch, TargetOS } from '../../../../../shared/types/build';
+export type { TargetArch, TargetOS } from '../../../../../../shared/types/build';
 
 const TARGET_OS_LABELS: Record<TargetOS, string> = {
 	windows: 'Windows',

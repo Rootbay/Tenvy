@@ -1,5 +1,5 @@
 import { derived, get, writable } from 'svelte/store';
-import type { AgentSnapshot } from '../../../../../shared/types/agent';
+import type { AgentSnapshot } from '../../../../shared/types/agent';
 
 export type StatusFilter = 'all' | AgentSnapshot['status'];
 export type TagFilter = 'all' | string;
