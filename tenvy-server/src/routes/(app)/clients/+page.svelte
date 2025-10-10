@@ -9,6 +9,7 @@
 		CardHeader,
 		CardTitle
 	} from '$lib/components/ui/card/index.js';
+	import { Alert, AlertDescription, AlertTitle } from '$lib/components/ui/alert/index.js';
 	import { Input } from '$lib/components/ui/input/index.js';
 	import { Label } from '$lib/components/ui/label/index.js';
 	import { ScrollArea } from '$lib/components/ui/scroll-area/index.js';
@@ -54,9 +55,12 @@
 		type DialogToolId
 	} from '$lib/data/client-tools';
 	import type { Client } from '$lib/data/clients';
+	import { onDestroy } from 'svelte';
 	import ChevronLeft from '@lucide/svelte/icons/chevron-left';
 	import ChevronRight from '@lucide/svelte/icons/chevron-right';
 	import Search from '@lucide/svelte/icons/search';
+	import AlertCircle from '@lucide/svelte/icons/alert-circle';
+	import CheckCircle2 from '@lucide/svelte/icons/check-circle-2';
 	import type { AgentSnapshot } from '../../../../../shared/types/agent';
 
 	const statusLabels: Record<AgentSnapshot['status'], string> = {
@@ -120,6 +124,16 @@
 	let toolDialog = $state<{ agentId: string; toolId: DialogToolId } | null>(null);
 	let toolDialogAgent = $derived(findAgentById(toolDialog?.agentId ?? null));
 	let toolDialogClient = $derived(toolDialogAgent ? mapAgentToClient(toolDialogAgent) : null);
+
+	type PageAlertVariant = 'default' | 'destructive';
+
+	type PageAlert = {
+		title: string;
+		description: string;
+		variant: PageAlertVariant;
+	};
+
+	let connectionAlert = $state<PageAlert | null>(null);
 
 	$effect(() => {
 		if (toolDialog && !toolDialogAgent) {
@@ -265,9 +279,31 @@
 	type CopyFeedback = { message: string; variant: 'success' | 'error' } | null;
 	let copyFeedback = $state<CopyFeedback>(null);
 	let copyFeedbackTimeout: number | undefined;
+	let connectionAlertTimeout: number | undefined;
 
 	function updateRecord<T>(records: Record<string, T>, key: string, value: T): Record<string, T> {
 		return { ...records, [key]: value };
+	}
+
+	function hasActiveConnection(agent: AgentSnapshot): boolean {
+		return agent.status === 'online';
+	}
+
+	function showConnectionAlert(alert: PageAlert) {
+		connectionAlert = alert;
+
+		if (!browser) {
+			return;
+		}
+
+		if (connectionAlertTimeout !== undefined) {
+			window.clearTimeout(connectionAlertTimeout);
+		}
+
+		connectionAlertTimeout = window.setTimeout(() => {
+			connectionAlert = null;
+			connectionAlertTimeout = undefined;
+		}, 4000);
 	}
 
 	function formatDate(value: string): string {
@@ -482,12 +518,42 @@
 	}
 
 	function openPingDialog(agentId: string) {
+		const agent = findAgentById(agentId);
+		if (!agent) {
+			return;
+		}
+
+		if (!hasActiveConnection(agent)) {
+			const agentLabel = agent.metadata.hostname?.trim() || agent.id;
+			showConnectionAlert({
+				title: 'Connection unavailable',
+				description: `${agentLabel} is not currently connected. Re-establish the session to queue a ping.`,
+				variant: 'destructive'
+			});
+			return;
+		}
+
 		pingDialogAgentId = agentId;
 		commandErrors = updateRecord(commandErrors, `ping:${agentId}`, null);
 		commandSuccess = updateRecord(commandSuccess, `ping:${agentId}`, null);
 	}
 
 	function openShellDialog(agentId: string) {
+		const agent = findAgentById(agentId);
+		if (!agent) {
+			return;
+		}
+
+		if (!hasActiveConnection(agent)) {
+			const agentLabel = agent.metadata.hostname?.trim() || agent.id;
+			showConnectionAlert({
+				title: 'Connection unavailable',
+				description: `${agentLabel} is not currently connected. Re-establish the session to run shell commands.`,
+				variant: 'destructive'
+			});
+			return;
+		}
+
 		shellDialogAgentId = agentId;
 		commandErrors = updateRecord(commandErrors, `shell:${agentId}`, null);
 		commandSuccess = updateRecord(commandSuccess, `shell:${agentId}`, null);
@@ -546,6 +612,22 @@
 		}
 	}
 
+	onDestroy(() => {
+		if (!browser) {
+			return;
+		}
+
+		if (copyFeedbackTimeout !== undefined) {
+			window.clearTimeout(copyFeedbackTimeout);
+			copyFeedbackTimeout = undefined;
+		}
+
+		if (connectionAlertTimeout !== undefined) {
+			window.clearTimeout(connectionAlertTimeout);
+			connectionAlertTimeout = undefined;
+		}
+	});
+
 	function inferClientPlatform(os: string): Client['platform'] {
 		const normalized = os.toLowerCase();
 		if (normalized.includes('mac')) {
@@ -594,6 +676,16 @@
 	function openSection(section: SectionKey, agent: AgentSnapshot) {
 		const toolId = sectionToolMap[section];
 		if (!toolId) {
+			return;
+		}
+
+		if (!hasActiveConnection(agent)) {
+			const agentLabel = agent.metadata.hostname?.trim() || agent.id;
+			showConnectionAlert({
+				title: 'Connection unavailable',
+				description: `${agentLabel} is not currently connected. Re-establish the session to access agent tools.`,
+				variant: 'destructive'
+			});
 			return;
 		}
 
@@ -740,14 +832,30 @@
 				</div>
 			</div>
 		</div>
+		{#if connectionAlert}
+			<Alert variant={connectionAlert.variant}>
+				<AlertCircle class="h-4 w-4" />
+				<AlertTitle>{connectionAlert.title}</AlertTitle>
+				<AlertDescription>{connectionAlert.description}</AlertDescription>
+			</Alert>
+		{/if}
+
 		{#if copyFeedback}
-			<p
-				class={`text-sm ${
-					copyFeedback.variant === 'error' ? 'text-destructive' : 'text-emerald-500'
-				}`}
+			<Alert
+				variant={copyFeedback.variant === 'error' ? 'destructive' : 'default'}
+				class={copyFeedback.variant === 'success'
+					? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-500'
+					: undefined}
 			>
-				{copyFeedback.message}
-			</p>
+				{#if copyFeedback.variant === 'error'}
+					<AlertCircle class="h-4 w-4" />
+					<AlertTitle>Copy failed</AlertTitle>
+				{:else}
+					<CheckCircle2 class="h-4 w-4" />
+					<AlertTitle>Copied</AlertTitle>
+				{/if}
+				<AlertDescription>{copyFeedback.message}</AlertDescription>
+			</Alert>
 		{/if}
 	</div>
 
@@ -1102,9 +1210,17 @@
 						/>
 					</div>
 					{#if getError(`ping:${pingAgent!.id}`)}
-						<p class="text-sm text-destructive">{getError(`ping:${pingAgent!.id}`)}</p>
+						<Alert variant="destructive">
+							<AlertCircle class="h-4 w-4" />
+							<AlertTitle>Ping failed</AlertTitle>
+							<AlertDescription>{getError(`ping:${pingAgent!.id}`)}</AlertDescription>
+						</Alert>
 					{:else if getSuccess(`ping:${pingAgent!.id}`)}
-						<p class="text-sm text-emerald-500">{getSuccess(`ping:${pingAgent!.id}`)}</p>
+						<Alert class="border-emerald-500/40 bg-emerald-500/10 text-emerald-500">
+							<CheckCircle2 class="h-4 w-4" />
+							<AlertTitle>Ping queued</AlertTitle>
+							<AlertDescription>{getSuccess(`ping:${pingAgent!.id}`)}</AlertDescription>
+						</Alert>
 					{/if}
 				</div>
 				<DialogFooter class="gap-2 sm:justify-between">
@@ -1174,9 +1290,17 @@
 						<p class="text-xs text-muted-foreground">Leave blank to use the agent default.</p>
 					</div>
 					{#if getError(`shell:${shellAgent!.id}`)}
-						<p class="text-sm text-destructive">{getError(`shell:${shellAgent!.id}`)}</p>
+						<Alert variant="destructive">
+							<AlertCircle class="h-4 w-4" />
+							<AlertTitle>Shell dispatch failed</AlertTitle>
+							<AlertDescription>{getError(`shell:${shellAgent!.id}`)}</AlertDescription>
+						</Alert>
 					{:else if getSuccess(`shell:${shellAgent!.id}`)}
-						<p class="text-sm text-emerald-500">{getSuccess(`shell:${shellAgent!.id}`)}</p>
+						<Alert class="border-emerald-500/40 bg-emerald-500/10 text-emerald-500">
+							<CheckCircle2 class="h-4 w-4" />
+							<AlertTitle>Shell command queued</AlertTitle>
+							<AlertDescription>{getSuccess(`shell:${shellAgent!.id}`)}</AlertDescription>
+						</Alert>
 					{/if}
 				</div>
 				<DialogFooter class="gap-2 sm:justify-between">
