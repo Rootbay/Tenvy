@@ -41,6 +41,8 @@ type streamLoopState struct {
 	clipBytes      int
 	clipKeyPending bool
 	tileHasher     remoteTileHasher
+	regionScratch  []tileRegion
+	deltaScratch   []RemoteDesktopDeltaRect
 }
 
 type sessionSnapshot struct {
@@ -72,6 +74,64 @@ func (s *streamLoopState) resetClipBuffer() {
 	s.clipFrames = nil
 	s.clipStart = time.Time{}
 	s.clipBytes = 0
+}
+
+func (s *streamLoopState) borrowRegions() []tileRegion {
+	if s == nil {
+		return nil
+	}
+	regions := s.regionScratch
+	s.regionScratch = nil
+	return regions[:0]
+}
+
+func (s *streamLoopState) releaseRegions(regions []tileRegion) {
+	if s == nil {
+		return
+	}
+	if regions == nil {
+		s.regionScratch = nil
+		return
+	}
+	if cap(regions) > maxReusableTileRegions {
+		s.regionScratch = nil
+		return
+	}
+	s.regionScratch = regions[:0]
+}
+
+func (s *streamLoopState) borrowDeltas(size int) []RemoteDesktopDeltaRect {
+	if size <= 0 {
+		return nil
+	}
+	if s == nil {
+		return make([]RemoteDesktopDeltaRect, size)
+	}
+	scratch := s.deltaScratch
+	s.deltaScratch = nil
+	if cap(scratch) < size {
+		scratch = make([]RemoteDesktopDeltaRect, size)
+	} else {
+		scratch = scratch[:size]
+	}
+	return scratch
+}
+
+func (s *streamLoopState) recycleDeltas(deltas []RemoteDesktopDeltaRect) {
+	if s == nil {
+		return
+	}
+	if cap(deltas) > maxReusableDeltaRects {
+		for i := range deltas {
+			deltas[i] = RemoteDesktopDeltaRect{}
+		}
+		s.deltaScratch = nil
+		return
+	}
+	for i := range deltas {
+		deltas[i] = RemoteDesktopDeltaRect{}
+	}
+	s.deltaScratch = deltas[:0]
 }
 
 func (s *streamLoopState) onModeChange(session *RemoteDesktopSession, nextMode RemoteDesktopStreamMode) {
@@ -225,6 +285,8 @@ const (
 	frameDropBacklogMultiplier = 3
 	frameDropEMAAlpha          = 0.45
 	frameDropRecoveryAlpha     = 0.2
+	maxReusableTileRegions     = 2048
+	maxReusableDeltaRects      = 2048
 )
 
 func (c *remoteDesktopSessionController) stream(ctx context.Context, session *RemoteDesktopSession) {
@@ -605,6 +667,12 @@ func (c *remoteDesktopSessionController) handleImageFrame(
 	keyFrame := snapshot.forceKey || len(prev) != len(current) || len(prev) == 0
 	var imageData string
 	var deltas []RemoteDesktopDeltaRect
+	var borrowedDeltas []RemoteDesktopDeltaRect
+	defer func() {
+		if borrowedDeltas != nil {
+			state.recycleDeltas(borrowedDeltas)
+		}
+	}()
 	frameEncoding := remoteEncodingPNG
 	bytesSent := 0
 
@@ -622,7 +690,7 @@ func (c *remoteDesktopSessionController) handleImageFrame(
 		bytesSent += len(encoded)
 	} else {
 		diffStart := time.Now()
-		rects, fallback, err := diffFrames(prev, current, snapshot.width, snapshot.height, snapshot.tile, &state.tileHasher, snapshot.clipQuality)
+		rects, fallback, err := diffFrames(prev, current, snapshot.width, snapshot.height, snapshot.tile, state, snapshot.clipQuality)
 		encodeDuration += time.Since(diffStart)
 		if err != nil {
 			c.logf("remote desktop diff error: %v", err)
@@ -631,6 +699,9 @@ func (c *remoteDesktopSessionController) handleImageFrame(
 			keyFrame = true
 		} else {
 			deltas = rects
+			if len(rects) > 0 {
+				borrowedDeltas = rects
+			}
 			for _, rect := range rects {
 				bytesSent += len(rect.Data)
 			}
@@ -1167,8 +1238,8 @@ type tileRegion struct {
 	h int
 }
 
-func diffFrames(previous, current []byte, width, height, tile int, state *remoteTileHasher, quality int) ([]RemoteDesktopDeltaRect, bool, error) {
-	if state == nil {
+func diffFrames(previous, current []byte, width, height, tile int, loop *streamLoopState, quality int) ([]RemoteDesktopDeltaRect, bool, error) {
+	if loop == nil {
 		return diffFramesLegacy(previous, current, width, height, tile, quality)
 	}
 
@@ -1180,10 +1251,11 @@ func diffFrames(previous, current []byte, width, height, tile int, state *remote
 	}
 
 	if bytes.Equal(previous, current) {
-		state.ready = true
+		loop.tileHasher.ready = true
 		return nil, false, nil
 	}
 
+	state := &loop.tileHasher
 	state.ensure(width, height, tile)
 	stride := width * 4
 	baselineReady := state.ready
@@ -1191,7 +1263,14 @@ func diffFrames(previous, current []byte, width, height, tile int, state *remote
 	estimatedCols := (width + tile - 1) / tile
 	estimatedRows := (height + tile - 1) / tile
 	totalTiles := maxInt(1, estimatedCols*estimatedRows)
-	regions := make([]tileRegion, 0, maxInt(1, totalTiles/4))
+	requiredCapacity := maxInt(1, totalTiles/4)
+	regions := loop.borrowRegions()
+	if cap(regions) < requiredCapacity {
+		loop.releaseRegions(regions)
+		regions = make([]tileRegion, 0, requiredCapacity)
+	}
+	regions = regions[:0]
+	defer loop.releaseRegions(regions)
 
 	maxRegions := maxInt(64, totalTiles/maxDeltaTileFactor)
 	maxPixels := int(float64(width*height) * maxDeltaCoverageRatio)
@@ -1233,8 +1312,10 @@ func diffFrames(previous, current []byte, width, height, tile int, state *remote
 
 	regions = mergeTileRegions(regions)
 
-	deltas, err := encodeRegions(current, stride, regions, quality)
+	dest := loop.borrowDeltas(len(regions))
+	deltas, err := encodeRegions(current, stride, regions, quality, dest)
 	if err != nil {
+		loop.recycleDeltas(dest)
 		state.ready = false
 		return nil, false, err
 	}
@@ -1293,7 +1374,7 @@ func diffFramesLegacy(previous, current []byte, width, height, tile int, quality
 
 	regions = mergeTileRegions(regions)
 
-	deltas, err := encodeRegions(current, stride, regions, quality)
+	deltas, err := encodeRegions(current, stride, regions, quality, nil)
 	if err != nil {
 		return nil, false, err
 	}
@@ -1320,10 +1401,18 @@ func mergeTileRegions(regions []tileRegion) []tileRegion {
 	return merged
 }
 
-func encodeRegions(data []byte, stride int, regions []tileRegion, quality int) ([]RemoteDesktopDeltaRect, error) {
-	deltas := make([]RemoteDesktopDeltaRect, len(regions))
+func encodeRegions(data []byte, stride int, regions []tileRegion, quality int, scratch []RemoteDesktopDeltaRect) ([]RemoteDesktopDeltaRect, error) {
 	if len(regions) == 0 {
-		return deltas, nil
+		if scratch == nil {
+			return nil, nil
+		}
+		return scratch[:0], nil
+	}
+
+	if cap(scratch) < len(regions) {
+		scratch = make([]RemoteDesktopDeltaRect, len(regions))
+	} else {
+		scratch = scratch[:len(regions)]
 	}
 
 	workerCount := minInt(len(regions), maxEncodeWorkers)
@@ -1333,9 +1422,9 @@ func encodeRegions(data []byte, stride int, regions []tileRegion, quality int) (
 			if err != nil {
 				return nil, err
 			}
-			deltas[idx] = rect
+			scratch[idx] = rect
 		}
-		return deltas, nil
+		return scratch, nil
 	}
 
 	jobs := make(chan int, len(regions))
@@ -1357,7 +1446,7 @@ func encodeRegions(data []byte, stride int, regions []tileRegion, quality int) (
 					})
 					return
 				}
-				deltas[idx] = rect
+				scratch[idx] = rect
 			}
 		}()
 	}
@@ -1372,7 +1461,7 @@ func encodeRegions(data []byte, stride int, regions []tileRegion, quality int) (
 		return nil, encodeErr
 	}
 
-	return deltas, nil
+	return scratch, nil
 }
 
 func regionChanged(prev, curr []byte, stride, x, y, w, h int) bool {
