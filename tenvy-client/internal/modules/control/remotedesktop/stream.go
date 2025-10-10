@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"hash/maphash"
 	"image"
 	"image/jpeg"
 	"image/png"
@@ -190,7 +191,30 @@ var (
 	imageBufferPool = sync.Pool{New: func() interface{} { return new(bytes.Buffer) }}
 	frameBufferPool = sync.Pool{New: func() interface{} { return make([]byte, 0) }}
 	jpegOptionsPool = sync.Pool{New: func() interface{} { return new(jpeg.Options) }}
+	jsonBodyPool    = sync.Pool{New: func() interface{} { return &jsonRequestBody{Buffer: new(bytes.Buffer)} }}
+	tileHashPool    = sync.Pool{New: func() interface{} { return new(maphash.Hash) }}
 )
+
+type jsonRequestBody struct {
+	*bytes.Buffer
+}
+
+func acquireJSONBody() *jsonRequestBody {
+	value := jsonBodyPool.Get()
+	if body, ok := value.(*jsonRequestBody); ok {
+		body.Reset()
+		return body
+	}
+	return &jsonRequestBody{Buffer: new(bytes.Buffer)}
+}
+
+func releaseJSONBody(body *jsonRequestBody) {
+	if body == nil {
+		return
+	}
+	body.Reset()
+	jsonBodyPool.Put(body)
+}
 
 const (
 	maxDeltaCoverageRatio      = 0.35
@@ -777,15 +801,27 @@ func (c *remoteDesktopSessionController) sendFrame(ctx context.Context, frame Re
 		return errors.New("remote desktop: missing http client")
 	}
 
-	data, err := json.Marshal(frame)
-	if err != nil {
+	body := acquireJSONBody()
+	defer releaseJSONBody(body)
+
+	encoder := json.NewEncoder(body)
+	encoder.SetEscapeHTML(false)
+	if err := encoder.Encode(frame); err != nil {
 		return err
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(data))
+	if body.Len() > 0 {
+		raw := body.Bytes()
+		if raw[len(raw)-1] == '\n' {
+			body.Truncate(body.Len() - 1)
+		}
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, body)
 	if err != nil {
 		return err
 	}
+	req.ContentLength = int64(body.Len())
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
 	if ua := strings.TrimSpace(c.userAgent()); ua != "" {
@@ -1329,22 +1365,28 @@ func regionChanged(prev, curr []byte, stride, x, y, w, h int) bool {
 }
 
 func tileChecksum(data []byte, stride, x, y, w, h int) uint64 {
-	const (
-		offsetBasis = 1469598103934665603
-		prime       = 1099511628211
-	)
+	if w <= 0 || h <= 0 {
+		return 0
+	}
 
-	hash := uint64(offsetBasis)
+	hasherValue := tileHashPool.Get()
+	hasher, _ := hasherValue.(*maphash.Hash)
+	if hasher == nil {
+		hasher = new(maphash.Hash)
+	}
+	hasher.Reset()
+
 	rowWidth := w * 4
 	for row := 0; row < h; row++ {
 		start := (y+row)*stride + x*4
 		segment := data[start : start+rowWidth]
-		for _, b := range segment {
-			hash ^= uint64(b)
-			hash *= prime
-		}
+		_, _ = hasher.Write(segment)
 	}
-	return hash
+
+	sum := hasher.Sum64()
+	hasher.Reset()
+	tileHashPool.Put(hasher)
+	return sum
 }
 
 func (c *remoteDesktopSessionController) refreshMonitorsLocked(session *RemoteDesktopSession, force bool) {
