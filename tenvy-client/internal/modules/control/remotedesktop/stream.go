@@ -913,8 +913,8 @@ func (c *remoteDesktopSessionController) sendFrame(ctx context.Context, frame Re
 	if ua := strings.TrimSpace(c.userAgent()); ua != "" {
 		req.Header.Set("User-Agent", ua)
 	}
-	if key := strings.TrimSpace(cfg.AuthKey); key != "" {
-		req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", key))
+	if cfg.authHeader != "" {
+		req.Header.Set("Authorization", cfg.authHeader)
 	}
 
 	resp, err := client.Do(req)

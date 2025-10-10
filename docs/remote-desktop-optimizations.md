@@ -46,6 +46,7 @@ This note captures proposed optimizations for the Tenvy remote desktop pipeline.
 - Adopt QUIC or WebRTC data channels for combined NAT traversal, congestion control, and optional DTLS encryption.
 - Negotiate codec support and capabilities during session handshake; include encoder hardware telemetry for diagnostics.
 - Support intra-refresh or periodic intra frames to recover from packet loss without forcing full keyframe resets.
+- Harden HTTP fallbacks with aggressive connection pooling, TLS 1.2+ enforcement, and HTTP/2 to minimize handshake overhead when QUIC is unavailable.
 
 ## 6. Observability & Tuning
 
@@ -59,7 +60,7 @@ This note captures proposed optimizations for the Tenvy remote desktop pipeline.
 2. Introduce HEVC pipeline behind a feature flag; collect telemetry for success rates.
 3. Add adaptive bitrate controller and resolution ladder.
 4. Integrate dirty rectangle capture path and fallbacks.
-5. Harden transport (QUIC/WebRTC) and update UI controls.
+5. Harden transport (QUIC/WebRTC) and update UI controls while ensuring HTTP/TLS fallbacks share the optimized connection pool.
 6. Roll out observability dashboards and log sampling.
 
 These steps progressively reduce risk while delivering tangible improvements to the remote desktop experience.

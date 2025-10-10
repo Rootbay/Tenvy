@@ -1,8 +1,10 @@
 package agent
 
 import (
+	"crypto/tls"
 	"errors"
 	"log"
+	"net"
 	"net/http"
 	"strings"
 	"time"
@@ -71,10 +73,78 @@ func (o RuntimeOptions) Validate() error {
 
 // ensureDefaults configures derived default values for runtime options.
 func (o *RuntimeOptions) ensureDefaults() {
-	if o.HTTPClient == nil {
-		o.HTTPClient = &http.Client{Timeout: 60 * time.Second}
-	}
+	o.HTTPClient = ensureHTTPClient(o.HTTPClient)
 	if o.ShutdownGrace <= 0 {
 		o.ShutdownGrace = 5 * time.Second
 	}
+}
+
+func ensureHTTPClient(base *http.Client) *http.Client {
+	if base == nil {
+		base = &http.Client{}
+	} else {
+		base = cloneHTTPClient(base)
+	}
+
+	if base.Timeout <= 0 {
+		base.Timeout = 60 * time.Second
+	}
+
+	base.Transport = ensureHTTPTransport(base.Transport)
+	return base
+}
+
+func ensureHTTPTransport(rt http.RoundTripper) http.RoundTripper {
+	transport, ok := rt.(*http.Transport)
+	switch {
+	case ok:
+		transport = transport.Clone()
+	case rt == nil:
+		defaultTransport, ok := http.DefaultTransport.(*http.Transport)
+		if !ok {
+			return rt
+		}
+		transport = defaultTransport.Clone()
+	default:
+		return rt
+	}
+
+	if transport.DialContext == nil {
+		transport.DialContext = (&net.Dialer{Timeout: 15 * time.Second, KeepAlive: 30 * time.Second}).DialContext
+	}
+	if transport.MaxIdleConns < 32 {
+		transport.MaxIdleConns = 32
+	}
+	if transport.MaxIdleConnsPerHost < 16 {
+		transport.MaxIdleConnsPerHost = 16
+	}
+	if transport.IdleConnTimeout <= 0 {
+		transport.IdleConnTimeout = 90 * time.Second
+	}
+	if transport.TLSHandshakeTimeout <= 0 {
+		transport.TLSHandshakeTimeout = 10 * time.Second
+	}
+	if transport.ExpectContinueTimeout <= 0 {
+		transport.ExpectContinueTimeout = time.Second
+	}
+	transport.ForceAttemptHTTP2 = true
+
+	if transport.TLSClientConfig == nil {
+		transport.TLSClientConfig = &tls.Config{MinVersion: tls.VersionTLS12}
+	} else {
+		cfg := transport.TLSClientConfig.Clone()
+		if cfg.MinVersion < tls.VersionTLS12 {
+			cfg.MinVersion = tls.VersionTLS12
+		}
+		transport.TLSClientConfig = cfg
+	}
+	return transport
+}
+
+func cloneHTTPClient(base *http.Client) *http.Client {
+	if base == nil {
+		return &http.Client{}
+	}
+	clone := *base
+	return &clone
 }

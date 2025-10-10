@@ -812,7 +812,9 @@ func sanitizeConfig(cfg Config) Config {
 	cfg.AgentID = strings.TrimSpace(cfg.AgentID)
 	cfg.BaseURL = normalizeBaseURL(strings.TrimSpace(cfg.BaseURL))
 	cfg.AuthKey = strings.TrimSpace(cfg.AuthKey)
+	cfg.Client = secureHTTPClient(cfg.Client)
 	cfg.RequestTimeout = normalizeRequestTimeout(cfg.RequestTimeout)
+	cfg.authHeader = buildAuthHeader(cfg.AuthKey)
 	return cfg
 }
 
