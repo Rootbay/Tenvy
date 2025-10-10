@@ -1,18 +1,22 @@
 <script lang="ts">
-	import {
-		ContextMenu,
-		ContextMenuContent,
-		ContextMenuItem,
-		ContextMenuSeparator,
-		ContextMenuSub,
-		ContextMenuSubContent,
-		ContextMenuSubTrigger,
-		ContextMenuTrigger
-	} from '$lib/components/ui/context-menu/index.js';
-	import { TableCell, TableRow } from '$lib/components/ui/table/index.js';
-	import OsLogo from '$lib/components/os-logo.svelte';
-	import type { AgentSnapshot } from '../../../../../shared/types/agent';
-	import type { SectionKey } from '$lib/client-sections';
+        import { ContextMenu as ContextMenuPrimitive } from 'bits-ui';
+        import {
+                ContextMenu,
+                ContextMenuContent,
+                ContextMenuItem,
+                ContextMenuSeparator,
+                ContextMenuSub,
+                ContextMenuSubContent,
+                ContextMenuSubTrigger,
+                ContextMenuTrigger
+        } from '$lib/components/ui/context-menu/index.js';
+        import { TableCell, TableRow } from '$lib/components/ui/table/index.js';
+        import OsLogo from '$lib/components/os-logo.svelte';
+        import { cn } from '$lib/utils.js';
+        import type { AgentSnapshot } from '../../../../../shared/types/agent';
+        import type { SectionKey } from '$lib/client-sections';
+
+        type TriggerChildProps = Parameters<NonNullable<ContextMenuPrimitive.TriggerProps['child']>>[0];
 
 	export let agent: AgentSnapshot;
 	export let openSection: (section: SectionKey, agent: AgentSnapshot) => void;
@@ -23,10 +27,10 @@
 	export let formatDate: (value: string) => string;
 </script>
 
-<ContextMenu>
-	<ContextMenuTrigger>
-		<TableRow class="cursor-context-menu" tabindex={0}>
-			<TableCell>
+{#snippet TriggerChild({ props }: TriggerChildProps)}
+        {@const className = cn('cursor-context-menu', (props as { class?: string }).class)}
+        <TableRow {...props} class={className} tabindex={0}>
+            <TableCell>
 				<div class="flex items-center gap-3">
 					<span class="text-2xl" aria-hidden="true">{getAgentLocation(agent).flag}</span>
 					<div class="flex flex-col">
@@ -59,8 +63,11 @@
 				{formatDate(agent.connectedAt)}
 			</TableCell>
 		</TableRow>
-	</ContextMenuTrigger>
-	<ContextMenuContent class="w-56">
+{/snippet}
+
+<ContextMenu>
+    <ContextMenuTrigger child={TriggerChild} />
+    <ContextMenuContent class="w-56">
 		<ContextMenuItem onSelect={() => openSection('systemInfo', agent)}>System Info</ContextMenuItem>
 		<ContextMenuItem onSelect={() => openSection('notes', agent)}>Notes</ContextMenuItem>
 
