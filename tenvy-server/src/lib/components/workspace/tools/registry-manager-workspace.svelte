@@ -207,6 +207,13 @@
 		valueFormError = null;
 	}
 
+	function applyHiveUpdate(next: RegistryHive): RegistryHive {
+		const normalized = normalizeHive(next);
+		registry = { ...registry, [selectedHive]: normalized };
+		lastChangeAt = findLatestChange(registry);
+		return normalized;
+	}
+
 	function upsertValue() {
 		valueFormError = null;
 		const key = selectedKey;
@@ -253,8 +260,7 @@
 		workingKey.lastModified = now;
 
 		const updatedHive: RegistryHive = { ...hive, [workingKey.path]: workingKey };
-		registry = { ...registry, [selectedHive]: normalizeHive(updatedHive) };
-		lastChangeAt = new Date();
+		applyHiveUpdate(updatedHive);
 
 		selectedValueName = trimmedName;
 		valueFormOriginalName = trimmedName;
@@ -280,8 +286,7 @@
 		workingKey.lastModified = new Date().toISOString();
 
 		const updatedHive: RegistryHive = { ...hive, [workingKey.path]: workingKey };
-		registry = { ...registry, [selectedHive]: normalizeHive(updatedHive) };
-		lastChangeAt = new Date();
+		applyHiveUpdate(updatedHive);
 
 		logOperation(
 			'Value deleted',
@@ -341,8 +346,7 @@
 			};
 		}
 
-		registry = { ...registry, [selectedHive]: normalizeHive(updatedHive) };
-		lastChangeAt = new Date();
+		applyHiveUpdate(updatedHive);
 
 		keyCreateName = '';
 		selectedKeyPath = newPath;
@@ -406,8 +410,7 @@
 			}
 		}
 
-		registry = { ...registry, [selectedHive]: normalizeHive(updatedHive) };
-		lastChangeAt = new Date();
+		applyHiveUpdate(updatedHive);
 
 		selectedKeyPath = newPath;
 		keyRenameName = trimmed;
@@ -435,15 +438,14 @@
 			updatedHive[path] = cloneKey(entry);
 		}
 
-		registry = { ...registry, [selectedHive]: normalizeHive(updatedHive) };
-		lastChangeAt = new Date();
+		const normalizedHive = applyHiveUpdate(updatedHive);
 
 		logOperation('Key deleted', `${selectedHive}\\${key.path}`, 'complete');
 
 		selectedKeyPath =
-			key.parentPath && updatedHive[key.parentPath]
+			key.parentPath && normalizedHive[key.parentPath]
 				? key.parentPath
-				: (firstKeyPath(updatedHive) ?? '');
+				: (firstKeyPath(normalizedHive) ?? '');
 	}
 
 	function logOperation(title: string, description: string, status: WorkspaceLogEntry['status']) {
@@ -540,7 +542,7 @@
 				}
 			}
 			const match = matchesKey(entry, search);
-			const passesFilter = !onlyWithValues || entry.values.length > 0 || childIncluded;
+			const passesFilter = !onlyWithValues || entry.values.length > 0 || childIncluded || match;
 			const include = passesFilter && (search === '' || match || childIncluded);
 			if (!include) {
 				return { included: false, nodes: [] };
