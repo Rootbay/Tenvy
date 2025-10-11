@@ -6,6 +6,7 @@ import type { ClipboardCommandPayload } from './clipboard';
 import type { RecoveryCommandPayload } from './recovery';
 import type { FileManagerCommandPayload } from './file-manager';
 import type { TcpConnectionsCommandPayload } from './tcp-connections';
+import type { ClientChatCommandPayload } from './client-chat';
 
 export type CommandName =
         | 'ping'
@@ -17,7 +18,8 @@ export type CommandName =
         | 'clipboard'
         | 'recovery'
         | 'file-manager'
-        | 'tcp-connections';
+        | 'tcp-connections'
+        | 'client-chat';
 
 export interface PingCommandPayload {
         message?: string;
@@ -50,7 +52,8 @@ export type CommandPayload =
         | ClipboardCommandPayload
         | RecoveryCommandPayload
         | FileManagerCommandPayload
-        | TcpConnectionsCommandPayload;
+        | TcpConnectionsCommandPayload
+        | ClientChatCommandPayload;
 
 export interface CommandInput {
         name: CommandName;

