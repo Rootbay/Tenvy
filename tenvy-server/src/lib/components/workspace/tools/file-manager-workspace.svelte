@@ -12,6 +12,7 @@
 	import type {
 		DirectoryListing,
 		FileContent,
+		FileManagerCommandPayload,
 		FileManagerResource,
 		FileOperationResponse,
 		FileSystemEntry
@@ -40,6 +41,7 @@
 	const { client } = $props<{ client: Client }>();
 
 	const fileManagerEndpoint = $derived(`/api/agents/${encodeURIComponent(client.id)}/file-manager`);
+	const commandEndpoint = $derived(`/api/agents/${encodeURIComponent(client.id)}/commands`);
 
 	type SortField = 'name' | 'modifiedAt' | 'type' | 'size';
 
@@ -78,6 +80,89 @@
 	let renameInputRef = $state<HTMLInputElement | null>(null);
 	let sortField = $state<SortField>('name');
 	let sortDirection = $state<'asc' | 'desc'>('asc');
+
+	class FileManagerRequestError extends Error {
+		status: number;
+
+		constructor(message: string, status: number) {
+			super(message);
+			this.name = 'FileManagerRequestError';
+			this.status = status;
+		}
+	}
+
+	const pendingRequests = new Set<string>();
+
+	function requestKey(kind: 'directory' | 'file', path?: string | null, extras?: string): string {
+		const normalized = path?.trim() ?? '';
+		const suffix = extras ? `:${extras}` : '';
+		return `${kind}:${normalized}${suffix}`;
+	}
+
+	async function queueAgentCommand(payload: FileManagerCommandPayload): Promise<void> {
+		const response = await fetch(commandEndpoint, {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({
+				name: 'file-manager',
+				payload
+			})
+		});
+		if (!response.ok) {
+			const detail = await response.text().catch(() => '');
+			throw new Error(detail || 'Failed to queue agent request');
+		}
+	}
+
+	async function requestDirectoryListing(path?: string | null): Promise<boolean> {
+		const trimmed = path?.trim();
+		const includeHiddenPreference = includeHidden;
+		const key = requestKey('directory', trimmed, includeHiddenPreference ? 'hidden' : 'visible');
+		if (pendingRequests.has(key)) {
+			return false;
+		}
+		pendingRequests.add(key);
+		try {
+			const payload: FileManagerCommandPayload = {
+				action: 'list-directory',
+				path: trimmed && trimmed.length > 0 ? trimmed : undefined,
+				includeHidden: includeHiddenPreference
+			};
+			await queueAgentCommand(payload);
+			const resolvedPath = payload.path;
+			setTimeout(() => {
+				void loadDirectory(resolvedPath, { silent: true }).catch(() => {});
+			}, 600);
+			return true;
+		} finally {
+			pendingRequests.delete(key);
+		}
+	}
+
+	async function requestFileContent(path: string): Promise<boolean> {
+		const trimmed = path.trim();
+		if (!trimmed) {
+			throw new Error('File path is required to request file content');
+		}
+		const key = requestKey('file', trimmed);
+		if (pendingRequests.has(key)) {
+			return false;
+		}
+		pendingRequests.add(key);
+		try {
+			const payload: FileManagerCommandPayload = {
+				action: 'read-file',
+				path: trimmed
+			};
+			await queueAgentCommand(payload);
+			setTimeout(() => {
+				void loadFile(trimmed, { select: true, silent: true }).catch(() => {});
+			}, 600);
+			return true;
+		} finally {
+			pendingRequests.delete(key);
+		}
+	}
 
 	function filteredEntriesList(): FileSystemEntry[] {
 		const entries = listing
@@ -302,7 +387,10 @@
 		const response = await fetch(`${fileManagerEndpoint}${query ? `?${query}` : ''}`);
 		if (!response.ok) {
 			const detail = await response.text().catch(() => '');
-			throw new Error(detail || `Request failed with status ${response.status}`);
+			throw new FileManagerRequestError(
+				detail || `Request failed with status ${response.status}`,
+				response.status
+			);
 		}
 		return (await response.json()) as FileManagerResource;
 	}
@@ -351,6 +439,7 @@
 		if (!options.silent) {
 			loading = true;
 			errorMessage = null;
+			successMessage = null;
 		}
 		try {
 			const resource = await fetchResource(path ?? listing?.path ?? undefined);
@@ -383,8 +472,27 @@
 					pushHistory(resource.path);
 				}
 			}
+			if (!options.silent) {
+				successMessage = null;
+			}
 			return resource;
 		} catch (err) {
+			if (err instanceof FileManagerRequestError && err.status === 404 && !options.silent) {
+				const targetPath = path?.trim() || listing?.path || undefined;
+				try {
+					const queued = await requestDirectoryListing(targetPath);
+					successMessage = queued
+						? 'Requested directory listing from the agent. Waiting for response.'
+						: 'Waiting for the agent to provide a directory listing…';
+					errorMessage = null;
+				} catch (requestError) {
+					errorMessage =
+						requestError instanceof Error
+							? requestError.message
+							: 'Failed to request directory listing';
+				}
+				return null;
+			}
 			if (!options.silent) {
 				errorMessage = err instanceof Error ? err.message : 'Failed to load directory';
 			}
@@ -403,6 +511,7 @@
 		if (!options.silent) {
 			loading = true;
 			errorMessage = null;
+			successMessage = null;
 		}
 		try {
 			const resource = await fetchResource(path);
@@ -420,6 +529,9 @@
 				if (!options.silent && !options.fromHistory) {
 					pushHistory(resource.path);
 				}
+				if (!options.silent) {
+					successMessage = null;
+				}
 				return resource;
 			}
 			listing = resource;
@@ -433,9 +545,23 @@
 				if (!options.fromHistory) {
 					pushHistory(resource.path);
 				}
+				successMessage = null;
 			}
 			return null;
 		} catch (err) {
+			if (err instanceof FileManagerRequestError && err.status === 404 && !options.silent) {
+				try {
+					const queued = await requestFileContent(path);
+					successMessage = queued
+						? 'Requested file content from the agent. Waiting for response.'
+						: 'Waiting for the agent to provide the file content…';
+					errorMessage = null;
+				} catch (requestError) {
+					errorMessage =
+						requestError instanceof Error ? requestError.message : 'Failed to request file content';
+				}
+				return null;
+			}
 			if (!options.silent) {
 				errorMessage = err instanceof Error ? err.message : 'Failed to load file';
 			}
