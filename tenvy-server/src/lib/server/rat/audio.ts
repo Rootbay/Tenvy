@@ -5,8 +5,11 @@ import type {
 	AudioDirection,
 	AudioSessionState,
 	AudioStreamChunk,
-	AudioStreamFormat
+	AudioStreamFormat,
+	AudioUploadTrack
 } from '$lib/types/audio';
+import { join } from 'node:path';
+import { mkdir, stat, unlink } from 'node:fs/promises';
 
 const encoder = new TextEncoder();
 
@@ -37,6 +40,16 @@ interface AudioSessionRecord {
 	lastSequence?: number;
 	active: boolean;
 	subscribers: Set<AudioSubscriber>;
+}
+
+interface AudioUploadRecord {
+	id: string;
+	agentId: string;
+	storedName: string;
+	originalName: string;
+	size: number;
+	contentType?: string;
+	uploadedAt: Date;
 }
 
 function cloneInventory(input: AudioDeviceInventory): AudioDeviceInventory {
@@ -71,6 +84,14 @@ export class AudioBridgeManager {
 	private inventories = new Map<string, AudioDeviceInventory>();
 	private pendingInventory = new Map<string, Set<string>>();
 	private sessions = new Map<string, AudioSessionRecord>();
+	private uploads = new Map<string, Map<string, AudioUploadRecord>>();
+	private uploadDirectory = join(process.cwd(), '.data', 'audio-uploads');
+
+	async ensureUploadDirectory(agentId: string) {
+		const directory = join(this.uploadDirectory, agentId);
+		await mkdir(directory, { recursive: true });
+		return directory;
+	}
 
 	markInventoryRequest(agentId: string, requestId: string) {
 		const trimmed = requestId?.trim();
@@ -153,6 +174,65 @@ export class AudioBridgeManager {
 			return null;
 		}
 		return toSessionState(record);
+	}
+
+	listUploads(agentId: string): AudioUploadTrack[] {
+		const uploads = this.uploads.get(agentId);
+		if (!uploads) {
+			return [];
+		}
+		return Array.from(uploads.values()).map(
+			(upload) =>
+				({
+					id: upload.id,
+					filename: upload.storedName,
+					originalName: upload.originalName,
+					size: upload.size,
+					contentType: upload.contentType,
+					uploadedAt: upload.uploadedAt.toISOString(),
+					downloadUrl: `/api/agents/${agentId}/audio/uploads/${upload.id}`
+				}) satisfies AudioUploadTrack
+		);
+	}
+
+	registerUpload(agentId: string, upload: AudioUploadRecord) {
+		if (!this.uploads.has(agentId)) {
+			this.uploads.set(agentId, new Map());
+		}
+		this.uploads.get(agentId)?.set(upload.id, upload);
+	}
+
+	getUpload(agentId: string, uploadId: string): AudioUploadRecord | null {
+		const uploads = this.uploads.get(agentId);
+		if (!uploads) {
+			return null;
+		}
+		return uploads.get(uploadId) ?? null;
+	}
+
+	async removeUpload(agentId: string, uploadId: string) {
+		const uploads = this.uploads.get(agentId);
+		if (!uploads) {
+			return;
+		}
+		const record = uploads.get(uploadId);
+		if (!record) {
+			return;
+		}
+		const directory = await this.ensureUploadDirectory(agentId);
+		const path = join(directory, record.storedName);
+		try {
+			const file = await stat(path);
+			if (file.isFile()) {
+				await unlink(path);
+			}
+		} catch {
+			// ignore missing file errors
+		}
+		uploads.delete(uploadId);
+		if (uploads.size === 0) {
+			this.uploads.delete(agentId);
+		}
 	}
 
 	closeSession(agentId: string, sessionId: string): AudioSessionState | null {

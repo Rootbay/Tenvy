@@ -143,7 +143,7 @@
 		return state
 			.replace(/_/g, ' ')
 			.toLowerCase()
-			.replace(/(^|\s)\S/g, (segment) => segment.toUpperCase());
+			.replace(/(^|\s)\S/g, (segment: string) => segment.toUpperCase());
 	}
 
 	async function loadSnapshot(options: { silent?: boolean } = {}) {
