@@ -169,6 +169,32 @@ export class AgentRegistry {
 		return { command };
 	}
 
+	disconnectAgent(id: string): AgentSnapshot {
+		const record = this.agents.get(id);
+		if (!record) {
+			throw new RegistryError('Agent not found', 404);
+		}
+
+		record.status = 'offline';
+		record.lastSeen = new Date();
+
+		return this.toSnapshot(record);
+	}
+
+	reconnectAgent(id: string): AgentSnapshot {
+		const record = this.agents.get(id);
+		if (!record) {
+			throw new RegistryError('Agent not found', 404);
+		}
+
+		const now = new Date();
+		record.status = 'online';
+		record.connectedAt = now;
+		record.lastSeen = now;
+
+		return this.toSnapshot(record);
+	}
+
 	listAgents(): AgentSnapshot[] {
 		return Array.from(this.agents.values()).map((record) => this.toSnapshot(record));
 	}

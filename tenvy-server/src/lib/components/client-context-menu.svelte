@@ -8,7 +8,7 @@
 		ContextMenuSubContent,
 		ContextMenuSubTrigger
 	} from '$lib/components/ui/context-menu/index.js';
-	import { goto } from '$app/navigation';
+	import { goto, invalidateAll } from '$app/navigation';
 	import { browser } from '$app/environment';
 	import type { Client } from '$lib/data/clients';
 	import ClientToolDialog from '$lib/components/client-tool-dialog.svelte';
@@ -19,14 +19,72 @@
 		type ClientToolId,
 		type DialogToolId
 	} from '$lib/data/client-tools';
+	import { createEventDispatcher } from 'svelte';
+	import type {
+		AgentConnectionAction,
+		AgentConnectionRequest
+	} from '../../../../shared/types/agent';
 
 	const { client } = $props<{ client: Client }>();
 
 	let dialogTool = $state<DialogToolId | null>(null);
+	const dispatch = createEventDispatcher<{
+		connection: { action: AgentConnectionAction; success: boolean; message: string };
+	}>();
+
+	async function handleConnectionAction(action: AgentConnectionAction) {
+		if (!browser) {
+			return;
+		}
+
+		const label = client.hostname?.trim() || client.codename || client.id;
+
+		try {
+			const response = await fetch(`/api/agents/${client.id}/connection`, {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ action } satisfies AgentConnectionRequest)
+			});
+
+			if (!response.ok) {
+				const message = (await response.text()) || 'Unable to update connection';
+				dispatch('connection', {
+					action,
+					success: false,
+					message: message.trim()
+				});
+				console.warn('Connection request failed:', message);
+				return;
+			}
+
+			await invalidateAll();
+
+			const successMessage =
+				action === 'disconnect'
+					? `${label} is now disconnected from the controller.`
+					: `${label} has been reconnected to the controller.`;
+
+			dispatch('connection', {
+				action,
+				success: true,
+				message: successMessage
+			});
+		} catch (err) {
+			const message = err instanceof Error ? err.message : 'Unable to update connection';
+			dispatch('connection', { action, success: false, message });
+			console.error('Connection request failed:', err);
+		}
+	}
 
 	function openTool(toolId: ClientToolId) {
 		const tool = getClientTool(toolId);
 		const target = tool.target ?? '_blank';
+
+		if (toolId === 'reconnect' || toolId === 'disconnect') {
+			dialogTool = null;
+			void handleConnectionAction(toolId);
+			return;
+		}
 
 		if (target === 'dialog') {
 			dialogTool = isDialogTool(toolId) ? toolId : (toolId as DialogToolId);
