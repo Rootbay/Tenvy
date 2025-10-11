@@ -115,3 +115,41 @@ type RecoveryManifestEntry struct {
 	PreviewEncoding string `json:"previewEncoding,omitempty"`
 	Truncated       bool   `json:"truncated,omitempty"`
 }
+
+type ClientChatAliasConfiguration struct {
+	Operator string `json:"operator,omitempty"`
+	Client   string `json:"client,omitempty"`
+}
+
+type ClientChatFeatureFlags struct {
+	Unstoppable        *bool `json:"unstoppable,omitempty"`
+	AllowNotifications *bool `json:"allowNotifications,omitempty"`
+	AllowFileTransfers *bool `json:"allowFileTransfers,omitempty"`
+}
+
+type ClientChatCommandMessage struct {
+	ID        string `json:"id,omitempty"`
+	Body      string `json:"body"`
+	Timestamp string `json:"timestamp,omitempty"`
+	Alias     string `json:"alias,omitempty"`
+}
+
+type ClientChatCommandPayload struct {
+	Action    string                        `json:"action"`
+	SessionID string                        `json:"sessionId,omitempty"`
+	Message   *ClientChatCommandMessage     `json:"message,omitempty"`
+	Aliases   *ClientChatAliasConfiguration `json:"aliases,omitempty"`
+	Features  *ClientChatFeatureFlags       `json:"features,omitempty"`
+}
+
+type ClientChatMessage struct {
+	ID        string `json:"id"`
+	Body      string `json:"body"`
+	Timestamp string `json:"timestamp"`
+	Alias     string `json:"alias,omitempty"`
+}
+
+type ClientChatMessageEnvelope struct {
+	SessionID string            `json:"sessionId"`
+	Message   ClientChatMessage `json:"message"`
+}
