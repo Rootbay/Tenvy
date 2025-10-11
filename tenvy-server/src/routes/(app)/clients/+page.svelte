@@ -48,7 +48,11 @@
 	import Search from '@lucide/svelte/icons/search';
 	import AlertCircle from '@lucide/svelte/icons/alert-circle';
 	import CheckCircle2 from '@lucide/svelte/icons/check-circle-2';
-	import type { AgentSnapshot } from '../../../../../shared/types/agent';
+	import type {
+		AgentConnectionAction,
+		AgentConnectionRequest,
+		AgentSnapshot
+	} from '../../../../../shared/types/agent';
 
 	const statusLabels: Record<AgentSnapshot['status'], string> = {
 		online: 'Online',
@@ -299,6 +303,58 @@
 		}
 	}
 
+	async function requestConnectionAction(
+		agent: AgentSnapshot,
+		action: AgentConnectionAction
+	): Promise<boolean> {
+		const agentLabel = agent.metadata.hostname?.trim() || agent.id;
+
+		try {
+			const response = await fetch(`/api/agents/${agent.id}/connection`, {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ action } satisfies AgentConnectionRequest)
+			});
+
+			if (!response.ok) {
+				const message = (await response.text()) || 'Unable to update connection';
+				showConnectionAlert({
+					title: 'Connection request failed',
+					description: message.trim(),
+					variant: 'destructive'
+				});
+				return false;
+			}
+
+			await invalidateAll();
+
+			const titles: Record<AgentConnectionAction, string> = {
+				disconnect: 'Agent disconnected',
+				reconnect: 'Agent reconnected'
+			};
+
+			const descriptions: Record<AgentConnectionAction, string> = {
+				disconnect: `${agentLabel} is now disconnected from the controller.`,
+				reconnect: `${agentLabel} has been reconnected to the controller.`
+			};
+
+			showConnectionAlert({
+				title: titles[action],
+				description: descriptions[action],
+				variant: 'default'
+			});
+
+			return true;
+		} catch (err) {
+			showConnectionAlert({
+				title: 'Connection request failed',
+				description: err instanceof Error ? err.message : 'Unable to update connection',
+				variant: 'destructive'
+			});
+			return false;
+		}
+	}
+
 	async function sendPing(agentId: string): Promise<boolean> {
 		const key = `ping:${agentId}`;
 		const message = pingMessages[agentId]?.trim();
@@ -376,6 +432,19 @@
 			description: `${agentLabel} is not currently connected. Re-establish the session to ${action}.`,
 			variant: 'destructive'
 		});
+	}
+
+	async function disconnectAgent(agent: AgentSnapshot) {
+		if (!hasActiveConnection(agent)) {
+			sendCommandError(agent, 'disconnect the agent');
+			return;
+		}
+
+		await requestConnectionAction(agent, 'disconnect');
+	}
+
+	async function reconnectAgent(agent: AgentSnapshot) {
+		await requestConnectionAction(agent, 'reconnect');
 	}
 
 	function openShellDialog(agentId: string) {
@@ -511,6 +580,18 @@
 	function openSection(section: SectionKey, agent: AgentSnapshot) {
 		const toolId = sectionToolMap[section];
 		if (!toolId) {
+			return;
+		}
+
+		if (toolId === 'reconnect') {
+			toolDialog = null;
+			void reconnectAgent(agent);
+			return;
+		}
+
+		if (toolId === 'disconnect') {
+			toolDialog = null;
+			void disconnectAgent(agent);
 			return;
 		}
 

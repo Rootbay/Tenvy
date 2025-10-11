@@ -48,3 +48,13 @@ export interface AgentListResponse {
 export interface AgentDetailResponse {
         agent: AgentSnapshot;
 }
+
+export type AgentConnectionAction = 'disconnect' | 'reconnect';
+
+export interface AgentConnectionRequest {
+        action: AgentConnectionAction;
+}
+
+export interface AgentConnectionResponse {
+        agent: AgentSnapshot;
+}
