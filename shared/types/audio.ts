@@ -69,7 +69,15 @@ export interface AudioSessionRequest {
         encoding?: AudioStreamEncoding;
 }
 
-export type AudioControlAction = 'enumerate' | 'inventory' | 'start' | 'stop';
+export type AudioControlAction =
+        | 'enumerate'
+        | 'inventory'
+        | 'start'
+        | 'stop'
+        | 'playback-start'
+        | 'playback-pause'
+        | 'playback-resume'
+        | 'playback-stop';
 
 export interface AudioControlCommandPayload {
         action: AudioControlAction;
@@ -81,4 +89,26 @@ export interface AudioControlCommandPayload {
         sampleRate?: number;
         channels?: number;
         encoding?: AudioStreamEncoding;
+        trackId?: string;
+        trackUrl?: string;
+        outputDeviceId?: string;
+        outputDeviceLabel?: string;
+        volume?: number;
+        loop?: boolean;
+        chaosMode?: boolean;
+        rickroll?: boolean;
+}
+
+export interface AudioUploadTrack {
+        id: string;
+        filename: string;
+        originalName: string;
+        size: number;
+        contentType?: string;
+        uploadedAt: string;
+        downloadUrl: string;
+}
+
+export interface AudioUploadResponse {
+        uploads: AudioUploadTrack[];
 }

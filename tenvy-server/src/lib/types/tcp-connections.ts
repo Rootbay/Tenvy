@@ -8,4 +8,4 @@ export type {
 	TcpConnectionSnapshotEnvelope,
 	TcpConnectionState,
 	TcpConnectionsCommandPayload
-} from '../../../../../shared/types/tcp-connections';
+} from '../../../../shared/types/tcp-connections';
