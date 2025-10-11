@@ -178,7 +178,10 @@ export class AgentRegistry {
 		record.status = 'offline';
 		record.lastSeen = new Date();
 
-		return this.toSnapshot(record);
+		const snapshot = this.toSnapshot(record);
+		this.agents.delete(id);
+
+		return snapshot;
 	}
 
 	reconnectAgent(id: string): AgentSnapshot {
