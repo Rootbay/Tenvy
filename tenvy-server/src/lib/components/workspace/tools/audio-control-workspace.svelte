@@ -106,6 +106,28 @@
 	let eventSource: EventSource | null = null;
 	let audioContext: AudioContext | null = null;
 	let playbackQueueTime = 0;
+	let lastAutoInventoryRequestAt: number | null = null;
+
+	const inventoryHasDevices = (value: AudioDeviceInventory | null) =>
+		Boolean(value && (value.inputs.length > 0 || value.outputs.length > 0));
+
+	async function maybeAutoRequestInventory() {
+		if (!isBrowser) {
+			return;
+		}
+		if (refreshingInventory || pendingInventory) {
+			return;
+		}
+		if (inventoryHasDevices(inventory)) {
+			lastAutoInventoryRequestAt = null;
+			return;
+		}
+		if (lastAutoInventoryRequestAt && Date.now() - lastAutoInventoryRequestAt < 60_000) {
+			return;
+		}
+		lastAutoInventoryRequestAt = Date.now();
+		await refreshInventory();
+	}
 
 	function logAction(
 		action: string,
@@ -369,6 +391,32 @@
 		await startListening(input);
 	}
 
+	function selectInputDevice(device: AudioDeviceDescriptor) {
+		selectedInputId = device.id;
+	}
+
+	function selectOutputDevice(device: AudioDeviceDescriptor) {
+		selectedOutputId = device.id;
+	}
+
+	async function startListeningFromDevice(device: AudioDeviceDescriptor) {
+		if (device.kind === 'input') {
+			selectInputDevice(device);
+			await startListening(device);
+			return;
+		}
+
+		selectOutputDevice(device);
+		const message =
+			'Listening to output devices is not supported yet. Choose an input device instead.';
+		sessionError = message;
+		logAction('Audio session start failed', message, 'failed');
+	}
+
+	function stopListeningFromDevice() {
+		void stopListening(false);
+	}
+
 	async function loadInventory() {
 		if (!isBrowser) {
 			return;
@@ -402,6 +450,9 @@
 					}
 				} else {
 					selectedOutputId = null;
+				}
+				if (inventoryHasDevices(inventory)) {
+					lastAutoInventoryRequestAt = null;
 				}
 			}
 		} catch (err) {
@@ -479,7 +530,8 @@
 			return;
 		}
 		if (device.kind !== 'input') {
-			sessionError = 'Only input devices can be monitored currently.';
+			sessionError =
+				'Listening to output devices is not supported yet. Choose an input device instead.';
 			return;
 		}
 		const label = device.label ?? device.id;
@@ -685,6 +737,7 @@
 			return;
 		}
 		await loadInventory();
+		void maybeAutoRequestInventory();
 		await loadSessionState();
 		await loadUploads();
 	});
@@ -740,7 +793,8 @@
 							</Select>
 						{:else}
 							<p class="text-sm text-muted-foreground">
-								No audio inputs were reported by the agent.
+								No audio inputs were reported by the agent. Refresh the inventory or verify the
+								agent was built with audio support (CGO enabled).
 							</p>
 						{/if}
 					</div>
@@ -841,7 +895,8 @@
 							</Select>
 						{:else}
 							<p class="text-sm text-muted-foreground">
-								No playback devices reported — request a refresh above.
+								No playback devices were reported. Refresh the inventory or verify the agent was
+								built with audio support (CGO enabled).
 							</p>
 						{/if}
 					</div>
@@ -1004,7 +1059,10 @@
 					<div class="space-y-2">
 						<h3 class="text-sm font-medium text-foreground/80">Input devices</h3>
 						{#if inventory.inputs.length === 0}
-							<p class="text-sm text-muted-foreground">No audio inputs were reported.</p>
+							<p class="text-sm text-muted-foreground">
+								No audio inputs were reported. Refresh the inventory or ensure the agent was built
+								with audio support (CGO enabled).
+							</p>
 						{:else}
 							<div class="space-y-2">
 								{#each inventory.inputs as device (device.id)}
@@ -1023,12 +1081,27 @@
 											</div>
 											<p class="text-xs text-muted-foreground">{device.id}</p>
 										</div>
-										<div class="flex items-center gap-2">
+										<div class="flex flex-wrap items-center gap-2">
+											<Button size="sm" variant="ghost" onclick={() => selectInputDevice(device)}
+												>Use input</Button
+											>
 											<Button
 												size="sm"
-												variant="ghost"
-												onclick={() => (selectedInputId = device.id)}>Use input</Button
+												onclick={() => void startListeningFromDevice(device)}
+												disabled={listening && session?.deviceId === device.id}
 											>
+												{listening && session?.deviceId === device.id
+													? 'Listening…'
+													: 'Start listening'}
+											</Button>
+											<Button
+												size="sm"
+												variant="outline"
+												onclick={stopListeningFromDevice}
+												disabled={!session?.active && !listening}
+											>
+												Stop session
+											</Button>
 										</div>
 									</div>
 								{/each}
@@ -1038,7 +1111,10 @@
 					<div class="space-y-2">
 						<h3 class="text-sm font-medium text-foreground/80">Output devices</h3>
 						{#if inventory.outputs.length === 0}
-							<p class="text-sm text-muted-foreground">No audio outputs were reported.</p>
+							<p class="text-sm text-muted-foreground">
+								No audio outputs were reported. Refresh the inventory or ensure the agent was built
+								with audio support (CGO enabled).
+							</p>
 						{:else}
 							<div class="space-y-2">
 								{#each inventory.outputs as device (device.id)}
@@ -1057,12 +1133,25 @@
 											</div>
 											<p class="text-xs text-muted-foreground">{device.id}</p>
 										</div>
-										<div class="flex items-center gap-2">
+										<div class="flex flex-wrap items-center gap-2">
+											<Button size="sm" variant="ghost" onclick={() => selectOutputDevice(device)}
+												>Target output</Button
+											>
 											<Button
 												size="sm"
-												variant="ghost"
-												onclick={() => (selectedOutputId = device.id)}>Target output</Button
+												onclick={() => void startListeningFromDevice(device)}
+												disabled={listening && session?.deviceId === device.id}
 											>
+												Start listening
+											</Button>
+											<Button
+												size="sm"
+												variant="outline"
+												onclick={stopListeningFromDevice}
+												disabled={!session?.active && !listening}
+											>
+												Stop session
+											</Button>
 										</div>
 									</div>
 								{/each}
