@@ -35,13 +35,14 @@ type CommandResult struct {
 }
 
 type AgentMetadata struct {
-	Hostname     string   `json:"hostname"`
-	Username     string   `json:"username"`
-	OS           string   `json:"os"`
-	Architecture string   `json:"architecture"`
-	IPAddress    string   `json:"ipAddress,omitempty"`
-	Tags         []string `json:"tags,omitempty"`
-	Version      string   `json:"version,omitempty"`
+	Hostname        string   `json:"hostname"`
+	Username        string   `json:"username"`
+	OS              string   `json:"os"`
+	Architecture    string   `json:"architecture"`
+	IPAddress       string   `json:"ipAddress,omitempty"`
+	PublicIPAddress string   `json:"publicIpAddress,omitempty"`
+	Tags            []string `json:"tags,omitempty"`
+	Version         string   `json:"version,omitempty"`
 }
 
 type AgentRegistrationRequest struct {

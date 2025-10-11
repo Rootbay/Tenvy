@@ -233,9 +233,9 @@
 	}
 
 	function formatPing(agent: AgentSnapshot): string {
-		const ping = agent.metrics?.pingMs ?? agent.metrics?.latencyMs;
-		if (typeof ping === 'number' && Number.isFinite(ping) && ping >= 0) {
-			return `${Math.round(ping)} ms`;
+		const latency = agent.metrics?.latencyMs ?? agent.metrics?.pingMs;
+		if (typeof latency === 'number' && Number.isFinite(latency) && latency >= 0) {
+			return `${Math.round(latency)} ms`;
 		}
 		return '—';
 	}
@@ -557,7 +557,7 @@
 			id: agent.id,
 			codename: agent.metadata.hostname?.toUpperCase() ?? agent.id.toUpperCase(),
 			hostname: agent.metadata.hostname,
-			ip: agent.metadata.ipAddress ?? 'Unknown',
+			ip: agent.metadata.publicIpAddress ?? agent.metadata.ipAddress ?? 'Unknown',
 			location: getAgentLocation(agent).label,
 			os: agent.metadata.os,
 			platform: inferClientPlatform(agent.metadata.os),
@@ -777,7 +777,7 @@
 					<TableHeader>
 						<TableRow>
 							<TableHead class="w-[22rem]">Location</TableHead>
-							<TableHead class="w-[8rem]">IP</TableHead>
+							<TableHead class="w-[8rem]">Public IP</TableHead>
 							<TableHead class="w-[12rem]">Username</TableHead>
 							<TableHead class="w-[12rem]">Group</TableHead>
 							<TableHead class="w-[7rem] text-center">OS</TableHead>
