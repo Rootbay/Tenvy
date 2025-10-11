@@ -461,6 +461,64 @@ func (m *recoveryModule) Shutdown(context.Context) {
 	}
 }
 
+type clientChatModule struct {
+	supervisor *clientchat.Supervisor
+}
+
+func (m *clientChatModule) Metadata() ModuleMetadata {
+	return ModuleMetadata{
+		ID:          "client-chat",
+		Title:       "Client Chat",
+		Description: "Maintain a persistent, controller-managed chat window on the client.",
+		Commands:    []string{"client-chat"},
+		Capabilities: []ModuleCapability{
+			{
+				Name:        "client-chat.persist",
+				Description: "Respawn the client chat interface if the process terminates unexpectedly.",
+			},
+			{
+				Name:        "client-chat.alias",
+				Description: "Apply controller-provided aliases for both participants in real time.",
+			},
+		},
+	}
+}
+
+func (m *clientChatModule) Update(runtime moduleRuntime) error {
+	cfg := clientchat.Config{
+		AgentID:   runtime.AgentID,
+		BaseURL:   runtime.BaseURL,
+		AuthKey:   runtime.AuthKey,
+		Client:    runtime.HTTPClient,
+		Logger:    runtime.Logger,
+		UserAgent: runtime.UserAgent,
+	}
+	if m.supervisor == nil {
+		m.supervisor = clientchat.NewSupervisor(cfg)
+		return nil
+	}
+	m.supervisor.UpdateConfig(cfg)
+	return nil
+}
+
+func (m *clientChatModule) HandleCommand(ctx context.Context, cmd protocol.Command) protocol.CommandResult {
+	if m.supervisor == nil {
+		return protocol.CommandResult{
+			CommandID:   cmd.ID,
+			Success:     false,
+			Error:       "client chat subsystem not initialized",
+			CompletedAt: time.Now().UTC().Format(time.RFC3339Nano),
+		}
+	}
+	return m.supervisor.HandleCommand(ctx, cmd)
+}
+
+func (m *clientChatModule) Shutdown(ctx context.Context) {
+	if m.supervisor != nil {
+		m.supervisor.Shutdown(ctx)
+	}
+}
+
 type systemInfoModule struct {
 	collector *systeminfo.Collector
 }

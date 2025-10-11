@@ -85,7 +85,19 @@ export class ClipboardManager {
 		}
 		const record = this.events.get(agentId) ?? [];
 		const merged = [...envelope.events.map((event) => clone(event)), ...record];
-		const bounded = merged.slice(0, MAX_EVENT_HISTORY);
+
+		const seenEventIds = new Set<string>();
+		const deduped: ClipboardTriggerEvent[] = [];
+		for (const event of merged) {
+			const key = event.eventId;
+			if (seenEventIds.has(key)) {
+				continue;
+			}
+			seenEventIds.add(key);
+			deduped.push(event);
+		}
+
+		const bounded = deduped.slice(0, MAX_EVENT_HISTORY);
 		this.events.set(agentId, bounded);
 		return bounded;
 	}
@@ -106,17 +118,27 @@ export class ClipboardManager {
 
 		const record = this.states.get(agentId) ?? {};
 		const currentSequence = record.snapshot?.sequence ?? -1;
+
+		let effectiveSnapshot = record.snapshot;
+		let updated = false;
+
 		if (currentSequence <= cloned.sequence) {
 			record.snapshot = cloned;
 			record.updatedAt = new Date();
 			this.states.set(agentId, record);
+			effectiveSnapshot = cloned;
+			updated = true;
+		} else if (!effectiveSnapshot) {
+			effectiveSnapshot = cloned;
 		}
 
 		if (envelope.requestId) {
-			this.resolvePending(agentId, envelope.requestId, cloned);
+			this.resolvePending(agentId, envelope.requestId, effectiveSnapshot ?? cloned);
+		} else if (updated && effectiveSnapshot) {
+			this.resolveAllPending(agentId, effectiveSnapshot);
 		}
 
-		return cloned;
+		return effectiveSnapshot ?? cloned;
 	}
 
 	createRequest(
@@ -159,38 +181,62 @@ export class ClipboardManager {
 	}
 
 	private resolvePending(agentId: string, requestId: string, snapshot: ClipboardSnapshot) {
-		const pendingForAgent = this.pending.get(agentId);
-		const entry = pendingForAgent?.get(requestId);
-		if (!entry) {
-			return;
-		}
-		pendingForAgent?.delete(requestId);
-		if (pendingForAgent && pendingForAgent.size === 0) {
-			this.pending.delete(agentId);
-		}
-		try {
+		this.finishPending(agentId, requestId, (entry) => {
 			entry.resolve(snapshot);
-		} catch (err) {
-			// eslint-disable-next-line no-console
-			console.error('Failed to resolve clipboard request', err);
-		}
+		});
+	}
+
+	private resolveAllPending(agentId: string, snapshot: ClipboardSnapshot) {
+		this.finishAllPending(agentId, (entry) => {
+			entry.resolve(snapshot);
+		});
 	}
 
 	failPending(agentId: string, requestId: string, error: ClipboardError) {
+		this.finishPending(agentId, requestId, (entry) => {
+			entry.reject(error);
+		});
+	}
+
+	private finishPending(
+		agentId: string,
+		requestId: string,
+		handler: (entry: PendingRequest) => void
+	) {
 		const pendingForAgent = this.pending.get(agentId);
-		const entry = pendingForAgent?.get(requestId);
+		if (!pendingForAgent) {
+			return;
+		}
+		const entry = pendingForAgent.get(requestId);
 		if (!entry) {
 			return;
 		}
-		pendingForAgent?.delete(requestId);
-		if (pendingForAgent && pendingForAgent.size === 0) {
+		pendingForAgent.delete(requestId);
+		if (pendingForAgent.size === 0) {
 			this.pending.delete(agentId);
 		}
 		try {
-			entry.reject(error);
+			handler(entry);
 		} catch (err) {
 			// eslint-disable-next-line no-console
-			console.error('Failed to reject clipboard request', err);
+			console.error('Failed to settle clipboard request', err);
+		}
+	}
+
+	private finishAllPending(agentId: string, handler: (entry: PendingRequest) => void) {
+		const pendingForAgent = this.pending.get(agentId);
+		if (!pendingForAgent?.size) {
+			return;
+		}
+		this.pending.delete(agentId);
+
+		for (const entry of pendingForAgent.values()) {
+			try {
+				handler(entry);
+			} catch (err) {
+				// eslint-disable-next-line no-console
+				console.error('Failed to settle clipboard request', err);
+			}
 		}
 	}
 }

@@ -17,6 +17,7 @@ import (
 	"runtime"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/kbinani/screenshot"
@@ -43,6 +44,7 @@ type streamLoopState struct {
 	tileHasher     remoteTileHasher
 	regionScratch  []tileRegion
 	deltaScratch   []RemoteDesktopDeltaRect
+	encoderPool    *regionEncoderPool
 }
 
 type sessionSnapshot struct {
@@ -63,7 +65,10 @@ type sessionSnapshot struct {
 }
 
 func newStreamLoopState(mode RemoteDesktopStreamMode) *streamLoopState {
-	state := &streamLoopState{activeMode: mode}
+	state := &streamLoopState{
+		activeMode:  mode,
+		encoderPool: sharedRegionEncoderPool(),
+	}
 	if mode == RemoteStreamModeVideo {
 		state.clipKeyPending = true
 	}
@@ -252,7 +257,18 @@ var (
 	jsonBodyPool     = sync.Pool{New: func() interface{} { return &jsonRequestBody{Buffer: new(bytes.Buffer)} }}
 	tileHashPool     = sync.Pool{New: func() interface{} { return new(maphash.Hash) }}
 	maxEncodeWorkers = maxInt(1, runtime.GOMAXPROCS(0))
+	encoderPoolOnce  sync.Once
+	sharedPool       *regionEncoderPool
 )
+
+func sharedRegionEncoderPool() *regionEncoderPool {
+	encoderPoolOnce.Do(func() {
+		if maxEncodeWorkers > 1 {
+			sharedPool = newRegionEncoderPool(maxEncodeWorkers)
+		}
+	})
+	return sharedPool
+}
 
 type jsonRequestBody struct {
 	*bytes.Buffer
@@ -270,6 +286,10 @@ func acquireJSONBody() *jsonRequestBody {
 func releaseJSONBody(body *jsonRequestBody) {
 	if body == nil {
 		return
+	}
+	raw := body.Bytes()
+	for i := range raw {
+		raw[i] = 0
 	}
 	body.Reset()
 	jsonBodyPool.Put(body)
@@ -1317,7 +1337,7 @@ func diffFrames(previous, current []byte, width, height, tile int, loop *streamL
 	regions = mergeTileRegions(regions)
 
 	dest := loop.borrowDeltas(len(regions))
-	deltas, err := encodeRegions(current, stride, regions, quality, dest)
+	deltas, err := encodeRegions(current, stride, regions, quality, dest, loop.encoderPool)
 	if err != nil {
 		loop.recycleDeltas(dest)
 		state.ready = false
@@ -1378,7 +1398,7 @@ func diffFramesLegacy(previous, current []byte, width, height, tile int, quality
 
 	regions = mergeTileRegions(regions)
 
-	deltas, err := encodeRegions(current, stride, regions, quality, nil)
+	deltas, err := encodeRegions(current, stride, regions, quality, nil, nil)
 	if err != nil {
 		return nil, false, err
 	}
@@ -1405,7 +1425,79 @@ func mergeTileRegions(regions []tileRegion) []tileRegion {
 	return merged
 }
 
-func encodeRegions(data []byte, stride int, regions []tileRegion, quality int, scratch []RemoteDesktopDeltaRect) ([]RemoteDesktopDeltaRect, error) {
+type regionEncoderPool struct {
+	jobs chan regionEncodeTask
+}
+
+type regionEncodeTask struct {
+	index   int
+	region  tileRegion
+	data    []byte
+	stride  int
+	quality int
+	dest    []RemoteDesktopDeltaRect
+	wg      *sync.WaitGroup
+	errCh   chan<- error
+	state   *regionEncodeState
+}
+
+type regionEncodeState struct {
+	aborted atomic.Bool
+}
+
+func newRegionEncoderPool(workerCount int) *regionEncoderPool {
+	if workerCount <= 1 {
+		return nil
+	}
+	pool := &regionEncoderPool{
+		jobs: make(chan regionEncodeTask, workerCount*2),
+	}
+	for i := 0; i < workerCount; i++ {
+		go pool.worker()
+	}
+	return pool
+}
+
+func (p *regionEncoderPool) submit(task regionEncodeTask) {
+	if p == nil {
+		task.run()
+		return
+	}
+	p.jobs <- task
+}
+
+func (p *regionEncoderPool) worker() {
+	for task := range p.jobs {
+		task.run()
+	}
+}
+
+func (t regionEncodeTask) run() {
+	if t.wg == nil {
+		return
+	}
+	if t.state != nil && t.state.aborted.Load() {
+		t.wg.Done()
+		return
+	}
+	rect, err := encodeTileRegion(t.data, t.stride, t.region, t.quality)
+	if err != nil {
+		if t.state != nil {
+			t.state.aborted.Store(true)
+		}
+		if t.errCh != nil {
+			select {
+			case t.errCh <- err:
+			default:
+			}
+		}
+	} else {
+		t.dest[t.index] = rect
+	}
+	t.wg.Done()
+}
+
+func encodeRegions(data []byte, stride int, regions []tileRegion, quality int, scratch []RemoteDesktopDeltaRect, pool *regionEncoderPool) ([]RemoteDesktopDeltaRect, error) {
 	if len(regions) == 0 {
 		if scratch == nil {
 			return nil, nil
@@ -1420,7 +1512,7 @@ func encodeRegions(data []byte, stride int, regions []tileRegion, quality int, s
 	}
 
 	workerCount := minInt(len(regions), maxEncodeWorkers)
-	if workerCount <= 1 {
+	if workerCount <= 1 || pool == nil {
 		for idx, region := range regions {
 			rect, err := encodeTileRegion(data, stride, region, quality)
 			if err != nil {
@@ -1431,38 +1523,31 @@ func encodeRegions(data []byte, stride int, regions []tileRegion, quality int, s
 		return scratch, nil
 	}
 
-	jobs := make(chan int, len(regions))
 	var wg sync.WaitGroup
-	var encodeErr error
-	var once sync.Once
+	state := &regionEncodeState{}
+	errCh := make(chan error, 1)
 
-	for i := 0; i < workerCount; i++ {
+	for idx, region := range regions {
 		wg.Add(1)
-		go func() {
-			defer wg.Done()
-
-			for idx := range jobs {
-				region := regions[idx]
-				rect, err := encodeTileRegion(data, stride, region, quality)
-				if err != nil {
-					once.Do(func() {
-						encodeErr = err
-					})
-					return
-				}
-				scratch[idx] = rect
-			}
-		}()
+		pool.submit(regionEncodeTask{
+			index:   idx,
+			region:  region,
+			data:    data,
+			stride:  stride,
+			quality: quality,
+			dest:    scratch,
+			wg:      &wg,
+			errCh:   errCh,
+			state:   state,
+		})
 	}
-
-	for i := range regions {
-		jobs <- i
-	}
-	close(jobs)
 
 	wg.Wait()
-	if encodeErr != nil {
-		return nil, encodeErr
+
+	select {
+	case err := <-errCh:
+		return nil, err
+	default:
 	}
 
 	return scratch, nil
