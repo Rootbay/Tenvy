@@ -16,6 +16,7 @@ export interface AgentMetadata {
         os: string;
         architecture: string;
         ipAddress?: string;
+        publicIpAddress?: string;
         tags?: string[];
         version?: string;
         group?: string;

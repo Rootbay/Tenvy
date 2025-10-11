@@ -48,6 +48,7 @@ function matchesQuery(agent: AgentSnapshot, query: string): boolean {
 		agent.metadata.username,
 		agent.metadata.os,
 		agent.metadata.ipAddress,
+		agent.metadata.publicIpAddress,
 		...(agent.metadata.tags ?? [])
 	]
 		.filter(Boolean)

@@ -55,11 +55,22 @@ interface SharedNoteRecord {
 	updatedAt: Date;
 }
 
-function ensureMetadata(metadata: AgentMetadata, fallbackAddress?: string): AgentMetadata {
-	if (metadata.ipAddress || !fallbackAddress) {
+function ensureMetadata(metadata: AgentMetadata, remoteAddress?: string): AgentMetadata {
+	if (!remoteAddress) {
 		return metadata;
 	}
-	return { ...metadata, ipAddress: fallbackAddress };
+
+	const next: AgentMetadata = { ...metadata };
+
+	if (!next.ipAddress) {
+		next.ipAddress = remoteAddress;
+	}
+
+	if (next.publicIpAddress !== remoteAddress) {
+		next.publicIpAddress = remoteAddress;
+	}
+
+	return next;
 }
 
 function validateToken(requestToken: string | undefined) {
@@ -118,7 +129,12 @@ export class AgentRegistry {
 		};
 	}
 
-	syncAgent(id: string, key: string | undefined, payload: AgentSyncRequest): AgentSyncResponse {
+	syncAgent(
+		id: string,
+		key: string | undefined,
+		payload: AgentSyncRequest,
+		options: { remoteAddress?: string } = {}
+	): AgentSyncResponse {
 		const record = this.agents.get(id);
 		if (!record) {
 			throw new RegistryError('Agent not found', 404);
@@ -130,6 +146,10 @@ export class AgentRegistry {
 
 		record.lastSeen = new Date();
 		record.status = payload.status;
+
+		if (options.remoteAddress) {
+			record.metadata = ensureMetadata(record.metadata, options.remoteAddress);
+		}
 		if (payload.metrics) {
 			record.metrics = payload.metrics;
 		}

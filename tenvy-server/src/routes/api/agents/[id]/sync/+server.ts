@@ -11,7 +11,7 @@ function getBearerToken(header: string | null): string | undefined {
 	return match?.[1]?.trim();
 }
 
-export const POST: RequestHandler = async ({ params, request }) => {
+export const POST: RequestHandler = async ({ params, request, getClientAddress }) => {
 	const id = params.id;
 	if (!id) {
 		throw error(400, 'Missing agent identifier');
@@ -30,7 +30,9 @@ export const POST: RequestHandler = async ({ params, request }) => {
 	}
 
 	try {
-		const response = registry.syncAgent(id, token, payload);
+		const response = registry.syncAgent(id, token, payload, {
+			remoteAddress: getClientAddress()
+		});
 		return json(response);
 	} catch (err) {
 		if (err instanceof RegistryError) {

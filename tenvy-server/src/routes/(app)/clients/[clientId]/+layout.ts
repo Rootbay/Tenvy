@@ -44,7 +44,7 @@ function mapAgentToClient(agent: AgentSnapshot): Client {
 		id: agent.id,
 		codename: hostname.toUpperCase(),
 		hostname,
-		ip: agent.metadata.ipAddress ?? 'Unknown',
+		ip: agent.metadata.publicIpAddress ?? agent.metadata.ipAddress ?? 'Unknown',
 		location: 'Unknown',
 		os: agent.metadata.os,
 		platform: inferClientPlatform(agent.metadata.os),
