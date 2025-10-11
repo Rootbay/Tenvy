@@ -55,12 +55,40 @@ export const GET: RequestHandler = ({ params, url }) => {
 	}
 
 	const pathParam = url.searchParams.get('path');
+	const typeParam = url.searchParams.get('type');
+	const refreshRequested = url.searchParams.get('refresh') === 'true';
+	const includeHiddenParam = url.searchParams.get('includeHidden');
+	const includeHidden = includeHiddenParam === null ? undefined : includeHiddenParam === 'true';
 
 	try {
 		const resource = fileManagerStore.getResource(id, pathParam);
 		return json(resource);
 	} catch (err) {
 		if (err instanceof FileManagerError) {
+			if (err.status === 404 && refreshRequested && typeParam) {
+				const type = typeParam === 'file' ? 'file' : 'directory';
+				if (type === 'file') {
+					const path = requireString(pathParam, 'File path is required to load file content');
+					queueFileManagerCommand(id, { action: 'read-file', path });
+				} else {
+					const payload: FileManagerCommandPayload = {
+						action: 'list-directory',
+						path: pathParam?.trim() ? pathParam.trim() : undefined,
+						includeHidden
+					};
+					queueFileManagerCommand(id, payload);
+				}
+				return json(
+					{
+						queued: true,
+						message:
+							typeParam === 'file'
+								? 'Waiting for the agent to provide the file contents…'
+								: 'Waiting for the agent to provide the directory listing…'
+					},
+					{ status: ACCEPTED_STATUS }
+				);
+			}
 			throw error(err.status, err.message);
 		}
 		throw error(500, 'Failed to load file manager resource');

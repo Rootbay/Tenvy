@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
+	import { onDestroy, onMount } from 'svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import { Input } from '$lib/components/ui/input/index.js';
 	import { Label } from '$lib/components/ui/label/index.js';
@@ -91,12 +91,120 @@
 		}
 	}
 
-	const pendingRequests = new Set<string>();
+	class FileManagerResourcePendingError extends FileManagerRequestError {
+		kind: 'directory' | 'file';
+		path?: string;
+		includeHidden?: boolean;
+
+		constructor(
+			message: string,
+			kind: 'directory' | 'file',
+			path: string | undefined,
+			includeHidden: boolean | undefined
+		) {
+			super(message, 202);
+			this.kind = kind;
+			this.path = path;
+			this.includeHidden = includeHidden;
+		}
+	}
+
+	const resourcePollTimers = new Map<string, ReturnType<typeof setTimeout>>();
+	const RESOURCE_POLL_INITIAL_DELAY = 600;
+	const RESOURCE_POLL_MAX_DELAY = 5_000;
+	const RESOURCE_POLL_BACKOFF_FACTOR = 1.5;
+	const RESOURCE_POLL_MAX_ATTEMPTS = 9;
+	const RESOURCE_POLL_REQUEUE_INTERVAL = 4;
 
 	function requestKey(kind: 'directory' | 'file', path?: string | null, extras?: string): string {
 		const normalized = path?.trim() ?? '';
 		const suffix = extras ? `:${extras}` : '';
 		return `${kind}:${normalized}${suffix}`;
+	}
+
+	function clearResourcePoll(key: string) {
+		const existing = resourcePollTimers.get(key);
+		if (existing !== undefined) {
+			clearTimeout(existing);
+			resourcePollTimers.delete(key);
+		}
+	}
+
+	interface ResourcePollOptions {
+		includeHidden?: boolean;
+	}
+
+	function scheduleResourcePoll(
+		kind: 'directory' | 'file',
+		normalizedPath: string,
+		extras: string | undefined,
+		options: ResourcePollOptions,
+		attempt: number
+	) {
+		if (attempt >= RESOURCE_POLL_MAX_ATTEMPTS) {
+			return;
+		}
+
+		const key = requestKey(kind, normalizedPath, extras);
+		const delay =
+			attempt === 0
+				? RESOURCE_POLL_INITIAL_DELAY
+				: Math.min(
+						RESOURCE_POLL_MAX_DELAY,
+						Math.floor(
+							RESOURCE_POLL_INITIAL_DELAY * Math.pow(RESOURCE_POLL_BACKOFF_FACTOR, attempt)
+						)
+					);
+
+		const timer = setTimeout(async () => {
+			resourcePollTimers.delete(key);
+			const resolvedPath = normalizedPath.length > 0 ? normalizedPath : undefined;
+			try {
+				const shouldRefresh = attempt > 0 && attempt % RESOURCE_POLL_REQUEUE_INTERVAL === 0;
+				if (kind === 'directory') {
+					await loadDirectory(resolvedPath, {
+						silent: true,
+						refresh: shouldRefresh,
+						includeHiddenOverride: options.includeHidden
+					});
+				} else {
+					await loadFile(normalizedPath, {
+						silent: true,
+						refresh: shouldRefresh
+					});
+				}
+			} catch (err) {
+				if (
+					(err instanceof FileManagerRequestError && err.status === 404) ||
+					err instanceof FileManagerResourcePendingError
+				) {
+					scheduleResourcePoll(kind, normalizedPath, extras, options, attempt + 1);
+				}
+			}
+		}, delay);
+
+		resourcePollTimers.set(key, timer);
+	}
+
+	function startResourcePoll(
+		kind: 'directory' | 'file',
+		path?: string | null,
+		options: ResourcePollOptions = {}
+	) {
+		const normalized = path?.trim() ?? '';
+		if (kind === 'file' && normalized.length === 0) {
+			return;
+		}
+
+		const extras =
+			options.includeHidden !== undefined
+				? options.includeHidden
+					? 'hidden'
+					: 'visible'
+				: undefined;
+		const key = requestKey(kind, normalized, extras);
+		clearResourcePoll(key);
+		scheduleResourcePoll(kind, normalized, extras, options, 0);
 	}
 
 	async function queueAgentCommand(payload: FileManagerCommandPayload): Promise<void> {
@@ -111,56 +219,6 @@
 		if (!response.ok) {
 			const detail = await response.text().catch(() => '');
 			throw new Error(detail || 'Failed to queue agent request');
-		}
-	}
-
-	async function requestDirectoryListing(path?: string | null): Promise<boolean> {
-		const trimmed = path?.trim();
-		const includeHiddenPreference = includeHidden;
-		const key = requestKey('directory', trimmed, includeHiddenPreference ? 'hidden' : 'visible');
-		if (pendingRequests.has(key)) {
-			return false;
-		}
-		pendingRequests.add(key);
-		try {
-			const payload: FileManagerCommandPayload = {
-				action: 'list-directory',
-				path: trimmed && trimmed.length > 0 ? trimmed : undefined,
-				includeHidden: includeHiddenPreference
-			};
-			await queueAgentCommand(payload);
-			const resolvedPath = payload.path;
-			setTimeout(() => {
-				void loadDirectory(resolvedPath, { silent: true }).catch(() => {});
-			}, 600);
-			return true;
-		} finally {
-			pendingRequests.delete(key);
-		}
-	}
-
-	async function requestFileContent(path: string): Promise<boolean> {
-		const trimmed = path.trim();
-		if (!trimmed) {
-			throw new Error('File path is required to request file content');
-		}
-		const key = requestKey('file', trimmed);
-		if (pendingRequests.has(key)) {
-			return false;
-		}
-		pendingRequests.add(key);
-		try {
-			const payload: FileManagerCommandPayload = {
-				action: 'read-file',
-				path: trimmed
-			};
-			await queueAgentCommand(payload);
-			setTimeout(() => {
-				void loadFile(trimmed, { select: true, silent: true }).catch(() => {});
-			}, 600);
-			return true;
-		} finally {
-			pendingRequests.delete(key);
 		}
 	}
 
@@ -378,13 +436,45 @@
 		}
 	}
 
-	async function fetchResource(path?: string): Promise<FileManagerResource> {
+	interface FetchResourceOptions {
+		type?: 'directory' | 'file';
+		refresh?: boolean;
+		includeHidden?: boolean;
+	}
+
+	async function fetchResource(
+		path?: string,
+		options: FetchResourceOptions = {}
+	): Promise<FileManagerResource> {
 		const params = new URLSearchParams();
 		if (path && path.trim() !== '') {
 			params.set('path', path);
 		}
+		if (options.type) {
+			params.set('type', options.type);
+		}
+		if (options.refresh) {
+			params.set('refresh', 'true');
+		}
+		if (options.includeHidden !== undefined) {
+			params.set('includeHidden', options.includeHidden ? 'true' : 'false');
+		}
 		const query = params.toString();
 		const response = await fetch(`${fileManagerEndpoint}${query ? `?${query}` : ''}`);
+		if (response.status === 202) {
+			const detail = (await response.json().catch(() => ({}))) as {
+				message?: string;
+			};
+			throw new FileManagerResourcePendingError(
+				detail.message ||
+					(options.type === 'file'
+						? 'Waiting for the agent to provide the file content…'
+						: 'Waiting for the agent to provide the directory listing…'),
+				options.type ?? 'directory',
+				path?.trim() ? path.trim() : undefined,
+				options.includeHidden
+			);
+		}
 		if (!response.ok) {
 			const detail = await response.text().catch(() => '');
 			throw new FileManagerRequestError(
@@ -432,17 +522,28 @@
 		return selectedEntry?.path === entry.path || filePreview?.path === entry.path;
 	}
 
-	async function loadDirectory(
-		path?: string,
-		options: { silent?: boolean; fromHistory?: boolean } = {}
-	) {
-		if (!options.silent) {
-			loading = true;
-			errorMessage = null;
-			successMessage = null;
-		}
-		try {
-			const resource = await fetchResource(path ?? listing?.path ?? undefined);
+        async function loadDirectory(
+                path?: string,
+                options: {
+                        silent?: boolean;
+                        fromHistory?: boolean;
+                        refresh?: boolean;
+                        includeHiddenOverride?: boolean;
+                } = {}
+        ) {
+                if (!options.silent) {
+                        loading = true;
+                        errorMessage = null;
+                        successMessage = null;
+                }
+                const targetPath = path ?? listing?.path ?? undefined;
+                const includeHiddenPreference = options.includeHiddenOverride ?? includeHidden;
+                try {
+                        const resource = await fetchResource(targetPath, {
+                                type: 'directory',
+                                refresh: options.refresh ?? !options.silent,
+                                includeHidden: includeHiddenPreference
+                        });
 			if (resource.type !== 'directory') {
 				if (!options.silent) {
 					applyFilePreview(resource);
@@ -471,28 +572,30 @@
 				if (!options.fromHistory) {
 					pushHistory(resource.path);
 				}
-			}
-			if (!options.silent) {
+				successMessage = null;
+			} else if (successMessage?.toLowerCase().includes('directory listing')) {
 				successMessage = null;
 			}
 			return resource;
 		} catch (err) {
-			if (err instanceof FileManagerRequestError && err.status === 404 && !options.silent) {
-				const targetPath = path?.trim() || listing?.path || undefined;
-				try {
-					const queued = await requestDirectoryListing(targetPath);
-					successMessage = queued
-						? 'Requested directory listing from the agent. Waiting for response.'
-						: 'Waiting for the agent to provide a directory listing…';
+			if (err instanceof FileManagerResourcePendingError) {
+				if (!options.silent) {
+					successMessage = err.message;
 					errorMessage = null;
-				} catch (requestError) {
-					errorMessage =
-						requestError instanceof Error
-							? requestError.message
-							: 'Failed to request directory listing';
 				}
-				return null;
-			}
+                                startResourcePoll('directory', err.path ?? targetPath ?? null, {
+                                        includeHidden: err.includeHidden ?? includeHiddenPreference
+                                });
+                                return null;
+                        }
+                        if (err instanceof FileManagerRequestError && err.status === 404 && !options.silent) {
+                                startResourcePoll('directory', targetPath ?? null, {
+                                        includeHidden: includeHiddenPreference
+                                });
+                                successMessage = 'Waiting for the agent to provide the directory listing…';
+                                errorMessage = null;
+                                return null;
+                        }
 			if (!options.silent) {
 				errorMessage = err instanceof Error ? err.message : 'Failed to load directory';
 			}
@@ -506,7 +609,7 @@
 
 	async function loadFile(
 		path: string,
-		options: { select?: boolean; silent?: boolean; fromHistory?: boolean } = {}
+		options: { select?: boolean; silent?: boolean; fromHistory?: boolean; refresh?: boolean } = {}
 	) {
 		if (!options.silent) {
 			loading = true;
@@ -514,7 +617,10 @@
 			successMessage = null;
 		}
 		try {
-			const resource = await fetchResource(path);
+			const resource = await fetchResource(path, {
+				type: 'file',
+				refresh: options.refresh ?? !options.silent
+			});
 			if (resource.type === 'file') {
 				applyFilePreview(resource);
 				if (options.select) {
@@ -530,6 +636,8 @@
 					pushHistory(resource.path);
 				}
 				if (!options.silent) {
+					successMessage = null;
+				} else if (successMessage?.toLowerCase().includes('file content')) {
 					successMessage = null;
 				}
 				return resource;
@@ -549,17 +657,18 @@
 			}
 			return null;
 		} catch (err) {
-			if (err instanceof FileManagerRequestError && err.status === 404 && !options.silent) {
-				try {
-					const queued = await requestFileContent(path);
-					successMessage = queued
-						? 'Requested file content from the agent. Waiting for response.'
-						: 'Waiting for the agent to provide the file content…';
+			if (err instanceof FileManagerResourcePendingError) {
+				if (!options.silent) {
+					successMessage = err.message;
 					errorMessage = null;
-				} catch (requestError) {
-					errorMessage =
-						requestError instanceof Error ? requestError.message : 'Failed to request file content';
 				}
+				startResourcePoll('file', err.path ?? path);
+				return null;
+			}
+			if (err instanceof FileManagerRequestError && err.status === 404 && !options.silent) {
+				startResourcePoll('file', path);
+				successMessage = 'Waiting for the agent to provide the file content…';
+				errorMessage = null;
 				return null;
 			}
 			if (!options.silent) {
@@ -963,6 +1072,13 @@
 		} catch {
 			// errors handled internally
 		}
+	});
+
+	onDestroy(() => {
+		for (const timer of resourcePollTimers.values()) {
+			clearTimeout(timer);
+		}
+		resourcePollTimers.clear();
 	});
 </script>
 
