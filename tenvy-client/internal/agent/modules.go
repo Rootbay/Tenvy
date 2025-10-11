@@ -13,7 +13,7 @@ import (
 	audioctrl "github.com/rootbay/tenvy-client/internal/modules/control/audio"
 	remotedesktop "github.com/rootbay/tenvy-client/internal/modules/control/remotedesktop"
 	clipboard "github.com/rootbay/tenvy-client/internal/modules/management/clipboard"
-	clientchat "github.com/rootbay/tenvy-client/internal/modules/misc/clientchat"
+	tcpconnections "github.com/rootbay/tenvy-client/internal/modules/management/tcpconnections"
 	recovery "github.com/rootbay/tenvy-client/internal/modules/operations/recovery"
 	systeminfo "github.com/rootbay/tenvy-client/internal/modules/systeminfo"
 	"github.com/rootbay/tenvy-client/internal/protocol"
@@ -67,7 +67,7 @@ func newDefaultModuleRegistry() *moduleRegistry {
 	registry.register(&remoteDesktopModule{})
 	registry.register(&audioModule{})
 	registry.register(&clipboardModule{})
-	registry.register(&clientChatModule{})
+	registry.register(&tcpConnectionsModule{})
 	registry.register(&recoveryModule{})
 	registry.register(&systemInfoModule{})
 	return registry
@@ -345,6 +345,62 @@ func (m *clipboardModule) Shutdown(context.Context) {
 	if m.manager != nil {
 		m.manager.Shutdown()
 	}
+}
+
+type tcpConnectionsModule struct {
+	manager *tcpconnections.Manager
+}
+
+func (m *tcpConnectionsModule) Metadata() ModuleMetadata {
+	return ModuleMetadata{
+		ID:          "tcp-connections",
+		Title:       "TCP Connections",
+		Description: "Enumerate and govern active TCP sockets exposed by the host.",
+		Commands:    []string{"tcp-connections"},
+		Capabilities: []ModuleCapability{
+			{
+				Name:        "tcp-connections.enumerate",
+				Description: "Collect real-time socket state with process attribution.",
+			},
+			{
+				Name:        "tcp-connections.control",
+				Description: "Stage enforcement actions for suspicious remote peers.",
+			},
+		},
+	}
+}
+
+func (m *tcpConnectionsModule) Update(runtime moduleRuntime) error {
+	cfg := tcpconnections.Config{
+		AgentID:   runtime.AgentID,
+		BaseURL:   runtime.BaseURL,
+		AuthKey:   runtime.AuthKey,
+		Client:    runtime.HTTPClient,
+		Logger:    runtime.Logger,
+		UserAgent: runtime.UserAgent,
+	}
+	if m.manager == nil {
+		m.manager = tcpconnections.NewManager(cfg)
+		return nil
+	}
+	m.manager.UpdateConfig(cfg)
+	return nil
+}
+
+func (m *tcpConnectionsModule) HandleCommand(ctx context.Context, cmd protocol.Command) protocol.CommandResult {
+	if m.manager == nil {
+		return protocol.CommandResult{
+			CommandID:   cmd.ID,
+			Success:     false,
+			Error:       "tcp connections subsystem not initialized",
+			CompletedAt: time.Now().UTC().Format(time.RFC3339Nano),
+		}
+	}
+	return m.manager.HandleCommand(ctx, cmd)
+}
+
+func (m *tcpConnectionsModule) Shutdown(context.Context) {
+	// no shutdown hooks required for TCP connection sweeps today
 }
 
 type recoveryModule struct {
