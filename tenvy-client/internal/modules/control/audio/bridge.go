@@ -575,15 +575,60 @@ func (s *AudioStreamSession) wait(timeout time.Duration) {
 }
 
 func captureAudioInventory() (*AudioDeviceInventory, error) {
-	ctx, err := malgo.InitContext(nil, malgo.ContextConfig{}, nil)
-	if err != nil {
-		return nil, fmt.Errorf("failed to initialize audio context: %w", err)
+	attempts := append([][]malgo.Backend{nil}, fallbackAudioBackendAttempts()...)
+
+	var (
+		lastErr       error
+		lastInventory *AudioDeviceInventory
+	)
+
+	for idx, backends := range attempts {
+		ctx, err := malgo.InitContext(backends, malgo.ContextConfig{}, nil)
+		if err != nil {
+			lastErr = err
+			continue
+		}
+
+		inventory, err := captureInventoryWithContext(ctx)
+		if err != nil {
+			lastErr = err
+			continue
+		}
+
+		lastInventory = inventory
+		if len(inventory.Inputs) > 0 || len(inventory.Outputs) > 0 {
+			return inventory, nil
+		}
+
+		if idx == len(attempts)-1 {
+			return inventory, nil
+		}
+	}
+
+	if lastInventory != nil {
+		return lastInventory, nil
+	}
+
+	if lastErr != nil {
+		return nil, fmt.Errorf("failed to enumerate audio devices: %w", lastErr)
+	}
+
+	return nil, errors.New("failed to enumerate audio devices")
+}
+
+func captureInventoryWithContext(ctx *malgo.AllocatedContext) (*AudioDeviceInventory, error) {
+	if ctx == nil {
+		return nil, errors.New("audio context is nil")
 	}
 	defer func() {
 		_ = ctx.Uninit()
 		ctx.Free()
 	}()
 
+	return enumerateAudioDevices(ctx)
+}
+
+func enumerateAudioDevices(ctx *malgo.AllocatedContext) (*AudioDeviceInventory, error) {
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 	inventory := &AudioDeviceInventory{
 		Inputs:     make([]AudioDeviceDescriptor, 0),
@@ -591,7 +636,13 @@ func captureAudioInventory() (*AudioDeviceInventory, error) {
 		CapturedAt: now,
 	}
 
+	var (
+		enumerated bool
+		lastErr    error
+	)
+
 	if playback, err := ctx.Devices(malgo.Playback); err == nil {
+		enumerated = true
 		for idx, info := range playback {
 			label := strings.TrimSpace(info.Name())
 			if label == "" {
@@ -610,10 +661,11 @@ func captureAudioInventory() (*AudioDeviceInventory, error) {
 			inventory.Outputs = append(inventory.Outputs, descriptor)
 		}
 	} else {
-		return nil, fmt.Errorf("failed to enumerate playback devices: %w", err)
+		lastErr = fmt.Errorf("failed to enumerate playback devices: %w", err)
 	}
 
 	if capture, err := ctx.Devices(malgo.Capture); err == nil {
+		enumerated = true
 		for idx, info := range capture {
 			label := strings.TrimSpace(info.Name())
 			if label == "" {
@@ -632,7 +684,15 @@ func captureAudioInventory() (*AudioDeviceInventory, error) {
 			inventory.Inputs = append(inventory.Inputs, descriptor)
 		}
 	} else {
-		return nil, fmt.Errorf("failed to enumerate capture devices: %w", err)
+		lastErr = fmt.Errorf("failed to enumerate capture devices: %w", err)
+	}
+
+	if enumerated {
+		return inventory, nil
+	}
+
+	if lastErr != nil {
+		return nil, lastErr
 	}
 
 	return inventory, nil
