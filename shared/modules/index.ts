@@ -96,6 +96,27 @@ export const agentModules: AgentModuleDefinition[] = [
     ],
   },
   {
+    id: "client-chat",
+    title: "Client Chat",
+    description:
+      "Persistent two-way chat channel that the client cannot dismiss locally.",
+    commands: ["client-chat"],
+    capabilities: [
+      {
+        id: "client-chat.persistent",
+        name: "Persistent window",
+        description:
+          "Keep the chat interface open continuously and respawn it if terminated.",
+      },
+      {
+        id: "client-chat.alias",
+        name: "Alias control",
+        description:
+          "Allow the controller to update operator and client aliases in real time.",
+      },
+    ],
+  },
+  {
     id: "system-info",
     title: "System Information",
     description:
