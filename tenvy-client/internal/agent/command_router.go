@@ -21,9 +21,10 @@ func newCommandRouter() *commandRouter {
 func newDefaultCommandRouter() (*commandRouter, error) {
 	router := newCommandRouter()
 	builtins := map[string]commandHandlerFunc{
-		"ping":     pingCommandHandler,
-		"shell":    shellCommandHandler,
-		"open-url": openURLCommandHandler,
+		"ping":            pingCommandHandler,
+		"shell":           shellCommandHandler,
+		"open-url":        openURLCommandHandler,
+		"tool-activation": toolActivationCommandHandler,
 	}
 
 	for name, handler := range builtins {

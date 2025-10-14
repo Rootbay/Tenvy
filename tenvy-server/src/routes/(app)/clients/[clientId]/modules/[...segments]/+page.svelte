@@ -6,11 +6,14 @@
 		CardHeader,
 		CardTitle
 	} from '$lib/components/ui/card/index.js';
+	import { browser } from '$app/environment';
+	import { onMount } from 'svelte';
 	import {
 		buildClientToolUrl,
 		type ClientToolDefinition,
 		type ClientToolId
 	} from '$lib/data/client-tools';
+	import { notifyToolActivationCommand } from '$lib/utils/agent-commands.js';
 	import type { PageData } from './$types';
 	import HiddenVncWorkspace from '$lib/components/workspace/tools/hidden-vnc-workspace.svelte';
 	import WebcamControlWorkspace from '$lib/components/workspace/tools/webcam-control-workspace.svelte';
@@ -68,6 +71,24 @@
 
 	const activeComponent = $derived(componentMap[tool.id as keyof typeof componentMap]);
 	const keyloggerMode = $derived(keyloggerModes[tool.id as keyof typeof keyloggerModes]);
+
+	onMount(() => {
+		if (!browser) {
+			return;
+		}
+
+		notifyToolActivationCommand(client.id, tool.id as ClientToolId, {
+			action: 'open',
+			metadata: { surface: 'workspace' }
+		});
+
+		return () => {
+			notifyToolActivationCommand(client.id, tool.id as ClientToolId, {
+				action: 'close',
+				metadata: { surface: 'workspace' }
+			});
+		};
+	});
 </script>
 
 <div class="space-y-6">

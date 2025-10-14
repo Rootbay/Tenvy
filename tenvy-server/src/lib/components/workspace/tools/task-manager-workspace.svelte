@@ -24,6 +24,7 @@
 	import { getClientTool } from '$lib/data/client-tools';
 	import type { Client } from '$lib/data/clients';
 	import { appendWorkspaceLog, createWorkspaceLogEntry } from '$lib/workspace/utils';
+	import { notifyToolActivationCommand } from '$lib/utils/agent-commands.js';
 	import type { WorkspaceLogEntry } from '$lib/workspace/types';
 	import { splitCommandLine } from '$lib/utils/command';
 	import { cn } from '$lib/utils.js';
@@ -87,9 +88,18 @@
 	function recordLog(
 		action: string,
 		detail: string,
-		status: WorkspaceLogEntry['status'] = 'queued'
+		status: WorkspaceLogEntry['status'] = 'queued',
+		metadata?: Record<string, unknown>
 	) {
 		log = appendWorkspaceLog(log, createWorkspaceLogEntry(action, detail, status));
+		notifyToolActivationCommand(client.id, 'task-manager', {
+			action: `event:${action}`,
+			metadata: {
+				detail,
+				status,
+				...metadata
+			}
+		});
 	}
 
 	function formatTimestamp(value: string | null): string {
@@ -239,7 +249,13 @@
 		recordLog(
 			'Start process requested',
 			`${trimmed}${args.length ? ` ${args.join(' ')}` : ''}`,
-			'queued'
+			'queued',
+			{
+				command: trimmed,
+				args,
+				cwd: startCwd.trim() || undefined,
+				environment: env
+			}
 		);
 		try {
 			const response = await fetch('/api/task-manager/processes', {
@@ -256,7 +272,11 @@
 				const detail = await response.text().catch(() => '');
 				throw new Error(detail || `Request failed with status ${response.status}`);
 			}
-			recordLog('Process start complete', `${trimmed} launched`, 'complete');
+			recordLog('Process start complete', `${trimmed} launched`, 'complete', {
+				command: trimmed,
+				args,
+				cwd: startCwd.trim() || undefined
+			});
 			startCommand = '';
 			startArgs = '';
 			startCwd = '';
@@ -267,7 +287,12 @@
 			recordLog(
 				'Process start failed',
 				`${trimmed}: ${(err as Error).message || 'unexpected error'}`,
-				'complete'
+				'complete',
+				{
+					command: trimmed,
+					args,
+					cwd: startCwd.trim() || undefined
+				}
 			);
 		} finally {
 			starting = false;
@@ -281,7 +306,11 @@
 	) {
 		const target = processes.find((item) => item.pid === pid);
 		const descriptor = target ? describeProcess(target) : `PID ${pid}`;
-		recordLog(`${options.label} requested`, descriptor, 'queued');
+		recordLog(`${options.label} requested`, descriptor, 'queued', {
+			pid,
+			action,
+			descriptor
+		});
 		actionInProgress = pid;
 		try {
 			const response = await fetch(`/api/task-manager/processes/${pid}/actions`, {
@@ -293,7 +322,11 @@
 				const detail = await response.text().catch(() => '');
 				throw new Error(detail || `Request failed with status ${response.status}`);
 			}
-			recordLog(`${options.label} complete`, descriptor, 'complete');
+			recordLog(`${options.label} complete`, descriptor, 'complete', {
+				pid,
+				action,
+				descriptor
+			});
 			await loadProcesses({ silent: true });
 			if (selectedPid === pid) {
 				if (action === 'stop' || action === 'force-stop') {
@@ -307,7 +340,12 @@
 			recordLog(
 				`${options.label} failed`,
 				`${descriptor}: ${(err as Error).message || 'unexpected error'}`,
-				'complete'
+				'complete',
+				{
+					pid,
+					action,
+					descriptor
+				}
 			);
 		} finally {
 			actionInProgress = null;

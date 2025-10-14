@@ -20,6 +20,7 @@
 		type DialogToolId
 	} from '$lib/data/client-tools';
 	import { createEventDispatcher } from 'svelte';
+	import { notifyToolActivationCommand } from '$lib/utils/agent-commands.js';
 	import type {
 		AgentConnectionAction,
 		AgentConnectionRequest
@@ -84,6 +85,13 @@
 			dialogTool = null;
 			void handleConnectionAction(toolId);
 			return;
+		}
+
+		if (browser) {
+			notifyToolActivationCommand(client.id, toolId, {
+				action: 'open',
+				metadata: { surface: 'context-menu' }
+			});
 		}
 
 		if (target === 'dialog') {

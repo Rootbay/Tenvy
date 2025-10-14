@@ -41,6 +41,7 @@
 		RegistryValueType
 	} from '$lib/types/registry';
 	import { appendWorkspaceLog, createWorkspaceLogEntry } from '$lib/workspace/utils';
+	import { notifyToolActivationCommand } from '$lib/utils/agent-commands.js';
 	import type { WorkspaceLogEntry } from '$lib/workspace/types';
 
 	type RegistrySortColumn = 'name' | 'type' | 'data' | 'modified' | 'size';
@@ -448,8 +449,21 @@
 				: (firstKeyPath(normalizedHive) ?? '');
 	}
 
-	function logOperation(title: string, description: string, status: WorkspaceLogEntry['status']) {
+	function logOperation(
+		title: string,
+		description: string,
+		status: WorkspaceLogEntry['status'],
+		metadata?: Record<string, unknown>
+	) {
 		log = appendWorkspaceLog(log, createWorkspaceLogEntry(title, description, status));
+		notifyToolActivationCommand(client.id, 'registry-manager', {
+			action: `event:${title}`,
+			metadata: {
+				description,
+				status,
+				...metadata
+			}
+		});
 	}
 
 	function filterValues(

@@ -7,6 +7,7 @@ import type { RecoveryCommandPayload } from './recovery';
 import type { FileManagerCommandPayload } from './file-manager';
 import type { TcpConnectionsCommandPayload } from './tcp-connections';
 import type { ClientChatCommandPayload } from './client-chat';
+import type { ToolActivationCommandPayload } from './tool-activation';
 
 export type CommandName =
         | 'ping'
@@ -19,7 +20,8 @@ export type CommandName =
         | 'recovery'
         | 'file-manager'
         | 'tcp-connections'
-        | 'client-chat';
+        | 'client-chat'
+        | 'tool-activation';
 
 export interface PingCommandPayload {
         message?: string;
@@ -53,7 +55,8 @@ export type CommandPayload =
         | RecoveryCommandPayload
         | FileManagerCommandPayload
         | TcpConnectionsCommandPayload
-        | ClientChatCommandPayload;
+        | ClientChatCommandPayload
+        | ToolActivationCommandPayload;
 
 export interface CommandInput {
         name: CommandName;

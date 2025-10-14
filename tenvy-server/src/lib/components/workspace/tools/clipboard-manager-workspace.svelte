@@ -14,6 +14,7 @@
 	import { getClientTool } from '$lib/data/client-tools';
 	import type { Client } from '$lib/data/clients';
 	import { appendWorkspaceLog, createWorkspaceLogEntry } from '$lib/workspace/utils';
+	import { notifyToolActivationCommand } from '$lib/utils/agent-commands.js';
 	import type { WorkspaceLogEntry } from '$lib/workspace/types';
 
 	const { client } = $props<{ client: Client }>();
@@ -39,10 +40,24 @@
 	}
 
 	function queue(status: WorkspaceLogEntry['status']) {
+		const detail = describePlan();
 		log = appendWorkspaceLog(
 			log,
-			createWorkspaceLogEntry('Clipboard strategy staged', describePlan(), status)
+			createWorkspaceLogEntry('Clipboard strategy staged', detail, status)
 		);
+		notifyToolActivationCommand(client.id, 'clipboard-manager', {
+			action: 'event:Clipboard strategy staged',
+			metadata: {
+				detail,
+				status,
+				captureText,
+				captureImages,
+				captureFiles,
+				redactSecrets,
+				syncBack,
+				pollInterval
+			}
+		});
 	}
 </script>
 
