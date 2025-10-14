@@ -2,32 +2,33 @@
 	import { cn } from '$lib/utils.js';
 	import { Badge } from '$lib/components/ui/badge/index.js';
 	import { Button } from '$lib/components/ui/button/index.js';
-	import {
-		Card,
-		CardContent,
-		CardDescription,
-		CardHeader,
-		CardTitle
-	} from '$lib/components/ui/card/index.js';
-	import { Progress } from '$lib/components/ui/progress/index.js';
-	import {
-		ChartContainer,
-		ChartTooltip,
-		type ChartConfig
-	} from '$lib/components/ui/chart/index.js';
-	import { LineChart } from 'layerchart';
+import {
+	Card,
+	CardContent,
+	CardDescription,
+	CardHeader,
+	CardTitle
+} from '$lib/components/ui/card/index.js';
+import { Popover, PopoverContent, PopoverTrigger } from '$lib/components/ui/popover/index.js';
+import {
+	Select,
+	SelectContent,
+	SelectItem,
+	SelectTrigger
+} from '$lib/components/ui/select/index.js';
 	import ClientPresenceMap from '$lib/components/dashboard/client-presence-map.svelte';
 	import { countryCodeToFlag } from '$lib/utils/location';
 	import { derived, writable } from 'svelte/store';
 	import {
-		Activity,
-		ArrowDownRight,
-		ArrowUpRight,
-		Gauge,
-		Globe2,
-		UserPlus,
-		Users
-	} from '@lucide/svelte';
+	Activity,
+	ArrowDownRight,
+	ArrowUpRight,
+	Gauge,
+	Earth,
+	ChevronDown,
+	UserPlus,
+	Users
+} from '@lucide/svelte';
 	import type {
 		DashboardClient,
 		DashboardCountryStat,
@@ -46,7 +47,7 @@
 	let { data } = $props<{ data: PageData }>();
 
 	const newClientRange = writable<'today' | 'week'>('today');
-	const activeView = writable<'logs' | 'map'>('logs');
+	const activeView = writable<'logs' | 'map'>('map');
 	const selectedCountry = writable<string | null>(null);
 
 	type TrendIcon = typeof ArrowUpRight | typeof ArrowDownRight;
@@ -123,7 +124,7 @@
 				dark: 'var(--chart-1)'
 			}
 		}
-	} satisfies ChartConfig;
+	};
 
 	const newClientsSeries = [
 		{
@@ -142,7 +143,7 @@
 				dark: 'var(--chart-2)'
 			}
 		}
-	} satisfies ChartConfig;
+	};
 
 	const bandwidthSeries = [
 		{
@@ -161,7 +162,7 @@
 				dark: 'var(--chart-3)'
 			}
 		}
-	} satisfies ChartConfig;
+	};
 
 	const latencySeries = [
 		{
@@ -222,398 +223,315 @@
 		return code ? countryCodeToFlag(code) : '🌐';
 	}
 
-	const connectedCaption = `${data.totals.connected} active links`;
-	const offlineCaption = `${data.totals.offline} offline`;
+const connectedCaption = `${data.totals.connected}`;
 </script>
 
-<section class="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-	<Card class="border-border/60">
-		<CardHeader class="flex flex-col gap-3">
-			<div class="flex items-center justify-between gap-3">
-				<CardTitle class="text-sm font-semibold">Total clients</CardTitle>
-				<span
-					class="flex h-9 w-9 items-center justify-center rounded-full border border-border/60 bg-muted/40"
-				>
-					<Users class="h-4 w-4 text-muted-foreground" />
-				</span>
-			</div>
-			<CardDescription>Live controller footprint across every uplink.</CardDescription>
-		</CardHeader>
-		<CardContent class="space-y-2">
-			<div class="text-3xl font-semibold tracking-tight">
-				{integerFormatter.format(data.totals.total)}
-			</div>
-			<p class="text-xs text-muted-foreground">
-				🟢 {connectedCaption} · 🔴 {offlineCaption}
-			</p>
-			<p class="text-xs text-muted-foreground">
-				Idle + dormant sleepers: {integerFormatter.format(data.totals.idle + data.totals.dormant)}
-			</p>
-		</CardContent>
-	</Card>
+<div class="flex h-full flex-1 min-h-0 flex-col gap-6 overflow-hidden">
+	<section class="grid flex-none gap-4 md:grid-cols-2 xl:grid-cols-4">
+		<Card class="border-border/60">
+			<CardHeader class="flex flex-col gap-3">
+				<div class="flex items-center justify-between gap-3">
+					<CardTitle class="text-sm font-semibold">Total clients</CardTitle>
+					<span
+						class="flex h-9 w-9 items-center justify-center rounded-full border border-border/60 bg-muted/40"
+					>
+						<Users class="h-4 w-4 text-muted-foreground" />
+					</span>
+				</div>
+				<CardDescription>Live controller footprint across every uplink.</CardDescription>
+			</CardHeader>
+			<CardContent class="space-y-2">
+				<div class="text-3xl font-semibold tracking-tight">
+					{integerFormatter.format(data.totals.total)}
+				</div>
+				<p class="text-xs text-muted-foreground">
+					Active: {connectedCaption}
+				</p>
+			</CardContent>
+		</Card>
 
-	<Card class="border-border/60">
-		<CardHeader class="flex flex-col gap-3">
-			<div class="flex items-center justify-between gap-3">
-				<CardTitle class="text-sm font-semibold">New clients</CardTitle>
-				<span
-					class="flex h-9 w-9 items-center justify-center rounded-full border border-border/60 bg-muted/40"
-				>
-					<UserPlus class="h-4 w-4 text-muted-foreground" />
-				</span>
-			</div>
-			<CardDescription>Enrollment momentum for operators.</CardDescription>
-		</CardHeader>
-		<CardContent class="space-y-4">
-			<div class="flex flex-wrap items-center justify-between gap-3">
+		<Card class="border-border/60">
+			<CardHeader class="flex flex-col gap-3">
+				<div class="flex items-center justify-between gap-3">
+					<CardTitle class="text-sm font-semibold">New clients</CardTitle>
+					<span
+						class="flex h-9 w-9 items-center justify-center rounded-full border border-border/60 bg-muted/40"
+					>
+						<UserPlus class="h-4 w-4 text-muted-foreground" />
+					</span>
+					<div class="mx-6 w-[9rem]">
+						<Select
+							type="single"
+							value={$newClientRange}
+							onValueChange={(value) => {
+								if (value === 'today' || value === 'week') {
+									newClientRange.set(value);
+								}
+							}}
+						>
+							<SelectTrigger
+								id="new-client-range"
+								class="h-9 w-full justify-between border-border/60 bg-muted/40 px-3 text-xs font-medium"
+							>
+								<span>{$newClientRange === 'today' ? 'Today' : 'This week'}</span>
+							</SelectTrigger>
+							<SelectContent>
+								<SelectItem value="today">Today</SelectItem>
+								<SelectItem value="week">This week</SelectItem>
+							</SelectContent>
+						</Select>
+					</div>
+				</div>
+				<CardDescription>Enrollment momentum for operators.</CardDescription>
+			</CardHeader>
+			<CardContent class="space-y-4">
+				<div class="flex flex-wrap items-center justify-between gap-3">
+					<div>
+						<div class="text-3xl font-semibold tracking-tight">
+							{integerFormatter.format($newClientSnapshot.total)}
+						</div>
+						{#if $newClientDelta.text}
+							<div
+								class={cn(
+									'mt-1 flex items-center gap-1 text-xs',
+									$newClientDelta.tone === 'positive'
+										? 'text-emerald-500'
+										: $newClientDelta.tone === 'negative'
+											? 'text-rose-500'
+											: 'text-muted-foreground'
+								)}
+							>
+								{#if $newClientDelta.icon}
+									{@const Icon = $newClientDelta.icon}
+									<Icon class="h-3.5 w-3.5" />
+								{/if}
+								<span>{$newClientDelta.text}</span>
+							</div>
+						{/if}
+					</div>
+				</div>
+			</CardContent>
+		</Card>
+
+		<Card class="border-border/60">
+			<CardHeader class="flex flex-col gap-3">
+				<div class="flex items-center justify-between gap-3">
+					<CardTitle class="text-sm font-semibold">Bandwidth usage</CardTitle>
+					<span
+						class="flex h-9 w-9 items-center justify-center rounded-full border border-border/60 bg-muted/40"
+					>
+						<Activity class="h-4 w-4 text-muted-foreground" />
+					</span>
+				</div>
+				<CardDescription>Aggregate transfer over the last 24 hours.</CardDescription>
+			</CardHeader>
+			<CardContent class="space-y-4">
 				<div>
 					<div class="text-3xl font-semibold tracking-tight">
-						{integerFormatter.format($newClientSnapshot.total)}
+						{gbFormatter.format(data.bandwidth.totalGb)}
+						<span class="text-base font-normal text-muted-foreground">GB</span>
 					</div>
-					{#if $newClientDelta.text}
-						<div
-							class={cn(
-								'mt-1 flex items-center gap-1 text-xs',
-								$newClientDelta.tone === 'positive'
-									? 'text-emerald-500'
-									: $newClientDelta.tone === 'negative'
-										? 'text-rose-500'
-										: 'text-muted-foreground'
-							)}
-						>
-							{#if $newClientDelta.icon}
-								{@const Icon = $newClientDelta.icon}
-								<Icon class="h-3.5 w-3.5" />
-							{/if}
-							<span>{$newClientDelta.text}</span>
-						</div>
-					{/if}
-				</div>
-				<div class="flex items-center gap-1 rounded-md border border-border/60 bg-muted/40 p-1">
-					<Button
-						type="button"
-						variant={$newClientRange === 'today' ? 'secondary' : 'ghost'}
-						size="sm"
-						class="px-3 text-xs"
-						onclick={() => newClientRange.set('today')}
+					<div
+						class={cn(
+							'mt-1 flex items-center gap-1 text-xs',
+							bandwidthDelta.tone === 'positive'
+								? 'text-emerald-500'
+								: bandwidthDelta.tone === 'negative'
+									? 'text-rose-500'
+									: 'text-muted-foreground'
+						)}
 					>
-						Today
-					</Button>
-					<Button
-						type="button"
-						variant={$newClientRange === 'week' ? 'secondary' : 'ghost'}
-						size="sm"
-						class="px-3 text-xs"
-						onclick={() => newClientRange.set('week')}
-					>
-						This week
-					</Button>
+						{#if bandwidthDelta.icon}
+							{@const Icon = bandwidthDelta.icon}
+							<Icon class="h-3.5 w-3.5" />
+						{/if}
+						<span>{bandwidthDelta.text}</span>
+					</div>
 				</div>
-			</div>
-			<ChartContainer config={newClientsChartConfig} class="h-28 w-full">
-				<LineChart
-					data={$newClientSnapshot.series}
-					x={(point) => new Date(point.timestamp)}
-					series={newClientsSeries}
-					props={{
-						xAxis: {
-							format: (value) =>
-								value instanceof Date
-									? $newClientRange === 'today'
-										? timeFormatter.format(value)
-										: dayFormatter.format(value)
-									: ''
-						},
-						yAxis: {
-							format: (value) => `${integerFormatter.format(Number(value ?? 0))}`
-						}
-					}}
-				>
-					{#snippet tooltip()}
-						<ChartTooltip indicator="line" />
-					{/snippet}
-				</LineChart>
-			</ChartContainer>
-		</CardContent>
-	</Card>
+			</CardContent>
+		</Card>
 
-	<Card class="border-border/60">
-		<CardHeader class="flex flex-col gap-3">
-			<div class="flex items-center justify-between gap-3">
-				<CardTitle class="text-sm font-semibold">Bandwidth usage</CardTitle>
-				<span
-					class="flex h-9 w-9 items-center justify-center rounded-full border border-border/60 bg-muted/40"
-				>
-					<Activity class="h-4 w-4 text-muted-foreground" />
-				</span>
-			</div>
-			<CardDescription>Aggregate transfer over the last 24 hours.</CardDescription>
-		</CardHeader>
-		<CardContent class="space-y-4">
-			<div>
-				<div class="text-3xl font-semibold tracking-tight">
-					{gbFormatter.format(data.bandwidth.totalGb)}
-					<span class="text-base font-normal text-muted-foreground">GB</span>
-				</div>
-				<div
-					class={cn(
-						'mt-1 flex items-center gap-1 text-xs',
-						bandwidthDelta.tone === 'positive'
-							? 'text-emerald-500'
-							: bandwidthDelta.tone === 'negative'
-								? 'text-rose-500'
-								: 'text-muted-foreground'
-					)}
-				>
-					{#if bandwidthDelta.icon}
-						{@const Icon = bandwidthDelta.icon}
-						<Icon class="h-3.5 w-3.5" />
-					{/if}
-					<span>{bandwidthDelta.text}</span>
-				</div>
-			</div>
-			<div class="space-y-2">
-				<div class="flex items-center justify-between text-xs text-muted-foreground">
-					<span>Capacity {gbFormatter.format(data.bandwidth.capacityMb / 1024)} GB</span>
-					<span>{percentageFormatter.format(data.bandwidth.usagePercent)}% utilised</span>
-				</div>
-				<Progress value={data.bandwidth.usagePercent} />
-			</div>
-			<ChartContainer config={bandwidthChartConfig} class="h-24 w-full">
-				<LineChart
-					data={data.bandwidth.series}
-					x={(point) => new Date(point.timestamp)}
-					series={bandwidthSeries}
-					props={{
-						xAxis: {
-							format: (value) => (value instanceof Date ? timeFormatter.format(value) : '')
-						},
-						yAxis: {
-							format: (value) => `${integerFormatter.format(Number(value ?? 0))} MB`
-						}
-					}}
-				>
-					{#snippet tooltip()}
-						<ChartTooltip indicator="line" />
-					{/snippet}
-				</LineChart>
-			</ChartContainer>
-		</CardContent>
-	</Card>
-
-	<Card class="border-border/60">
-		<CardHeader class="flex flex-col gap-3">
-			<div class="flex items-center justify-between gap-3">
-				<CardTitle class="text-sm font-semibold">C2 server latency</CardTitle>
-				<span
-					class="flex h-9 w-9 items-center justify-center rounded-full border border-border/60 bg-muted/40"
-				>
-					<Gauge class="h-4 w-4 text-muted-foreground" />
-				</span>
-			</div>
-			<CardDescription>Heartbeat round-trip monitoring.</CardDescription>
-		</CardHeader>
-		<CardContent class="space-y-4">
-			<div>
-				<div class="text-3xl font-semibold tracking-tight">
-					{latencyFormatter.format(data.latency.averageMs)}
-					<span class="text-base font-normal text-muted-foreground">ms</span>
-				</div>
-				<div
-					class={cn(
-						'mt-1 flex items-center gap-1 text-xs',
-						latencyDelta.tone === 'positive'
-							? 'text-emerald-500'
-							: latencyDelta.tone === 'negative'
-								? 'text-rose-500'
-								: 'text-muted-foreground'
-					)}
-				>
-					{#if latencyDelta.icon}
-						{@const Icon = latencyDelta.icon}
-						<Icon class="h-3.5 w-3.5" />
-					{/if}
-					<span>{latencyDelta.text}</span>
-				</div>
-			</div>
-			<ChartContainer config={latencyChartConfig} class="h-24 w-full">
-				<LineChart
-					data={data.latency.series}
-					x={(point) => new Date(point.timestamp)}
-					series={latencySeries}
-					props={{
-						xAxis: {
-							format: (value) => (value instanceof Date ? timeFormatter.format(value) : '')
-						},
-						yAxis: {
-							format: (value) => `${latencyFormatter.format(Number(value ?? 0))} ms`
-						}
-					}}
-				>
-					{#snippet tooltip()}
-						<ChartTooltip indicator="line" />
-					{/snippet}
-				</LineChart>
-			</ChartContainer>
-		</CardContent>
-	</Card>
-</section>
-
-<section class="grid gap-6 lg:grid-cols-7">
-	<Card class="border-border/60 lg:col-span-5">
-		<CardHeader class="flex flex-col gap-3">
-			<div class="flex flex-wrap items-center justify-between gap-3">
-				<div class="space-y-1">
-					<CardTitle>Operations stream</CardTitle>
-					<CardDescription>
-						Inspect live log traffic or map uplink distribution in real time.
-					</CardDescription>
-				</div>
-				<div class="flex items-center gap-1 rounded-md border border-border/60 bg-muted/40 p-1">
-					<Button
-						type="button"
-						variant={$activeView === 'logs' ? 'secondary' : 'ghost'}
-						size="sm"
-						class="px-3 text-xs"
-						onclick={() => activeView.set('logs')}
+		<Card class="border-border/60">
+			<CardHeader class="flex flex-col gap-3">
+				<div class="flex items-center justify-between gap-3">
+					<CardTitle class="text-sm font-semibold">Latency</CardTitle>
+					<span
+						class="flex h-9 w-9 items-center justify-center rounded-full border border-border/60 bg-muted/40"
 					>
-						Logs
-					</Button>
-					<Button
-						type="button"
-						variant={$activeView === 'map' ? 'secondary' : 'ghost'}
-						size="sm"
-						class="px-3 text-xs"
-						onclick={() => activeView.set('map')}
-					>
-						Map
-					</Button>
-				</div>
-			</div>
-			{#if $selectedCountrySummary}
-				<Badge variant="outline" class="w-fit gap-2 text-xs uppercase">
-					<span>{$selectedCountrySummary.flag}</span>
-					<span>{$selectedCountrySummary.name}</span>
-					<span class="text-muted-foreground">
-						· {integerFormatter.format($selectedCountrySummary.total)}
-						{$selectedCountrySummary.total === 1 ? ' client' : ' clients'}
+						<Gauge class="h-4 w-4 text-muted-foreground" />
 					</span>
-				</Badge>
-			{/if}
-		</CardHeader>
-		<CardContent class="space-y-4">
-			{#if $activeView === 'logs'}
-				<div class="space-y-3">
-					{#if $filteredLogs.length === 0}
-						<div
-							class="rounded-lg border border-dashed border-border/60 p-6 text-center text-sm text-muted-foreground"
-						>
-							No events matched this country filter.
-						</div>
-					{/if}
-					{#each $filteredLogs as entry (entry.id)}
-						<div
-							class="flex flex-col gap-4 rounded-lg border border-border/60 p-4 md:flex-row md:items-center md:justify-between"
-						>
-							<div class="flex items-start gap-3">
-								<span
-									class="flex h-10 w-10 items-center justify-center rounded-md border border-border/60 bg-muted/40"
-								>
-									<Globe2 class="h-4 w-4 text-muted-foreground" />
-								</span>
-								<div class="space-y-1">
-									<div class="flex items-center gap-2 text-sm font-semibold">
-										<span>{entry.codename}</span>
-										<span class="text-xs text-muted-foreground">
-											{resolveFlag(entry.countryCode ?? null)}
-										</span>
-									</div>
-									<p
-										class="font-mono text-[0.65rem] tracking-[0.08em] text-muted-foreground uppercase"
-									>
-										{entry.action}
-									</p>
-									<p class="text-sm text-muted-foreground">{entry.description}</p>
-								</div>
-							</div>
-							<div class="flex flex-col items-start gap-2 md:items-end">
-								<div class="flex items-center gap-2 text-xs text-muted-foreground">
-									<span>{formatLogTime(entry.timestamp)}</span>
-									<span aria-hidden="true">•</span>
-									<span>{formatRelative(entry.timestamp)}</span>
-								</div>
-								<Badge
-									variant={severityVariant[entry.severity]}
-									class={cn('tracking-wide uppercase', severityTone[entry.severity])}
-								>
-									{entry.severity}
-								</Badge>
-							</div>
-						</div>
-					{/each}
 				</div>
-			{:else}
-				<ClientPresenceMap clients={$filteredClients} highlightCountry={$selectedCountry} />
-			{/if}
-		</CardContent>
-	</Card>
+				<CardDescription>Heartbeat round-trip monitoring.</CardDescription>
+			</CardHeader>
+			<CardContent class="space-y-4">
+				<div>
+					<div class="text-3xl font-semibold tracking-tight">
+						{latencyFormatter.format(data.latency.averageMs)}
+						<span class="text-base font-normal text-muted-foreground">ms</span>
+					</div>
+					<div
+						class={cn(
+							'mt-1 flex items-center gap-1 text-xs',
+							latencyDelta.tone === 'positive'
+								? 'text-emerald-500'
+								: latencyDelta.tone === 'negative'
+									? 'text-rose-500'
+									: 'text-muted-foreground'
+						)}
+					>
+						{#if latencyDelta.icon}
+							{@const Icon = latencyDelta.icon}
+							<Icon class="h-3.5 w-3.5" />
+						{/if}
+						<span>{latencyDelta.text}</span>
+					</div>
+				</div>
+			</CardContent>
+		</Card>
+	</section>
 
-	<Card class="border-border/60 lg:col-span-2">
-		<CardHeader class="flex flex-col gap-2">
-			<CardTitle>Country distribution</CardTitle>
-			<CardDescription>Click to focus the map and event feed.</CardDescription>
-			<div class="flex flex-wrap items-center gap-2">
-				<Badge variant="secondary" class="font-mono text-[0.65rem]">
-					{integerFormatter.format(data.clients.length)} clients tracked
-				</Badge>
-				<Button
-					type="button"
-					variant="ghost"
-					size="sm"
-					class="h-7 px-2 text-xs"
-					onclick={() => selectedCountry.set(null)}
-					disabled={!$selectedCountry}
-				>
-					Reset
-				</Button>
-			</div>
-		</CardHeader>
-		<CardContent class="space-y-3">
-			{#each countryStats as country (country.countryCode)}
-				<button
-					type="button"
-					class={cn(
-						'w-full rounded-lg border px-3 py-2 text-left transition-colors',
-						$selectedCountry === country.countryCode
-							? 'border-primary/70 bg-primary/10'
-							: 'border-border/60 hover:border-primary/50 hover:bg-primary/5'
-					)}
-					onclick={() => toggleCountry(country.countryCode)}
-				>
-					<div class="flex items-center justify-between gap-3">
-						<div class="flex items-center gap-3">
-							<span class="text-lg leading-none">{country.flag}</span>
-							<div class="space-y-0.5">
-								<p class="text-sm font-semibold text-foreground">{country.countryName}</p>
-								<p class="text-xs text-muted-foreground">
-									{integerFormatter.format(country.count)} clients · {integerFormatter.format(
-										country.onlineCount
-									)} active
-								</p>
+	<section class="grid h-full flex-1 min-h-0 gap-6 overflow-hidden auto-rows-[minmax(0,1fr)] lg:grid-cols-7">
+		<Card class="flex h-[32rem] flex-col border-border/60 lg:col-span-5">
+			<CardContent class="relative flex min-h-0 flex-1 flex-col gap-4 overflow-hidden">
+				<div class="pointer-events-none absolute right-4 top-4 z-10">
+					<Popover>
+						<PopoverTrigger
+							type="button"
+							class="pointer-events-auto flex h-9 w-9 items-center justify-center rounded-full border border-border/60 bg-background/95 text-muted-foreground shadow-sm transition hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
+							aria-label="Open operations view menu"
+						>
+							<ChevronDown class="h-4 w-4" />
+							<span class="sr-only">Toggle operations view menu</span>
+						</PopoverTrigger>
+						<PopoverContent align="end" sideOffset={12} class="w-36 space-y-2 p-3">
+							<Button
+								type="button"
+								variant={$activeView === 'map' ? 'secondary' : 'ghost'}
+								size="sm"
+								class="w-full text-xs"
+								onclick={() => activeView.set('map')}
+							>
+								Map
+							</Button>
+							<Button
+								type="button"
+								variant={$activeView === 'logs' ? 'secondary' : 'ghost'}
+								size="sm"
+								class="w-full text-xs"
+								onclick={() => activeView.set('logs')}
+							>
+								Logs
+							</Button>
+						</PopoverContent>
+					</Popover>
+				</div>
+				{#if $activeView === 'map'}
+					<div class="flex-1 min-h-0 overflow-hidden">
+						<ClientPresenceMap clients={$filteredClients} highlightCountry={$selectedCountry} />
+					</div>
+				{:else}
+										<div class="flex-1 space-y-3 overflow-y-auto pr-1 min-h-0">
+						{#if $filteredLogs.length === 0}
+							<div
+								class="rounded-lg border border-dashed border-border/60 p-6 text-center text-sm text-muted-foreground"
+							>
+								No events matched this country filter.
 							</div>
-						</div>
-						<span class="text-sm font-semibold text-muted-foreground">
-							{percentageFormatter.format(country.percentage)}%
-						</span>
+						{/if}
+						{#each $filteredLogs as entry (entry.id)}
+							<div
+								class="flex flex-col gap-4 rounded-lg border border-border/60 p-4 md:flex-row md:items-center md:justify-between"
+							>
+								<div class="flex items-start gap-3">
+									<span
+										class="flex h-10 w-10 items-center justify-center rounded-md border border-border/60 bg-muted/40"
+									>
+										<Earth class="h-4 w-4 text-muted-foreground" />
+									</span>
+									<div class="space-y-1">
+										<div class="flex items-center gap-2 text-sm font-semibold">
+											<span>{entry.codename}</span>
+											<span class="text-xs text-muted-foreground">
+												{resolveFlag(entry.countryCode ?? null)}
+											</span>
+										</div>
+										<p
+											class="font-mono text-[0.65rem] tracking-[0.08em] text-muted-foreground uppercase"
+										>
+											{entry.action}
+										</p>
+										<p class="text-sm text-muted-foreground">{entry.description}</p>
+									</div>
+								</div>
+								<div class="flex flex-col items-start gap-2 md:items-end">
+									<div class="flex items-center gap-2 text-xs text-muted-foreground">
+										<span>{formatLogTime(entry.timestamp)}</span>
+										<span aria-hidden="true">•</span>
+										<span>{formatRelative(entry.timestamp)}</span>
+									</div>
+									<Badge
+										variant={severityVariant[entry.severity]}
+										class={cn('tracking-wide uppercase', severityTone[entry.severity])}
+									>
+										{entry.severity}
+									</Badge>
+								</div>
+							</div>
+						{/each}
 					</div>
-					<div class="mt-3 h-2 w-full overflow-hidden rounded-full bg-muted/50">
-						<div
-							class="h-full rounded-full bg-primary/80"
-							style={`width: ${Math.min(country.percentage, 100)}%;`}
-						></div>
+				{/if}
+			</CardContent>
+		</Card>
+		<Card class="flex h-[32rem] flex-col border-border/60 lg:col-span-2">
+			<CardContent class="flex-1 overflow-hidden p-0">
+				<div class="flex-1 h-full overflow-y-auto">
+					<div class="divide-y divide-border/60">
+						{#each countryStats as country (country.countryCode)}
+							{@const countryCode = country.countryCode}
+							{@const flagUrl =
+								countryCode && countryCode.length > 0
+									? `https://flagcdn.com/${countryCode.toLowerCase()}.svg`
+									: null}
+							<button
+								type="button"
+								class={cn(
+									'flex w-full items-center justify-between gap-3 px-6 py-3 text-left transition-colors',
+									$selectedCountry === country.countryCode
+										? 'bg-primary/10'
+										: 'hover:bg-primary/5'
+								)}
+								onclick={() => toggleCountry(country.countryCode)}
+							>
+								<div class="flex items-center gap-3">
+									{#if flagUrl}
+										<img
+											src={flagUrl}
+											alt=""
+											class="h-5 w-8 rounded-sm border border-border/60 object-cover"
+											loading="lazy"
+										/>
+									{:else}
+										<span class="text-lg leading-none" aria-hidden="true">{country.flag}</span>
+									{/if}
+									<div class="space-y-0.5">
+										<p class="text-sm font-semibold text-foreground">{country.countryName}</p>
+									</div>
+								</div>
+								<span
+									class={cn(
+										'rounded-md border px-2 py-0.5 text-xs font-medium',
+										$selectedCountry === country.countryCode
+											? 'border-primary/60 text-primary'
+											: 'border-border/60 text-muted-foreground'
+									)}
+								>
+									<p class="text-xs text-muted-foreground">{percentageFormatter.format(country.percentage)}%</p>
+								</span>
+							</button>
+						{/each}
 					</div>
-				</button>
-			{/each}
-		</CardContent>
-	</Card>
-</section>
+				</div>
+			</CardContent>
+		</Card>
+	</section>
+</div>

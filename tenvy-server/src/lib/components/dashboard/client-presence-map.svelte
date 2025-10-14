@@ -1,6 +1,12 @@
 <script lang="ts">
 	import type { DashboardClient } from '$lib/data/dashboard';
 	import type { ClientStatus } from '$lib/data/clients';
+	import { cn } from '$lib/utils.js';
+	import { Badge } from '$lib/components/ui/badge/index.js';
+	import { Popover, PopoverContent, PopoverTrigger } from '$lib/components/ui/popover/index.js';
+import { onMount } from 'svelte';
+	import { select } from 'd3-selection';
+	import { zoom, zoomIdentity, type D3ZoomEvent, type ZoomTransform } from 'd3-zoom';
 	import { geoNaturalEarth1, geoPath, geoGraticule10 } from 'd3-geo';
 	import { feature } from 'topojson-client';
 	import type { Feature, FeatureCollection, GeoJsonProperties, Geometry } from 'geojson';
@@ -11,12 +17,52 @@
 	} from 'topojson-specification';
 	import world from 'world-atlas/countries-110m.json';
 
+	type MarkerStyle = { dot: string; halo: string; stroke: string };
 	type Marker = {
 		client: DashboardClient;
-		x: number;
-		y: number;
-		style: { dot: string; halo: string; stroke: string };
+		left: number;
+		top: number;
+		style: MarkerStyle;
+		dimmed: boolean;
 	};
+
+	const props = $props<{
+		clients?: DashboardClient[];
+		highlightCountry?: string | null;
+	}>();
+
+	const statusStyles: Record<ClientStatus, MarkerStyle> = {
+		online: {
+			dot: 'rgb(16 185 129)',
+			halo: 'rgba(16, 185, 129, 0.28)',
+			stroke: 'rgba(16, 185, 129, 0.55)'
+		},
+		idle: {
+			dot: 'rgb(56 189 248)',
+			halo: 'rgba(56, 189, 248, 0.26)',
+			stroke: 'rgba(56, 189, 248, 0.5)'
+		},
+		dormant: {
+			dot: 'rgb(245 158 11)',
+			halo: 'rgba(245, 158, 11, 0.28)',
+			stroke: 'rgba(245, 158, 11, 0.55)'
+		},
+		offline: {
+			dot: 'rgb(148 163 184)',
+			halo: 'rgba(148, 163, 184, 0.32)',
+			stroke: 'rgba(148, 163, 184, 0.45)'
+		}
+	};
+
+	const statusLabels: Record<ClientStatus, string> = {
+		online: 'Online',
+		idle: 'Idle',
+		dormant: 'Dormant',
+		offline: 'Offline'
+	};
+
+	const width = 860;
+	const height = 460;
 
 	type WorldProperties = GeoJsonProperties & {
 		name?: string;
@@ -24,12 +70,6 @@
 
 	type WorldObjects = Objects<WorldProperties>;
 	type WorldGeometryCollection = TopologyGeometryCollection<WorldProperties>;
-
-	export let clients: DashboardClient[] = [];
-	export let highlightCountry: string | null = null;
-
-	const width = 860;
-	const height = 460;
 
 	const topology = world as unknown as Topology<WorldObjects>;
 	const countriesObject = topology.objects.countries as WorldGeometryCollection;
@@ -54,97 +94,192 @@
 		})
 	);
 
-	const statusStyles: Record<ClientStatus, Marker['style']> = {
-		online: {
-			dot: 'rgb(16 185 129)',
-			halo: 'rgba(16, 185, 129, 0.18)',
-			stroke: 'rgba(16, 185, 129, 0.55)'
-		},
-		idle: {
-			dot: 'rgb(56 189 248)',
-			halo: 'rgba(56, 189, 248, 0.22)',
-			stroke: 'rgba(56, 189, 248, 0.5)'
-		},
-		dormant: {
-			dot: 'rgb(245 158 11)',
-			halo: 'rgba(245, 158, 11, 0.22)',
-			stroke: 'rgba(245, 158, 11, 0.55)'
-		},
-		offline: {
-			dot: 'rgb(148 163 184)',
-			halo: 'rgba(148, 163, 184, 0.25)',
-			stroke: 'rgba(148, 163, 184, 0.45)'
-		}
-	};
+	let markers = $state<Marker[]>([]);
+	let svgElement: SVGSVGElement | null = null;
+	const identityTransform = zoomIdentity;
+	let mapTransform = $state(
+		`translate(${identityTransform.x}, ${identityTransform.y}) scale(${identityTransform.k})`
+	);
+	let overlayTransform = $state(
+		`translate(${identityTransform.x}px, ${identityTransform.y}px) scale(${identityTransform.k})`
+	);
 
-	$: markers = clients
-		.map((client) => {
-			const coordinates = projection([client.location.longitude, client.location.latitude]);
-			if (!coordinates) {
-				return null;
-			}
-			const [x, y] = coordinates;
-			return {
-				client,
-				x,
-				y,
-				style: statusStyles[client.status]
-			} satisfies Marker;
-		})
-		.filter((entry): entry is Marker => entry !== null);
+	const timestampFormatter = new Intl.DateTimeFormat(undefined, {
+		month: 'short',
+		day: 'numeric',
+		hour: '2-digit',
+		minute: '2-digit'
+	});
+
+	const formatTimestamp = (value: string) => timestampFormatter.format(new Date(value));
+
+	const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
+
+	function updateTransforms(transform: ZoomTransform) {
+		mapTransform = `translate(${transform.x}, ${transform.y}) scale(${transform.k})`;
+		overlayTransform = `translate(${transform.x}px, ${transform.y}px) scale(${transform.k})`;
+	}
+
+	$effect(() => {
+		const highlight = props.highlightCountry ?? null;
+		const clientList: DashboardClient[] = props.clients ?? [];
+
+		const nextMarkers = clientList
+			.map((client) => {
+				const { longitude, latitude, countryCode } = client.location;
+				if (!Number.isFinite(longitude) || !Number.isFinite(latitude)) {
+					return null;
+				}
+
+				const projected = projection([longitude, latitude]);
+				if (!projected) {
+					return null;
+				}
+
+				const [x, y] = projected;
+				const left = clamp((x / width) * 100, -10, 110);
+				const top = clamp((y / height) * 100, -10, 110);
+				const dimmed = highlight !== null && (countryCode ?? null) !== highlight;
+
+				return {
+					client,
+					left,
+					top,
+					style: statusStyles[client.status],
+					dimmed
+				} satisfies Marker;
+			})
+			.filter((value): value is Marker => value !== null);
+
+		markers = nextMarkers;
+	});
+
+	onMount(() => {
+		if (!svgElement) {
+			return;
+		}
+
+		const svgSelection = select(svgElement);
+		const zoomBehavior = zoom<SVGSVGElement, unknown>()
+			.scaleExtent([1, 8])
+			.translateExtent([
+				[-width * 0.4, -height * 0.4],
+				[width * 1.4, height * 1.4]
+			])
+			.on('zoom', (event: D3ZoomEvent<SVGSVGElement, unknown>) => {
+				updateTransforms(event.transform);
+			});
+
+		svgSelection.call(zoomBehavior).call(zoomBehavior.transform, zoomIdentity);
+
+		return () => {
+			svgSelection.on('.zoom', null);
+		};
+	});
 </script>
 
-<svg
-	viewBox={`0 0 ${width} ${height}`}
+<div
 	role="img"
 	aria-label="Client presence map"
-	class="h-[320px] w-full overflow-hidden rounded-xl border border-border/60 bg-gradient-to-br from-background via-background to-muted/30"
+	class="relative h-full min-h-[280px] w-full overflow-hidden rounded-xl border border-border/60 bg-gradient-to-br from-background via-background to-muted/30"
 >
-	<defs>
-		<radialGradient id="map-glow" cx="50%" cy="50%" r="75%">
-			<stop offset="0%" stop-color="rgb(15 23 42 / 0.1)" />
-			<stop offset="60%" stop-color="rgb(15 23 42 / 0.04)" />
-			<stop offset="100%" stop-color="rgb(15 23 42 / 0.01)" />
-		</radialGradient>
-	</defs>
-	<rect x="0" y="0" {width} {height} fill="url(#map-glow)" />
+	<svg
+		bind:this={svgElement}
+		viewBox={`0 0 ${width} ${height}`}
+		class="h-full w-full select-none"
+		preserveAspectRatio="xMidYMid meet"
+	>
+		<defs>
+			<radialGradient id="map-glow" cx="50%" cy="50%" r="75%">
+				<stop offset="0%" stop-color="rgb(15 23 42 / 0.1)" />
+				<stop offset="60%" stop-color="rgb(15 23 42 / 0.04)" />
+				<stop offset="100%" stop-color="rgb(15 23 42 / 0.01)" />
+			</radialGradient>
+		</defs>
+		<rect x="0" y="0" {width} {height} fill="url(#map-glow)" />
 
-	{#if graticulePath}
-		<path d={graticulePath} class="fill-none stroke-border/40 stroke-[0.4]" />
-	{/if}
+		<g transform={mapTransform}>
+			{#if graticulePath}
+				<path d={graticulePath} class="fill-none stroke-border/40 stroke-[0.4]" />
+			{/if}
 
-	{#each landPaths as land (land.id)}
-		{#if land.d}
-			<path
-				d={land.d}
-				class="fill-muted/70 stroke-border/50 stroke-[0.5] dark:fill-muted/40 dark:stroke-border/40"
-			/>
-		{/if}
-	{/each}
+			{#each landPaths as land (land.id)}
+				{#if land.d}
+					<path
+						d={land.d}
+						class="fill-muted/70 stroke-border/50 stroke-[0.5] dark:fill-muted/40 dark:stroke-border/40"
+					/>
+				{/if}
+			{/each}
+		</g>
+	</svg>
 
 	{#if markers.length === 0}
-		<foreignObject x="0" y="0" {width} {height}>
-			<div class="flex h-full items-center justify-center text-sm text-muted-foreground">
-				No clients available for this selection.
-			</div>
-		</foreignObject>
+		<div class="pointer-events-none absolute inset-0 flex items-center justify-center text-sm text-muted-foreground">
+			No clients available for this selection.
+		</div>
 	{/if}
 
-	{#each markers as marker (marker.client.id)}
-		<g
-			transform={`translate(${marker.x}, ${marker.y})`}
-			style={`opacity: ${
-				highlightCountry && marker.client.location.countryCode !== highlightCountry ? 0.3 : 1
-			};`}
+	<div class="pointer-events-none absolute inset-0">
+		<div
+			class="pointer-events-none absolute inset-0 origin-top-left"
+			style={`transform: ${overlayTransform}; transform-origin: 0 0;`}
 		>
-			<circle r="11" style={`fill: ${marker.style.halo};`} />
-			<circle
-				r="5"
-				style={`fill: ${marker.style.dot}; stroke: ${marker.style.stroke}; stroke-width: 1.5;`}
-			/>
-			<title>
-				{marker.client.codename} · {marker.client.location.city}, {marker.client.location.country}
-			</title>
-		</g>
-	{/each}
-</svg>
+			{#each markers as marker (marker.client.id)}
+				<Popover>
+					<PopoverTrigger
+						type="button"
+						class={cn(
+							'group absolute -translate-x-1/2 -translate-y-1/2 rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60',
+							marker.dimmed ? 'opacity-30 transition-opacity hover:opacity-60' : 'opacity-100'
+						)}
+						style={`left: ${marker.left}%; top: ${marker.top}%; pointer-events: auto;`}
+						aria-label={`${marker.client.codename} — ${marker.client.location.city}, ${marker.client.location.country}`}
+					>
+						<span class="relative flex h-5 w-5 items-center justify-center">
+							<span
+								class="absolute h-4 w-4 rounded-full transition-opacity group-hover:opacity-40"
+								style={`background-color: ${marker.style.halo}; opacity: ${marker.dimmed ? 0.18 : 0.28};`}
+							></span>
+							<span
+								class="relative h-1.5 w-1.5 rounded-full border"
+								style={`background-color: ${marker.style.dot}; border-color: ${marker.style.stroke};`}
+							></span>
+						</span>
+						<span class="sr-only">
+							{marker.client.codename} — {marker.client.location.city}, {marker.client.location.country}
+						</span>
+					</PopoverTrigger>
+					<PopoverContent side="top" align="center" sideOffset={12} class="w-60 space-y-3 p-4 text-sm">
+						<div class="space-y-1">
+							<p class="text-sm font-semibold leading-tight">{marker.client.codename}</p>
+							<p class="text-xs leading-tight text-muted-foreground">
+								{marker.client.location.city}, {marker.client.location.country}
+							</p>
+						</div>
+						<div class="space-y-2 text-xs text-muted-foreground">
+							<div class="flex items-center justify-between gap-4">
+								<span>Status</span>
+								<Badge variant="secondary" class="uppercase tracking-wide text-[10px]">
+									{statusLabels[marker.client.status]}
+								</Badge>
+							</div>
+							<div class="flex items-center justify-between gap-4">
+								<span>Latency</span>
+								<span class="font-mono text-foreground">
+									{marker.client.metrics.latencyMs} ms
+								</span>
+							</div>
+							<div class="flex items-center justify-between gap-4">
+								<span>Last seen</span>
+								<span class="font-mono text-foreground">
+									{formatTimestamp(marker.client.lastSeen)}
+								</span>
+							</div>
+						</div>
+					</PopoverContent>
+				</Popover>
+			{/each}
+		</div>
+	</div>
+</div>

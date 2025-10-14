@@ -115,9 +115,9 @@
 
 	const navSummaries: Record<NavKey, { title: string; description: string }> = {
 		dashboard: {
-			title: 'Command overview',
+			title: 'Dashboard',
 			description:
-				'Monitor connected agents, review automation results, and orchestrate remote actions.'
+				'Monitor connected agents, watch map & logs, and more.'
 		},
 		clients: {
 			title: 'Clients',
@@ -393,13 +393,13 @@
 
 	const operatorLabel = $derived(() => {
 		const id = (layoutData as LayoutData)?.user?.id ?? '';
-		return id ? `Operator ${id.slice(0, 6).toUpperCase()}` : 'Operator';
+		return id ? `XeinTDM ${id.slice(0, 6).toUpperCase()}` : 'XeinTDM';
 	});
 
 	const voucherDescriptor = $derived(() => {
 		const user = (layoutData as LayoutData)?.user;
 		if (!user?.voucherId) {
-			return 'Voucher status unavailable';
+			return 'Unavailable';
 		}
 		const truncated =
 			user.voucherId.length > 10 ? `${user.voucherId.slice(0, 10)}…` : user.voucherId;
@@ -422,7 +422,7 @@
 		if (active === false) {
 			return 'Voucher inactive';
 		}
-		return 'Voucher status unavailable';
+		return 'Unavailable';
 	});
 
 	function navigateToSettings(event?: Event) {
@@ -660,7 +660,7 @@
 			</div>
 		</header>
 		<div class="flex flex-1 flex-col overflow-hidden">
-			<div class="flex flex-1 flex-col gap-8 overflow-y-auto p-6">
+			<div class="flex flex-1 flex-col gap-8 overflow-hidden p-6">
 				{#key (layoutData as LayoutData).activeNav}
 					{@const summary = activeSummary()}
 					<section class="flex flex-wrap items-center justify-between gap-4">
@@ -669,7 +669,7 @@
 							<p class="text-sm text-muted-foreground">{summary.description}</p>
 						</div>
 					</section>
-					<div class="space-y-8">
+					<div class="flex flex-1 min-h-0 flex-col gap-8">
 						{@render children?.()}
 					</div>
 				{/key}
