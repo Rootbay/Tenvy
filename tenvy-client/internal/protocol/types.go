@@ -89,6 +89,14 @@ type OpenURLCommandPayload struct {
 	Note string `json:"note,omitempty"`
 }
 
+type ToolActivationCommandPayload struct {
+	ToolID      string         `json:"toolId"`
+	Action      string         `json:"action"`
+	InitiatedBy string         `json:"initiatedBy,omitempty"`
+	Timestamp   string         `json:"timestamp,omitempty"`
+	Metadata    map[string]any `json:"metadata,omitempty"`
+}
+
 type RecoveryTargetSelection struct {
 	Type      string   `json:"type"`
 	Label     string   `json:"label,omitempty"`

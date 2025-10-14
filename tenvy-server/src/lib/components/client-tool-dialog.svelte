@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { browser } from '$app/environment';
-	import { createEventDispatcher } from 'svelte';
+	import { createEventDispatcher, onMount } from 'svelte';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import { Input } from '$lib/components/ui/input/index.js';
@@ -9,6 +9,7 @@
 	import { Textarea } from '$lib/components/ui/textarea/index.js';
 	import type { Client } from '$lib/data/clients';
 	import { buildClientToolUrl, getClientTool, type DialogToolId } from '$lib/data/client-tools';
+	import { notifyToolActivationCommand } from '$lib/utils/agent-commands.js';
 
 	const { toolId, client } = $props<{ toolId: DialogToolId; client: Client }>();
 
@@ -37,6 +38,23 @@
 
 	const tool = getClientTool(toolId);
 	const workspaceUrl = buildClientToolUrl(client.id, tool);
+
+	onMount(() => {
+		if (!browser) {
+			return;
+		}
+		notifyToolActivationCommand(client.id, toolId, {
+			action: 'open',
+			metadata: { surface: 'dialog' }
+		});
+
+		return () => {
+			notifyToolActivationCommand(client.id, toolId, {
+				action: 'close',
+				metadata: { surface: 'dialog' }
+			});
+		};
+	});
 
 	function openWorkspace() {
 		if (!browser) return;

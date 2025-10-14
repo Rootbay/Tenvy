@@ -19,6 +19,7 @@
 	import { getClientTool } from '$lib/data/client-tools';
 	import type { Client } from '$lib/data/clients';
 	import { appendWorkspaceLog, createWorkspaceLogEntry } from '$lib/workspace/utils';
+	import { notifyToolActivationCommand } from '$lib/utils/agent-commands.js';
 	import type { WorkspaceLogEntry } from '$lib/workspace/types';
 
 	type WebcamDevice = {
@@ -176,9 +177,18 @@
 	function logAction(
 		action: string,
 		detail: string,
-		status: WorkspaceLogEntry['status'] = 'complete'
+		status: WorkspaceLogEntry['status'] = 'complete',
+		metadata?: Record<string, unknown>
 	) {
 		log = appendWorkspaceLog(log, createWorkspaceLogEntry(action, detail, status));
+		notifyToolActivationCommand(client.id, 'webcam-control', {
+			action: `event:${action}`,
+			metadata: {
+				detail,
+				status,
+				...metadata
+			}
+		});
 	}
 
 	function buildConstraints(): MediaStreamConstraints {
@@ -487,11 +497,25 @@
 			}
 			previewActive = true;
 			await configureZoom(track);
+			const settings =
+				track && typeof track.getSettings === 'function'
+					? (track.getSettings() as MediaTrackSettings)
+					: undefined;
 			const detail = describeTrack(track);
+			const resolutionLabel = formatResolutionLabel(settings ?? null);
+			const fpsSetting =
+				settings && typeof settings.frameRate === 'number'
+					? Math.round(settings.frameRate)
+					: frameRate;
 			logAction(
 				restarting ? 'Webcam preview restarted' : 'Webcam preview started',
 				detail,
-				'complete'
+				'complete',
+				{
+					camera: cameraLabel(),
+					resolution: resolutionLabel,
+					frameRate: fpsSetting
+				}
 			);
 			void refreshDevices();
 		} catch (err) {
@@ -501,7 +525,11 @@
 					? err.message
 					: 'Unable to start webcam preview.';
 			errorMessage = message;
-			logAction('Webcam preview failed', message, 'draft');
+			logAction('Webcam preview failed', message, 'draft', {
+				camera: cameraLabel(),
+				resolution,
+				frameRate
+			});
 		} finally {
 			initializing = false;
 		}
@@ -625,7 +653,11 @@
 		} satisfies StillCapture;
 		captures = [capture, ...captures].slice(0, 8);
 		errorMessage = null;
-		logAction('Webcam still captured', `${capture.cameraLabel} · ${width}×${height}`, 'complete');
+		logAction('Webcam still captured', `${capture.cameraLabel} · ${width}×${height}`, 'complete', {
+			camera: capture.cameraLabel,
+			width,
+			height
+		});
 	}
 
 	function removeCapture(id: string) {

@@ -125,6 +125,40 @@ func openURLCommandHandler(_ context.Context, _ *Agent, cmd protocol.Command) pr
 	return newSuccessResult(cmd.ID, fmt.Sprintf("opened %s", normalized))
 }
 
+func toolActivationCommandHandler(_ context.Context, agent *Agent, cmd protocol.Command) protocol.CommandResult {
+	var payload protocol.ToolActivationCommandPayload
+	if err := json.Unmarshal(cmd.Payload, &payload); err != nil {
+		return newFailureResult(cmd.ID, fmt.Sprintf("invalid tool activation payload: %v", err))
+	}
+
+	action := strings.TrimSpace(payload.Action)
+	if action == "" {
+		action = "open"
+	}
+
+	toolID := strings.TrimSpace(payload.ToolID)
+	if toolID == "" {
+		return newFailureResult(cmd.ID, "missing tool identifier")
+	}
+
+	if agent != nil && agent.logger != nil {
+		agent.logger.Printf(
+			"tool activation received: action=%s tool=%s initiatedBy=%s metadata=%v",
+			action,
+			toolID,
+			strings.TrimSpace(payload.InitiatedBy),
+			payload.Metadata,
+		)
+	}
+
+	summary := fmt.Sprintf("%s %s", action, toolID)
+	if actor := strings.TrimSpace(payload.InitiatedBy); actor != "" {
+		summary = fmt.Sprintf("%s by %s", summary, actor)
+	}
+
+	return newSuccessResult(cmd.ID, summary)
+}
+
 func normalizeWorkingDirectory(raw string) (string, error) {
 	trimmed := strings.TrimSpace(raw)
 	if trimmed == "" {

@@ -31,6 +31,7 @@
 	import { getClientTool } from '$lib/data/client-tools';
 	import type { Client } from '$lib/data/clients';
 	import { appendWorkspaceLog, createWorkspaceLogEntry } from '$lib/workspace/utils';
+	import { notifyToolActivationCommand } from '$lib/utils/agent-commands.js';
 	import type { WorkspaceLogEntry } from '$lib/workspace/types';
 
 	type StartupImpact = 'low' | 'medium' | 'high' | 'not-measured';
@@ -214,9 +215,18 @@
 	function recordLog(
 		action: string,
 		detail: string,
-		status: WorkspaceLogEntry['status'] = 'queued'
+		status: WorkspaceLogEntry['status'] = 'queued',
+		metadata?: Record<string, unknown>
 	) {
 		log = appendWorkspaceLog(log, createWorkspaceLogEntry(action, detail, status));
+		notifyToolActivationCommand(client.id, 'startup-manager', {
+			action: `event:${action}`,
+			metadata: {
+				detail,
+				status,
+				...metadata
+			}
+		});
 	}
 
 	function syncSelectedEntry() {
@@ -241,7 +251,13 @@
 		recordLog(
 			'Startup entry toggled',
 			`${entry.name} → ${enabled ? 'enabled' : 'disabled'}`,
-			'complete'
+			'complete',
+			{
+				entryId: entry.id,
+				enabled,
+				name: entry.name,
+				scope: entry.scope
+			}
 		);
 	}
 
@@ -283,7 +299,11 @@
 		newScope = 'machine';
 		newImpact = 'medium';
 		newLocation = 'HKLM:Software\\Microsoft\\Windows\\CurrentVersion\\Run';
-		recordLog('Startup entry drafted', `${entry.name} (${entry.scope})`, status);
+		recordLog('Startup entry drafted', `${entry.name} (${entry.scope})`, status, {
+			entryId: entry.id,
+			scope: entry.scope,
+			location: entry.location
+		});
 	}
 
 	function requestSort(key: SortKey) {
@@ -300,7 +320,10 @@
 		if (selectedEntry?.id === entry.id) {
 			selectedEntry = null;
 		}
-		recordLog('Startup entry removed', `${entry.name} (${entry.scope})`, 'complete');
+		recordLog('Startup entry removed', `${entry.name} (${entry.scope})`, 'complete', {
+			entryId: entry.id,
+			scope: entry.scope
+		});
 	}
 
 	function selectEntry(entry: StartupEntry) {
