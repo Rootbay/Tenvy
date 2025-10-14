@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { browser } from '$app/environment';
 	import { ContextMenu as ContextMenuPrimitive } from 'bits-ui';
 	import {
 		ContextMenu,
@@ -10,54 +11,234 @@
 		ContextMenuSubTrigger,
 		ContextMenuTrigger
 	} from '$lib/components/ui/context-menu/index.js';
+	import { Badge } from '$lib/components/ui/badge/index.js';
 	import { TableCell, TableRow } from '$lib/components/ui/table/index.js';
 	import OsLogo from '$lib/components/os-logo.svelte';
 	import { cn } from '$lib/utils.js';
-	import type { AgentSnapshot } from '../../../../../shared/types/agent';
-	import type { SectionKey } from '$lib/client-sections';
+import { countryCodeToFlag } from '$lib/utils/location';
+import type { AgentSnapshot } from '../../../../../shared/types/agent';
+import type { SectionKey } from '$lib/client-sections';
 
-	type TriggerChildProps = Parameters<NonNullable<ContextMenuPrimitive.TriggerProps['child']>>[0];
+type TriggerChildProps = Parameters<NonNullable<ContextMenuPrimitive.TriggerProps['child']>>[0];
 
-	export let agent: AgentSnapshot;
-	export let openSection: (section: SectionKey, agent: AgentSnapshot) => void;
-	export let copyAgentId: (agentId: string) => void;
-	export let getAgentLocation: (agent: AgentSnapshot) => { label: string; flag: string };
-	export let getAgentGroup: (agent: AgentSnapshot) => string;
-	export let formatPing: (agent: AgentSnapshot) => string;
-	export let formatDate: (value: string) => string;
+type ResolvedLocation = {
+	label: string;
+	flagEmoji: string;
+	flagUrl?: string;
+	isVpn: boolean;
+};
+
+let {
+	agent,
+	openSection,
+	copyAgentId,
+	getAgentLocation,
+	getAgentGroup,
+	formatPing,
+	formatDate
+} = $props<{
+	agent: AgentSnapshot;
+	openSection: (section: SectionKey, agent: AgentSnapshot) => void;
+	copyAgentId: (agentId: string) => void;
+	getAgentLocation: (agent: AgentSnapshot) => { label: string; flag: string };
+	getAgentGroup: (agent: AgentSnapshot) => string;
+	formatPing: (agent: AgentSnapshot) => string;
+	formatDate: (value: string) => string;
+}>();
+
+const globalRegistry = globalThis as Record<string, unknown>;
+
+if (!globalRegistry.__tenvyIpLocationCache) {
+	globalRegistry.__tenvyIpLocationCache = new Map<string, ResolvedLocation>();
+}
+
+if (!globalRegistry.__tenvyIpLocationPromises) {
+	globalRegistry.__tenvyIpLocationPromises = new Map<string, Promise<ResolvedLocation>>();
+}
+
+const ipLocationCache = globalRegistry.__tenvyIpLocationCache as Map<string, ResolvedLocation>;
+const ipLocationPromises = globalRegistry.__tenvyIpLocationPromises as Map<
+	string,
+	Promise<ResolvedLocation>
+>;
+
+function toResolvedLocation(base: { label: string; flag: string }): ResolvedLocation {
+	return {
+		label: base.label,
+		flagEmoji: base.flag,
+		flagUrl: undefined,
+		isVpn: false
+	};
+}
+
+let locationDisplay = $state<ResolvedLocation>(toResolvedLocation(getAgentLocation(agent)));
+
+$effect(() => {
+	const baseLocation = toResolvedLocation(getAgentLocation(agent));
+	locationDisplay = baseLocation;
+
+	const ip = agent.metadata.publicIpAddress?.trim();
+	if (!ip || isLikelyPrivateIp(ip)) {
+		return;
+	}
+
+	const cached = ipLocationCache.get(ip);
+	if (cached) {
+		locationDisplay = { ...cached };
+		return;
+	}
+
+	if (!browser) {
+		return;
+	}
+
+	const existingPromise = ipLocationPromises.get(ip);
+	if (existingPromise) {
+		return attachLocationPromise(ip, existingPromise, baseLocation);
+	}
+
+	const lookupPromise = fetchIpLocation(ip, baseLocation);
+	ipLocationPromises.set(ip, lookupPromise);
+	return attachLocationPromise(ip, lookupPromise, baseLocation);
+});
+
+	function attachLocationPromise(
+		ip: string,
+		promise: Promise<ResolvedLocation>,
+		baseLocation: ResolvedLocation
+	): () => void {
+		let disposed = false;
+
+		promise
+			.then((result) => {
+				const resolved = { ...result };
+				ipLocationCache.set(ip, resolved);
+				if (!disposed && agent.metadata.publicIpAddress?.trim() === ip) {
+					locationDisplay = resolved;
+				}
+			})
+			.catch(() => {
+				if (!disposed && agent.metadata.publicIpAddress?.trim() === ip) {
+					locationDisplay = { ...baseLocation };
+				}
+			})
+			.finally(() => {
+				if (ipLocationPromises.get(ip) === promise) {
+					ipLocationPromises.delete(ip);
+				}
+			});
+
+		return () => {
+			disposed = true;
+		};
+	}
+
+	function isLikelyPrivateIp(ip: string): boolean {
+		const normalized = ip.toLowerCase();
+		if (
+			normalized === '::1' ||
+			normalized.startsWith('fe80:') ||
+			normalized.startsWith('fc') ||
+			normalized.startsWith('fd')
+		) {
+			return true;
+		}
+		const ipv4Candidate = normalized.startsWith('::ffff:') ? normalized.slice(7) : normalized;
+		return (
+			ipv4Candidate.startsWith('10.') ||
+			ipv4Candidate.startsWith('192.168.') ||
+			/^172\.(1[6-9]|2\d|3[0-1])\./.test(ipv4Candidate) ||
+			ipv4Candidate.startsWith('127.')
+		);
+	}
+
+	async function fetchIpLocation(ip: string, baseLocation: ResolvedLocation): Promise<ResolvedLocation> {
+		const url = new URL(`http://ip-api.com/json/${encodeURIComponent(ip)}`);
+		url.searchParams.set('fields', 'status,message,country,countryCode,proxy,query');
+
+		const response = await fetch(url.toString(), {
+			headers: { Accept: 'application/json' }
+		});
+
+		if (!response.ok) {
+			throw new Error('Failed to resolve IP location');
+		}
+
+		const data = (await response.json()) as {
+			status?: 'success' | 'fail';
+			message?: string;
+			country?: string;
+			countryCode?: string;
+			proxy?: boolean;
+		};
+
+		if (data.status !== 'success') {
+			throw new Error(data.message ?? 'Lookup error');
+		}
+
+		const countryName = data.country?.trim() || baseLocation.label;
+		const countryCode = data.countryCode?.trim();
+		const flagEmoji =
+			countryCode && countryCode.length > 0
+				? countryCodeToFlag(countryCode)
+				: baseLocation.flagEmoji;
+		const flagUrl =
+			countryCode && countryCode.length > 0
+				? `https://flagcdn.com/${countryCode.toLowerCase()}.svg`
+				: baseLocation.flagUrl;
+
+		return {
+			label: countryName,
+			flagEmoji: flagEmoji || baseLocation.flagEmoji,
+			flagUrl,
+			isVpn: data.proxy === true
+		};
+	}
 </script>
 
 {#snippet TriggerChild({ props }: TriggerChildProps)}
 	{@const className = cn('cursor-context-menu', (props as { class?: string }).class)}
 	<TableRow {...props} class={className} tabindex={0}>
 		<TableCell>
-			<div class="flex items-center gap-3">
-				<span class="text-2xl" aria-hidden="true">{getAgentLocation(agent).flag}</span>
-				<div class="flex flex-col">
-					<span class="text-sm font-medium text-foreground">{getAgentLocation(agent).label}</span>
-					{#if agent.metadata.hostname}
-						<span class="text-xs text-muted-foreground">{agent.metadata.hostname}</span>
-					{/if}
-				</div>
+			<div class="flex items-center gap-2">
+				{#if locationDisplay.flagUrl}
+					<img
+						src={locationDisplay.flagUrl}
+						alt=""
+						class="h-4 w-6 rounded-sm border border-border/60 object-cover"
+						loading="lazy"
+					/>
+				{:else}
+					<span class="text-xl" aria-hidden="true">{locationDisplay.flagEmoji}</span>
+				{/if}
+				<span class="text-sm font-medium text-foreground">{locationDisplay.label}</span>
+				{#if locationDisplay.isVpn}
+					<Badge
+						variant="outline"
+						class="border-amber-500 bg-amber-500/10 text-amber-500"
+					>
+						VPN
+					</Badge>
+				{/if}
 			</div>
 		</TableCell>
-		<TableCell class="text-sm text-muted-foreground">
+		<TableCell class="text-sm text-muted-foreground text-center">
 			{agent.metadata.publicIpAddress ?? agent.metadata.ipAddress ?? 'Unknown'}
 		</TableCell>
-		<TableCell class="text-sm text-muted-foreground">
+		<TableCell class="text-sm text-muted-foreground text-center">
 			{agent.metadata.username}
 		</TableCell>
-		<TableCell class="text-sm text-muted-foreground">
+		<TableCell class="text-sm text-muted-foreground text-center">
 			{getAgentGroup(agent)}
 		</TableCell>
 		<TableCell class="text-center">
 			<OsLogo os={agent.metadata.os} />
 		</TableCell>
-		<TableCell class="text-sm text-muted-foreground">
+		<TableCell class="text-sm text-muted-foreground text-center">
 			{formatPing(agent)}
 		</TableCell>
-		<TableCell class="text-sm text-muted-foreground">
-			{agent.metadata.version ?? '—'}
+		<TableCell class="text-sm text-muted-foreground text-center">
+			{agent.metadata.version ?? 'N/A'}
 		</TableCell>
 		<TableCell class="text-sm text-muted-foreground">
 			{formatDate(agent.connectedAt)}

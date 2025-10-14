@@ -1,11 +1,14 @@
 package agent
 
 import (
+	"io"
 	"net"
+	"net/http"
 	"os"
 	"os/user"
 	"runtime"
 	"strings"
+	"time"
 
 	"github.com/rootbay/tenvy-client/internal/protocol"
 )
@@ -13,26 +16,48 @@ import (
 func CollectMetadata(buildVersion string) protocol.AgentMetadata {
 	hostname, _ := os.Hostname()
 	currentUser, err := user.Current()
-	username := "unknown"
-	if err == nil {
-		username = currentUser.Username
-	} else if val := os.Getenv("USER"); val != "" {
-		username = val
-	} else if val := os.Getenv("USERNAME"); val != "" {
-		username = val
-	}
+	username := resolveUsername(currentUser, err)
 
 	tags := parseTags(os.Getenv("TENVY_AGENT_TAGS"))
 
 	return protocol.AgentMetadata{
-		Hostname:     fallback(hostname, "unknown"),
-		Username:     username,
-		OS:           runtime.GOOS,
-		Architecture: runtime.GOARCH,
-		IPAddress:    detectPrimaryIP(),
-		Tags:         tags,
-		Version:      buildVersion,
+		Hostname:        fallback(hostname, "unknown"),
+		Username:        username,
+		OS:              runtime.GOOS,
+		Architecture:    runtime.GOARCH,
+		IPAddress:       detectPrimaryIP(),
+		PublicIPAddress: detectPublicIP(),
+		Tags:            tags,
+		Version:         buildVersion,
 	}
+}
+
+func resolveUsername(currentUser *user.User, err error) string {
+	// Prefer environment variables to match typical Windows %USERNAME% value.
+	if val := os.Getenv("USERNAME"); val != "" {
+		return normalizeUsername(val)
+	}
+	if val := os.Getenv("USER"); val != "" {
+		return normalizeUsername(val)
+	}
+	if err == nil && currentUser != nil {
+		return normalizeUsername(currentUser.Username)
+	}
+	return "unknown"
+}
+
+func normalizeUsername(value string) string {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" {
+		return "unknown"
+	}
+	trimmed = strings.ReplaceAll(trimmed, "\\", "/")
+	parts := strings.Split(trimmed, "/")
+	last := strings.TrimSpace(parts[len(parts)-1])
+	if last == "" {
+		return "unknown"
+	}
+	return last
 }
 
 func detectPrimaryIP() string {
@@ -103,6 +128,32 @@ func parseTags(value string) []string {
 		return nil
 	}
 	return tags
+}
+
+func detectPublicIP() string {
+	client := &http.Client{
+		Timeout: 3 * time.Second,
+	}
+	resp, err := client.Get("https://api.ipify.org?format=text")
+	if err != nil {
+		return ""
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return ""
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return ""
+	}
+
+	ip := strings.TrimSpace(string(body))
+	if ip == "" {
+		return ""
+	}
+	return ip
 }
 
 func fallback(value, fallbackValue string) string {

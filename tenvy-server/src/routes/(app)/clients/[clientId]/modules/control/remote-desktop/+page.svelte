@@ -102,6 +102,30 @@
 	let skipMouseSync = true;
 	let skipKeyboardSync = true;
 
+	function isDocumentVisible() {
+		if (!browser) {
+			return false;
+		}
+		return document.visibilityState === 'visible';
+	}
+
+	function maybeStartSession() {
+		if (!client || isStarting || sessionActive) {
+			return;
+		}
+		if (!isDocumentVisible()) {
+			return;
+		}
+		void startSession();
+	}
+
+	function maybeStopSession(options?: { keepalive?: boolean }) {
+		if (!sessionActive || isStopping) {
+			return;
+		}
+		void stopSession(options);
+	}
+
 	const qualityLabel = (value: string) => {
 		const found = qualityOptions.find((item) => item.value === value);
 		return found ? found.label : value;
@@ -537,8 +561,9 @@
 		}
 	}
 
-	async function stopSession() {
+	async function stopSession(options?: { keepalive?: boolean }) {
 		if (!client || isStopping || !session?.sessionId) return;
+		const keepalive = options?.keepalive === true;
 		errorMessage = null;
 		infoMessage = null;
 		isStopping = true;
@@ -546,7 +571,8 @@
 			const response = await fetch(`/api/agents/${client.id}/remote-desktop/session`, {
 				method: 'DELETE',
 				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ sessionId: session.sessionId })
+				body: JSON.stringify({ sessionId: session.sessionId }),
+				keepalive
 			});
 			if (!response.ok) {
 				const message = (await response.text()) || 'Unable to stop remote desktop session';
@@ -554,7 +580,7 @@
 			}
 			const data = (await response.json()) as { session: RemoteDesktopSessionState | null };
 			session = data.session ?? session;
-			infoMessage = 'Remote desktop session stopped.';
+			infoMessage = 'Remote desktop session paused.';
 			disconnectStream();
 		} catch (err) {
 			errorMessage = err instanceof Error ? err.message : 'Failed to stop remote desktop session';
@@ -1022,10 +1048,39 @@
 	});
 
 	onMount(() => {
-		if (browser && sessionActive && sessionId) {
-			connectStream(sessionId);
+		if (!browser) {
+			return () => {
+				disconnectStream();
+			};
 		}
+
+		if (sessionActive && sessionId) {
+			connectStream(sessionId);
+		} else {
+			maybeStartSession();
+		}
+
+		const handleVisibilityChange = () => {
+			if (document.visibilityState === 'visible') {
+				maybeStartSession();
+			} else {
+				maybeStopSession({ keepalive: true });
+			}
+		};
+
+		const handlePageHide = () => {
+			maybeStopSession({ keepalive: true });
+		};
+
+		document.addEventListener('visibilitychange', handleVisibilityChange);
+		window.addEventListener('pagehide', handlePageHide);
+		window.addEventListener('beforeunload', handlePageHide);
+
 		return () => {
+			document.removeEventListener('visibilitychange', handleVisibilityChange);
+			window.removeEventListener('pagehide', handlePageHide);
+			window.removeEventListener('beforeunload', handlePageHide);
+			maybeStopSession({ keepalive: true });
 			disconnectStream();
 		};
 	});
@@ -1208,8 +1263,8 @@
 		</div>
 		<div class="flex gap-2">
 			{#if sessionActive}
-				<Button variant="destructive" disabled={isStopping} onclick={stopSession}>
-					{isStopping ? 'Stopping…' : 'Stop session'}
+				<Button variant="destructive" disabled={isStopping} onclick={() => stopSession()}>
+					{isStopping ? 'Pausing…' : 'Pause session'}
 				</Button>
 			{:else}
 				<Button disabled={isStarting} onclick={startSession}>

@@ -7,6 +7,12 @@
 	import { Label } from '$lib/components/ui/label/index.js';
 	import { ScrollArea } from '$lib/components/ui/scroll-area/index.js';
 	import {
+		Tooltip,
+		TooltipContent,
+		TooltipProvider,
+		TooltipTrigger
+	} from '$lib/components/ui/tooltip/index.js';
+	import {
 		Table,
 		TableBody,
 		TableCell,
@@ -24,15 +30,16 @@
 	import ClientsTableRow from '$lib/components/clients/clients-table-row.svelte';
 	import DeployAgentDialog from '$lib/components/clients/deploy-agent-dialog.svelte';
 	import PingAgentDialog from '$lib/components/clients/ping-agent-dialog.svelte';
-	import ShellCommandDialog from '$lib/components/clients/shell-command-dialog.svelte';
-	import { sectionToolMap, type SectionKey } from '$lib/client-sections';
-	import { createClientsTableStore } from '$lib/stores/clients-table';
-	import {
-		buildClientToolUrl,
-		getClientTool,
-		isDialogTool,
-		type DialogToolId
-	} from '$lib/data/client-tools';
+import ShellCommandDialog from '$lib/components/clients/shell-command-dialog.svelte';
+import { sectionToolMap, type SectionKey } from '$lib/client-sections';
+import { createClientsTableStore } from '$lib/stores/clients-table';
+import {
+	buildClientToolUrl,
+	getClientTool,
+	isDialogTool,
+	type DialogToolId
+} from '$lib/data/client-tools';
+import { buildLocationDisplay } from '$lib/utils/location';
 	import type { Client } from '$lib/data/clients';
 	import { get } from 'svelte/store';
 	import { onDestroy } from 'svelte';
@@ -41,6 +48,7 @@
 	import Search from '@lucide/svelte/icons/search';
 	import AlertCircle from '@lucide/svelte/icons/alert-circle';
 	import CheckCircle2 from '@lucide/svelte/icons/check-circle-2';
+	import Info from '@lucide/svelte/icons/info';
 	import type {
 		AgentConnectionAction,
 		AgentConnectionRequest,
@@ -179,57 +187,13 @@
 		return 'just now';
 	}
 
-	type MetadataLocation = AgentSnapshot['metadata']['location'];
-
-	function countryCodeToFlag(code: string | null | undefined): string {
-		if (!code) {
-			return '🌐';
-		}
-		const normalized = code.trim().toUpperCase();
-		if (normalized.length !== 2) {
-			return '🌐';
-		}
-
-		const codePoints = Array.from(normalized).map((char) => 0x1f1e6 + char.charCodeAt(0) - 65);
-		if (codePoints.some((point) => Number.isNaN(point))) {
-			return '🌐';
-		}
-
-		return String.fromCodePoint(...codePoints);
-	}
-
-	function getLocationDisplay(location: MetadataLocation): { label: string; flag: string } {
-		const fallback = { label: 'Unknown', flag: '🌐' } as const;
-
-		if (!location) {
-			return fallback;
-		}
-
-		const label =
-			location.source?.trim() ??
-			[location.city, location.region, location.country]
-				.map((part) => part?.trim())
-				.filter((part): part is string => Boolean(part && part.length > 0))
-				.join(', ');
-
-		const normalizedCountryCode = location.countryCode?.trim().toUpperCase();
-		const codeCandidate =
-			normalizedCountryCode && normalizedCountryCode.length === 2
-				? normalizedCountryCode
-				: location.country && location.country.trim().length === 2
-					? location.country.trim().toUpperCase()
-					: undefined;
-		const flag = countryCodeToFlag(codeCandidate ?? null);
-
-		return { label: label || fallback.label, flag: flag || fallback.flag };
-	}
-
+	
 	function getAgentLocation(agent: AgentSnapshot): { label: string; flag: string } {
-		return getLocationDisplay(agent.metadata.location);
+		return buildLocationDisplay(agent.metadata.location);
 	}
 
 	function getAgentGroup(agent: AgentSnapshot): string {
-		return agent.metadata.group?.trim() || '—';
+		return agent.metadata.group?.trim() || 'N/A';
 	}
 
 	function formatPing(agent: AgentSnapshot): string {
@@ -237,7 +201,7 @@
 		if (typeof latency === 'number' && Number.isFinite(latency) && latency >= 0) {
 			return `${Math.round(latency)} ms`;
 		}
-		return '—';
+		return 'N/A';
 	}
 
 	function findAgentById(agentId: string | null): AgentSnapshot | null {
@@ -771,49 +735,188 @@
 	</div>
 
 	<div class="space-y-4">
-		<ScrollArea class="rounded-lg border border-border/60">
-			<div class="min-w-[960px]">
-				<Table>
-					<TableHeader>
-						<TableRow>
-							<TableHead class="w-[22rem]">Location</TableHead>
-							<TableHead class="w-[8rem]">Public IP</TableHead>
-							<TableHead class="w-[12rem]">Username</TableHead>
-							<TableHead class="w-[12rem]">Group</TableHead>
-							<TableHead class="w-[7rem] text-center">OS</TableHead>
-							<TableHead class="w-[10rem]">Ping</TableHead>
-							<TableHead class="w-[9rem]">Version</TableHead>
-							<TableHead class="w-[9rem]">Date</TableHead>
-						</TableRow>
-					</TableHeader>
-					<TableBody>
-						{#if $clientsTable.paginatedAgents.length === 0}
+		<TooltipProvider delayDuration={100}>
+			<ScrollArea class="rounded-lg border border-border/60">
+				<div class="min-w-[960px]">
+					<Table>
+						<TableHeader>
 							<TableRow>
-								<TableCell colspan={8} class="py-12 text-center text-sm text-muted-foreground">
-									{#if $clientsTable.agents.length === 0}
-										No agents connected yet.
-									{:else}
-										No agents match your current filters.
-									{/if}
-								</TableCell>
+								<TableHead class="w-[16rem]">
+									<Tooltip>
+										<TooltipTrigger>
+											{#snippet child({ props })}
+												<span
+													{...props}
+													class="inline-flex items-center gap-1 cursor-help"
+												>
+													Location
+													<Info class="size-3 text-muted-foreground" aria-hidden="true" />
+												</span>
+											{/snippet}
+										</TooltipTrigger>
+										<TooltipContent side="top" align="center" class="max-w-[18rem] text-xs">
+											Approximate location derived from the agent&apos;s reported metadata and IP
+											geolocation.
+										</TooltipContent>
+									</Tooltip>
+								</TableHead>
+								<TableHead class="w-[6rem] text-center">
+									<Tooltip>
+										<TooltipTrigger>
+											{#snippet child({ props })}
+												<span
+													{...props}
+													class="inline-flex items-center gap-1 cursor-help"
+												>
+													Public IP
+													<Info class="size-3 text-muted-foreground" aria-hidden="true" />
+												</span>
+											{/snippet}
+										</TooltipTrigger>
+										<TooltipContent side="top" align="center" class="max-w-[18rem] text-xs">
+											Public-facing IP address reported by the agent during its latest check-in.
+										</TooltipContent>
+									</Tooltip>
+								</TableHead>
+								<TableHead class="w-[6rem] text-center">
+									<Tooltip>
+										<TooltipTrigger>
+											{#snippet child({ props })}
+												<span
+													{...props}
+													class="inline-flex items-center gap-1 cursor-help"
+												>
+													Username
+													<Info class="size-3 text-muted-foreground" aria-hidden="true" />
+												</span>
+											{/snippet}
+										</TooltipTrigger>
+										<TooltipContent side="top" align="center" class="max-w-[18rem] text-xs">
+											Logged-in user account reported by the agent.
+										</TooltipContent>
+									</Tooltip>
+								</TableHead>
+								<TableHead class="w-[12rem] text-center">
+									<Tooltip>
+										<TooltipTrigger>
+											{#snippet child({ props })}
+												<span
+													{...props}
+													class="inline-flex items-center gap-1 cursor-help"
+												>
+													Group
+													<Info class="size-3 text-muted-foreground" aria-hidden="true" />
+												</span>
+											{/snippet}
+										</TooltipTrigger>
+										<TooltipContent side="top" align="center" class="max-w-[18rem] text-xs">
+											Operator-defined grouping applied to this agent.
+										</TooltipContent>
+									</Tooltip>
+								</TableHead>
+								<TableHead class="w-[5rem] text-center">
+									<Tooltip>
+										<TooltipTrigger>
+											{#snippet child({ props })}
+												<span
+													{...props}
+													class="inline-flex w-full items-center justify-center gap-1 cursor-help"
+												>
+													OS
+													<Info class="size-3 text-muted-foreground" aria-hidden="true" />
+												</span>
+											{/snippet}
+										</TooltipTrigger>
+										<TooltipContent side="top" align="center" class="max-w-[18rem] text-xs">
+											Operating system detected on the agent.
+										</TooltipContent>
+									</Tooltip>
+								</TableHead>
+								<TableHead class="w-[6rem] text-center">
+									<Tooltip>
+										<TooltipTrigger>
+											{#snippet child({ props })}
+												<span
+													{...props}
+													class="inline-flex items-center gap-1 cursor-help"
+												>
+													Ping
+													<Info class="size-3 text-muted-foreground" aria-hidden="true" />
+												</span>
+											{/snippet}
+										</TooltipTrigger>
+										<TooltipContent side="top" align="center" class="max-w-[18rem] text-xs">
+											Most recent round-trip latency measured between controller and agent.
+										</TooltipContent>
+									</Tooltip>
+								</TableHead>
+								<TableHead class="w-[6rem] text-center">
+									<Tooltip>
+										<TooltipTrigger>
+											{#snippet child({ props })}
+												<span
+													{...props}
+													class="inline-flex items-center gap-1 cursor-help"
+												>
+													Version
+													<Info class="size-3 text-muted-foreground" aria-hidden="true" />
+												</span>
+											{/snippet}
+										</TooltipTrigger>
+										<TooltipContent side="top" align="center" class="max-w-[18rem] text-xs">
+											Tenvy agent build version currently running on the endpoint.
+										</TooltipContent>
+									</Tooltip>
+								</TableHead>
+								<TableHead class="w-[6rem]">
+									<Tooltip>
+										<TooltipTrigger>
+											{#snippet child({ props })}
+												<span
+													{...props}
+													class="inline-flex items-center gap-1 cursor-help"
+												>
+													Date
+													<Info class="size-3 text-muted-foreground" aria-hidden="true" />
+												</span>
+											{/snippet}
+										</TooltipTrigger>
+										<TooltipContent side="top" align="center" class="max-w-[18rem] text-xs">
+											Timestamp of the agent&apos;s most recent connection to the controller.
+										</TooltipContent>
+									</Tooltip>
+								</TableHead>
 							</TableRow>
-						{:else}
-							{#each $clientsTable.paginatedAgents as agent (agent.id)}
-								<ClientsTableRow
-									{agent}
-									{formatDate}
-									{formatPing}
-									{getAgentGroup}
-									{getAgentLocation}
-									{openSection}
-									{copyAgentId}
-								/>
-							{/each}
-						{/if}
-					</TableBody>
-				</Table>
-			</div>
-		</ScrollArea>
+						</TableHeader>
+						<TableBody>
+							{#if $clientsTable.paginatedAgents.length === 0}
+								<TableRow>
+									<TableCell colspan={8} class="py-12 text-center text-sm text-muted-foreground">
+										{#if $clientsTable.agents.length === 0}
+											No agents connected yet.
+										{:else}
+											No agents match your current filters.
+										{/if}
+									</TableCell>
+								</TableRow>
+							{:else}
+								{#each $clientsTable.paginatedAgents as agent (agent.id)}
+									<ClientsTableRow
+										{agent}
+										{formatDate}
+										{formatPing}
+										{getAgentGroup}
+										{getAgentLocation}
+										{openSection}
+										{copyAgentId}
+									/>
+								{/each}
+							{/if}
+						</TableBody>
+					</Table>
+				</div>
+			</ScrollArea>
+		</TooltipProvider>
 
 		<div class="px-4 text-sm text-muted-foreground">
 			{#if $clientsTable.filteredAgents.length === 0}
@@ -918,3 +1021,4 @@
 		/>
 	{/if}
 </section>
+

@@ -66,7 +66,7 @@ function ensureMetadata(metadata: AgentMetadata, remoteAddress?: string): AgentM
 		next.ipAddress = remoteAddress;
 	}
 
-	if (next.publicIpAddress !== remoteAddress) {
+	if (!next.publicIpAddress || next.publicIpAddress.trim() === '') {
 		next.publicIpAddress = remoteAddress;
 	}
 
