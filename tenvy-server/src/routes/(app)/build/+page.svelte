@@ -843,21 +843,6 @@
 					</Tabs>
 				</div>
 				<aside class="space-y-4 xl:sticky xl:top-24">
-					<div class="space-y-3 rounded-lg border border-border/70 bg-background/60 p-6">
-						<div class="space-y-2">
-							<h3 class="text-sm font-semibold">Live build updates</h3>
-							<p class="text-xs text-muted-foreground">
-								Build activity now appears as toast notifications powered by Sonner. Watch the
-								bottom-right corner for progress, warnings, downloads, and shared secrets during a
-								build.
-							</p>
-							<p class="text-xs text-muted-foreground">
-								Toasts stay visible until dismissed so you can review output or copy values whenever
-								you're ready.
-							</p>
-						</div>
-					</div>
-
 					<div class="space-y-4 rounded-lg border border-border/70 bg-background/60 p-6">
 						<div class="space-y-2">
 							<h3 class="text-sm font-semibold">Ready to build?</h3>
