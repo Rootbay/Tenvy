@@ -20,15 +20,7 @@
 	import { Switch } from '$lib/components/ui/switch/index.js';
 	import { Textarea } from '$lib/components/ui/textarea/index.js';
 	import { Tabs, TabsContent, TabsList, TabsTrigger } from '$lib/components/ui/tabs/index.js';
-	import {
-		TriangleAlert,
-		CircleCheck,
-		Info,
-		ChevronDown,
-		Plus,
-		Trash2,
-		Wand2
-	} from '@lucide/svelte';
+	import { ChevronDown, Plus, Trash2, Wand2 } from '@lucide/svelte';
 	import { onDestroy } from 'svelte';
 	import { toast } from 'svelte-sonner';
 	import ConnectionTab from './components/ConnectionTab.svelte';
@@ -104,10 +96,6 @@
 	let fileIconName = $state<string | null>(null);
 	let fileIconData = $state<string | null>(null);
 	let fileIconError = $state<string | null>(null);
-	let generatedSecret = $state<string | null>(null);
-
-	let secretCopyState = $state<'idle' | 'copied' | 'error'>('idle');
-	let secretCopyTimeout: ReturnType<typeof setTimeout> | null = null;
 	let buildWarnings = $state<string[]>([]);
 	let pollIntervalMs = $state('');
 	let maxBackoffMs = $state('');
@@ -192,21 +180,14 @@
 	const isWindowsTarget = $derived(targetOS === 'windows');
 
 	let buildStatus = $state<BuildStatus>('idle');
-	let buildProgress = $state(0);
 	let buildError = $state<string | null>(null);
 	let downloadUrl = $state<string | null>(null);
 	let outputPath = $state<string | null>(null);
-	let buildLog = $state<string[]>([]);
 
 	const BUILD_STATUS_TOAST_ID = 'build-status-toast';
 
 	let lastToastedStatus: BuildStatus = 'idle';
 	let lastWarningSignature = '';
-
-	let progressMessages = $state<{ id: number; text: string; tone: 'info' | 'success' | 'error' }[]>(
-		[]
-	);
-	let nextMessageId = $state(0);
 
 	let isBuilding = $derived(buildStatus === 'running');
 
@@ -257,26 +238,38 @@
 			return;
 		}
 
-		if (status === 'running') {
-			toast('Starting build…', {
-				id: BUILD_STATUS_TOAST_ID,
-				description: `Generating ${effectiveOutputFilename}`,
-				position: 'bottom-right',
-				duration: Infinity,
-				dismissible: false
-			});
-		} else if (status === 'success') {
-			const parts: string[] = [];
-			if (downloadUrl) {
-				parts.push('Download is ready.');
+                if (status === 'running') {
+                        toast('Starting build…', {
+                                id: BUILD_STATUS_TOAST_ID,
+                                description: `Generating ${effectiveOutputFilename}`,
+                                position: 'bottom-right',
+                                duration: Infinity,
+                                dismissable: false
+                        });
+                } else if (status === 'success') {
+                        const parts: string[] = [];
+                        if (downloadUrl) {
+                                parts.push('Download is ready.');
 			}
 			if (outputPath) {
 				parts.push(`Saved to ${outputPath}.`);
 			}
+                        const url = downloadUrl;
+                        const action = url
+                                ? {
+                                          label: 'Download',
+                                          onClick: () => {
+                                                  if (typeof window !== 'undefined') {
+                                                          window.open(url, '_blank', 'noopener');
+                                                  }
+                                          }
+                                  }
+                                : undefined;
 			toast.success('Build completed', {
 				id: BUILD_STATUS_TOAST_ID,
 				description: parts.length > 0 ? parts.join(' ') : 'Agent binary is ready to deploy.',
-				position: 'bottom-right'
+				position: 'bottom-right',
+				action
 			});
 		} else if (status === 'error') {
 			toast.error(buildError ?? 'Failed to build agent.', {
@@ -316,31 +309,55 @@
 
 	function resetProgress() {
 		buildStatus = 'idle';
-		buildProgress = 0;
 		buildError = null;
 		downloadUrl = null;
 		outputPath = null;
-		buildLog = [];
-		progressMessages = [];
-		generatedSecret = null;
 		buildWarnings = [];
 		fileIconError = null;
-		secretCopyState = 'idle';
-		if (secretCopyTimeout) {
-			clearTimeout(secretCopyTimeout);
-			secretCopyTimeout = null;
-		}
 	}
 
 	function pushProgress(text: string, tone: 'info' | 'success' | 'error' = 'info') {
-		progressMessages = [
-			...progressMessages,
-			{
-				id: nextMessageId++,
-				text,
-				tone
+		const options = { position: 'bottom-right' as const };
+		if (tone === 'success') {
+			toast.success(text, options);
+			return;
+		}
+
+		if (tone === 'error') {
+			return;
+		}
+
+		toast(text, options);
+	}
+
+	function notifySharedSecret(secret: string | null) {
+		if (!secret) {
+			return;
+		}
+
+		toast('Generated shared secret', {
+			description: secret,
+			position: 'bottom-right',
+			duration: Infinity,
+                        dismissable: true,
+			action: {
+				label: 'Copy',
+				onClick: async () => {
+					if (typeof navigator === 'undefined' || !navigator.clipboard) {
+						toast.error('Clipboard is unavailable', { position: 'bottom-right' });
+						return;
+					}
+
+					try {
+						await navigator.clipboard.writeText(secret);
+						toast.success('Secret copied', { position: 'bottom-right' });
+					} catch (error) {
+						const message = error instanceof Error ? error.message : 'Failed to copy secret.';
+						toast.error(message, { position: 'bottom-right' });
+					}
+				}
 			}
-		];
+		});
 	}
 
 	function applyInstallationPreset(preset: string) {
@@ -434,14 +451,12 @@
 			buildError = 'Host is required.';
 			pushProgress(buildError, 'error');
 			buildStatus = 'error';
-			buildProgress = 100;
 			return;
 		}
 		if (trimmedPort && !/^\d+$/.test(trimmedPort)) {
 			buildError = 'Port must be numeric.';
 			pushProgress(buildError, 'error');
 			buildStatus = 'error';
-			buildProgress = 100;
 			return;
 		}
 		if (trimmedPollInterval) {
@@ -450,7 +465,6 @@
 				buildError = 'Poll interval must be between 1,000 and 3,600,000 milliseconds.';
 				pushProgress(buildError, 'error');
 				buildStatus = 'error';
-				buildProgress = 100;
 				return;
 			}
 		}
@@ -460,7 +474,6 @@
 				buildError = 'Max backoff must be between 1,000 and 86,400,000 milliseconds.';
 				pushProgress(buildError, 'error');
 				buildStatus = 'error';
-				buildProgress = 100;
 				return;
 			}
 		}
@@ -470,7 +483,6 @@
 				buildError = 'Shell timeout must be between 5 and 7,200 seconds.';
 				pushProgress(buildError, 'error');
 				buildStatus = 'error';
-				buildProgress = 100;
 				return;
 			}
 		}
@@ -497,7 +509,6 @@
 				buildError = 'Watchdog interval must be between 5 and 86,400 seconds.';
 				pushProgress(buildError, 'error');
 				buildStatus = 'error';
-				buildProgress = 100;
 				return;
 			}
 			watchdogIntervalValue = Math.round(interval);
@@ -510,7 +521,6 @@
 				buildError = 'Provide a target size for the file pumper or disable the feature.';
 				pushProgress(buildError, 'error');
 				buildStatus = 'error';
-				buildProgress = 100;
 				return;
 			}
 
@@ -519,7 +529,6 @@
 				buildError = 'File pumper size must be a positive number.';
 				pushProgress(buildError, 'error');
 				buildStatus = 'error';
-				buildProgress = 100;
 				return;
 			}
 
@@ -533,7 +542,6 @@
 				buildError = 'File pumper target size is too large. Maximum supported size is 10 GiB.';
 				pushProgress(buildError, 'error');
 				buildStatus = 'error';
-				buildProgress = 100;
 				return;
 			}
 
@@ -548,7 +556,6 @@
 				buildError = 'Delayed start must be between 0 and 86,400 seconds.';
 				pushProgress(buildError, 'error');
 				buildStatus = 'error';
-				buildProgress = 100;
 				return;
 			}
 			executionDelayValue = parsedDelay;
@@ -562,7 +569,6 @@
 				buildError = 'Minimum uptime must be between 0 and 10,080 minutes (7 days).';
 				pushProgress(buildError, 'error');
 				buildStatus = 'error';
-				buildProgress = 100;
 				return;
 			}
 			executionUptimeValue = parsedUptime;
@@ -576,7 +582,6 @@
 			buildError = 'Earliest run time must be a valid date/time.';
 			pushProgress(buildError, 'error');
 			buildStatus = 'error';
-			buildProgress = 100;
 			return;
 		}
 
@@ -585,7 +590,6 @@
 			buildError = 'Latest run time must be a valid date/time.';
 			pushProgress(buildError, 'error');
 			buildStatus = 'error';
-			buildProgress = 100;
 			return;
 		}
 
@@ -596,13 +600,11 @@
 				buildError = 'Earliest run time must be before the latest run time.';
 				pushProgress(buildError, 'error');
 				buildStatus = 'error';
-				buildProgress = 100;
 				return;
 			}
 		}
 
 		buildStatus = 'running';
-		buildProgress = 5;
 		pushProgress('Preparing build request...');
 
 		const payload: BuildRequest = {
@@ -697,7 +699,6 @@
 
 		try {
 			pushProgress('Dispatching build to compiler environment...');
-			buildProgress = 20;
 			const response = await fetch('/api/build', {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
@@ -705,8 +706,6 @@
 			});
 
 			const result = (await response.json()) as BuildResponse;
-			buildLog = result.log ?? [];
-			generatedSecret = result.sharedSecret ?? null;
 			buildWarnings = result.warnings ?? [];
 
 			if (!response.ok || !result.success) {
@@ -714,72 +713,22 @@
 				throw new Error(message);
 			}
 
-			buildProgress = 65;
 			pushProgress('Compilation completed. Finalizing artifacts...');
 
 			downloadUrl = result.downloadUrl ?? null;
 			outputPath = result.outputPath ?? null;
 
-			buildProgress = 100;
 			buildStatus = 'success';
 			pushProgress('Agent binary is ready.', 'success');
+			notifySharedSecret(result.sharedSecret ?? null);
 		} catch (err) {
-			buildProgress = 100;
 			buildStatus = 'error';
 			buildError = err instanceof Error ? err.message : 'Unknown build error.';
 			pushProgress(buildError, 'error');
 		}
 	}
 
-	function messageToneClasses(tone: 'info' | 'success' | 'error') {
-		if (tone === 'success') return 'text-emerald-500';
-		if (tone === 'error') return 'text-red-500';
-		return 'text-muted-foreground';
-	}
-
-	function toneIcon(tone: 'info' | 'success' | 'error') {
-		if (tone === 'success') return CircleCheck;
-		if (tone === 'error') return TriangleAlert;
-		return Info;
-	}
-
-	function scheduleSecretCopyReset() {
-		if (secretCopyTimeout) {
-			clearTimeout(secretCopyTimeout);
-		}
-		secretCopyTimeout = setTimeout(() => {
-			secretCopyState = 'idle';
-			secretCopyTimeout = null;
-		}, 2000);
-	}
-
-	async function copySharedSecret() {
-		if (!generatedSecret) {
-			return;
-		}
-
-		if (typeof navigator === 'undefined' || !navigator.clipboard) {
-			secretCopyState = 'error';
-			scheduleSecretCopyReset();
-			return;
-		}
-
-		try {
-			await navigator.clipboard.writeText(generatedSecret);
-			secretCopyState = 'copied';
-		} catch {
-			secretCopyState = 'error';
-		}
-
-		scheduleSecretCopyReset();
-	}
-
 	onDestroy(() => {
-		if (secretCopyTimeout) {
-			clearTimeout(secretCopyTimeout);
-			secretCopyTimeout = null;
-		}
-
 		toast.dismiss(BUILD_STATUS_TOAST_ID);
 	});
 </script>
@@ -894,102 +843,19 @@
 					</Tabs>
 				</div>
 				<aside class="space-y-4 xl:sticky xl:top-24">
-					<div class="space-y-4 rounded-lg border border-border/70 bg-background/60 p-6">
+					<div class="space-y-3 rounded-lg border border-border/70 bg-background/60 p-6">
 						<div class="space-y-2">
-							<h3 class="text-sm font-semibold">Build activity</h3>
+							<h3 class="text-sm font-semibold">Live build updates</h3>
 							<p class="text-xs text-muted-foreground">
-								Toast notifications fire as soon as the compiler updates your build. Review detailed
-								progress, logs, downloads, and secrets here.
+								Build activity now appears as toast notifications powered by Sonner. Watch the
+								bottom-right corner for progress, warnings, downloads, and shared secrets during a
+								build.
+							</p>
+							<p class="text-xs text-muted-foreground">
+								Toasts stay visible until dismissed so you can review output or copy values whenever
+								you're ready.
 							</p>
 						</div>
-
-						{#if buildStatus === 'idle'}
-							<p class="text-xs text-muted-foreground">
-								Start a build to trigger live toasts and populate this panel with progress data.
-							</p>
-						{:else}
-							<div class="space-y-4">
-								<div class="space-y-2">
-									<div class="flex items-center justify-between text-sm">
-										<span class="font-medium">Progress</span>
-										<span>{buildProgress}%</span>
-									</div>
-									<Progress value={buildProgress} max={100} class="h-2" />
-								</div>
-								<ul class="space-y-2 text-sm">
-									{#each progressMessages as message (message.id)}
-										{#if message}
-											{@const Icon = toneIcon(message.tone)}
-											<li class={`flex items-start gap-2 ${messageToneClasses(message.tone)}`}>
-												<Icon class="mt-0.5 h-4 w-4" />
-												<span class="text-left">{message.text}</span>
-											</li>
-										{/if}
-									{/each}
-								</ul>
-								{#if downloadUrl || outputPath}
-									<div class="rounded-md bg-muted/50 p-3 text-xs">
-										{#if downloadUrl}
-											<p class="flex flex-wrap items-center gap-1">
-												<span>Download:</span>
-												<a
-													class="font-medium text-primary underline"
-													href={downloadUrl}
-													rel="external"
-													target="_blank"
-													download>agent binary</a
-												>
-											</p>
-										{/if}
-										{#if outputPath}
-											<p class="mt-1 break-words text-muted-foreground">Saved to {outputPath}</p>
-										{/if}
-									</div>
-								{/if}
-								{#if buildLog.length}
-									<div>
-										<p class="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
-											Build log
-										</p>
-										<pre
-											class="mt-2 max-h-48 overflow-auto rounded-md bg-muted/40 p-3 font-mono text-xs">
-                                                {buildLog.join('\n')}
-										</pre>
-									</div>
-								{/if}
-								{#if generatedSecret}
-									<div class="rounded-md border border-border/70 bg-muted/30 p-3 text-xs">
-										<p class="font-semibold text-muted-foreground">Generated shared secret</p>
-										<p class="mt-1 font-mono text-sm">{generatedSecret}</p>
-										<p class="mt-1 text-xs text-muted-foreground">
-											Store this value securely. It is embedded in the binary and required for agent
-											authentication.
-										</p>
-										<div class="mt-2 flex flex-wrap items-center gap-2 text-xs">
-											<Button type="button" variant="outline" size="sm" onclick={copySharedSecret}>
-												{secretCopyState === 'copied' ? 'Copied' : 'Copy secret'}
-											</Button>
-											{#if secretCopyState === 'error'}
-												<span class="text-red-500">Copy failed</span>
-											{/if}
-											{#if secretCopyState === 'copied'}
-												<span class="text-emerald-600">Secret copied to clipboard</span>
-											{/if}
-										</div>
-									</div>
-								{/if}
-								{#if buildWarnings.length}
-									<div class="rounded-md border border-amber-500/60 bg-amber-500/10 p-3 text-xs">
-										<p class="font-semibold text-amber-600">Warnings</p>
-										<ul class="mt-1 space-y-1">
-											{#each buildWarnings as warning, index (index)}
-												<li>{warning}</li>
-											{/each}
-										</ul>
-									</div>
-								{/if}
-							</div>
-						{/if}
 					</div>
 
 					<div class="space-y-4 rounded-lg border border-border/70 bg-background/60 p-6">
