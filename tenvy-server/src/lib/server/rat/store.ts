@@ -12,6 +12,7 @@ import type {
 	AgentRegistrationResponse
 } from '../../../../../shared/types/auth';
 import type {
+	AgentControlCommandPayload,
 	AgentSyncRequest,
 	AgentSyncResponse,
 	Command,
@@ -197,11 +198,19 @@ export class AgentRegistry {
 
 		record.status = 'offline';
 		record.lastSeen = new Date();
+		record.pendingCommands = [];
 
-		const snapshot = this.toSnapshot(record);
-		this.agents.delete(id);
+		const payload: AgentControlCommandPayload = { action: 'disconnect' };
+		const command: Command = {
+			id: randomUUID(),
+			name: 'agent-control',
+			payload,
+			createdAt: new Date().toISOString()
+		};
 
-		return snapshot;
+		record.pendingCommands.push(command);
+
+		return this.toSnapshot(record);
 	}
 
 	reconnectAgent(id: string): AgentSnapshot {
@@ -214,6 +223,16 @@ export class AgentRegistry {
 		record.status = 'online';
 		record.connectedAt = now;
 		record.lastSeen = now;
+
+		const payload: AgentControlCommandPayload = { action: 'reconnect' };
+		const command: Command = {
+			id: randomUUID(),
+			name: 'agent-control',
+			payload,
+			createdAt: now.toISOString()
+		};
+
+		record.pendingCommands.unshift(command);
 
 		return this.toSnapshot(record);
 	}

@@ -89,6 +89,11 @@ type OpenURLCommandPayload struct {
 	Note string `json:"note,omitempty"`
 }
 
+type AgentControlCommandPayload struct {
+	Action string `json:"action"`
+	Reason string `json:"reason,omitempty"`
+}
+
 type ToolActivationCommandPayload struct {
 	ToolID      string         `json:"toolId"`
 	Action      string         `json:"action"`

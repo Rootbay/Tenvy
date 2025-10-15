@@ -18,18 +18,75 @@ import (
 	"github.com/rootbay/tenvy-client/internal/protocol"
 )
 
+const (
+	connectionDirectiveNone uint32 = iota
+	connectionDirectiveDisconnect
+	connectionDirectiveReconnect
+)
+
+func (a *Agent) requestDisconnect() {
+	if a == nil {
+		return
+	}
+	a.connectionFlag.Store(connectionDirectiveDisconnect)
+}
+
+func (a *Agent) requestReconnect() {
+	if a == nil {
+		return
+	}
+
+	for {
+		current := a.connectionFlag.Load()
+		switch current {
+		case connectionDirectiveDisconnect, connectionDirectiveReconnect:
+			return
+		default:
+			if a.connectionFlag.CompareAndSwap(current, connectionDirectiveReconnect) {
+				return
+			}
+		}
+	}
+}
+
 func (a *Agent) run(ctx context.Context) {
 	pollInterval := a.pollInterval()
 	backoff := pollInterval
 
 	for {
+		switch directive := a.connectionFlag.Load(); directive {
+		case connectionDirectiveDisconnect:
+			a.logger.Println("disconnect requested; halting controller communication")
+			return
+		case connectionDirectiveReconnect:
+			if err := a.reRegister(ctx); err != nil {
+				if ctx.Err() != nil {
+					return
+				}
+				a.logger.Printf("forced re-registration failed: %v", err)
+				backoff = minDuration(backoff*2, a.maxBackoff())
+				if err := sleepContext(ctx, backoff); err != nil {
+					return
+				}
+				continue
+			}
+			a.connectionFlag.CompareAndSwap(connectionDirectiveReconnect, connectionDirectiveNone)
+			pollInterval = a.pollInterval()
+			backoff = pollInterval
+			continue
+		}
+
 		if err := sleepContext(ctx, a.withJitter(pollInterval)); err != nil {
 			return
 		}
 
+		if a.connectionFlag.Load() != connectionDirectiveNone {
+			continue
+		}
+
 		if err := a.sync(ctx, statusOnline); err != nil {
-			if errors.Is(err, protocol.ErrUnauthorized) {
-				a.logger.Printf("sync unauthorized: %v", err)
+			if shouldReRegister(err) {
+				a.logger.Printf("sync requires re-registration: %v", err)
 				if err := a.reRegister(ctx); err != nil {
 					if ctx.Err() != nil {
 						return
@@ -126,7 +183,10 @@ func (a *Agent) performSync(ctx context.Context, status string, results []protoc
 		if message == "" {
 			message = fmt.Sprintf("status %d", resp.StatusCode)
 		}
-		return nil, fmt.Errorf("sync failed: %s", message)
+		return nil, &syncHTTPError{
+			status:  resp.StatusCode,
+			message: message,
+		}
 	}
 
 	var payload protocol.AgentSyncResponse
@@ -283,4 +343,43 @@ func limitResults(results []protocol.CommandResult, limit int) []protocol.Comman
 		return results
 	}
 	return results[len(results)-limit:]
+}
+
+type syncHTTPError struct {
+	status  int
+	message string
+}
+
+func (e *syncHTTPError) Error() string {
+	if e == nil {
+		return "sync error"
+	}
+	if e.message == "" {
+		return fmt.Sprintf("sync failed with status %d", e.status)
+	}
+	return fmt.Sprintf("sync failed: %s", e.message)
+}
+
+func (e *syncHTTPError) StatusCode() int {
+	if e == nil {
+		return 0
+	}
+	return e.status
+}
+
+func shouldReRegister(err error) bool {
+	if err == nil {
+		return false
+	}
+	if errors.Is(err, protocol.ErrUnauthorized) {
+		return true
+	}
+	var httpErr *syncHTTPError
+	if errors.As(err, &httpErr) {
+		switch httpErr.StatusCode() {
+		case http.StatusUnauthorized, http.StatusForbidden, http.StatusNotFound, http.StatusGone:
+			return true
+		}
+	}
+	return false
 }

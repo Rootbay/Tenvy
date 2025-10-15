@@ -16,6 +16,7 @@ export type CommandName =
         | 'system-info'
         | 'open-url'
         | 'audio-control'
+        | 'agent-control'
         | 'clipboard'
         | 'recovery'
         | 'file-manager'
@@ -44,6 +45,11 @@ export interface OpenUrlCommandPayload {
         note?: string;
 }
 
+export interface AgentControlCommandPayload {
+        action: 'disconnect' | 'reconnect';
+        reason?: string;
+}
+
 export type CommandPayload =
         | PingCommandPayload
         | ShellCommandPayload
@@ -51,6 +57,7 @@ export type CommandPayload =
         | SystemInfoCommandPayload
         | OpenUrlCommandPayload
         | AudioControlCommandPayload
+        | AgentControlCommandPayload
         | ClipboardCommandPayload
         | RecoveryCommandPayload
         | FileManagerCommandPayload
@@ -97,3 +104,4 @@ export interface CommandQueueResponse {
 export interface CommandQueueSnapshot {
         commands: Command[];
 }
+

@@ -23,6 +23,7 @@ func newDefaultCommandRouter() (*commandRouter, error) {
 	builtins := map[string]commandHandlerFunc{
 		"ping":            pingCommandHandler,
 		"shell":           shellCommandHandler,
+		"agent-control":   agentControlCommandHandler,
 		"open-url":        openURLCommandHandler,
 		"tool-activation": toolActivationCommandHandler,
 	}

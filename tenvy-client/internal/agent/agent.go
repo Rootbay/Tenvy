@@ -4,6 +4,7 @@ import (
 	"log"
 	"net/http"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	notes "github.com/rootbay/tenvy-client/internal/modules/notes"
@@ -28,6 +29,7 @@ type Agent struct {
 	timing         TimingOverride
 	modules        *moduleRegistry
 	commands       *commandRouter
+	connectionFlag atomic.Uint32
 }
 
 func (a *Agent) AgentID() string {

@@ -92,6 +92,33 @@ func shellCommandHandler(ctx context.Context, agent *Agent, cmd protocol.Command
 	return newDetailedResult(cmd.ID, true, string(output), "")
 }
 
+func agentControlCommandHandler(_ context.Context, agent *Agent, cmd protocol.Command) protocol.CommandResult {
+	if agent == nil {
+		return newFailureResult(cmd.ID, "agent-control command requires agent context")
+	}
+
+	var payload protocol.AgentControlCommandPayload
+	if err := json.Unmarshal(cmd.Payload, &payload); err != nil {
+		return newFailureResult(cmd.ID, fmt.Sprintf("invalid agent-control payload: %v", err))
+	}
+
+	action := strings.ToLower(strings.TrimSpace(payload.Action))
+	switch action {
+	case "disconnect":
+		agent.requestDisconnect()
+		return newSuccessResult(cmd.ID, "disconnect requested")
+	case "reconnect":
+		agent.requestReconnect()
+		return newSuccessResult(cmd.ID, "reconnect requested")
+	}
+
+	if action == "" {
+		return newFailureResult(cmd.ID, "missing agent-control action")
+	}
+
+	return newFailureResult(cmd.ID, fmt.Sprintf("unsupported agent-control action: %s", action))
+}
+
 func openURLCommandHandler(_ context.Context, _ *Agent, cmd protocol.Command) protocol.CommandResult {
 	var payload protocol.OpenURLCommandPayload
 	if err := json.Unmarshal(cmd.Payload, &payload); err != nil {
