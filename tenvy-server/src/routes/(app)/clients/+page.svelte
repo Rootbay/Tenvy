@@ -28,6 +28,7 @@
 	} from '$lib/components/ui/select/index.js';
 	import ClientToolDialog from '$lib/components/client-tool-dialog.svelte';
 	import ClientsTableRow from '$lib/components/clients/clients-table-row.svelte';
+	import ManageTagsDialog from '$lib/components/clients/manage-tags-dialog.svelte';
 	import DeployAgentDialog from '$lib/components/clients/deploy-agent-dialog.svelte';
 	import PingAgentDialog from '$lib/components/clients/ping-agent-dialog.svelte';
 import ShellCommandDialog from '$lib/components/clients/shell-command-dialog.svelte';
@@ -52,7 +53,8 @@ import { buildLocationDisplay } from '$lib/utils/location';
 	import type {
 		AgentConnectionAction,
 		AgentConnectionRequest,
-		AgentSnapshot
+		AgentSnapshot,
+		AgentTagUpdateResponse
 	} from '../../../../../shared/types/agent';
 
 	const statusLabels: Record<AgentSnapshot['status'], string> = {
@@ -106,11 +108,15 @@ import { buildLocationDisplay } from '$lib/utils/location';
 	let commandSuccess = $state<Record<string, string | null>>({});
 	let commandPending = $state<Record<string, boolean>>({});
 
-	let pingDialogAgentId = $state<string | null>(null);
-	let shellDialogAgentId = $state<string | null>(null);
-	let pingAgent = $state<AgentSnapshot | null>(null);
-	let shellAgent = $state<AgentSnapshot | null>(null);
-	let deployDialogOpen = $state(false);
+let pingDialogAgentId = $state<string | null>(null);
+let shellDialogAgentId = $state<string | null>(null);
+let pingAgent = $state<AgentSnapshot | null>(null);
+let shellAgent = $state<AgentSnapshot | null>(null);
+let deployDialogOpen = $state(false);
+let tagsDialogAgentId = $state<string | null>(null);
+let tagsAgent = $state<AgentSnapshot | null>(null);
+let tagsDialogPending = $state(false);
+let tagsDialogError = $state<string | null>(null);
 
 	$effect(() => {
 		const agentId = pingDialogAgentId;
@@ -118,11 +124,17 @@ import { buildLocationDisplay } from '$lib/utils/location';
 		pingAgent = agentId ? (agents.find((agent) => agent.id === agentId) ?? null) : null;
 	});
 
-	$effect(() => {
-		const agentId = shellDialogAgentId;
-		const agents = $clientsTable.agents;
-		shellAgent = agentId ? (agents.find((agent) => agent.id === agentId) ?? null) : null;
-	});
+$effect(() => {
+	const agentId = shellDialogAgentId;
+	const agents = $clientsTable.agents;
+	shellAgent = agentId ? (agents.find((agent) => agent.id === agentId) ?? null) : null;
+});
+
+$effect(() => {
+	const agentId = tagsDialogAgentId;
+	const agents = $clientsTable.agents;
+	tagsAgent = agentId ? (agents.find((agent) => agent.id === agentId) ?? null) : null;
+});
 
 	type CopyFeedback = { message: string; variant: 'success' | 'error' } | null;
 	let copyFeedback = $state<CopyFeedback>(null);
@@ -187,13 +199,23 @@ import { buildLocationDisplay } from '$lib/utils/location';
 		return 'just now';
 	}
 
-	
 	function getAgentLocation(agent: AgentSnapshot): { label: string; flag: string } {
 		return buildLocationDisplay(agent.metadata.location);
 	}
 
-	function getAgentGroup(agent: AgentSnapshot): string {
-		return agent.metadata.group?.trim() || 'N/A';
+	function getAgentTags(agent: AgentSnapshot): string[] {
+		const tags =
+			agent.metadata.tags
+				?.map((tag) => tag.trim())
+				.filter((tag): tag is string => tag.length > 0) ?? [];
+
+		const uniqueTags = Array.from(new Set(tags));
+		if (uniqueTags.length > 0) {
+			return uniqueTags;
+		}
+
+		const fallback = agent.metadata.group?.trim();
+		return fallback ? [fallback] : [];
 	}
 
 	function formatPing(agent: AgentSnapshot): string {
@@ -202,6 +224,72 @@ import { buildLocationDisplay } from '$lib/utils/location';
 			return `${Math.round(latency)} ms`;
 		}
 		return 'N/A';
+	}
+
+	function handleTagFilter(tag: string) {
+		if (!tag || tag.trim().length === 0) {
+			clientsTable.setTagFilter('all');
+			return;
+		}
+		clientsTable.setTagFilter(tag);
+	}
+
+	function openManageTagsDialog(agent: AgentSnapshot) {
+		tagsDialogAgentId = agent.id;
+		tagsDialogError = null;
+		tagsDialogPending = false;
+	}
+
+	function closeManageTagsDialog() {
+		if (tagsDialogPending) {
+			return;
+		}
+		tagsDialogAgentId = null;
+		tagsAgent = null;
+		tagsDialogError = null;
+	}
+
+	async function handleTagsSubmit(event: CustomEvent<{ tags: string[] }>) {
+		const targetAgent = tagsAgent;
+		if (!targetAgent) {
+			return;
+		}
+
+		const tags = event.detail?.tags ?? [];
+		tagsDialogPending = true;
+		tagsDialogError = null;
+
+		try {
+			const response = await fetch(`/api/agents/${targetAgent.id}/tags`, {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ tags })
+			});
+
+			if (!response.ok) {
+				const message = (await response.text()) || 'Failed to update tags';
+				throw new Error(message);
+			}
+
+			const payload = (await response.json()) as AgentTagUpdateResponse;
+			const updatedAgent = payload.agent;
+
+			const current = get(clientsTable).agents;
+			clientsTable.setAgents(
+				current.map((item) => (item.id === updatedAgent.id ? updatedAgent : item))
+			);
+
+			await invalidateAll();
+
+			tagsDialogAgentId = null;
+			tagsAgent = null;
+		} catch (err) {
+			console.error('Failed to update agent tags', err);
+			tagsDialogError =
+				err instanceof Error && err.message ? err.message : 'Failed to update tags';
+		} finally {
+			tagsDialogPending = false;
+		}
 	}
 
 	function findAgentById(agentId: string | null): AgentSnapshot | null {
@@ -361,27 +449,6 @@ import { buildLocationDisplay } from '$lib/utils/location';
 		return success;
 	}
 
-	function openPingDialog(agentId: string) {
-		const agent = findAgentById(agentId);
-		if (!agent) {
-			return;
-		}
-
-		if (!hasActiveConnection(agent)) {
-			const agentLabel = agent.metadata.hostname?.trim() || agent.id;
-			showConnectionAlert({
-				title: 'Connection unavailable',
-				description: `${agentLabel} is not currently connected. Re-establish the session to queue a ping.`,
-				variant: 'destructive'
-			});
-			return;
-		}
-
-		pingDialogAgentId = agentId;
-		commandErrors = updateRecord(commandErrors, `ping:${agentId}`, null);
-		commandSuccess = updateRecord(commandSuccess, `ping:${agentId}`, null);
-	}
-
 	function sendCommandError(agent: AgentSnapshot, action: string) {
 		const agentLabel = agent.metadata.hostname?.trim() || agent.id;
 		showConnectionAlert({
@@ -402,6 +469,27 @@ import { buildLocationDisplay } from '$lib/utils/location';
 
 	async function reconnectAgent(agent: AgentSnapshot) {
 		await requestConnectionAction(agent, 'reconnect');
+	}
+
+	function openPingDialog(agentId: string) {
+		const agent = findAgentById(agentId);
+		if (!agent) {
+			return;
+		}
+
+		if (!hasActiveConnection(agent)) {
+			const agentLabel = agent.metadata.hostname?.trim() || agent.id;
+			showConnectionAlert({
+				title: 'Connection unavailable',
+				description: `${agentLabel} is not currently connected. Re-establish the session to queue a ping.`,
+				variant: 'destructive'
+			});
+			return;
+		}
+
+		pingDialogAgentId = agentId;
+		commandErrors = updateRecord(commandErrors, `ping:${agentId}`, null);
+		commandSuccess = updateRecord(commandSuccess, `ping:${agentId}`, null);
 	}
 
 	function openShellDialog(agentId: string) {
@@ -804,13 +892,13 @@ import { buildLocationDisplay } from '$lib/utils/location';
 													{...props}
 													class="inline-flex items-center gap-1 cursor-help"
 												>
-													Group
+													Tags
 													<Info class="size-3 text-muted-foreground" aria-hidden="true" />
 												</span>
 											{/snippet}
 										</TooltipTrigger>
 										<TooltipContent side="top" align="center" class="max-w-[18rem] text-xs">
-											Operator-defined grouping applied to this agent.
+											Operator-defined tags applied to this agent.
 										</TooltipContent>
 									</Tooltip>
 								</TableHead>
@@ -868,21 +956,21 @@ import { buildLocationDisplay } from '$lib/utils/location';
 										</TooltipContent>
 									</Tooltip>
 								</TableHead>
-								<TableHead class="w-[6rem]">
+								<TableHead class="w-[7rem] text-center">
 									<Tooltip>
 										<TooltipTrigger>
 											{#snippet child({ props })}
 												<span
 													{...props}
-													class="inline-flex items-center gap-1 cursor-help"
+													class="inline-flex w-full items-center justify-center gap-1 cursor-help"
 												>
-													Date
+													Status
 													<Info class="size-3 text-muted-foreground" aria-hidden="true" />
 												</span>
 											{/snippet}
 										</TooltipTrigger>
 										<TooltipContent side="top" align="center" class="max-w-[18rem] text-xs">
-											Timestamp of the agent&apos;s most recent connection to the controller.
+											Current connection state reported by the agent.
 										</TooltipContent>
 									</Tooltip>
 								</TableHead>
@@ -905,8 +993,10 @@ import { buildLocationDisplay } from '$lib/utils/location';
 										{agent}
 										{formatDate}
 										{formatPing}
-										{getAgentGroup}
+										{getAgentTags}
 										{getAgentLocation}
+										openManageTags={openManageTagsDialog}
+										onTagClick={handleTagFilter}
 										{openSection}
 										{copyAgentId}
 									/>
@@ -1020,5 +1110,14 @@ import { buildLocationDisplay } from '$lib/utils/location';
 				(shellTimeouts = updateRecord(shellTimeouts, shellAgent!.id, event.detail))}
 		/>
 	{/if}
-</section>
 
+	<ManageTagsDialog
+		open={Boolean(tagsDialogAgentId && tagsAgent)}
+		agent={tagsAgent}
+		availableTags={$clientsTable.availableTags}
+		pending={tagsDialogPending}
+		error={tagsDialogError}
+		on:close={closeManageTagsDialog}
+		on:submit={handleTagsSubmit}
+	/>
+</section>

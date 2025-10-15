@@ -20,10 +20,10 @@
 	import { Input } from '$lib/components/ui/input/index.js';
 	import { Label } from '$lib/components/ui/label/index.js';
 	import { Popover, PopoverContent, PopoverTrigger } from '$lib/components/ui/popover/index.js';
-	import { ScrollArea } from '$lib/components/ui/scroll-area/index.js';
 	import { Separator } from '$lib/components/ui/separator/index.js';
 	import { Checkbox } from '$lib/components/ui/checkbox/index.js';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
+	import { Toaster } from '$lib/components/ui/sonner/index.js';
 	import type { IconComponent, NavKey } from '$lib/types/navigation.js';
 	import type { AuthenticatedUser } from '$lib/server/auth';
 	import {
@@ -51,6 +51,7 @@
 		Moon
 	} from '@lucide/svelte';
 	import { onMount } from 'svelte';
+	import type { ComponentProps } from 'svelte';
 	import { toggleMode } from 'mode-watcher';
 
 	type NavItem = {
@@ -62,79 +63,71 @@
 		href: string;
 	};
 
-	const navGroups: { label: string; items: NavItem[] }[] = [
+	type SidebarMenuButtonChildContext = Parameters<
+		NonNullable<ComponentProps<typeof SidebarMenuButton>['child']>
+	>[0];
+
+	const navItems: NavItem[] = [
 		{
-			label: 'Overview',
-			items: [
-				{
-					title: 'Dashboard',
-					icon: LayoutDashboard,
-					badge: 'Live',
-					badgeClass: 'bg-emerald-500/20 text-emerald-500',
-					slug: 'dashboard',
-					href: '/dashboard'
-				},
-				{
-					title: 'Activity',
-					icon: Activity,
-					badge: '12',
-					badgeClass: 'bg-sidebar-primary/10 text-sidebar-primary',
-					slug: 'activity',
-					href: '/activity'
-				}
-			]
+			title: 'Dashboard',
+			icon: LayoutDashboard,
+			badge: 'Live',
+			badgeClass: 'bg-emerald-500/20 text-emerald-500',
+			slug: 'dashboard',
+			href: '/dashboard'
 		},
 		{
-			label: 'Operations',
-			items: [
-				{
-					title: 'Clients',
-					icon: Users,
-					badge: '18',
-					badgeClass: 'bg-blue-500/15 text-blue-500',
-					slug: 'clients',
-					href: '/clients'
-				},
-				{
-					title: 'Build',
-					icon: Hammer,
-					slug: 'build',
-					href: '/build'
-				},
-				{
-					title: 'Plugins',
-					icon: PlugZap,
-					badge: '3',
-					badgeClass: 'bg-purple-500/15 text-purple-500',
-					slug: 'plugins',
-					href: '/plugins'
-				}
-			]
+			title: 'Clients',
+			icon: Users,
+			badge: '18',
+			badgeClass: 'bg-blue-500/15 text-blue-500',
+			slug: 'clients',
+			href: '/clients'
+		},
+		{
+			title: 'Build',
+			icon: Hammer,
+			slug: 'build',
+			href: '/build'
+		},
+		{
+			title: 'Activity',
+			icon: Activity,
+			badge: '12',
+			badgeClass: 'bg-sidebar-primary/10 text-sidebar-primary',
+			slug: 'activity',
+			href: '/activity'
+		},
+		{
+			title: 'Plugins',
+			icon: PlugZap,
+			badge: '3',
+			badgeClass: 'bg-purple-500/15 text-purple-500',
+			slug: 'plugins',
+			href: '/plugins'
 		}
 	];
 
 	const navSummaries: Record<NavKey, { title: string; description: string }> = {
 		dashboard: {
 			title: 'Dashboard',
-			description:
-				'Monitor connected agents, watch map & logs, and more.'
+			description: 'Monitor connected agents, watch map & logs, and more.'
 		},
 		clients: {
 			title: 'Clients',
-			description:
-				'Inspect connected endpoints, filter by posture, and triage which agents need attention next.'
-		},
-		plugins: {
-			title: 'Plugins',
-			description: 'Manage extensions and modular capabilities for the platform.'
+			description: 'Inspect connected endpoints, filter by posture, and triage which agents need attention next.'
 		},
 		build: {
-			title: 'Agent builder',
+			title: 'Builder',
 			description: 'Compile customized client binaries and distribute them to targets.'
 		},
 		activity: {
 			title: 'Activity',
 			description: 'Streaming event timelines and operation history.'
+		},
+		plugins: {
+			title: 'Plugins',
+			description: 'Manage extensions and modular capabilities for the platform.'
 		},
 		settings: {
 			title: 'Settings',
@@ -446,42 +439,60 @@
 		</SidebarHeader>
 		<SidebarContent>
 			<SidebarMenu class="px-2 pt-2">
-				{#each navGroups as group (group.label)}
-					{#each group.items as item (item.slug)}
-						<SidebarMenuItem>
-							<a href={item.href} data-sveltekit-preload-data="hover">
-								<SidebarMenuButton
-									isActive={item.slug === layoutData.activeNav}
-									tooltipContent={item.title}
-								>
-									<item.icon />
-									<div class="flex min-w-0 flex-col gap-0.5 text-left">
-										<span class="truncate text-sm font-medium">{item.title}</span>
-									</div>
-								</SidebarMenuButton>
-							</a>
-							{#if item.badge}
-								<SidebarMenuBadge
-									class={cn('bg-sidebar-accent text-sidebar-accent-foreground', item.badgeClass)}
-								>
-									{item.badge}
-								</SidebarMenuBadge>
-							{/if}
-						</SidebarMenuItem>
-					{/each}
-				{/each}
-				<SidebarMenuItem class="hidden group-data-[state=collapsed]:block">
-					<a href="/settings" data-sveltekit-preload-data="hover">
-						<SidebarMenuButton
-							isActive={(layoutData as LayoutData).activeNav === 'settings'}
-							tooltipContent="Settings"
+				{#each navItems as item (item.slug)}
+					{#snippet NavLink({ props }: SidebarMenuButtonChildContext)}
+						{@const { class: existingClass } = props as { class?: string }}
+						{@const className = cn('cursor-pointer', existingClass)}
+						<a
+							{...props}
+							class={className}
+							href={item.href}
+							data-sveltekit-preload-data="hover"
+							aria-current={item.slug === layoutData.activeNav ? 'page' : undefined}
 						>
-							<Settings />
+							<item.icon />
 							<div class="flex min-w-0 flex-col gap-0.5 text-left">
-								<span class="truncate text-sm font-medium">Settings</span>
+								<span class="truncate text-sm font-medium">{item.title}</span>
 							</div>
-						</SidebarMenuButton>
+						</a>
+					{/snippet}
+					<SidebarMenuItem class="cursor-pointer">
+						<SidebarMenuButton
+							isActive={item.slug === layoutData.activeNav}
+							tooltipContent={item.title}
+							child={NavLink}
+						/>
+						{#if item.badge}
+							<SidebarMenuBadge
+								class={cn('bg-sidebar-accent text-sidebar-accent-foreground mr-2', item.badgeClass)}
+							>
+								{item.badge}
+							</SidebarMenuBadge>
+						{/if}
+					</SidebarMenuItem>
+				{/each}
+				{#snippet SettingsLink({ props }: SidebarMenuButtonChildContext)}
+					{@const { class: existingClass } = props as { class?: string }}
+					{@const className = cn('cursor-pointer', existingClass)}
+					<a
+						{...props}
+						class={className}
+						href="/settings"
+						data-sveltekit-preload-data="hover"
+						aria-current={(layoutData as LayoutData).activeNav === 'settings' ? 'page' : undefined}
+					>
+						<Settings />
+						<div class="flex min-w-0 flex-col gap-0.5 text-left">
+							<span class="truncate text-sm font-medium">Settings</span>
+						</div>
 					</a>
+				{/snippet}
+				<SidebarMenuItem class="hidden cursor-pointer group-data-[state=collapsed]:block">
+					<SidebarMenuButton
+						isActive={(layoutData as LayoutData).activeNav === 'settings'}
+						tooltipContent="Settings"
+						child={SettingsLink}
+					/>
 				</SidebarMenuItem>
 			</SidebarMenu>
 		</SidebarContent>
@@ -741,3 +752,4 @@
 		</Dialog.Content>
 	</Dialog.Root>
 </SidebarProvider>
+<Toaster position="bottom-right" />

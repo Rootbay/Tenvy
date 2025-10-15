@@ -59,3 +59,11 @@ export interface AgentConnectionRequest {
 export interface AgentConnectionResponse {
         agent: AgentSnapshot;
 }
+
+export interface AgentTagUpdateRequest {
+        tags: string[];
+}
+
+export interface AgentTagUpdateResponse {
+        agent: AgentSnapshot;
+}

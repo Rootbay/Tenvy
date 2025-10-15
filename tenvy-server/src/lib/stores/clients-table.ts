@@ -136,6 +136,21 @@ export function buildPaginationItems(
 	return items;
 }
 
+// Remove duplicates while keeping the latest snapshot for each agent id.
+function dedupeAgents(agents: AgentSnapshot[]): AgentSnapshot[] {
+	const seen = new Set<string>();
+	const result: AgentSnapshot[] = [];
+	for (let index = agents.length - 1; index >= 0; index -= 1) {
+		const agent = agents[index];
+		if (seen.has(agent.id)) {
+			continue;
+		}
+		seen.add(agent.id);
+		result.unshift(agent);
+	}
+	return result;
+}
+
 export type ClientsTableStore = ReturnType<typeof createClientsTableStore>;
 
 export function createClientsTableStore(initialAgents: AgentSnapshot[]): {
@@ -152,7 +167,7 @@ export function createClientsTableStore(initialAgents: AgentSnapshot[]): {
 	nextPage: () => void;
 	previousPage: () => void;
 } {
-	const agents = writable(initialAgents ?? []);
+	const agents = writable(dedupeAgents(initialAgents ?? []));
 	const searchQuery = writable('');
 	const statusFilter = writable<StatusFilter>('all');
 	const tagFilter = writable<TagFilter>('all');
@@ -209,7 +224,7 @@ export function createClientsTableStore(initialAgents: AgentSnapshot[]): {
 
 	return {
 		subscribe: state.subscribe,
-		setAgents: (nextAgents) => agents.set(nextAgents ?? []),
+		setAgents: (nextAgents) => agents.set(dedupeAgents(nextAgents ?? [])),
 		setSearchQuery: (value) => searchQuery.set(value),
 		setStatusFilter: (value) => statusFilter.set(value),
 		setTagFilter: (value) => tagFilter.set(value),

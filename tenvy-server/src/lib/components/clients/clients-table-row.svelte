@@ -8,16 +8,22 @@
 		ContextMenuSeparator,
 		ContextMenuSub,
 		ContextMenuSubContent,
-		ContextMenuSubTrigger,
-		ContextMenuTrigger
+	ContextMenuSubTrigger,
+	ContextMenuTrigger
 	} from '$lib/components/ui/context-menu/index.js';
 	import { Badge } from '$lib/components/ui/badge/index.js';
-	import { TableCell, TableRow } from '$lib/components/ui/table/index.js';
+	import {
+		Tooltip,
+		TooltipContent,
+		TooltipTrigger
+	} from '$lib/components/ui/tooltip/index.js';
+	import { TableCell } from '$lib/components/ui/table/index.js';
 	import OsLogo from '$lib/components/os-logo.svelte';
 	import { cn } from '$lib/utils.js';
-import { countryCodeToFlag } from '$lib/utils/location';
-import type { AgentSnapshot } from '../../../../../shared/types/agent';
-import type { SectionKey } from '$lib/client-sections';
+	import { toast } from 'svelte-sonner';
+	import { countryCodeToFlag } from '$lib/utils/location';
+	import type { AgentSnapshot } from '../../../../../shared/types/agent';
+	import type { SectionKey } from '$lib/client-sections';
 
 type TriggerChildProps = Parameters<NonNullable<ContextMenuPrimitive.TriggerProps['child']>>[0];
 
@@ -31,17 +37,21 @@ type ResolvedLocation = {
 let {
 	agent,
 	openSection,
+	openManageTags,
+	onTagClick,
 	copyAgentId,
 	getAgentLocation,
-	getAgentGroup,
+	getAgentTags,
 	formatPing,
 	formatDate
 } = $props<{
 	agent: AgentSnapshot;
 	openSection: (section: SectionKey, agent: AgentSnapshot) => void;
+	openManageTags: (agent: AgentSnapshot) => void;
 	copyAgentId: (agentId: string) => void;
+	onTagClick: (tag: string) => void;
 	getAgentLocation: (agent: AgentSnapshot) => { label: string; flag: string };
-	getAgentGroup: (agent: AgentSnapshot) => string;
+	getAgentTags: (agent: AgentSnapshot) => string[];
 	formatPing: (agent: AgentSnapshot) => string;
 	formatDate: (value: string) => string;
 }>();
@@ -101,6 +111,79 @@ $effect(() => {
 	ipLocationPromises.set(ip, lookupPromise);
 	return attachLocationPromise(ip, lookupPromise, baseLocation);
 });
+
+function resolvePublicIpValue(agent: AgentSnapshot): string {
+	return agent.metadata.publicIpAddress?.trim() || agent.metadata.ipAddress?.trim() || '';
+}
+
+function resolveUsernameValue(agent: AgentSnapshot): string {
+	return agent.metadata.username?.trim() ?? '';
+}
+
+async function handleCopyValue(event: MouseEvent, rawValue: string, label: string) {
+	event.stopPropagation();
+
+	const value = rawValue.trim();
+	if (!value) {
+		toast.error(`No ${label} available to copy`, { position: 'bottom-right' });
+		return;
+	}
+
+	if (!browser) {
+		toast.error('Clipboard unavailable in this environment', { position: 'bottom-right' });
+		return;
+	}
+
+	const clipboard = navigator.clipboard;
+	if (!clipboard?.writeText) {
+		toast.error('Clipboard API is not accessible', { position: 'bottom-right' });
+		return;
+	}
+
+	try {
+		await clipboard.writeText(value);
+		toast.success(`${label} copied`, {
+			description: value,
+			position: 'bottom-right'
+		});
+	} catch (error) {
+		console.error(`Failed to copy ${label}`, error);
+		toast.error(`Failed to copy ${label}`, { position: 'bottom-right' });
+	}
+}
+
+function buildStatusMeta(agent: AgentSnapshot): {
+	label: string;
+	className: string;
+	indicatorClass: string;
+	tooltip: string;
+} {
+	const connectedLabel = formatDate(agent.connectedAt);
+	const lastSeenLabel = formatDate(agent.lastSeen);
+	if (agent.status === 'online') {
+		return {
+			label: 'Online',
+			className: 'text-emerald-500',
+			indicatorClass: 'bg-emerald-500',
+			tooltip: `Connected since ${connectedLabel}`
+		};
+	}
+	if (agent.status === 'offline') {
+		return {
+			label: 'Offline',
+			className: 'text-muted-foreground',
+			indicatorClass: 'bg-muted-foreground',
+			tooltip: `Last seen ${lastSeenLabel}`
+		};
+	}
+	const referenceLabel = agent.lastSeen ? lastSeenLabel : connectedLabel;
+	return {
+		label: 'Error',
+		className: 'text-rose-500',
+		indicatorClass: 'bg-rose-500',
+		tooltip: `Last seen ${referenceLabel}`
+	};
+}
 
 	function attachLocationPromise(
 		ip: string,
@@ -197,8 +280,17 @@ $effect(() => {
 </script>
 
 {#snippet TriggerChild({ props }: TriggerChildProps)}
-	{@const className = cn('cursor-context-menu', (props as { class?: string }).class)}
-	<TableRow {...props} class={className} tabindex={0}>
+	{@const className = cn(
+		'cursor-context-menu border-b transition-colors hover:bg-muted/50 data-[state=selected]:bg-muted',
+		(props as { class?: string }).class
+	)}
+	{@const tags = getAgentTags(agent)}
+	{@const statusMeta = buildStatusMeta(agent)}
+	{@const publicIpValue = resolvePublicIpValue(agent)}
+	{@const publicIpDisplay = publicIpValue || 'Unknown'}
+	{@const usernameValue = resolveUsernameValue(agent)}
+	{@const usernameDisplay = usernameValue || 'Unknown'}
+	<tr {...props} class={className} tabindex={0} data-slot="table-row">
 		<TableCell>
 			<div class="flex items-center gap-2">
 				{#if locationDisplay.flagUrl}
@@ -213,23 +305,75 @@ $effect(() => {
 				{/if}
 				<span class="text-sm font-medium text-foreground">{locationDisplay.label}</span>
 				{#if locationDisplay.isVpn}
-					<Badge
-						variant="outline"
-						class="border-amber-500 bg-amber-500/10 text-amber-500"
-					>
-						VPN
-					</Badge>
+					<Tooltip>
+						<TooltipTrigger>
+							{#snippet child({ props })}
+								<span {...props}>
+									<Badge
+										variant="outline"
+										class="border-amber-500 bg-amber-500/10 text-amber-500"
+									>
+										VPN
+									</Badge>
+								</span>
+							{/snippet}
+						</TooltipTrigger>
+						<TooltipContent side="top" align="center" class="max-w-[18rem] text-xs">
+							Flagged as a proxy, VPN, or Tor exit node.
+						</TooltipContent>
+					</Tooltip>
 				{/if}
 			</div>
 		</TableCell>
-		<TableCell class="text-sm text-muted-foreground text-center">
-			{agent.metadata.publicIpAddress ?? agent.metadata.ipAddress ?? 'Unknown'}
+		<TableCell class="text-center">
+			<button
+				type="button"
+				class="inline-flex w-full items-center justify-center truncate rounded-md px-2 py-1 text-sm text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background cursor-pointer"
+				onclick={(event) => handleCopyValue(event, publicIpValue, 'Public IP')}
+				title={publicIpDisplay === 'Unknown' ? 'Public IP unavailable' : `Copy ${publicIpDisplay}`}
+				aria-label={publicIpDisplay === 'Unknown' ? 'Public IP unavailable' : `Copy public IP ${publicIpDisplay}`}
+			>
+				<span class="truncate">{publicIpDisplay}</span>
+			</button>
 		</TableCell>
-		<TableCell class="text-sm text-muted-foreground text-center">
-			{agent.metadata.username}
+		<TableCell class="text-center">
+			<button
+				type="button"
+				class="inline-flex w-full items-center justify-center truncate rounded-md px-2 py-1 text-sm text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background cursor-pointer"
+				onclick={(event) => handleCopyValue(event, usernameValue, 'Username')}
+				title={usernameDisplay === 'Unknown' ? 'Username unavailable' : `Copy ${usernameDisplay}`}
+				aria-label={usernameDisplay === 'Unknown' ? 'Username unavailable' : `Copy username ${usernameDisplay}`}
+			>
+				<span class="truncate">{usernameDisplay}</span>
+			</button>
 		</TableCell>
-		<TableCell class="text-sm text-muted-foreground text-center">
-			{getAgentGroup(agent)}
+		<TableCell class="text-center">
+			{#if tags.length > 0}
+				<div class="flex flex-wrap items-center justify-center gap-1">
+					{#each tags as tag (tag)}
+						<button
+							type="button"
+							class="group rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background cursor-pointer"
+							onclick={(event) => {
+								event.stopPropagation();
+								onTagClick(tag);
+							}}
+							aria-label={`Filter by ${tag}`}
+						>
+							<Badge
+								variant="secondary"
+								class="px-2 py-0.5 text-xs font-medium transition-colors group-focus-visible:ring-2 group-focus-visible:ring-ring"
+							>
+								{tag}
+							</Badge>
+						</button>
+					{/each}
+				</div>
+			{:else}
+				<Badge variant="outline" class="border-dashed px-2 py-0.5 text-xs text-muted-foreground">
+					Untagged
+				</Badge>
+			{/if}
 		</TableCell>
 		<TableCell class="text-center">
 			<OsLogo os={agent.metadata.os} />
@@ -240,10 +384,31 @@ $effect(() => {
 		<TableCell class="text-sm text-muted-foreground text-center">
 			{agent.metadata.version ?? 'N/A'}
 		</TableCell>
-		<TableCell class="text-sm text-muted-foreground">
-			{formatDate(agent.connectedAt)}
+		<TableCell class="text-center">
+			<Tooltip>
+				<TooltipTrigger>
+					{#snippet child({ props })}
+						<span
+							{...props}
+							class={cn(
+								'inline-flex w-full items-center justify-center gap-2 text-sm font-medium',
+								statusMeta.className
+							)}
+						>
+							<span
+								class={cn('h-2 w-2 rounded-full', statusMeta.indicatorClass)}
+								aria-hidden="true"
+							></span>
+							{statusMeta.label}
+						</span>
+					{/snippet}
+				</TooltipTrigger>
+				<TooltipContent side="top" align="center" class="max-w-[18rem] text-xs">
+					{statusMeta.tooltip}
+				</TooltipContent>
+			</Tooltip>
 		</TableCell>
-	</TableRow>
+	</tr>
 {/snippet}
 
 <ContextMenu>
@@ -251,6 +416,7 @@ $effect(() => {
 	<ContextMenuContent class="w-56">
 		<ContextMenuItem onSelect={() => openSection('systemInfo', agent)}>System Info</ContextMenuItem>
 		<ContextMenuItem onSelect={() => openSection('notes', agent)}>Notes</ContextMenuItem>
+		<ContextMenuItem onSelect={() => openManageTags(agent)}>Manage Tags</ContextMenuItem>
 
 		<ContextMenuSeparator />
 

@@ -21,6 +21,10 @@ import type {
 	CommandResult
 } from '../../../../../shared/types/messages';
 
+const MAX_TAGS = 16;
+const MAX_TAG_LENGTH = 32;
+const TAG_PATTERN = /^[\p{L}\p{N}_\-\s]+$/u;
+
 const MAX_RECENT_RESULTS = 25;
 
 class RegistryError extends Error {
@@ -213,6 +217,40 @@ export class AgentRegistry {
 		return this.toSnapshot(record);
 	}
 
+	private normalizeTags(tags: string[]): string[] {
+		const seen = new Set<string>();
+		const result: string[] = [];
+
+		for (const entry of tags) {
+			if (typeof entry !== 'string') {
+				continue;
+			}
+
+			const trimmed = entry.trim();
+			if (trimmed.length === 0 || trimmed.length > MAX_TAG_LENGTH) {
+				continue;
+			}
+
+			if (!TAG_PATTERN.test(trimmed)) {
+				continue;
+			}
+
+			const key = trimmed.toLowerCase();
+			if (seen.has(key)) {
+				continue;
+			}
+
+			seen.add(key);
+			result.push(trimmed);
+
+			if (result.length >= MAX_TAGS) {
+				break;
+			}
+		}
+
+		return result;
+	}
+
 	reconnectAgent(id: string): AgentSnapshot {
 		const record = this.agents.get(id);
 		if (!record) {
@@ -233,6 +271,20 @@ export class AgentRegistry {
 		};
 
 		record.pendingCommands.unshift(command);
+
+		return this.toSnapshot(record);
+	}
+
+	updateAgentTags(id: string, tags: string[]): AgentSnapshot {
+		const record = this.agents.get(id);
+		if (!record) {
+			throw new RegistryError('Agent not found', 404);
+		}
+
+		record.metadata = {
+			...record.metadata,
+			tags: this.normalizeTags(Array.isArray(tags) ? tags : [])
+		};
 
 		return this.toSnapshot(record);
 	}
