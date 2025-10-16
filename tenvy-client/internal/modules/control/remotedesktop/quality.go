@@ -188,6 +188,13 @@ func alignEven(value int) int {
 	return value
 }
 
+func alignEvenDown(value int) int {
+	if value%2 != 0 {
+		value--
+	}
+	return value
+}
+
 func clipQualityBaseline(preset RemoteDesktopQuality) int {
 	switch preset {
 	case RemoteQualityHigh:
