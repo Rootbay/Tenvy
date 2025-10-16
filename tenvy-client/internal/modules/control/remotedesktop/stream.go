@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"hash/maphash"
 	"image"
 	"image/jpeg"
 	"image/png"
@@ -20,6 +19,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/cespare/xxhash/v2"
 	"github.com/kbinani/screenshot"
 	xdraw "golang.org/x/image/draw"
 )
@@ -32,6 +32,7 @@ type remoteTileHasher struct {
 	height    int
 	ready     bool
 	checksums []uint64
+	digest    *xxhash.Digest
 }
 
 type streamLoopState struct {
@@ -184,6 +185,9 @@ func (h *remoteTileHasher) reset() {
 	h.height = 0
 	h.ready = false
 	h.checksums = h.checksums[:0]
+	if h.digest != nil {
+		h.digest.Reset()
+	}
 }
 
 func (h *remoteTileHasher) ensure(width, height, tile int) {
@@ -211,6 +215,27 @@ func (h *remoteTileHasher) ensure(width, height, tile int) {
 	}
 }
 
+func (h *remoteTileHasher) checksumTile(data []byte, stride, x, y, w, hgt int) uint64 {
+	if w <= 0 || hgt <= 0 {
+		return 0
+	}
+
+	if h.digest == nil {
+		h.digest = xxhash.New()
+	} else {
+		h.digest.Reset()
+	}
+
+	rowWidth := w * 4
+	base := y*stride + x*4
+	for row := 0; row < hgt; row++ {
+		start := base + row*stride
+		h.digest.Write(data[start : start+rowWidth])
+	}
+
+	return h.digest.Sum64()
+}
+
 func (h *remoteTileHasher) rebuild(data []byte, width, height, tile int) {
 	if data == nil || width <= 0 || height <= 0 {
 		h.reset()
@@ -224,7 +249,7 @@ func (h *remoteTileHasher) rebuild(data []byte, width, height, tile int) {
 		hgt := minInt(h.tile, height-y)
 		for x := 0; x < width; x += h.tile {
 			wdt := minInt(h.tile, width-x)
-			h.checksums[idx] = tileChecksum(data, stride, x, y, wdt, hgt)
+			h.checksums[idx] = h.checksumTile(data, stride, x, y, wdt, hgt)
 			idx++
 		}
 	}
@@ -255,7 +280,6 @@ var (
 	frameBufferPool  = sync.Pool{New: func() interface{} { return make([]byte, 0) }}
 	jpegOptionsPool  = sync.Pool{New: func() interface{} { return new(jpeg.Options) }}
 	jsonBodyPool     = sync.Pool{New: func() interface{} { return &jsonRequestBody{Buffer: new(bytes.Buffer)} }}
-	tileHashPool     = sync.Pool{New: func() interface{} { return new(maphash.Hash) }}
 	maxEncodeWorkers = maxInt(1, runtime.GOMAXPROCS(0))
 	encoderPoolOnce  sync.Once
 	sharedPool       *regionEncoderPool
@@ -1294,7 +1318,9 @@ func diffFrames(previous, current []byte, width, height, tile int, loop *streamL
 		regions = make([]tileRegion, 0, requiredCapacity)
 	}
 	regions = regions[:0]
-	defer loop.releaseRegions(regions)
+	defer func() {
+		loop.releaseRegions(regions)
+	}()
 
 	maxRegions := maxInt(64, totalTiles/maxDeltaTileFactor)
 	maxPixels := int(float64(width*height) * maxDeltaCoverageRatio)
@@ -1308,20 +1334,24 @@ func diffFrames(previous, current []byte, width, height, tile int, loop *streamL
 		h := minInt(tile, height-y)
 		for x := 0; x < width; x += tile {
 			w := minInt(tile, width-x)
-			sum := tileChecksum(current, stride, x, y, w, h)
-			prevSum := uint64(0)
-			if idx < len(state.checksums) {
-				prevSum = state.checksums[idx]
-			}
-			state.checksums[idx] = sum
+			tileIndex := idx
 			idx++
+
+			prevSum := uint64(0)
+			if tileIndex < len(state.checksums) {
+				prevSum = state.checksums[tileIndex]
+			}
+
+			sum := state.checksumTile(current, stride, x, y, w, h)
+			state.checksums[tileIndex] = sum
 
 			if baselineReady && prevSum == sum {
 				continue
 			}
 
+			tileArea := w * h
 			regions = append(regions, tileRegion{x: x, y: y, w: w, h: h})
-			changedPixels += w * h
+			changedPixels += tileArea
 			if len(regions) > maxRegions || changedPixels > maxPixels {
 				state.ready = false
 				return nil, true, nil
@@ -1562,31 +1592,6 @@ func regionChanged(prev, curr []byte, stride, x, y, w, h int) bool {
 		}
 	}
 	return false
-}
-
-func tileChecksum(data []byte, stride, x, y, w, h int) uint64 {
-	if w <= 0 || h <= 0 {
-		return 0
-	}
-
-	hasherValue := tileHashPool.Get()
-	hasher, _ := hasherValue.(*maphash.Hash)
-	if hasher == nil {
-		hasher = new(maphash.Hash)
-	}
-	hasher.Reset()
-
-	rowWidth := w * 4
-	for row := 0; row < h; row++ {
-		start := (y+row)*stride + x*4
-		segment := data[start : start+rowWidth]
-		_, _ = hasher.Write(segment)
-	}
-
-	sum := hasher.Sum64()
-	hasher.Reset()
-	tileHashPool.Put(hasher)
-	return sum
 }
 
 func (c *remoteDesktopSessionController) refreshMonitorsLocked(session *RemoteDesktopSession, force bool) {
