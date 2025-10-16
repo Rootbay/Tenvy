@@ -7,6 +7,7 @@
 	import { Label } from '$lib/components/ui/label/index.js';
 	import { Badge } from '$lib/components/ui/badge/index.js';
 	import { Textarea } from '$lib/components/ui/textarea/index.js';
+	import { Select, SelectTrigger, SelectContent, SelectItem } from '$lib/components/ui/select/index.js';
 	import type { Client } from '$lib/data/clients';
 	import { buildClientToolUrl, getClientTool, type DialogToolId } from '$lib/data/client-tools';
 	import { notifyToolActivationCommand } from '$lib/utils/agent-commands.js';
@@ -317,11 +318,14 @@
 				</div>
 				<div class="grid gap-2">
 					<Label for={messageStyleId}>Style</Label>
-					<select id={messageStyleId} class={selectClasses} bind:value={messageStyle}>
-						<option value="info">Information</option>
-						<option value="warning">Warning</option>
-						<option value="critical">Critical</option>
-					</select>
+					<Select type="single" bind:value={messageStyle}>
+						<SelectTrigger id={messageStyleId} class={selectClasses} />
+						<SelectContent>
+							<SelectItem value="info">Information</SelectItem>
+							<SelectItem value="warning">Warning</SelectItem>
+							<SelectItem value="critical">Critical</SelectItem>
+						</SelectContent>
+					</Select>
 				</div>
 				<p class="text-xs text-muted-foreground">
 					Delivery styling and acknowledgement capture will integrate here in a subsequent
