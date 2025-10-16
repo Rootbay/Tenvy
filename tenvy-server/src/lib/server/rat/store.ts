@@ -249,13 +249,21 @@ export class AgentRegistry {
                         const id = typeof entry.id === 'string' && entry.id.trim() !== '' ? entry.id : null;
                         const key = typeof entry.key === 'string' && entry.key.trim() !== '' ? entry.key : null;
                         const metadata = entry.metadata ?? null;
-                        const status = entry.status ?? null;
-                        if (!id || !key || !metadata || !status) {
+                        const status = entry.status;
+                        if (!id || !key || !metadata) {
+                                continue;
+                        }
+                        if (status !== 'online' && status !== 'offline' && status !== 'error') {
                                 continue;
                         }
 
                         const connectedAt = parsePersistedDate(entry.connectedAt, new Date());
-                        const lastSeen = parsePersistedDate(entry.lastSeen, connectedAt);
+                        let lastSeen = parsePersistedDate(entry.lastSeen, connectedAt);
+                        let normalizedStatus = status as AgentStatus;
+                        if (normalizedStatus === 'online') {
+                                normalizedStatus = 'offline';
+                                lastSeen = new Date();
+                        }
 
                         const sharedNotes = new Map<string, SharedNoteRecord>();
                         if (Array.isArray(entry.sharedNotes)) {
@@ -301,7 +309,7 @@ export class AgentRegistry {
                                 id,
                                 key,
                                 metadata: normalizedMetadata,
-                                status,
+                                status: normalizedStatus,
                                 connectedAt,
                                 lastSeen,
                                 metrics: entry.metrics ? { ...entry.metrics } : undefined,
