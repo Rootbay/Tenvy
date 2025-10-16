@@ -1,10 +1,12 @@
 import { randomUUID } from 'crypto';
 import type {
+	RemoteDesktopEncoder,
 	RemoteDesktopFrameMetrics,
 	RemoteDesktopFramePacket,
 	RemoteDesktopMonitor,
 	RemoteDesktopSessionState,
-	RemoteDesktopSettings
+	RemoteDesktopSettings,
+	RemoteDesktopSettingsPatch
 } from '$lib/types/remote-desktop';
 
 const encoder = new TextEncoder();
@@ -22,7 +24,8 @@ const defaultSettings: RemoteDesktopSettings = Object.freeze({
 	monitor: 0,
 	mouse: true,
 	keyboard: true,
-	mode: 'video'
+	mode: 'video',
+	encoder: 'auto'
 });
 
 const defaultMonitors: readonly RemoteDesktopMonitor[] = Object.freeze([
@@ -31,6 +34,7 @@ const defaultMonitors: readonly RemoteDesktopMonitor[] = Object.freeze([
 
 const qualities = new Set<RemoteDesktopSettings['quality']>(['auto', 'high', 'medium', 'low']);
 const modes = new Set<RemoteDesktopSettings['mode']>(['images', 'video']);
+const encoders = new Set<RemoteDesktopEncoder>(['auto', 'hevc', 'avc', 'jpeg']);
 
 class RemoteDesktopError extends Error {
 	status: number;
@@ -50,6 +54,7 @@ interface RemoteDesktopSessionRecord {
 	lastUpdatedAt?: Date;
 	lastSequence?: number;
 	settings: RemoteDesktopSettings;
+	activeEncoder?: RemoteDesktopEncoder;
 	monitors: RemoteDesktopMonitor[];
 	metrics?: RemoteDesktopFrameMetrics;
 	history: RemoteDesktopFramePacket[];
@@ -91,131 +96,131 @@ function monitorsEqual(a: readonly RemoteDesktopMonitor[], b: readonly RemoteDes
 }
 
 function cloneFrame(frame: RemoteDesktopFramePacket): RemoteDesktopFramePacket {
-        return structuredClone(frame);
+	return structuredClone(frame);
 }
 
 function isFiniteNumber(value: unknown): value is number {
-        return typeof value === 'number' && Number.isFinite(value);
+	return typeof value === 'number' && Number.isFinite(value);
 }
 
 function validateBase64Payload(data: unknown, label: string) {
-        if (typeof data !== 'string' || data.length === 0) {
-                throw new RemoteDesktopError(`${label} payload must be base64 encoded`, 400);
-        }
-        if (data.length > MAX_BASE64_PAYLOAD) {
-                throw new RemoteDesktopError(`${label} payload too large`, 413);
-        }
+	if (typeof data !== 'string' || data.length === 0) {
+		throw new RemoteDesktopError(`${label} payload must be base64 encoded`, 400);
+	}
+	if (data.length > MAX_BASE64_PAYLOAD) {
+		throw new RemoteDesktopError(`${label} payload too large`, 413);
+	}
 }
 
 function validateFramePacket(frame: RemoteDesktopFramePacket) {
-        if (!isFiniteNumber(frame.width) || frame.width <= 0 || frame.width > MAX_FRAME_WIDTH) {
-                throw new RemoteDesktopError('Invalid frame width', 400);
-        }
-        if (!isFiniteNumber(frame.height) || frame.height <= 0 || frame.height > MAX_FRAME_HEIGHT) {
-                throw new RemoteDesktopError('Invalid frame height', 400);
-        }
-        if (!isFiniteNumber(frame.sequence)) {
-                throw new RemoteDesktopError('Invalid frame sequence number', 400);
-        }
-        if (typeof frame.encoding !== 'string' || frame.encoding.length === 0) {
-                throw new RemoteDesktopError('Frame encoding is required', 400);
-        }
-        if (typeof frame.timestamp !== 'string' || frame.timestamp.length === 0) {
-                throw new RemoteDesktopError('Frame timestamp is required', 400);
-        }
+	if (!isFiniteNumber(frame.width) || frame.width <= 0 || frame.width > MAX_FRAME_WIDTH) {
+		throw new RemoteDesktopError('Invalid frame width', 400);
+	}
+	if (!isFiniteNumber(frame.height) || frame.height <= 0 || frame.height > MAX_FRAME_HEIGHT) {
+		throw new RemoteDesktopError('Invalid frame height', 400);
+	}
+	if (!isFiniteNumber(frame.sequence)) {
+		throw new RemoteDesktopError('Invalid frame sequence number', 400);
+	}
+	if (typeof frame.encoding !== 'string' || frame.encoding.length === 0) {
+		throw new RemoteDesktopError('Frame encoding is required', 400);
+	}
+	if (typeof frame.timestamp !== 'string' || frame.timestamp.length === 0) {
+		throw new RemoteDesktopError('Frame timestamp is required', 400);
+	}
 
-        if (frame.image) {
-                validateBase64Payload(frame.image, 'Frame');
-        }
+	if (frame.image) {
+		validateBase64Payload(frame.image, 'Frame');
+	}
 
-        if (frame.deltas) {
-                if (!Array.isArray(frame.deltas)) {
-                        throw new RemoteDesktopError('Frame deltas must be an array', 400);
-                }
-                if (frame.deltas.length > MAX_DELTA_RECTS) {
-                        throw new RemoteDesktopError('Too many delta rectangles', 413);
-                }
-                for (const rect of frame.deltas) {
-                        if (
-                                !isFiniteNumber(rect.width) ||
-                                !isFiniteNumber(rect.height) ||
-                                rect.width <= 0 ||
-                                rect.height <= 0 ||
-                                rect.width > frame.width ||
-                                rect.height > frame.height
-                        ) {
-                                throw new RemoteDesktopError('Invalid delta rectangle dimensions', 400);
-                        }
-                        if (!isFiniteNumber(rect.x) || !isFiniteNumber(rect.y)) {
-                                throw new RemoteDesktopError('Invalid delta rectangle offset', 400);
-                        }
-                        if (typeof rect.encoding !== 'string' || rect.encoding.length === 0) {
-                                throw new RemoteDesktopError('Delta rectangle encoding is required', 400);
-                        }
-                        validateBase64Payload(rect.data, 'Delta rectangle');
-                }
-        }
+	if (frame.deltas) {
+		if (!Array.isArray(frame.deltas)) {
+			throw new RemoteDesktopError('Frame deltas must be an array', 400);
+		}
+		if (frame.deltas.length > MAX_DELTA_RECTS) {
+			throw new RemoteDesktopError('Too many delta rectangles', 413);
+		}
+		for (const rect of frame.deltas) {
+			if (
+				!isFiniteNumber(rect.width) ||
+				!isFiniteNumber(rect.height) ||
+				rect.width <= 0 ||
+				rect.height <= 0 ||
+				rect.width > frame.width ||
+				rect.height > frame.height
+			) {
+				throw new RemoteDesktopError('Invalid delta rectangle dimensions', 400);
+			}
+			if (!isFiniteNumber(rect.x) || !isFiniteNumber(rect.y)) {
+				throw new RemoteDesktopError('Invalid delta rectangle offset', 400);
+			}
+			if (typeof rect.encoding !== 'string' || rect.encoding.length === 0) {
+				throw new RemoteDesktopError('Delta rectangle encoding is required', 400);
+			}
+			validateBase64Payload(rect.data, 'Delta rectangle');
+		}
+	}
 
-        if (frame.clip) {
-                if (!isFiniteNumber(frame.clip.durationMs) || frame.clip.durationMs < 0) {
-                        throw new RemoteDesktopError('Invalid clip duration', 400);
-                }
-                const { frames } = frame.clip;
-                if (!Array.isArray(frames)) {
-                        throw new RemoteDesktopError('Clip frames must be an array', 400);
-                }
-                if (frames.length > MAX_CLIP_FRAMES) {
-                        throw new RemoteDesktopError('Clip contains too many frames', 413);
-                }
-                for (const clipFrame of frames) {
-                        if (
-                                !isFiniteNumber(clipFrame.width) ||
-                                !isFiniteNumber(clipFrame.height) ||
-                                clipFrame.width <= 0 ||
-                                clipFrame.height <= 0 ||
-                                clipFrame.width > frame.width ||
-                                clipFrame.height > frame.height
-                        ) {
-                                throw new RemoteDesktopError('Invalid clip frame dimensions', 400);
-                        }
-                        if (!isFiniteNumber(clipFrame.offsetMs) || clipFrame.offsetMs < 0) {
-                                throw new RemoteDesktopError('Invalid clip frame offset', 400);
-                        }
-                        if (typeof clipFrame.encoding !== 'string' || clipFrame.encoding.length === 0) {
-                                throw new RemoteDesktopError('Clip frame encoding is required', 400);
-                        }
-                        validateBase64Payload(clipFrame.data, 'Clip frame');
-                }
-        }
+	if (frame.clip) {
+		if (!isFiniteNumber(frame.clip.durationMs) || frame.clip.durationMs < 0) {
+			throw new RemoteDesktopError('Invalid clip duration', 400);
+		}
+		const { frames } = frame.clip;
+		if (!Array.isArray(frames)) {
+			throw new RemoteDesktopError('Clip frames must be an array', 400);
+		}
+		if (frames.length > MAX_CLIP_FRAMES) {
+			throw new RemoteDesktopError('Clip contains too many frames', 413);
+		}
+		for (const clipFrame of frames) {
+			if (
+				!isFiniteNumber(clipFrame.width) ||
+				!isFiniteNumber(clipFrame.height) ||
+				clipFrame.width <= 0 ||
+				clipFrame.height <= 0 ||
+				clipFrame.width > frame.width ||
+				clipFrame.height > frame.height
+			) {
+				throw new RemoteDesktopError('Invalid clip frame dimensions', 400);
+			}
+			if (!isFiniteNumber(clipFrame.offsetMs) || clipFrame.offsetMs < 0) {
+				throw new RemoteDesktopError('Invalid clip frame offset', 400);
+			}
+			if (typeof clipFrame.encoding !== 'string' || clipFrame.encoding.length === 0) {
+				throw new RemoteDesktopError('Clip frame encoding is required', 400);
+			}
+			validateBase64Payload(clipFrame.data, 'Clip frame');
+		}
+	}
 
-        if (frame.monitors) {
-                if (!Array.isArray(frame.monitors)) {
-                        throw new RemoteDesktopError('Monitor list must be an array', 400);
-                }
-                if (frame.monitors.length > MAX_MONITORS) {
-                        throw new RemoteDesktopError('Too many monitors reported', 413);
-                }
-                for (const monitor of frame.monitors) {
-                        if (
-                                !isFiniteNumber(monitor.width) ||
-                                !isFiniteNumber(monitor.height) ||
-                                monitor.width <= 0 ||
-                                monitor.height <= 0 ||
-                                monitor.width > MAX_FRAME_WIDTH ||
-                                monitor.height > MAX_FRAME_HEIGHT
-                        ) {
-                                throw new RemoteDesktopError('Invalid monitor dimensions', 400);
-                        }
-                }
-        }
+	if (frame.monitors) {
+		if (!Array.isArray(frame.monitors)) {
+			throw new RemoteDesktopError('Monitor list must be an array', 400);
+		}
+		if (frame.monitors.length > MAX_MONITORS) {
+			throw new RemoteDesktopError('Too many monitors reported', 413);
+		}
+		for (const monitor of frame.monitors) {
+			if (
+				!isFiniteNumber(monitor.width) ||
+				!isFiniteNumber(monitor.height) ||
+				monitor.width <= 0 ||
+				monitor.height <= 0 ||
+				monitor.width > MAX_FRAME_WIDTH ||
+				monitor.height > MAX_FRAME_HEIGHT
+			) {
+				throw new RemoteDesktopError('Invalid monitor dimensions', 400);
+			}
+		}
+	}
 
-        if (frame.metrics) {
-                for (const [key, value] of Object.entries(frame.metrics)) {
-                        if (value !== undefined && !isFiniteNumber(value)) {
-                                throw new RemoteDesktopError(`Invalid metric value for ${key}`, 400);
-                        }
-                }
-        }
+	if (frame.metrics) {
+		for (const [key, value] of Object.entries(frame.metrics)) {
+			if (value !== undefined && !isFiniteNumber(value)) {
+				throw new RemoteDesktopError(`Invalid metric value for ${key}`, 400);
+			}
+		}
+	}
 }
 
 function appendFrameHistory(record: RemoteDesktopSessionRecord, frame: RemoteDesktopFramePacket) {
@@ -252,7 +257,7 @@ function appendFrameHistory(record: RemoteDesktopSessionRecord, frame: RemoteDes
 	}
 }
 
-function resolveSettings(settings?: Partial<RemoteDesktopSettings>): RemoteDesktopSettings {
+function resolveSettings(settings?: RemoteDesktopSettingsPatch): RemoteDesktopSettings {
 	const resolved = { ...defaultSettings } satisfies RemoteDesktopSettings;
 	if (settings) {
 		if (settings.quality) {
@@ -276,11 +281,17 @@ function resolveSettings(settings?: Partial<RemoteDesktopSettings>): RemoteDeskt
 		if (typeof settings.keyboard === 'boolean') {
 			resolved.keyboard = settings.keyboard;
 		}
+		if (settings.encoder) {
+			if (!encoders.has(settings.encoder)) {
+				throw new RemoteDesktopError('Invalid encoder preference', 400);
+			}
+			resolved.encoder = settings.encoder;
+		}
 	}
 	return resolved;
 }
 
-function applySettings(target: RemoteDesktopSettings, updates: Partial<RemoteDesktopSettings>) {
+function applySettings(target: RemoteDesktopSettings, updates: RemoteDesktopSettingsPatch) {
 	if (updates.quality) {
 		if (!qualities.has(updates.quality)) {
 			throw new RemoteDesktopError('Invalid quality preset', 400);
@@ -305,6 +316,12 @@ function applySettings(target: RemoteDesktopSettings, updates: Partial<RemoteDes
 	if (typeof updates.keyboard === 'boolean') {
 		target.keyboard = updates.keyboard;
 	}
+	if (updates.encoder) {
+		if (!encoders.has(updates.encoder)) {
+			throw new RemoteDesktopError('Invalid encoder preference', 400);
+		}
+		target.encoder = updates.encoder;
+	}
 }
 
 function formatEvent(event: string, payload: unknown): string {
@@ -320,6 +337,7 @@ function toSessionState(record: RemoteDesktopSessionRecord): RemoteDesktopSessio
 		lastUpdatedAt: record.lastUpdatedAt?.toISOString(),
 		lastSequence: record.lastSequence,
 		settings: cloneSettings(record.settings),
+		activeEncoder: record.activeEncoder,
 		monitors: cloneMonitors(record.monitors),
 		metrics: record.metrics ? { ...record.metrics } : undefined
 	};
@@ -329,21 +347,20 @@ export class RemoteDesktopManager {
 	private sessions = new Map<string, RemoteDesktopSessionRecord>();
 	private subscribers = new Map<string, Set<RemoteDesktopSubscriber>>();
 
-	createSession(
-		agentId: string,
-		settings?: Partial<RemoteDesktopSettings>
-	): RemoteDesktopSessionState {
+	createSession(agentId: string, settings?: RemoteDesktopSettingsPatch): RemoteDesktopSessionState {
 		const existing = this.sessions.get(agentId);
 		if (existing?.active) {
 			throw new RemoteDesktopError('Remote desktop session already active', 409);
 		}
 
+		const resolved = resolveSettings(settings);
 		const record: RemoteDesktopSessionRecord = {
 			id: randomUUID(),
 			agentId,
 			active: true,
 			createdAt: new Date(),
-			settings: resolveSettings(settings),
+			settings: resolved,
+			activeEncoder: resolved.encoder,
 			monitors: cloneMonitors(defaultMonitors),
 			history: [],
 			hasKeyFrame: false
@@ -366,12 +383,15 @@ export class RemoteDesktopManager {
 		return toSessionState(record);
 	}
 
-	updateSettings(agentId: string, updates: Partial<RemoteDesktopSettings>) {
+	updateSettings(agentId: string, updates: RemoteDesktopSettingsPatch) {
 		const record = this.sessions.get(agentId);
 		if (!record || !record.active) {
 			throw new RemoteDesktopError('No active remote desktop session', 404);
 		}
 		applySettings(record.settings, updates);
+		if (updates.encoder) {
+			record.activeEncoder = updates.encoder;
+		}
 		if (record.settings.monitor >= record.monitors.length) {
 			record.settings.monitor = Math.max(
 				0,
@@ -392,22 +412,26 @@ export class RemoteDesktopManager {
 		this.broadcast(agentId, 'end', { reason: 'closed' });
 	}
 
-        ingestFrame(agentId: string, frame: RemoteDesktopFramePacket) {
-                const record = this.sessions.get(agentId);
-                if (!record || !record.active) {
-                        throw new RemoteDesktopError('No active remote desktop session', 404);
-                }
-                if (frame.sessionId !== record.id) {
-                        throw new RemoteDesktopError('Session identifier mismatch', 409);
-                }
+	ingestFrame(agentId: string, frame: RemoteDesktopFramePacket) {
+		const record = this.sessions.get(agentId);
+		if (!record || !record.active) {
+			throw new RemoteDesktopError('No active remote desktop session', 404);
+		}
+		if (frame.sessionId !== record.id) {
+			throw new RemoteDesktopError('Session identifier mismatch', 409);
+		}
 
-                validateFramePacket(frame);
+		validateFramePacket(frame);
 
-                record.lastSequence = frame.sequence;
-                record.lastUpdatedAt = new Date();
-                if (frame.metrics) {
-                        record.metrics = { ...frame.metrics };
-                }
+		record.lastSequence = frame.sequence;
+		record.lastUpdatedAt = new Date();
+		if (frame.metrics) {
+			record.metrics = { ...frame.metrics };
+		}
+
+		if (frame.encoder && encoders.has(frame.encoder)) {
+			record.activeEncoder = frame.encoder;
+		}
 
 		if (frame.monitors && frame.monitors.length > 0) {
 			const next = cloneMonitors(frame.monitors);

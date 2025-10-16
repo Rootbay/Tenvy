@@ -1,7 +1,9 @@
 package remotedesktop
 
 import (
+	"bufio"
 	"bytes"
+	"context"
 	"encoding/base64"
 	"errors"
 	"fmt"
@@ -10,6 +12,7 @@ import (
 	"os/exec"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -41,12 +44,13 @@ type clipEncodeResult struct {
 	EncoderName string
 }
 
-type ffmpegHEVCEncoder struct {
+type ffmpegClipEncoder struct {
 	ffmpegPath string
-	candidates []ffmpegHEVCCandidate
+	container  string
+	candidates []ffmpegEncoderCandidate
 }
 
-type ffmpegHEVCCandidate struct {
+type ffmpegEncoderCandidate struct {
 	name      string
 	encoder   string
 	filter    string
@@ -58,22 +62,84 @@ func newHEVCVideoEncoder() (clipVideoEncoder, error) {
 	if err != nil {
 		return nil, fmt.Errorf("ffmpeg binary not found: %w", err)
 	}
-	encoder := &ffmpegHEVCEncoder{
+	caps := detectFFmpegEncoderCapabilities(path)
+	candidates := make([]ffmpegEncoderCandidate, 0, 5)
+	if caps.supports("hevc_nvenc") {
+		candidates = append(candidates, ffmpegEncoderCandidate{name: "NVENC", encoder: "hevc_nvenc", filter: "format=yuv420p"})
+	}
+	if caps.supports("hevc_qsv") {
+		candidates = append(candidates, ffmpegEncoderCandidate{name: "QuickSync", encoder: "hevc_qsv", filter: "format=yuv420p"})
+	}
+	if caps.supports("hevc_amf") {
+		candidates = append(candidates, ffmpegEncoderCandidate{name: "AMF", encoder: "hevc_amf", filter: "format=yuv420p"})
+	}
+	if caps.supports("hevc_vaapi") {
+		candidates = append(candidates, ffmpegEncoderCandidate{
+			name:    "VA-API",
+			encoder: "hevc_vaapi",
+			filter:  "format=bgra,hwupload,scale_vaapi=format=nv12",
+			extraArgs: []string{
+				"-profile:v", "main",
+			},
+		})
+	}
+	if caps.supports("libx265") {
+		candidates = append(candidates, ffmpegEncoderCandidate{name: "libx265", encoder: "libx265", filter: "format=yuv420p", extraArgs: []string{"-preset", "faster"}})
+	} else if len(candidates) == 0 {
+		candidates = append(candidates, ffmpegEncoderCandidate{name: "libx265", encoder: "libx265", filter: "format=yuv420p", extraArgs: []string{"-preset", "faster"}})
+	}
+	encoder := &ffmpegClipEncoder{
 		ffmpegPath: path,
-		candidates: []ffmpegHEVCCandidate{
-			{name: "NVENC", encoder: "hevc_nvenc", filter: "format=yuv420p"},
-			{name: "QuickSync", encoder: "hevc_qsv", filter: "format=yuv420p"},
-			{name: "AMF", encoder: "hevc_amf", filter: "format=yuv420p"},
-		},
+		container:  "hevc",
+		candidates: candidates,
 	}
 	return encoder, nil
 }
 
-func (e *ffmpegHEVCEncoder) Close() error {
+func newAVCVideoEncoder() (clipVideoEncoder, error) {
+	path, err := exec.LookPath("ffmpeg")
+	if err != nil {
+		return nil, fmt.Errorf("ffmpeg binary not found: %w", err)
+	}
+	caps := detectFFmpegEncoderCapabilities(path)
+	candidates := make([]ffmpegEncoderCandidate, 0, 6)
+	if caps.supports("h264_nvenc") {
+		candidates = append(candidates, ffmpegEncoderCandidate{name: "NVENC", encoder: "h264_nvenc", filter: "format=yuv420p"})
+	}
+	if caps.supports("h264_qsv") {
+		candidates = append(candidates, ffmpegEncoderCandidate{name: "QuickSync", encoder: "h264_qsv", filter: "format=yuv420p"})
+	}
+	if caps.supports("h264_amf") {
+		candidates = append(candidates, ffmpegEncoderCandidate{name: "AMF", encoder: "h264_amf", filter: "format=yuv420p"})
+	}
+	if caps.supports("h264_vaapi") {
+		candidates = append(candidates, ffmpegEncoderCandidate{
+			name:    "VA-API",
+			encoder: "h264_vaapi",
+			filter:  "format=bgra,hwupload,scale_vaapi=format=nv12",
+			extraArgs: []string{
+				"-profile:v", "high",
+			},
+		})
+	}
+	if caps.supports("libx264") {
+		candidates = append(candidates, ffmpegEncoderCandidate{name: "libx264", encoder: "libx264", filter: "format=yuv420p", extraArgs: []string{"-preset", "fast"}})
+	} else if len(candidates) == 0 {
+		candidates = append(candidates, ffmpegEncoderCandidate{name: "libx264", encoder: "libx264", filter: "format=yuv420p", extraArgs: []string{"-preset", "fast"}})
+	}
+	encoder := &ffmpegClipEncoder{
+		ffmpegPath: path,
+		container:  "h264",
+		candidates: candidates,
+	}
+	return encoder, nil
+}
+
+func (e *ffmpegClipEncoder) Close() error {
 	return nil
 }
 
-func (e *ffmpegHEVCEncoder) EncodeClip(frames []clipFrameBuffer, opts clipEncodeOptions) (clipEncodeResult, error) {
+func (e *ffmpegClipEncoder) EncodeClip(frames []clipFrameBuffer, opts clipEncodeOptions) (clipEncodeResult, error) {
 	if len(frames) == 0 {
 		return clipEncodeResult{}, errors.New("no frames provided for encoding")
 	}
@@ -102,22 +168,22 @@ func (e *ffmpegHEVCEncoder) EncodeClip(frames []clipFrameBuffer, opts clipEncode
 				OffsetMs: 0,
 				Width:    opts.Width,
 				Height:   opts.Height,
-				Encoding: remoteClipEncodingHEVC,
+				Encoding: e.container,
 				Data:     encoded,
 			}},
 			Bytes:       len(encoded),
-			Encoding:    remoteClipEncodingHEVC,
+			Encoding:    e.container,
 			EncoderName: candidate.name,
 		}, nil
 	}
 	if lastErr == nil {
-		lastErr = errors.New("no HEVC encoder candidates succeeded")
+		lastErr = errors.New("no encoder candidates succeeded")
 	}
 	return clipEncodeResult{}, lastErr
 }
 
-func (e *ffmpegHEVCEncoder) encodeWithCandidate(
-	candidate ffmpegHEVCCandidate,
+func (e *ffmpegClipEncoder) encodeWithCandidate(
+	candidate ffmpegEncoderCandidate,
 	frames []clipFrameBuffer,
 	opts clipEncodeOptions,
 	fps float64,
@@ -151,7 +217,11 @@ func (e *ffmpegHEVCEncoder) encodeWithCandidate(
 		args = append(args, candidate.extraArgs...)
 	}
 
-	args = append(args, "-f", "hevc", "pipe:1")
+	container := strings.TrimSpace(e.container)
+	if container == "" {
+		container = "hevc"
+	}
+	args = append(args, "-f", container, "pipe:1")
 
 	cmd := exec.Command(e.ffmpegPath, args...)
 	stdin, err := cmd.StdinPipe()
@@ -208,6 +278,60 @@ func (e *ffmpegHEVCEncoder) encodeWithCandidate(
 	}
 
 	return data, nil
+}
+
+type ffmpegEncoderCapabilities struct {
+	encoders map[string]struct{}
+}
+
+func (c *ffmpegEncoderCapabilities) supports(name string) bool {
+	if c == nil {
+		return false
+	}
+	if c.encoders == nil {
+		return false
+	}
+	_, ok := c.encoders[strings.ToLower(strings.TrimSpace(name))]
+	return ok
+}
+
+var ffmpegEncoderCache sync.Map
+
+func detectFFmpegEncoderCapabilities(path string) *ffmpegEncoderCapabilities {
+	if cached, ok := ffmpegEncoderCache.Load(path); ok {
+		if caps, valid := cached.(*ffmpegEncoderCapabilities); valid && caps != nil {
+			return caps
+		}
+	}
+	caps := &ffmpegEncoderCapabilities{encoders: map[string]struct{}{}}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, path, "-hide_banner", "-loglevel", "error", "-encoders")
+	var output bytes.Buffer
+	cmd.Stdout = &output
+	cmd.Stderr = &output
+	if err := cmd.Run(); err != nil {
+		ffmpegEncoderCache.Store(path, caps)
+		return caps
+	}
+	scanner := bufio.NewScanner(bytes.NewReader(output.Bytes()))
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" || strings.HasPrefix(line, "-Encoders") {
+			continue
+		}
+		fields := strings.Fields(line)
+		if len(fields) < 2 {
+			continue
+		}
+		// Encoder lines usually begin with capability flags (e.g. " V..... hevc_nvenc")
+		name := strings.ToLower(strings.TrimSpace(fields[1]))
+		if name != "" {
+			caps.encoders[name] = struct{}{}
+		}
+	}
+	ffmpegEncoderCache.Store(path, caps)
+	return caps
 }
 
 func estimateClipFPS(frames []clipFrameBuffer, interval time.Duration) float64 {

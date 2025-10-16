@@ -9,6 +9,7 @@ func defaultRemoteDesktopSettings() RemoteDesktopSettings {
 		Mouse:    true,
 		Keyboard: true,
 		Mode:     RemoteStreamModeVideo,
+		Encoder:  RemoteEncoderAuto,
 	}
 }
 
@@ -31,6 +32,9 @@ func applySettingsPatch(settings *RemoteDesktopSettings, patch *RemoteDesktopSet
 	}
 	if patch.Mode != nil {
 		settings.Mode = normalizeStreamMode(*patch.Mode)
+	}
+	if patch.Encoder != nil {
+		settings.Encoder = normalizeEncoder(*patch.Encoder)
 	}
 }
 
@@ -57,5 +61,20 @@ func normalizeStreamMode(value RemoteDesktopStreamMode) RemoteDesktopStreamMode 
 		return RemoteStreamModeVideo
 	default:
 		return RemoteStreamModeVideo
+	}
+}
+
+func normalizeEncoder(value RemoteDesktopEncoder) RemoteDesktopEncoder {
+	switch strings.ToLower(string(value)) {
+	case string(RemoteEncoderHEVC):
+		return RemoteEncoderHEVC
+	case string(RemoteEncoderAVC):
+		return RemoteEncoderAVC
+	case string(RemoteEncoderJPEG):
+		return RemoteEncoderJPEG
+	case string(RemoteEncoderAuto):
+		fallthrough
+	default:
+		return RemoteEncoderAuto
 	}
 }

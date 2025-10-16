@@ -46,10 +46,14 @@ type streamLoopState struct {
 	regionScratch  []tileRegion
 	deltaScratch   []RemoteDesktopDeltaRect
 	encoderPool    *regionEncoderPool
-	clipEncoder    clipVideoEncoder
-	encoderInit    bool
-	encoderErr     error
-	encoderWarned  bool
+	clipEncoders   map[string]*clipEncoderState
+}
+
+type clipEncoderState struct {
+	encoder clipVideoEncoder
+	init    bool
+	err     error
+	warned  bool
 }
 
 type sessionSnapshot struct {
@@ -61,6 +65,7 @@ type sessionSnapshot struct {
 	tile            int
 	frameInterval   time.Duration
 	mode            RemoteDesktopStreamMode
+	encoder         RemoteDesktopEncoder
 	forceKey        bool
 	minClipQuality  int
 	maxClipQuality  int
@@ -71,8 +76,9 @@ type sessionSnapshot struct {
 
 func newStreamLoopState(mode RemoteDesktopStreamMode) *streamLoopState {
 	state := &streamLoopState{
-		activeMode:  mode,
-		encoderPool: sharedRegionEncoderPool(),
+		activeMode:   mode,
+		encoderPool:  sharedRegionEncoderPool(),
+		clipEncoders: map[string]*clipEncoderState{},
 	}
 	if mode == RemoteStreamModeVideo {
 		state.clipKeyPending = true
@@ -97,44 +103,84 @@ func (s *streamLoopState) close() {
 		return
 	}
 	s.resetClipBuffer()
-	if s.clipEncoder != nil {
-		s.clipEncoder.Close()
-		s.clipEncoder = nil
+	if s.clipEncoders != nil {
+		for key, enc := range s.clipEncoders {
+			if enc != nil && enc.encoder != nil {
+				enc.encoder.Close()
+				enc.encoder = nil
+			}
+			s.clipEncoders[key] = nil
+		}
+		s.clipEncoders = nil
 	}
 }
 
-func (s *streamLoopState) ensureClipEncoder() clipVideoEncoder {
+func (s *streamLoopState) encoderState(kind string) *clipEncoderState {
 	if s == nil {
 		return nil
 	}
-	if s.encoderInit {
-		return s.clipEncoder
+	if s.clipEncoders == nil {
+		s.clipEncoders = map[string]*clipEncoderState{}
 	}
-	encoder, err := newHEVCVideoEncoder()
-	if err != nil {
-		s.encoderInit = true
-		s.encoderErr = err
-		s.clipEncoder = nil
-		return nil
+	state, ok := s.clipEncoders[kind]
+	if !ok || state == nil {
+		state = &clipEncoderState{}
+		s.clipEncoders[kind] = state
 	}
-	s.clipEncoder = encoder
-	s.encoderInit = true
-	s.encoderErr = nil
-	s.encoderWarned = false
-	return s.clipEncoder
+	return state
 }
 
-func (s *streamLoopState) disableClipEncoder(err error) {
+func (s *streamLoopState) ensureClipEncoder(kind string) clipVideoEncoder {
+	if s == nil {
+		return nil
+	}
+	state := s.encoderState(kind)
+	if state == nil {
+		return nil
+	}
+	if state.init {
+		return state.encoder
+	}
+	var (
+		encoder clipVideoEncoder
+		err     error
+	)
+	switch kind {
+	case remoteClipEncodingHEVC:
+		encoder, err = newHEVCVideoEncoder()
+	case remoteClipEncodingH264:
+		encoder, err = newAVCVideoEncoder()
+	default:
+		err = fmt.Errorf("unsupported clip encoder: %s", kind)
+	}
+	if err != nil {
+		state.init = true
+		state.err = err
+		state.encoder = nil
+		return nil
+	}
+	state.encoder = encoder
+	state.init = true
+	state.err = nil
+	state.warned = false
+	return state.encoder
+}
+
+func (s *streamLoopState) disableClipEncoder(kind string, err error) {
 	if s == nil {
 		return
 	}
-	if s.clipEncoder != nil {
-		s.clipEncoder.Close()
-		s.clipEncoder = nil
+	state := s.encoderState(kind)
+	if state == nil {
+		return
 	}
-	s.encoderInit = true
-	s.encoderErr = err
-	s.encoderWarned = false
+	if state.encoder != nil {
+		state.encoder.Close()
+		state.encoder = nil
+	}
+	state.init = true
+	state.err = err
+	state.warned = false
 }
 
 func (s *streamLoopState) borrowRegions() []tileRegion {
@@ -317,6 +363,7 @@ const (
 	remoteEncodingClip     = "clip"
 	remoteClipEncodingJPEG = "jpeg"
 	remoteClipEncodingHEVC = "hevc"
+	remoteClipEncodingH264 = "h264"
 	minClipDuration        = 120 * time.Millisecond
 	maxClipDuration        = 350 * time.Millisecond
 	defaultClipDuration    = 220 * time.Millisecond
@@ -482,6 +529,8 @@ func (c *remoteDesktopSessionController) prepareSnapshotLocked(session *RemoteDe
 	}
 
 	mode := normalizeStreamMode(session.Settings.Mode)
+	encoder := normalizeEncoder(session.Settings.Encoder)
+	session.Settings.Encoder = encoder
 	state.onModeChange(session, mode)
 
 	width := session.Width
@@ -522,6 +571,7 @@ func (c *remoteDesktopSessionController) prepareSnapshotLocked(session *RemoteDe
 		tile:            tile,
 		frameInterval:   interval,
 		mode:            mode,
+		encoder:         encoder,
 		forceKey:        forceKey,
 		minClipQuality:  minAllowed,
 		maxClipQuality:  maxAllowed,
@@ -644,30 +694,29 @@ func (c *remoteDesktopSessionController) handleVideoFrame(
 
 	state.clipBytes = 0
 	framesPayload := []RemoteDesktopClipFrame{}
+	selectedEncoder := RemoteEncoderAuto
 
-	encoder := state.ensureClipEncoder()
-	if encoder == nil && state.encoderErr != nil && !state.encoderWarned {
-		c.logf("remote desktop hevc encoder unavailable: %v", state.encoderErr)
-		state.encoderWarned = true
-	}
-	if encoder != nil {
-		encodeStart := time.Now()
-		result, encErr := encoder.EncodeClip(state.clipFrames, clipEncodeOptions{
-			Width:         snapshot.width,
-			Height:        snapshot.height,
-			Quality:       snapshot.clipQuality,
-			ForceKey:      state.clipKeyPending,
-			TargetBitrate: session.TargetBitrateKbps,
-			FrameInterval: interval,
-		})
-		encodeDuration += time.Since(encodeStart)
-		if encErr == nil && len(result.Frames) > 0 {
-			framesPayload = result.Frames
-			state.clipBytes = result.Bytes
-		} else if encErr != nil {
-			c.logf("remote desktop hevc encode failed: %v", encErr)
-			state.disableClipEncoder(encErr)
+	switch normalizeEncoder(snapshot.encoder) {
+	case RemoteEncoderHEVC:
+		selectedEncoder = c.tryClipEncoders(state, session, snapshot, interval, &framesPayload, &encodeDuration, remoteClipEncodingHEVC)
+		if len(framesPayload) == 0 {
+			selectedEncoder = c.tryClipEncoders(state, session, snapshot, interval, &framesPayload, &encodeDuration, remoteClipEncodingH264)
 		}
+	case RemoteEncoderAVC:
+		selectedEncoder = c.tryClipEncoders(state, session, snapshot, interval, &framesPayload, &encodeDuration, remoteClipEncodingH264)
+	case RemoteEncoderJPEG:
+		selectedEncoder = RemoteEncoderJPEG
+	default:
+		selectedEncoder = c.tryClipEncoders(
+			state,
+			session,
+			snapshot,
+			interval,
+			&framesPayload,
+			&encodeDuration,
+			remoteClipEncodingHEVC,
+			remoteClipEncodingH264,
+		)
 	}
 
 	if len(framesPayload) == 0 {
@@ -682,7 +731,13 @@ func (c *remoteDesktopSessionController) handleVideoFrame(
 		}
 		framesPayload = fallbackFrames
 		state.clipBytes = bytesSent
+		selectedEncoder = RemoteEncoderJPEG
 	}
+
+	if selectedEncoder == RemoteEncoderAuto {
+		selectedEncoder = RemoteEncoderHEVC
+	}
+	c.updateActiveEncoder(session, selectedEncoder)
 
 	processingDuration := time.Since(processStart)
 	frameDuration := interval
@@ -705,6 +760,7 @@ func (c *remoteDesktopSessionController) handleVideoFrame(
 			DurationMs: durationMs,
 			Frames:     framesPayload,
 		},
+		Encoder: selectedEncoder,
 		Metrics: metrics,
 	}
 	if len(snapshot.monitorsPayload) > 0 {
@@ -732,6 +788,84 @@ func (c *remoteDesktopSessionController) handleVideoFrame(
 	state.resetClipBuffer()
 	state.clipKeyPending = false
 	return nextInterval, timestamp
+}
+
+func (c *remoteDesktopSessionController) tryClipEncoders(
+	state *streamLoopState,
+	session *RemoteDesktopSession,
+	snapshot sessionSnapshot,
+	interval time.Duration,
+	frames *[]RemoteDesktopClipFrame,
+	encodeDuration *time.Duration,
+	kinds ...string,
+) RemoteDesktopEncoder {
+	if len(kinds) == 0 {
+		return RemoteEncoderAuto
+	}
+	for _, kind := range kinds {
+		encoder := state.ensureClipEncoder(kind)
+		status := state.encoderState(kind)
+		if encoder == nil {
+			if status != nil && status.err != nil && !status.warned {
+				c.logf("remote desktop %s encoder unavailable: %v", clipEncoderLabel(kind), status.err)
+				status.warned = true
+			}
+			continue
+		}
+		encodeStart := time.Now()
+		result, encErr := encoder.EncodeClip(state.clipFrames, clipEncodeOptions{
+			Width:         snapshot.width,
+			Height:        snapshot.height,
+			Quality:       snapshot.clipQuality,
+			ForceKey:      state.clipKeyPending,
+			TargetBitrate: session.TargetBitrateKbps,
+			FrameInterval: interval,
+		})
+		*encodeDuration += time.Since(encodeStart)
+		if encErr != nil {
+			c.logf("remote desktop %s encode failed: %v", clipEncoderLabel(kind), encErr)
+			state.disableClipEncoder(kind, encErr)
+			continue
+		}
+		if len(result.Frames) == 0 {
+			continue
+		}
+		state.clipBytes = result.Bytes
+		if frames != nil {
+			*frames = result.Frames
+		}
+		return remoteEncoderFromClipEncoding(result.Encoding)
+	}
+	return RemoteEncoderAuto
+}
+
+func clipEncoderLabel(kind string) string {
+	switch kind {
+	case remoteClipEncodingHEVC:
+		return "hevc"
+	case remoteClipEncodingH264:
+		return "h264"
+	case remoteClipEncodingJPEG:
+		return "jpeg"
+	default:
+		if kind == "" {
+			return "unknown"
+		}
+		return kind
+	}
+}
+
+func remoteEncoderFromClipEncoding(value string) RemoteDesktopEncoder {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case remoteClipEncodingHEVC:
+		return RemoteEncoderHEVC
+	case remoteClipEncodingH264:
+		return RemoteEncoderAVC
+	case remoteClipEncodingJPEG:
+		return RemoteEncoderJPEG
+	default:
+		return RemoteEncoderAuto
+	}
 }
 
 func (c *remoteDesktopSessionController) commitVideoFrame(

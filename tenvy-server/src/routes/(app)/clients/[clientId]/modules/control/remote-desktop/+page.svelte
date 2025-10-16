@@ -28,7 +28,8 @@
 		RemoteDesktopMonitor,
 		RemoteDesktopMouseButton,
 		RemoteDesktopSessionState,
-		RemoteDesktopSettings
+		RemoteDesktopSettings,
+		RemoteDesktopSettingsPatch
 	} from '$lib/types/remote-desktop';
 
 	const fallbackMonitors = [
@@ -42,6 +43,13 @@
 		{ value: 'low', label: 'Low' }
 	] satisfies { value: RemoteDesktopSettings['quality']; label: string }[];
 
+	const encoderOptions = [
+		{ value: 'auto', label: 'Auto' },
+		{ value: 'hevc', label: 'HEVC (H.265)' },
+		{ value: 'avc', label: 'AVC (H.264)' },
+		{ value: 'jpeg', label: 'JPEG' }
+	] satisfies { value: RemoteDesktopSettings['encoder']; label: string }[];
+
 	const MAX_FRAME_QUEUE = 24;
 	const supportsImageBitmap = browser && typeof createImageBitmap === 'function';
 	const IMAGE_BASE64_PREFIX = {
@@ -54,10 +62,12 @@
 	const client = $derived(data.client);
 	let session = $state<RemoteDesktopSessionState | null>(data.session ?? null);
 	let quality = $state<RemoteDesktopSettings['quality']>('auto');
+	let encoder = $state<RemoteDesktopSettings['encoder']>('auto');
 	let mode = $state<RemoteDesktopSettings['mode']>('video');
 	let monitor = $state(0);
 	let mouseEnabled = $state(false);
 	let keyboardEnabled = $state(false);
+	let activeEncoderValue = $state<RemoteDesktopSettings['encoder']>('auto');
 	let fps = $state<number | null>(null);
 	let bandwidth = $state<number | null>(null);
 	let clipQuality = $state<number | null>(null);
@@ -129,6 +139,12 @@
 	const qualityLabel = (value: string) => {
 		const found = qualityOptions.find((item) => item.value === value);
 		return found ? found.label : value;
+	};
+
+	const encoderLabel = (value: string | undefined) => {
+		const normalized = value ?? 'auto';
+		const found = encoderOptions.find((item) => item.value === normalized);
+		return found ? found.label : normalized;
 	};
 
 	const monitorLabel = (id: number) => {
@@ -535,9 +551,10 @@
 				quality,
 				monitor,
 				mode,
+				encoder,
 				mouse: mouseEnabled,
 				keyboard: keyboardEnabled
-			} satisfies Partial<RemoteDesktopSettings> & { mouse: boolean; keyboard: boolean };
+			} satisfies RemoteDesktopSettingsPatch & { mouse: boolean; keyboard: boolean };
 			const response = await fetch(`/api/agents/${client.id}/remote-desktop/session`, {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
@@ -589,7 +606,7 @@
 		}
 	}
 
-	async function updateSession(partial: Partial<RemoteDesktopSettings>) {
+	async function updateSession(partial: RemoteDesktopSettingsPatch) {
 		if (!client || !session?.sessionId) return;
 		if (Object.keys(partial).length === 0) {
 			return;
@@ -962,6 +979,8 @@
 		const current = session;
 		if (!current) {
 			quality = 'auto';
+			encoder = 'auto';
+			activeEncoderValue = 'auto';
 			mode = 'video';
 			monitor = 0;
 			mouseEnabled = true;
@@ -973,6 +992,9 @@
 			return;
 		}
 		quality = current.settings.quality;
+		const configuredEncoder = current.settings.encoder ?? 'auto';
+		encoder = configuredEncoder;
+		activeEncoderValue = current.activeEncoder ?? configuredEncoder;
 		mode = current.settings.mode;
 		monitor = current.settings.monitor;
 		mouseEnabled = current.settings.mouse;
@@ -1093,8 +1115,7 @@
 		<div class="space-y-1">
 			<CardTitle class="text-base">Remote desktop session</CardTitle>
 			<CardDescription>
-				Monitor the active screen stream for {client.codename}. Start a session to receive
-				frames.
+				Monitor the active screen stream for {client.codename}. Start a session to receive frames.
 			</CardDescription>
 		</div>
 	</CardHeader>
@@ -1103,6 +1124,7 @@
 			<Badge variant={sessionActive ? 'default' : 'outline'}>
 				{sessionActive ? 'Active' : 'Inactive'}
 			</Badge>
+			<Badge variant="outline">Encoder: {encoderLabel(activeEncoderValue)}</Badge>
 			{#if sessionId}
 				<span class="text-xs text-muted-foreground">Session ID: {sessionId}</span>
 			{/if}
@@ -1144,9 +1166,7 @@
 			<div class="rounded-lg border border-border/60 bg-background/60 p-3">
 				<p class="text-xs text-muted-foreground">JPEG quality</p>
 				<p class="text-sm font-semibold text-foreground">
-					{clipQuality === null || Number.isNaN(clipQuality)
-						? '--'
-						: `Q${Math.round(clipQuality)}`}
+					{clipQuality === null || Number.isNaN(clipQuality) ? '--' : `Q${Math.round(clipQuality)}`}
 				</p>
 			</div>
 			<div class="rounded-lg border border-border/60 bg-background/60 p-3">
@@ -1191,11 +1211,7 @@
 						}
 					}}
 				>
-					<SelectTrigger
-						id="quality-select"
-						class="w-full"
-						disabled={isUpdating && sessionActive}
-					>
+					<SelectTrigger id="quality-select" class="w-full" disabled={isUpdating && sessionActive}>
 						<span class="truncate">{qualityLabel(quality)}</span>
 					</SelectTrigger>
 					<SelectContent>
@@ -1205,7 +1221,30 @@
 					</SelectContent>
 				</Select>
 			</div>
-			<div class="space-y-2 w-70">
+			<div class="w-70 space-y-2">
+				<Label class="text-sm font-medium" for="encoder-select">Encoder</Label>
+				<Select
+					type="single"
+					value={encoder ?? 'auto'}
+					onValueChange={(value) => {
+						const next = value as RemoteDesktopSettings['encoder'];
+						encoder = next;
+						if (sessionActive) {
+							void updateSession({ encoder: next });
+						}
+					}}
+				>
+					<SelectTrigger id="encoder-select" class="w-full" disabled={isUpdating && sessionActive}>
+						<span class="truncate">{encoderLabel(encoder)}</span>
+					</SelectTrigger>
+					<SelectContent>
+						{#each encoderOptions as option (option.value)}
+							<SelectItem value={option.value}>{option.label}</SelectItem>
+						{/each}
+					</SelectContent>
+				</Select>
+			</div>
+			<div class="w-70 space-y-2">
 				<Label class="text-sm font-medium" for="monitor-select">Monitor</Label>
 				<Select
 					type="single"
@@ -1218,11 +1257,7 @@
 						}
 					}}
 				>
-					<SelectTrigger
-						id="monitor-select"
-						class="w-full"
-						disabled={isUpdating && sessionActive}
-					>
+					<SelectTrigger id="monitor-select" class="w-full" disabled={isUpdating && sessionActive}>
 						<span class="truncate">{monitorLabel(monitor)}</span>
 					</SelectTrigger>
 					<SelectContent>
@@ -1234,10 +1269,8 @@
 					</SelectContent>
 				</Select>
 			</div>
-			<div class="rounded-lg border border-border bg-muted/40 flex">	
-				<div
-					class="flex gap-2 p-3"
-				>
+			<div class="flex rounded-lg border border-border bg-muted/40">
+				<div class="flex gap-2 p-3">
 					<div>
 						<p class="text-sm font-medium">Mouse control</p>
 					</div>
@@ -1247,9 +1280,7 @@
 						aria-label="Toggle mouse control"
 					/>
 				</div>
-				<div
-					class="flex gap-2 p-3"
-				>
+				<div class="flex gap-2 p-3">
 					<div>
 						<p class="text-sm font-medium">Keyboard control</p>
 					</div>

@@ -2,15 +2,31 @@ export type RemoteDesktopQuality = "auto" | "high" | "medium" | "low";
 
 export type RemoteDesktopStreamMode = "images" | "video";
 
+export type RemoteDesktopEncoder = "auto" | "hevc" | "avc" | "jpeg";
+
 export interface RemoteDesktopSettings {
   quality: RemoteDesktopQuality;
   monitor: number;
   mouse: boolean;
   keyboard: boolean;
   mode: RemoteDesktopStreamMode;
+  encoder?: RemoteDesktopEncoder;
 }
 
-export type RemoteDesktopCommandAction = "start" | "stop" | "configure" | "input";
+export interface RemoteDesktopSettingsPatch {
+  quality?: RemoteDesktopQuality;
+  monitor?: number;
+  mouse?: boolean;
+  keyboard?: boolean;
+  mode?: RemoteDesktopStreamMode;
+  encoder?: RemoteDesktopEncoder;
+}
+
+export type RemoteDesktopCommandAction =
+  | "start"
+  | "stop"
+  | "configure"
+  | "input";
 
 export type RemoteDesktopMouseButton = "left" | "middle" | "right";
 
@@ -51,7 +67,7 @@ export type RemoteDesktopInputEvent =
 export interface RemoteDesktopCommandPayload {
   action: RemoteDesktopCommandAction;
   sessionId?: string;
-  settings?: Partial<RemoteDesktopSettings>;
+  settings?: RemoteDesktopSettingsPatch;
   events?: RemoteDesktopInputEvent[];
 }
 
@@ -109,6 +125,7 @@ export interface RemoteDesktopFramePacket {
   image?: string;
   deltas?: RemoteDesktopDeltaRect[];
   clip?: RemoteDesktopVideoClip;
+  encoder?: RemoteDesktopEncoder;
   monitors?: RemoteDesktopMonitor[];
   cursor?: RemoteDesktopCursorState;
   metrics?: RemoteDesktopFrameMetrics;
@@ -129,6 +146,7 @@ export interface RemoteDesktopSessionState {
   lastUpdatedAt?: string;
   lastSequence?: number;
   settings: RemoteDesktopSettings;
+  activeEncoder?: RemoteDesktopEncoder;
   monitors: RemoteDesktopMonitor[];
   metrics?: RemoteDesktopFrameMetrics;
 }
