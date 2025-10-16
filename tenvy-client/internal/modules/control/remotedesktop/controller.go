@@ -149,6 +149,7 @@ func (c *remoteDesktopSessionController) Start(ctx context.Context, payload Remo
 		ctx:           streamCtx,
 		cancel:        cancel,
 	}
+	session.ActiveEncoder = normalizeEncoder(session.Settings.Encoder)
 	session.wg.Add(1)
 	profile, ladder, idx := selectQualityProfile(settings.Quality, monitorInfo)
 	session.qualityLadder = ladder
@@ -159,6 +160,9 @@ func (c *remoteDesktopSessionController) Start(ctx context.Context, payload Remo
 
 	go c.stream(streamCtx, session)
 	c.logf("remote desktop session %s started", sessionID)
+	if session.ActiveEncoder != "" {
+		c.logf("remote desktop session %s encoder preference: %s", sessionID, session.ActiveEncoder)
+	}
 	return nil
 }
 
@@ -281,6 +285,27 @@ func (c *remoteDesktopSessionController) logf(format string, args ...interface{}
 	cfg.Logger.Printf(format, args...)
 }
 
+func (c *remoteDesktopSessionController) updateActiveEncoder(session *RemoteDesktopSession, encoder RemoteDesktopEncoder) {
+	normalized := normalizeEncoder(encoder)
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.session == nil || session == nil || c.session.ID != session.ID {
+		return
+	}
+	if normalized == "" {
+		normalized = RemoteEncoderAuto
+	}
+	if c.session.ActiveEncoder == normalized {
+		return
+	}
+	c.session.ActiveEncoder = normalized
+	if normalized != RemoteEncoderAuto {
+		c.logf("remote desktop session %s using %s encoder", session.ID, normalized)
+	} else {
+		c.logf("remote desktop session %s using automatic encoder selection", session.ID)
+	}
+}
+
 func (c *remoteDesktopSessionController) userAgent() string {
 	ua := strings.TrimSpace(c.config().UserAgent)
 	if ua != "" {
@@ -333,6 +358,19 @@ func (c *remoteDesktopSessionController) applySettingsLocked(session *RemoteDesk
 	}
 	if patch.Keyboard != nil {
 		session.Settings.Keyboard = *patch.Keyboard
+	}
+	if patch.Encoder != nil {
+		nextEncoder := normalizeEncoder(*patch.Encoder)
+		if nextEncoder != session.Settings.Encoder {
+			session.Settings.Encoder = nextEncoder
+			if nextEncoder == RemoteEncoderAuto {
+				session.ActiveEncoder = RemoteEncoderAuto
+			} else {
+				session.ActiveEncoder = nextEncoder
+			}
+			session.ForceKeyFrame = true
+			c.logf("remote desktop encoder preference set to %s", nextEncoder)
+		}
 	}
 
 	if len(session.monitors) == 0 || len(session.monitorInfos) == 0 {

