@@ -8,35 +8,48 @@
 		ContextMenuSubContent,
 		ContextMenuSubTrigger
 	} from '$lib/components/ui/context-menu/index.js';
-	import { goto, invalidateAll } from '$app/navigation';
-	import { browser } from '$app/environment';
-	import type { Client } from '$lib/data/clients';
-	import ClientToolDialog from '$lib/components/client-tool-dialog.svelte';
-	import {
-		buildClientToolUrl,
-		getClientTool,
-		isDialogTool,
-		type ClientToolId,
-		type DialogToolId
-	} from '$lib/data/client-tools';
-	import { createEventDispatcher } from 'svelte';
-	import { notifyToolActivationCommand } from '$lib/utils/agent-commands.js';
-	import type {
-		AgentConnectionAction,
-		AgentConnectionRequest
-	} from '../../../../shared/types/agent';
+        import { goto, invalidateAll } from '$app/navigation';
+        import { browser } from '$app/environment';
+        import type { Client } from '$lib/data/clients';
+        import ClientToolDialog from '$lib/components/client-tool-dialog.svelte';
+        import {
+                buildClientToolUrl,
+                getClientTool,
+                isDialogTool,
+                type ClientToolId,
+                type DialogToolId
+        } from '$lib/data/client-tools';
+        import { createEventDispatcher } from 'svelte';
+        import { notifyToolActivationCommand } from '$lib/utils/agent-commands.js';
+        import type {
+                AgentConnectionAction,
+                AgentConnectionRequest
+        } from '../../../../shared/types/agent';
+        import { toast } from 'svelte-sonner';
+        import type { AgentControlCommandPayload, CommandInput } from '../../../../shared/types/messages';
 
-	const { client } = $props<{ client: Client }>();
+        const { client } = $props<{ client: Client }>();
 
-	let dialogTool = $state<DialogToolId | null>(null);
-	const dispatch = createEventDispatcher<{
-		connection: { action: AgentConnectionAction; success: boolean; message: string };
-	}>();
+        let dialogTool = $state<DialogToolId | null>(null);
+        const dispatch = createEventDispatcher<{
+                connection: { action: AgentConnectionAction; success: boolean; message: string };
+        }>();
 
-	async function handleConnectionAction(action: AgentConnectionAction) {
-		if (!browser) {
-			return;
-		}
+        type PowerAction = Extract<AgentControlCommandPayload['action'], 'shutdown' | 'restart' | 'sleep' | 'logoff'>;
+
+        const powerToolIds = new Set<ClientToolId>(['shutdown', 'restart', 'sleep', 'logoff']);
+
+        const powerActionMeta: Record<PowerAction, { label: string; noun: string }> = {
+                shutdown: { label: 'Shutdown', noun: 'shutdown' },
+                restart: { label: 'Restart', noun: 'restart' },
+                sleep: { label: 'Sleep', noun: 'sleep' },
+                logoff: { label: 'Logoff', noun: 'log off' }
+        };
+
+        async function handleConnectionAction(action: AgentConnectionAction) {
+                if (!browser) {
+                        return;
+                }
 
 		const label = client.hostname?.trim() || client.codename || client.id;
 
@@ -74,23 +87,84 @@
 			const message = err instanceof Error ? err.message : 'Unable to update connection';
 			dispatch('connection', { action, success: false, message });
 			console.error('Connection request failed:', err);
-		}
-	}
+                }
+        }
 
-	function openTool(toolId: ClientToolId) {
-		const tool = getClientTool(toolId);
-		const target = tool.target ?? '_blank';
+        async function handlePowerAction(action: PowerAction) {
+                if (!browser) {
+                        return;
+                }
 
-		if (toolId === 'reconnect' || toolId === 'disconnect') {
-			dialogTool = null;
-			void handleConnectionAction(toolId);
-			return;
-		}
+                const { label, noun } = powerActionMeta[action];
+                const agentLabel = client.hostname?.trim() || client.codename || client.id;
 
-		if (browser) {
-			notifyToolActivationCommand(client.id, toolId, {
-				action: 'open',
-				metadata: { surface: 'context-menu' }
+                if (client.status !== 'online') {
+                        toast.error(`${label} unavailable`, {
+                                description: `${agentLabel} is not currently connected.`,
+                                position: 'bottom-right'
+                        });
+                        return;
+                }
+
+                const request: CommandInput = {
+                        name: 'agent-control',
+                        payload: {
+                                action,
+                                force: true
+                        } satisfies AgentControlCommandPayload
+                };
+
+                try {
+                        const response = await fetch(`/api/agents/${client.id}/commands`, {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify(request)
+                        });
+
+                        if (!response.ok) {
+                                const detail = (await response.text().catch(() => ''))?.trim();
+                                toast.error(`${label} failed`, {
+                                        description: detail || 'Failed to queue command.',
+                                        position: 'bottom-right'
+                                });
+                                return;
+                        }
+
+                        await invalidateAll();
+
+                        toast.success(`${label} command sent`, {
+                                description: `Forced ${noun} command queued for ${agentLabel}.`,
+                                position: 'bottom-right'
+                        });
+                } catch (err) {
+                        const message = err instanceof Error ? err.message : 'Failed to queue command.';
+                        toast.error(`${label} failed`, {
+                                description: message,
+                                position: 'bottom-right'
+                        });
+                }
+        }
+
+        function openTool(toolId: ClientToolId) {
+                const tool = getClientTool(toolId);
+                const target = tool.target ?? '_blank';
+
+                if (toolId === 'reconnect' || toolId === 'disconnect') {
+                        dialogTool = null;
+                        void handleConnectionAction(toolId);
+                        return;
+                }
+
+                if (powerToolIds.has(toolId)) {
+                        dialogTool = null;
+                        void handlePowerAction(toolId as PowerAction);
+                        return;
+                }
+
+                if (browser) {
+                        notifyToolActivationCommand(client.id, toolId, {
+                                action: 'open',
+                                metadata: { surface: 'context-menu' }
 			});
 		}
 
