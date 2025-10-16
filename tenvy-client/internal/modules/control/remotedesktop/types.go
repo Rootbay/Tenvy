@@ -115,6 +115,7 @@ type RemoteDesktopCommandPayload struct {
 
 type RemoteDesktopInputEvent struct {
 	Type       RemoteDesktopInputType   `json:"type"`
+	CapturedAt int64                    `json:"capturedAt"`
 	X          float64                  `json:"x,omitempty"`
 	Y          float64                  `json:"y,omitempty"`
 	Normalized bool                     `json:"normalized,omitempty"`
