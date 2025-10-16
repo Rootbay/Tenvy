@@ -1,4 +1,7 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { mkdtempSync, rmSync } from 'fs';
+import { tmpdir } from 'os';
+import path from 'path';
 import { AgentRegistry } from './store';
 import type { AgentRegistrationResponse } from '../../../../../shared/types/auth';
 import type { CommandQueueResponse } from '../../../../../shared/types/messages';
@@ -56,13 +59,21 @@ class MockSocket {
 }
 
 describe('AgentRegistry live sessions', () => {
-	let registry: AgentRegistry;
-	let registration: AgentRegistrationResponse;
+        let registry: AgentRegistry;
+        let registration: AgentRegistrationResponse;
+        let tempDir: string;
 
-	beforeEach(() => {
-		registry = new AgentRegistry();
-		registration = registry.registerAgent({ metadata: baseMetadata });
-	});
+        beforeEach(() => {
+                tempDir = mkdtempSync(path.join(tmpdir(), 'agent-registry-test-'));
+                const storagePath = path.join(tempDir, 'registry.json');
+                registry = new AgentRegistry({ storagePath });
+                registration = registry.registerAgent({ metadata: baseMetadata });
+        });
+
+        afterEach(async () => {
+                await registry.flush();
+                rmSync(tempDir, { recursive: true, force: true });
+        });
 
 	function attach(socket: MockSocket) {
 		registry.attachSession(
