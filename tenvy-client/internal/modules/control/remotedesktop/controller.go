@@ -693,16 +693,24 @@ func (c *remoteDesktopSessionController) configureProfileLocked(
 	if height <= 0 {
 		height = 720
 	}
+	width = alignEvenDown(width)
+	height = alignEvenDown(height)
+	if width <= 0 {
+		width = 2
+	}
+	if height <= 0 {
+		height = 2
+	}
 	baseWidth := maxInt(1, width)
 	baseHeight := maxInt(1, height)
 	session.BaseWidth = baseWidth
 	session.BaseHeight = baseHeight
 
-	nativeWidth := monitor.Width
+	nativeWidth := alignEvenDown(monitor.Width)
 	if nativeWidth <= 0 {
 		nativeWidth = baseWidth
 	}
-	nativeHeight := monitor.Height
+	nativeHeight := alignEvenDown(monitor.Height)
 	if nativeHeight <= 0 {
 		nativeHeight = baseHeight
 	}
@@ -821,13 +829,51 @@ func (c *remoteDesktopSessionController) applyAdaptiveScaleLocked(session *Remot
 	if scale <= 0 {
 		scale = 1
 	}
-	width := clampInt(int(math.Round(float64(session.BaseWidth)*scale)), int(math.Round(float64(session.BaseWidth)*session.MinScale)), session.NativeWidth)
-	height := clampInt(int(math.Round(float64(session.BaseHeight)*scale)), int(math.Round(float64(session.BaseHeight)*session.MinScale)), session.NativeHeight)
+
+	lowerWidth := int(math.Round(float64(session.BaseWidth) * session.MinScale))
+	if lowerWidth <= 0 {
+		lowerWidth = session.BaseWidth
+	}
+	upperWidth := session.NativeWidth
+	if upperWidth <= 0 {
+		upperWidth = session.BaseWidth
+	}
+	targetWidth := int(math.Round(float64(session.BaseWidth) * scale))
+	width := clampInt(targetWidth, lowerWidth, upperWidth)
+	minWidthEven := maxInt(2, alignEvenDown(lowerWidth))
+	maxWidthEven := maxInt(minWidthEven, alignEvenDown(upperWidth))
+	width = alignEvenDown(width)
+	if width < minWidthEven {
+		width = minWidthEven
+	}
+	if maxWidthEven > 0 && width > maxWidthEven {
+		width = maxWidthEven
+	}
 	if width <= 0 {
-		width = session.BaseWidth
+		width = maxInt(2, alignEvenDown(session.BaseWidth))
+	}
+
+	lowerHeight := int(math.Round(float64(session.BaseHeight) * session.MinScale))
+	if lowerHeight <= 0 {
+		lowerHeight = session.BaseHeight
+	}
+	upperHeight := session.NativeHeight
+	if upperHeight <= 0 {
+		upperHeight = session.BaseHeight
+	}
+	targetHeight := int(math.Round(float64(session.BaseHeight) * scale))
+	height := clampInt(targetHeight, lowerHeight, upperHeight)
+	minHeightEven := maxInt(2, alignEvenDown(lowerHeight))
+	maxHeightEven := maxInt(minHeightEven, alignEvenDown(upperHeight))
+	height = alignEvenDown(height)
+	if height < minHeightEven {
+		height = minHeightEven
+	}
+	if maxHeightEven > 0 && height > maxHeightEven {
+		height = maxHeightEven
 	}
 	if height <= 0 {
-		height = session.BaseHeight
+		height = maxInt(2, alignEvenDown(session.BaseHeight))
 	}
 
 	if width == session.Width && height == session.Height {
