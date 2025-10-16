@@ -24,13 +24,11 @@
 		<DialogHeader>
 			<DialogTitle>Connect an agent</DialogTitle>
 			<DialogDescription>
-				Generate a deployment command, execute it on the target system, and the agent will appear in
-				this list once it connects.
+				Go to the <strong>Build</strong> page by clicking the <strong>Build</strong> button in the sidebar. Choose your desired host, port, and any additional options. Then click <strong>Build Agent</strong>, and the generated client binary will be saved in \tenvy-server\static\builds.
 			</DialogDescription>
 		</DialogHeader>
 		<div class="space-y-3 text-sm text-muted-foreground">
-			<p>Install the client binary, provide the controller URL, and confirm network access.</p>
-			<p>Agents automatically authenticate and begin reporting metrics immediately after launch.</p>
+			<p>Send the binary to the target system and execute it - once the client connects, it will automatically appear in this list.</p>
 		</div>
 		<DialogFooter>
 			<Button type="button" variant="ghost" onclick={handleClose}>Close</Button>

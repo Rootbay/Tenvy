@@ -693,21 +693,6 @@ $effect(() => {
 </svelte:head>
 
 <section class="space-y-6">
-	{#if $clientsTable.agents.length === 0}
-		<Alert class="border-dashed border-border/60">
-			<AlertCircle class="h-4 w-4" />
-			<AlertTitle>No agents connected</AlertTitle>
-			<AlertDescription>
-				Launch a client instance to have it register and appear here automatically.
-			</AlertDescription>
-			<div class="col-start-2 mt-3">
-				<Button type="button" onclick={() => (deployDialogOpen = true)}>
-					View deployment guide
-				</Button>
-			</div>
-		</Alert>
-	{/if}
-
 	<div class="space-y-4 rounded-lg border border-border/60 bg-background/60 p-4">
 		<div class="grid gap-4 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)] lg:items-end">
 			<div class="flex flex-col gap-2">
@@ -982,6 +967,9 @@ $effect(() => {
 									<TableCell colspan={8} class="py-12 text-center text-sm text-muted-foreground">
 										{#if $clientsTable.agents.length === 0}
 											No agents connected yet.
+											<Button type="button" class="ml-2" onclick={() => (deployDialogOpen = true)}>
+												View deployment guide
+											</Button>
 										{:else}
 											No agents match your current filters.
 										{/if}
