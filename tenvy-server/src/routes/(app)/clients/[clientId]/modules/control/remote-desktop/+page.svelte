@@ -100,6 +100,21 @@
 		2: 'right'
 	};
 
+	const captureTimestamp = () => {
+		if (typeof performance !== 'undefined' && typeof performance.now === 'function') {
+			return Math.round(performance.timeOrigin + performance.now());
+		}
+		return Date.now();
+	};
+
+	function normalizeCapturedAt(event: RemoteDesktopInputEvent) {
+		if (typeof event.capturedAt !== 'number' || !Number.isFinite(event.capturedAt)) {
+			event.capturedAt = captureTimestamp();
+			return;
+		}
+		event.capturedAt = Math.trunc(event.capturedAt);
+	}
+
 	let canvasEl: HTMLCanvasElement | null = null;
 	let canvasContext: CanvasRenderingContext2D | null = null;
 	let eventSource: EventSource | null = null;
@@ -676,6 +691,7 @@
 		if (!browser || !sessionActive || !sessionId || !client) {
 			return;
 		}
+		normalizeCapturedAt(event);
 		inputQueue.push(event);
 		scheduleInputFlush();
 	}
@@ -686,6 +702,9 @@
 		}
 		if (events.length === 0) {
 			return;
+		}
+		for (const event of events) {
+			normalizeCapturedAt(event);
 		}
 		inputQueue.push(...events);
 		scheduleInputFlush();
@@ -789,7 +808,14 @@
 		}
 		const x = clamp((event.clientX - rect.left) / rect.width, 0, 1);
 		const y = clamp((event.clientY - rect.top) / rect.height, 0, 1);
-		queueInput({ type: 'mouse-move', x, y, normalized: true, monitor });
+		queueInput({
+			type: 'mouse-move',
+			x,
+			y,
+			normalized: true,
+			monitor,
+			capturedAt: captureTimestamp()
+		});
 	}
 
 	function handlePointerDown(event: PointerEvent) {
@@ -804,7 +830,13 @@
 		handlePointerMove(event);
 		const button = pointerButtonFromEvent(event.button);
 		if (button) {
-			queueInput({ type: 'mouse-button', button, pressed: true, monitor });
+			queueInput({
+				type: 'mouse-button',
+				button,
+				pressed: true,
+				monitor,
+				capturedAt: captureTimestamp()
+			});
 		}
 		const target = event.currentTarget as HTMLDivElement | null;
 		if (target) {
@@ -830,7 +862,13 @@
 		event.preventDefault();
 		const button = pointerButtonFromEvent(event.button);
 		if (button) {
-			queueInput({ type: 'mouse-button', button, pressed: false, monitor });
+			queueInput({
+				type: 'mouse-button',
+				button,
+				pressed: false,
+				monitor,
+				capturedAt: captureTimestamp()
+			});
 		}
 		if (pointerCaptured && activePointerId === event.pointerId) {
 			releasePointerCapture();
@@ -853,7 +891,8 @@
 			deltaX: event.deltaX,
 			deltaY: event.deltaY,
 			deltaMode: event.deltaMode,
-			monitor
+			monitor,
+			capturedAt: captureTimestamp()
 		});
 	}
 
@@ -891,7 +930,8 @@
 			altKey: event.altKey,
 			ctrlKey: event.ctrlKey,
 			shiftKey: event.shiftKey,
-			metaKey: event.metaKey
+			metaKey: event.metaKey,
+			capturedAt: captureTimestamp()
 		};
 	}
 
@@ -944,7 +984,8 @@
 				altKey: false,
 				ctrlKey: false,
 				shiftKey: false,
-				metaKey: false
+				metaKey: false,
+				capturedAt: captureTimestamp()
 			});
 		}
 		pressedKeys.clear();
