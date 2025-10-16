@@ -98,6 +98,7 @@ func Run(ctx context.Context, opts RuntimeOptions) error {
 	opts.Logger.Printf("registered as %s", agent.id)
 	agent.processCommands(ctx, registration.Commands)
 
+	go agent.runCommandStream(ctx)
 	go agent.run(ctx)
 
 	<-ctx.Done()

@@ -34,16 +34,16 @@
 	import ShellCommandDialog from '$lib/components/clients/shell-command-dialog.svelte';
 	import { sectionToolMap, type SectionKey } from '$lib/client-sections';
 	import { createClientsTableStore } from '$lib/stores/clients-table';
-        import {
-                buildClientToolUrl,
-                getClientTool,
-                isDialogTool,
-                type ClientToolId,
-                type DialogToolId
-        } from '$lib/data/client-tools';
-        import { buildLocationDisplay } from '$lib/utils/location';
-        import { toast } from 'svelte-sonner';
-        import type { Client } from '$lib/data/clients';
+	import {
+		buildClientToolUrl,
+		getClientTool,
+		isDialogTool,
+		type ClientToolId,
+		type DialogToolId
+	} from '$lib/data/client-tools';
+	import { buildLocationDisplay } from '$lib/utils/location';
+	import { toast } from 'svelte-sonner';
+	import type { Client } from '$lib/data/clients';
 	import { get } from 'svelte/store';
 	import { onDestroy } from 'svelte';
 	import ChevronLeft from '@lucide/svelte/icons/chevron-left';
@@ -52,30 +52,38 @@
 	import AlertCircle from '@lucide/svelte/icons/alert-circle';
 	import CheckCircle2 from '@lucide/svelte/icons/check-circle-2';
 	import Info from '@lucide/svelte/icons/info';
-        import type {
-                AgentConnectionAction,
-                AgentConnectionRequest,
-                AgentSnapshot,
-                AgentTagUpdateResponse
-        } from '../../../../../shared/types/agent';
-        import type { AgentControlCommandPayload, CommandInput } from '../../../../../shared/types/messages';
+	import type {
+		AgentConnectionAction,
+		AgentConnectionRequest,
+		AgentSnapshot,
+		AgentTagUpdateResponse
+	} from '../../../../../shared/types/agent';
+	import type {
+		AgentControlCommandPayload,
+		CommandDeliveryMode,
+		CommandInput,
+		CommandQueueResponse
+	} from '../../../../../shared/types/messages';
 
-        const statusLabels: Record<AgentSnapshot['status'], string> = {
-                online: 'Online',
-                offline: 'Offline',
-                error: 'Error'
-        };
+	const statusLabels: Record<AgentSnapshot['status'], string> = {
+		online: 'Online',
+		offline: 'Offline',
+		error: 'Error'
+	};
 
-        type PowerAction = Extract<AgentControlCommandPayload['action'], 'shutdown' | 'restart' | 'sleep' | 'logoff'>;
+	type PowerAction = Extract<
+		AgentControlCommandPayload['action'],
+		'shutdown' | 'restart' | 'sleep' | 'logoff'
+	>;
 
-        const powerToolIds = new Set<ClientToolId>(['shutdown', 'restart', 'sleep', 'logoff']);
+	const powerToolIds = new Set<ClientToolId>(['shutdown', 'restart', 'sleep', 'logoff']);
 
-        const powerActionMeta: Record<PowerAction, { label: string; noun: string }> = {
-                shutdown: { label: 'Shutdown', noun: 'shutdown' },
-                restart: { label: 'Restart', noun: 'restart' },
-                sleep: { label: 'Sleep', noun: 'sleep' },
-                logoff: { label: 'Logoff', noun: 'log off' }
-        };
+	const powerActionMeta: Record<PowerAction, { label: string; noun: string }> = {
+		shutdown: { label: 'Shutdown', noun: 'shutdown' },
+		restart: { label: 'Restart', noun: 'restart' },
+		sleep: { label: 'Sleep', noun: 'sleep' },
+		logoff: { label: 'Logoff', noun: 'log off' }
+	};
 
 	let { data } = $props<{ data: { agents: AgentSnapshot[] } }>();
 
@@ -396,7 +404,7 @@
 		agentId: string,
 		body: unknown,
 		key: string,
-		successMessage: string
+		messages: { session: string; queued: string }
 	): Promise<boolean> {
 		commandPending = updateRecord(commandPending, key, true);
 		commandErrors = updateRecord(commandErrors, key, null);
@@ -413,6 +421,11 @@
 				commandErrors = updateRecord(commandErrors, key, message.trim());
 				return false;
 			}
+
+			const payload = (await response.json().catch(() => null)) as CommandQueueResponse | null;
+			const delivery: CommandDeliveryMode = payload?.delivery ?? 'queued';
+			const successMessage = delivery === 'session' ? messages.session : messages.queued;
+
 			commandSuccess = updateRecord(commandSuccess, key, successMessage);
 			await invalidateAll();
 			return true;
@@ -428,10 +441,10 @@
 		}
 	}
 
-        async function requestConnectionAction(
-                agent: AgentSnapshot,
-                action: AgentConnectionAction
-        ): Promise<boolean> {
+	async function requestConnectionAction(
+		agent: AgentSnapshot,
+		action: AgentConnectionAction
+	): Promise<boolean> {
 		const agentLabel = agent.metadata.hostname?.trim() || agent.id;
 
 		try {
@@ -476,70 +489,77 @@
 				description: err instanceof Error ? err.message : 'Unable to update connection',
 				variant: 'destructive'
 			});
-                        return false;
-                }
-        }
+			return false;
+		}
+	}
 
-        async function requestPowerAction(agent: AgentSnapshot, action: PowerAction): Promise<boolean> {
-                if (!browser) {
-                        return false;
-                }
+	async function requestPowerAction(agent: AgentSnapshot, action: PowerAction): Promise<boolean> {
+		if (!browser) {
+			return false;
+		}
 
-                const { label, noun } = powerActionMeta[action];
-                const agentLabel = agent.metadata.hostname?.trim() || agent.id;
+		const { label, noun } = powerActionMeta[action];
+		const agentLabel = agent.metadata.hostname?.trim() || agent.id;
 
-                if (!hasActiveConnection(agent)) {
-                        toast.error(`${label} unavailable`, {
-                                description: `${agentLabel} is not currently connected.`,
-                                position: 'bottom-right'
-                        });
-                        return false;
-                }
+		if (!hasActiveConnection(agent)) {
+			toast.error(`${label} unavailable`, {
+				description: `${agentLabel} is not currently connected.`,
+				position: 'bottom-right'
+			});
+			return false;
+		}
 
-                const request: CommandInput = {
-                        name: 'agent-control',
-                        payload: {
-                                action,
-                                force: true
-                        } satisfies AgentControlCommandPayload
-                };
+		const request: CommandInput = {
+			name: 'agent-control',
+			payload: {
+				action,
+				force: true
+			} satisfies AgentControlCommandPayload
+		};
 
-                try {
-                        const response = await fetch(`/api/agents/${agent.id}/commands`, {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify(request)
-                        });
+		try {
+			const response = await fetch(`/api/agents/${agent.id}/commands`, {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify(request)
+			});
 
-                        if (!response.ok) {
-                                const detail = (await response.text().catch(() => ''))?.trim();
-                                toast.error(`${label} failed`, {
-                                        description: detail || 'Failed to queue command.',
-                                        position: 'bottom-right'
-                                });
-                                return false;
-                        }
+			if (!response.ok) {
+				const detail = (await response.text().catch(() => ''))?.trim();
+				toast.error(`${label} failed`, {
+					description: detail || 'Failed to queue command.',
+					position: 'bottom-right'
+				});
+				return false;
+			}
 
-                        await invalidateAll();
+			const payload = (await response.json().catch(() => null)) as CommandQueueResponse | null;
+			const delivery: CommandDeliveryMode = payload?.delivery ?? 'queued';
+			const description =
+				delivery === 'session'
+					? `${agentLabel} received the ${noun} command immediately.`
+					: `Forced ${noun} command queued for ${agentLabel}.`;
 
-                        toast.success(`${label} command sent`, {
-                                description: `Forced ${noun} command queued for ${agentLabel}.`,
-                                position: 'bottom-right'
-                        });
+			await invalidateAll();
 
-                        return true;
-                } catch (err) {
-                        const message = err instanceof Error ? err.message : 'Failed to queue command.';
-                        toast.error(`${label} failed`, {
-                                description: message,
-                                position: 'bottom-right'
-                        });
-                        return false;
-                }
-        }
+			toast.success(`${label} command sent`, {
+				description,
+				position: 'bottom-right'
+			});
 
-        async function sendPing(agentId: string): Promise<boolean> {
-                const key = `ping:${agentId}`;
+			return true;
+		} catch (err) {
+			const message = err instanceof Error ? err.message : 'Failed to queue command.';
+			toast.error(`${label} failed`, {
+				description: message,
+				position: 'bottom-right'
+			});
+			return false;
+		}
+	}
+
+	async function sendPing(agentId: string): Promise<boolean> {
+		const key = `ping:${agentId}`;
 		const message = pingMessages[agentId]?.trim();
 		const success = await queueCommand(
 			agentId,
@@ -548,7 +568,10 @@
 				payload: message ? { message } : {}
 			},
 			key,
-			'Ping queued'
+			{
+				session: 'Ping delivered',
+				queued: 'Ping queued'
+			}
 		);
 		if (success) {
 			pingMessages = updateRecord(pingMessages, agentId, '');
@@ -577,7 +600,10 @@
 				payload
 			},
 			key,
-			'Shell command queued'
+			{
+				session: 'Shell command delivered',
+				queued: 'Shell command queued'
+			}
 		);
 
 		if (success) {
@@ -772,17 +798,17 @@
 			return;
 		}
 
-                if (toolId === 'disconnect') {
-                        toolDialog = null;
-                        void disconnectAgent(agent);
-                        return;
-                }
+		if (toolId === 'disconnect') {
+			toolDialog = null;
+			void disconnectAgent(agent);
+			return;
+		}
 
-                if (powerToolIds.has(toolId)) {
-                        toolDialog = null;
-                        void requestPowerAction(agent, toolId as PowerAction);
-                        return;
-                }
+		if (powerToolIds.has(toolId)) {
+			toolDialog = null;
+			void requestPowerAction(agent, toolId as PowerAction);
+			return;
+		}
 
 		if (!hasActiveConnection(agent)) {
 			const agentLabel = agent.metadata.hostname?.trim() || agent.id;

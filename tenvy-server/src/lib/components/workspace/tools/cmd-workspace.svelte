@@ -24,6 +24,7 @@
 	import type { WorkspaceLogEntry } from '$lib/workspace/types';
 	import type { AgentDetailResponse, AgentSnapshot } from '../../../../../../shared/types/agent';
 	import type {
+		CommandDeliveryMode,
 		CommandQueueResponse,
 		CommandResult
 	} from '../../../../../../shared/types/messages';
@@ -264,9 +265,12 @@
 			}
 
 			const data = (await response.json()) as CommandQueueResponse;
+			const delivery: CommandDeliveryMode = data?.delivery ?? 'queued';
+			const detail =
+				delivery === 'session' ? 'Command dispatched to live session' : 'Awaiting agent execution';
 			updateLogEntry(logEntry.id, {
 				status: 'in-progress',
-				detail: 'Awaiting agent execution'
+				detail
 			});
 
 			const result = await waitForCommandResult(data.command.id, draft);
