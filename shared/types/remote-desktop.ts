@@ -63,28 +63,32 @@ export type RemoteDesktopCommandAction =
 
 export type RemoteDesktopMouseButton = "left" | "middle" | "right";
 
+export interface RemoteDesktopInputEventBase {
+  capturedAt: number;
+}
+
 export type RemoteDesktopInputEvent =
-  | {
+  | (RemoteDesktopInputEventBase & {
       type: "mouse-move";
       x: number;
       y: number;
       normalized?: boolean;
       monitor?: number;
-    }
-  | {
+    })
+  | (RemoteDesktopInputEventBase & {
       type: "mouse-button";
       button: RemoteDesktopMouseButton;
       pressed: boolean;
       monitor?: number;
-    }
-  | {
+    })
+  | (RemoteDesktopInputEventBase & {
       type: "mouse-scroll";
       deltaX: number;
       deltaY: number;
       deltaMode?: number;
       monitor?: number;
-    }
-  | {
+    })
+  | (RemoteDesktopInputEventBase & {
       type: "key";
       pressed: boolean;
       key?: string;
@@ -95,7 +99,7 @@ export type RemoteDesktopInputEvent =
       ctrlKey?: boolean;
       shiftKey?: boolean;
       metaKey?: boolean;
-    };
+    });
 
 export interface RemoteDesktopCommandPayload {
   action: RemoteDesktopCommandAction;
