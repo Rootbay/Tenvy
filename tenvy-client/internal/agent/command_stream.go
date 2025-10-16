@@ -54,18 +54,18 @@ func (a *Agent) runCommandStream(ctx context.Context) {
 		return
 	}
 
-	streamURL, err := a.commandStreamURL()
-	if err != nil {
-		if a.logger != nil {
-			a.logger.Printf("command stream unavailable: %v", err)
-		}
-		return
-	}
-
 	backoff := a.pollInterval()
 
 	for {
 		if ctx.Err() != nil {
+			return
+		}
+
+		streamURL, err := a.commandStreamURL()
+		if err != nil {
+			if a.logger != nil {
+				a.logger.Printf("command stream unavailable: %v", err)
+			}
 			return
 		}
 
