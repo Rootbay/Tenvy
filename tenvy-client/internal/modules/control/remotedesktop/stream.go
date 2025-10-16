@@ -13,6 +13,7 @@ import (
 	"io"
 	"math"
 	"net/http"
+	"os"
 	"runtime"
 	"strings"
 	"sync"
@@ -109,6 +110,12 @@ func (s *streamLoopState) ensureClipEncoder() clipVideoEncoder {
 	}
 	if s.encoderInit {
 		return s.clipEncoder
+	}
+	if !hevcClipSupported {
+		s.encoderInit = true
+		s.encoderErr = errors.New("hevc clip encoding disabled: client support unavailable")
+		s.clipEncoder = nil
+		return nil
 	}
 	encoder, err := newHEVCVideoEncoder()
 	if err != nil {
@@ -331,15 +338,29 @@ const (
 const monitorRefreshInterval = 3 * time.Second
 
 var (
-	pngEncoder       = png.Encoder{CompressionLevel: png.BestSpeed}
-	imageBufferPool  = sync.Pool{New: func() interface{} { return new(bytes.Buffer) }}
-	frameBufferPool  = sync.Pool{New: func() interface{} { return make([]byte, 0) }}
-	jpegOptionsPool  = sync.Pool{New: func() interface{} { return new(jpeg.Options) }}
-	jsonBodyPool     = sync.Pool{New: func() interface{} { return &jsonRequestBody{Buffer: new(bytes.Buffer)} }}
-	maxEncodeWorkers = maxInt(1, runtime.GOMAXPROCS(0))
-	encoderPoolOnce  sync.Once
-	sharedPool       *regionEncoderPool
+	pngEncoder        = png.Encoder{CompressionLevel: png.BestSpeed}
+	imageBufferPool   = sync.Pool{New: func() interface{} { return new(bytes.Buffer) }}
+	frameBufferPool   = sync.Pool{New: func() interface{} { return make([]byte, 0) }}
+	jpegOptionsPool   = sync.Pool{New: func() interface{} { return new(jpeg.Options) }}
+	jsonBodyPool      = sync.Pool{New: func() interface{} { return &jsonRequestBody{Buffer: new(bytes.Buffer)} }}
+	maxEncodeWorkers  = maxInt(1, runtime.GOMAXPROCS(0))
+	encoderPoolOnce   sync.Once
+	sharedPool        *regionEncoderPool
+	hevcClipSupported = detectHEVCClipSupport()
 )
+
+func detectHEVCClipSupport() bool {
+	value := strings.TrimSpace(os.Getenv("TENVY_REMOTE_ENABLE_HEVC"))
+	if value == "" {
+		return false
+	}
+	switch strings.ToLower(value) {
+	case "1", "true", "yes", "on":
+		return true
+	default:
+		return false
+	}
+}
 
 func sharedRegionEncoderPool() *regionEncoderPool {
 	encoderPoolOnce.Do(func() {
