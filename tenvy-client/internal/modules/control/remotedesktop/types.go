@@ -24,6 +24,12 @@ type HTTPDoer interface {
 	Do(req *http.Request) (*http.Response, error)
 }
 
+type frameTransport interface {
+	Send(ctx context.Context, frame RemoteDesktopFramePacket) error
+	Close() error
+	Ready() bool
+}
+
 type Config struct {
 	AgentID        string
 	BaseURL        string
@@ -41,6 +47,8 @@ type RemoteDesktopStreamMode string
 
 type RemoteDesktopEncoder string
 
+type RemoteDesktopTransport string
+
 const (
 	RemoteQualityAuto   RemoteDesktopQuality = "auto"
 	RemoteQualityHigh   RemoteDesktopQuality = "high"
@@ -56,6 +64,11 @@ const (
 	RemoteEncoderHEVC RemoteDesktopEncoder = "hevc"
 	RemoteEncoderAVC  RemoteDesktopEncoder = "avc"
 	RemoteEncoderJPEG RemoteDesktopEncoder = "jpeg"
+)
+
+const (
+	RemoteTransportHTTP   RemoteDesktopTransport = "http"
+	RemoteTransportWebRTC RemoteDesktopTransport = "webrtc"
 )
 
 type RemoteDesktopInputType string
@@ -160,12 +173,46 @@ type RemoteDesktopFramePacket struct {
 	Height    int                        `json:"height"`
 	KeyFrame  bool                       `json:"keyFrame"`
 	Encoding  string                     `json:"encoding"`
+	Transport RemoteDesktopTransport     `json:"transport,omitempty"`
 	Image     string                     `json:"image,omitempty"`
 	Deltas    []RemoteDesktopDeltaRect   `json:"deltas,omitempty"`
 	Clip      *RemoteDesktopVideoClip    `json:"clip,omitempty"`
 	Encoder   RemoteDesktopEncoder       `json:"encoder,omitempty"`
 	Monitors  []RemoteDesktopMonitorInfo `json:"monitors,omitempty"`
 	Metrics   *RemoteDesktopFrameMetrics `json:"metrics,omitempty"`
+}
+
+type RemoteDesktopTransportCapability struct {
+	Transport RemoteDesktopTransport `json:"transport"`
+	Codecs    []RemoteDesktopEncoder `json:"codecs"`
+	Features  map[string]bool        `json:"features,omitempty"`
+}
+
+type RemoteDesktopSessionNegotiationRequest struct {
+	SessionID    string                             `json:"sessionId"`
+	Transports   []RemoteDesktopTransportCapability `json:"transports"`
+	Codecs       []RemoteDesktopEncoder             `json:"codecs,omitempty"`
+	IntraRefresh bool                               `json:"intraRefresh,omitempty"`
+	WebRTC       *RemoteDesktopWebRTCOffer          `json:"webrtc,omitempty"`
+}
+
+type RemoteDesktopSessionNegotiationResponse struct {
+	Accepted     bool                       `json:"accepted"`
+	Transport    RemoteDesktopTransport     `json:"transport,omitempty"`
+	Codec        RemoteDesktopEncoder       `json:"codec,omitempty"`
+	IntraRefresh bool                       `json:"intraRefresh,omitempty"`
+	Reason       string                     `json:"reason,omitempty"`
+	WebRTC       *RemoteDesktopWebRTCAnswer `json:"webrtc,omitempty"`
+}
+
+type RemoteDesktopWebRTCOffer struct {
+	Offer       string `json:"offer"`
+	DataChannel string `json:"dataChannel,omitempty"`
+}
+
+type RemoteDesktopWebRTCAnswer struct {
+	Answer      string `json:"answer"`
+	DataChannel string `json:"dataChannel,omitempty"`
 }
 
 type RemoteDesktopVideoClip struct {
@@ -185,6 +232,9 @@ type RemoteDesktopSession struct {
 	ID                 string
 	Settings           RemoteDesktopSettings
 	ActiveEncoder      RemoteDesktopEncoder
+	NegotiatedCodec    RemoteDesktopEncoder
+	Transport          RemoteDesktopTransport
+	IntraRefresh       bool
 	Width              int
 	Height             int
 	TileSize           int
@@ -224,6 +274,7 @@ type RemoteDesktopSession struct {
 	ctx                context.Context
 	cancel             context.CancelCauseFunc
 	wg                 sync.WaitGroup
+	transport          frameTransport
 }
 
 type remoteMonitor struct {
@@ -236,8 +287,9 @@ type RemoteDesktopStreamer struct {
 }
 
 type remoteDesktopSessionController struct {
-	cfg           atomic.Value // stores Config
-	mu            sync.Mutex
-	session       *RemoteDesktopSession
-	endpointCache atomic.Value
+	cfg            atomic.Value // stores Config
+	mu             sync.Mutex
+	session        *RemoteDesktopSession
+	endpointCache  atomic.Value
+	transportCache atomic.Value
 }

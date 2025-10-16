@@ -4,9 +4,13 @@ import type {
 	RemoteDesktopFrameMetrics,
 	RemoteDesktopFramePacket,
 	RemoteDesktopMonitor,
+	RemoteDesktopSessionNegotiationRequest,
+	RemoteDesktopSessionNegotiationResponse,
 	RemoteDesktopSessionState,
 	RemoteDesktopSettings,
-	RemoteDesktopSettingsPatch
+	RemoteDesktopSettingsPatch,
+	RemoteDesktopTransport,
+	RemoteDesktopTransportCapability
 } from '$lib/types/remote-desktop';
 
 const encoder = new TextEncoder();
@@ -35,6 +39,8 @@ const defaultMonitors: readonly RemoteDesktopMonitor[] = Object.freeze([
 const qualities = new Set<RemoteDesktopSettings['quality']>(['auto', 'high', 'medium', 'low']);
 const modes = new Set<RemoteDesktopSettings['mode']>(['images', 'video']);
 const encoders = new Set<RemoteDesktopEncoder>(['auto', 'hevc', 'avc', 'jpeg']);
+const transports = new Set<RemoteDesktopTransport>(['http', 'webrtc']);
+const preferredCodecs: RemoteDesktopEncoder[] = ['hevc', 'avc', 'jpeg'];
 
 class RemoteDesktopError extends Error {
 	status: number;
@@ -55,10 +61,14 @@ interface RemoteDesktopSessionRecord {
 	lastSequence?: number;
 	settings: RemoteDesktopSettings;
 	activeEncoder?: RemoteDesktopEncoder;
+	negotiatedCodec?: RemoteDesktopEncoder;
+	transport?: RemoteDesktopTransport;
+	intraRefresh?: boolean;
 	monitors: RemoteDesktopMonitor[];
 	metrics?: RemoteDesktopFrameMetrics;
 	history: RemoteDesktopFramePacket[];
 	hasKeyFrame: boolean;
+	transportHandle?: RemoteDesktopTransportHandle | null;
 }
 
 interface RemoteDesktopSubscriber {
@@ -67,6 +77,10 @@ interface RemoteDesktopSubscriber {
 	controller: ReadableStreamDefaultController<Uint8Array>;
 	heartbeat?: ReturnType<typeof setInterval>;
 	closed: boolean;
+}
+
+interface RemoteDesktopTransportHandle {
+	close(): void;
 }
 
 function cloneSettings(settings: RemoteDesktopSettings): RemoteDesktopSettings {
@@ -328,6 +342,67 @@ function formatEvent(event: string, payload: unknown): string {
 	return `event: ${event}\ndata: ${JSON.stringify(payload)}\n\n`;
 }
 
+function decodeBase64(value: string): string {
+	return Buffer.from(value, 'base64').toString('utf8');
+}
+
+function encodeBase64(value: string): string {
+	return Buffer.from(value, 'utf8').toString('base64');
+}
+
+function selectCodec(capability?: RemoteDesktopTransportCapability): RemoteDesktopEncoder | null {
+	if (!capability || !Array.isArray(capability.codecs)) {
+		return null;
+	}
+	for (const codec of preferredCodecs) {
+		if (capability.codecs.includes(codec)) {
+			return codec;
+		}
+	}
+	return capability.codecs[0] ?? null;
+}
+
+function supportsIntraRefresh(
+	capability: RemoteDesktopTransportCapability | undefined,
+	requested: boolean | undefined
+) {
+	if (!capability || !requested) {
+		return false;
+	}
+	return Boolean(capability.features?.intraRefresh);
+}
+
+async function waitForIceGathering(pc: RTCPeerConnection, timeoutMs = 15_000) {
+	if (pc.iceGatheringState === 'complete') {
+		return;
+	}
+
+	await new Promise<void>((resolve, reject) => {
+		const timer = setTimeout(() => {
+			cleanup();
+			reject(new RemoteDesktopError('WebRTC ICE gathering timeout', 504));
+		}, timeoutMs);
+
+		const checkState = () => {
+			if (pc.iceGatheringState === 'complete') {
+				cleanup();
+				resolve();
+			}
+		};
+
+		const cleanup = () => {
+			clearTimeout(timer);
+			pc.onicegatheringstatechange = null;
+		};
+
+		pc.onicegatheringstatechange = () => {
+			checkState();
+		};
+
+		checkState();
+	});
+}
+
 function toSessionState(record: RemoteDesktopSessionRecord): RemoteDesktopSessionState {
 	return {
 		sessionId: record.id,
@@ -338,6 +413,9 @@ function toSessionState(record: RemoteDesktopSessionRecord): RemoteDesktopSessio
 		lastSequence: record.lastSequence,
 		settings: cloneSettings(record.settings),
 		activeEncoder: record.activeEncoder,
+		negotiatedTransport: record.transport,
+		negotiatedCodec: record.negotiatedCodec,
+		intraRefresh: record.intraRefresh,
 		monitors: cloneMonitors(record.monitors),
 		metrics: record.metrics ? { ...record.metrics } : undefined
 	};
@@ -363,7 +441,8 @@ export class RemoteDesktopManager {
 			activeEncoder: resolved.encoder,
 			monitors: cloneMonitors(defaultMonitors),
 			history: [],
-			hasKeyFrame: false
+			hasKeyFrame: false,
+			transportHandle: null
 		};
 
 		this.sessions.set(agentId, record);
@@ -401,12 +480,103 @@ export class RemoteDesktopManager {
 		this.broadcastSession(agentId);
 	}
 
+	async negotiateTransport(
+		agentId: string,
+		request: RemoteDesktopSessionNegotiationRequest
+	): Promise<RemoteDesktopSessionNegotiationResponse> {
+		const record = this.sessions.get(agentId);
+		if (!record || !record.active) {
+			throw new RemoteDesktopError('No active remote desktop session', 404);
+		}
+		if (request.sessionId !== record.id) {
+			throw new RemoteDesktopError('Session identifier mismatch', 409);
+		}
+		if (!Array.isArray(request.transports) || request.transports.length === 0) {
+			throw new RemoteDesktopError('No transport capabilities provided', 400);
+		}
+
+		const capabilities = request.transports.filter((cap): cap is RemoteDesktopTransportCapability =>
+			Boolean(
+				cap &&
+					typeof cap.transport === 'string' &&
+					transports.has(cap.transport as RemoteDesktopTransport)
+			)
+		);
+
+		if (capabilities.length === 0) {
+			throw new RemoteDesktopError('No supported transports offered', 400);
+		}
+
+		let selectedTransport: RemoteDesktopTransport = 'http';
+		let selectedCodec: RemoteDesktopEncoder | null = null;
+		let intraRefresh = false;
+		let answer: string | undefined;
+		let reason: string | undefined;
+		let handle: RemoteDesktopTransportHandle | null = null;
+
+		const webrtcCapability = capabilities.find(
+			(cap) => cap.transport === 'webrtc' && request.webrtc?.offer
+		);
+		if (webrtcCapability) {
+			const codec = selectCodec(webrtcCapability);
+			if (codec) {
+				try {
+					const enableIntra = supportsIntraRefresh(webrtcCapability, request.intraRefresh);
+					const result = await this.establishWebRTCTransport(agentId, record, request.webrtc!);
+					handle = result.handle;
+					answer = result.answer;
+					selectedTransport = 'webrtc';
+					selectedCodec = codec;
+					intraRefresh = enableIntra;
+				} catch (err) {
+					reason = err instanceof Error ? err.message : 'Failed to establish WebRTC transport';
+				}
+			} else {
+				reason = 'No compatible codec for WebRTC transport';
+			}
+		}
+
+		if (selectedTransport !== 'webrtc') {
+			const httpCapability = capabilities.find((cap) => cap.transport === 'http');
+			if (!httpCapability) {
+				throw new RemoteDesktopError('No fallback transport available', 406);
+			}
+			selectedCodec = selectCodec(httpCapability) ?? preferredCodecs[preferredCodecs.length - 1];
+			intraRefresh = false;
+			handle = null;
+			selectedTransport = 'http';
+		}
+
+		record.transport = selectedTransport;
+		record.negotiatedCodec = selectedCodec ?? undefined;
+		record.intraRefresh = intraRefresh;
+		record.lastUpdatedAt = new Date();
+
+		this.replaceTransportHandle(record, handle);
+		this.broadcastSession(agentId);
+
+		const response: RemoteDesktopSessionNegotiationResponse = {
+			accepted: true,
+			transport: selectedTransport,
+			codec: selectedCodec ?? undefined,
+			intraRefresh
+		};
+		if (answer) {
+			response.webrtc = { answer };
+		}
+		if (reason && selectedTransport !== 'webrtc') {
+			response.reason = reason;
+		}
+		return response;
+	}
+
 	closeSession(agentId: string) {
 		const record = this.sessions.get(agentId);
 		if (!record) {
 			return;
 		}
 		record.active = false;
+		this.replaceTransportHandle(record, null);
 		record.lastUpdatedAt = new Date();
 		this.broadcastSession(agentId);
 		this.broadcast(agentId, 'end', { reason: 'closed' });
@@ -422,6 +592,14 @@ export class RemoteDesktopManager {
 		}
 
 		validateFramePacket(frame);
+
+		let transportChanged = false;
+		if (frame.transport && transports.has(frame.transport)) {
+			if (record.transport !== frame.transport) {
+				record.transport = frame.transport;
+				transportChanged = true;
+			}
+		}
 
 		record.lastSequence = frame.sequence;
 		record.lastUpdatedAt = new Date();
@@ -444,10 +622,15 @@ export class RemoteDesktopManager {
 					);
 				}
 				this.broadcastSession(agentId);
+				transportChanged = false;
 			}
 		}
 
 		appendFrameHistory(record, cloneFrame(frame));
+
+		if (transportChanged) {
+			this.broadcastSession(agentId);
+		}
 
 		this.broadcast(agentId, 'frame', { frame });
 	}
@@ -541,6 +724,135 @@ export class RemoteDesktopManager {
 		for (const subscriber of subscribers) {
 			if (subscriber.closed) continue;
 			subscriber.controller.enqueue(data);
+		}
+	}
+
+	private replaceTransportHandle(
+		record: RemoteDesktopSessionRecord,
+		handle: RemoteDesktopTransportHandle | null
+	) {
+		if (!record) {
+			return;
+		}
+		const previous = record.transportHandle;
+		record.transportHandle = handle ?? null;
+		if (previous && previous !== handle) {
+			try {
+				previous.close();
+			} catch (err) {
+				console.error('Failed to close remote desktop transport', err);
+			}
+		}
+	}
+
+	private async establishWebRTCTransport(
+		agentId: string,
+		record: RemoteDesktopSessionRecord,
+		params: NonNullable<RemoteDesktopSessionNegotiationRequest['webrtc']>
+	): Promise<{ handle: RemoteDesktopTransportHandle; answer: string }> {
+		const { RTCPeerConnection } = (await import('@koush/wrtc')) as typeof import('@koush/wrtc');
+		const pc: RTCPeerConnection = new RTCPeerConnection();
+		let channel: RTCDataChannel | null = null;
+		let handle: RemoteDesktopTransportHandle;
+
+		const offerSdp = decodeBase64(params.offer ?? '');
+		if (!offerSdp) {
+			pc.close();
+			throw new RemoteDesktopError('Missing WebRTC offer', 400);
+		}
+
+		pc.ondatachannel = (event: { channel: RTCDataChannel }) => {
+			channel = event.channel;
+			channel.binaryType = 'arraybuffer';
+			channel.onmessage = (evt: { data: unknown }) => {
+				this.handleWebRTCFrame(agentId, record.id, evt.data);
+			};
+			channel.onclose = () => {
+				if (record.transportHandle && record.transportHandle === handle) {
+					this.replaceTransportHandle(record, null);
+					record.transport = 'http';
+					record.intraRefresh = false;
+					record.lastUpdatedAt = new Date();
+					this.broadcastSession(agentId);
+				}
+			};
+		};
+
+		await pc.setRemoteDescription({ type: 'offer', sdp: offerSdp });
+		const answer = await pc.createAnswer();
+		await pc.setLocalDescription(answer);
+		await waitForIceGathering(pc);
+
+		const local = pc.localDescription;
+		if (!local?.sdp) {
+			pc.close();
+			throw new RemoteDesktopError('Failed to finalize WebRTC transport', 500);
+		}
+
+		handle = {
+			close: () => {
+				try {
+					channel?.close();
+				} catch {
+					// ignore
+				}
+				try {
+					pc.close();
+				} catch {
+					// ignore
+				}
+			}
+		};
+
+		pc.onconnectionstatechange = () => {
+			const state = pc.connectionState;
+			if (state === 'failed' || state === 'closed' || state === 'disconnected') {
+				if (record.transportHandle && record.transportHandle === handle) {
+					this.replaceTransportHandle(record, null);
+					record.transport = 'http';
+					record.intraRefresh = false;
+					record.lastUpdatedAt = new Date();
+					this.broadcastSession(agentId);
+				}
+			}
+		};
+
+		return { handle, answer: encodeBase64(local.sdp) };
+	}
+
+	private handleWebRTCFrame(agentId: string, sessionId: string, data: unknown) {
+		try {
+			let payload = '';
+			if (typeof data === 'string') {
+				payload = data;
+			} else if (data instanceof ArrayBuffer) {
+				payload = Buffer.from(data).toString('utf8');
+			} else if (ArrayBuffer.isView(data)) {
+				payload = Buffer.from(data.buffer, data.byteOffset, data.byteLength).toString('utf8');
+			} else if (data instanceof Uint8Array) {
+				payload = Buffer.from(data).toString('utf8');
+			}
+
+			if (!payload) {
+				return;
+			}
+
+			const frame = JSON.parse(payload) as RemoteDesktopFramePacket;
+			if (frame.sessionId !== sessionId) {
+				return;
+			}
+
+			try {
+				this.ingestFrame(agentId, frame);
+			} catch (err) {
+				if (err instanceof RemoteDesktopError) {
+					console.warn('WebRTC frame rejected:', err.message);
+				} else {
+					console.error('Failed to ingest WebRTC frame', err);
+				}
+			}
+		} catch (err) {
+			console.error('Failed to process WebRTC frame payload', err);
 		}
 	}
 

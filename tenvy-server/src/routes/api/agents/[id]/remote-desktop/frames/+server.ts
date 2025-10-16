@@ -20,6 +20,10 @@ export const POST: RequestHandler = async ({ params, request }) => {
 		throw error(400, 'Frame session identifier is required');
 	}
 
+	if (!payload.transport) {
+		payload.transport = 'http';
+	}
+
 	try {
 		remoteDesktopManager.ingestFrame(id, payload);
 	} catch (err) {
