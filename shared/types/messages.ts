@@ -45,9 +45,18 @@ export interface OpenUrlCommandPayload {
         note?: string;
 }
 
+export type AgentControlAction =
+        | 'disconnect'
+        | 'reconnect'
+        | 'shutdown'
+        | 'restart'
+        | 'sleep'
+        | 'logoff';
+
 export interface AgentControlCommandPayload {
-        action: 'disconnect' | 'reconnect';
+        action: AgentControlAction;
         reason?: string;
+        force?: boolean;
 }
 
 export type CommandPayload =
