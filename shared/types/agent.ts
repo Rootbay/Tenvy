@@ -1,69 +1,70 @@
-import type { CommandResult } from './messages';
+import type { CommandResult } from "./messages";
 
-export type AgentStatus = 'online' | 'offline' | 'error';
+export type AgentStatus = "online" | "offline" | "error";
 
 export interface AgentLocation {
-        source?: string;
-        city?: string;
-        region?: string;
-        country?: string;
-        countryCode?: string;
+  source?: string;
+  city?: string;
+  region?: string;
+  country?: string;
+  countryCode?: string;
 }
 
 export interface AgentMetadata {
-        hostname: string;
-        username: string;
-        os: string;
-        architecture: string;
-        ipAddress?: string;
-        publicIpAddress?: string;
-        tags?: string[];
-        version?: string;
-        group?: string;
-        location?: AgentLocation;
+  hostname: string;
+  username: string;
+  os: string;
+  architecture: string;
+  ipAddress?: string;
+  publicIpAddress?: string;
+  tags?: string[];
+  version?: string;
+  group?: string;
+  location?: AgentLocation;
 }
 
 export interface AgentMetrics {
-        memoryBytes?: number;
-        goroutines?: number;
-        uptimeSeconds?: number;
-        pingMs?: number;
-        latencyMs?: number;
+  memoryBytes?: number;
+  goroutines?: number;
+  uptimeSeconds?: number;
+  pingMs?: number;
+  latencyMs?: number;
 }
 
 export interface AgentSnapshot {
-        id: string;
-        metadata: AgentMetadata;
-        status: AgentStatus;
-        connectedAt: string;
-        lastSeen: string;
-        metrics?: AgentMetrics;
-        pendingCommands: number;
-        recentResults: CommandResult[];
+  id: string;
+  metadata: AgentMetadata;
+  status: AgentStatus;
+  connectedAt: string;
+  lastSeen: string;
+  metrics?: AgentMetrics;
+  pendingCommands: number;
+  recentResults: CommandResult[];
+  liveSession?: boolean;
 }
 
 export interface AgentListResponse {
-        agents: AgentSnapshot[];
+  agents: AgentSnapshot[];
 }
 
 export interface AgentDetailResponse {
-        agent: AgentSnapshot;
+  agent: AgentSnapshot;
 }
 
-export type AgentConnectionAction = 'disconnect' | 'reconnect';
+export type AgentConnectionAction = "disconnect" | "reconnect";
 
 export interface AgentConnectionRequest {
-        action: AgentConnectionAction;
+  action: AgentConnectionAction;
 }
 
 export interface AgentConnectionResponse {
-        agent: AgentSnapshot;
+  agent: AgentSnapshot;
 }
 
 export interface AgentTagUpdateRequest {
-        tags: string[];
+  tags: string[];
 }
 
 export interface AgentTagUpdateResponse {
-        agent: AgentSnapshot;
+  agent: AgentSnapshot;
 }

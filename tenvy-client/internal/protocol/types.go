@@ -20,10 +20,15 @@ type AgentMetrics struct {
 }
 
 type Command struct {
-	ID        string          `json:"id"`
-	Name      string          `json:"name"`
-	Payload   json.RawMessage `json:"payload"`
-	CreatedAt string          `json:"createdAt"`
+        ID        string          `json:"id"`
+        Name      string          `json:"name"`
+        Payload   json.RawMessage `json:"payload"`
+        CreatedAt string          `json:"createdAt"`
+}
+
+type CommandEnvelope struct {
+        Type    string   `json:"type"`
+        Command *Command `json:"command,omitempty"`
 }
 
 type CommandResult struct {
