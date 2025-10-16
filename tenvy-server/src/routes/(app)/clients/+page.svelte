@@ -31,16 +31,16 @@
 	import ManageTagsDialog from '$lib/components/clients/manage-tags-dialog.svelte';
 	import DeployAgentDialog from '$lib/components/clients/deploy-agent-dialog.svelte';
 	import PingAgentDialog from '$lib/components/clients/ping-agent-dialog.svelte';
-import ShellCommandDialog from '$lib/components/clients/shell-command-dialog.svelte';
-import { sectionToolMap, type SectionKey } from '$lib/client-sections';
-import { createClientsTableStore } from '$lib/stores/clients-table';
-import {
-	buildClientToolUrl,
-	getClientTool,
-	isDialogTool,
-	type DialogToolId
-} from '$lib/data/client-tools';
-import { buildLocationDisplay } from '$lib/utils/location';
+	import ShellCommandDialog from '$lib/components/clients/shell-command-dialog.svelte';
+	import { sectionToolMap, type SectionKey } from '$lib/client-sections';
+	import { createClientsTableStore } from '$lib/stores/clients-table';
+	import {
+		buildClientToolUrl,
+		getClientTool,
+		isDialogTool,
+		type DialogToolId
+	} from '$lib/data/client-tools';
+	import { buildLocationDisplay } from '$lib/utils/location';
 	import type { Client } from '$lib/data/clients';
 	import { get } from 'svelte/store';
 	import { onDestroy } from 'svelte';
@@ -107,16 +107,19 @@ import { buildLocationDisplay } from '$lib/utils/location';
 	let commandErrors = $state<Record<string, string | null>>({});
 	let commandSuccess = $state<Record<string, string | null>>({});
 	let commandPending = $state<Record<string, boolean>>({});
+	const controllerPingEndpoint = '/api/ping';
+	const controllerPingIntervalMs = 15_000;
+	let controllerPingLatency = $state<number | null>(null);
 
-let pingDialogAgentId = $state<string | null>(null);
-let shellDialogAgentId = $state<string | null>(null);
-let pingAgent = $state<AgentSnapshot | null>(null);
-let shellAgent = $state<AgentSnapshot | null>(null);
-let deployDialogOpen = $state(false);
-let tagsDialogAgentId = $state<string | null>(null);
-let tagsAgent = $state<AgentSnapshot | null>(null);
-let tagsDialogPending = $state(false);
-let tagsDialogError = $state<string | null>(null);
+	let pingDialogAgentId = $state<string | null>(null);
+	let shellDialogAgentId = $state<string | null>(null);
+	let pingAgent = $state<AgentSnapshot | null>(null);
+	let shellAgent = $state<AgentSnapshot | null>(null);
+	let deployDialogOpen = $state(false);
+	let tagsDialogAgentId = $state<string | null>(null);
+	let tagsAgent = $state<AgentSnapshot | null>(null);
+	let tagsDialogPending = $state(false);
+	let tagsDialogError = $state<string | null>(null);
 
 	$effect(() => {
 		const agentId = pingDialogAgentId;
@@ -124,17 +127,17 @@ let tagsDialogError = $state<string | null>(null);
 		pingAgent = agentId ? (agents.find((agent) => agent.id === agentId) ?? null) : null;
 	});
 
-$effect(() => {
-	const agentId = shellDialogAgentId;
-	const agents = $clientsTable.agents;
-	shellAgent = agentId ? (agents.find((agent) => agent.id === agentId) ?? null) : null;
-});
+	$effect(() => {
+		const agentId = shellDialogAgentId;
+		const agents = $clientsTable.agents;
+		shellAgent = agentId ? (agents.find((agent) => agent.id === agentId) ?? null) : null;
+	});
 
-$effect(() => {
-	const agentId = tagsDialogAgentId;
-	const agents = $clientsTable.agents;
-	tagsAgent = agentId ? (agents.find((agent) => agent.id === agentId) ?? null) : null;
-});
+	$effect(() => {
+		const agentId = tagsDialogAgentId;
+		const agents = $clientsTable.agents;
+		tagsAgent = agentId ? (agents.find((agent) => agent.id === agentId) ?? null) : null;
+	});
 
 	type CopyFeedback = { message: string; variant: 'success' | 'error' } | null;
 	let copyFeedback = $state<CopyFeedback>(null);
@@ -219,12 +222,76 @@ $effect(() => {
 	}
 
 	function formatPing(agent: AgentSnapshot): string {
-		const latency = agent.metrics?.latencyMs ?? agent.metrics?.pingMs;
+		const latency = controllerPingLatency;
 		if (typeof latency === 'number' && Number.isFinite(latency) && latency >= 0) {
 			return `${Math.round(latency)} ms`;
 		}
 		return 'N/A';
 	}
+
+	$effect(() => {
+		if (!browser) {
+			return;
+		}
+
+		let disposed = false;
+		let timeoutId: number | undefined;
+		let activeController: AbortController | null = null;
+
+		const scheduleNext = () => {
+			if (disposed) {
+				return;
+			}
+			timeoutId = window.setTimeout(measureLatency, controllerPingIntervalMs);
+		};
+
+		async function measureLatency() {
+			const controller = new AbortController();
+			activeController = controller;
+			const startedAt = performance.now();
+
+			try {
+				const response = await fetch(controllerPingEndpoint, {
+					method: 'GET',
+					cache: 'no-store',
+					signal: controller.signal
+				});
+
+				if (!response.ok) {
+					throw new Error(`Ping failed with status ${response.status}`);
+				}
+
+				await response.text();
+
+				if (!disposed) {
+					const duration = Math.max(0, Math.round(performance.now() - startedAt));
+					controllerPingLatency = duration;
+				}
+			} catch (error) {
+				if (disposed) {
+					return;
+				}
+
+				if (error instanceof DOMException && error.name === 'AbortError') {
+					return;
+				}
+
+				console.error('Failed to measure controller latency', error);
+			} finally {
+				scheduleNext();
+			}
+		}
+
+		measureLatency();
+
+		return () => {
+			disposed = true;
+			if (timeoutId !== undefined) {
+				window.clearTimeout(timeoutId);
+			}
+			activeController?.abort();
+		};
+	});
 
 	function handleTagFilter(tag: string) {
 		if (!tag || tag.trim().length === 0) {
@@ -285,8 +352,7 @@ $effect(() => {
 			tagsAgent = null;
 		} catch (err) {
 			console.error('Failed to update agent tags', err);
-			tagsDialogError =
-				err instanceof Error && err.message ? err.message : 'Failed to update tags';
+			tagsDialogError = err instanceof Error && err.message ? err.message : 'Failed to update tags';
 		} finally {
 			tagsDialogPending = false;
 		}
@@ -818,10 +884,7 @@ $effect(() => {
 									<Tooltip>
 										<TooltipTrigger>
 											{#snippet child({ props })}
-												<span
-													{...props}
-													class="inline-flex items-center gap-1 cursor-help"
-												>
+												<span {...props} class="inline-flex cursor-help items-center gap-1">
 													Location
 													<Info class="size-3 text-muted-foreground" aria-hidden="true" />
 												</span>
@@ -837,10 +900,7 @@ $effect(() => {
 									<Tooltip>
 										<TooltipTrigger>
 											{#snippet child({ props })}
-												<span
-													{...props}
-													class="inline-flex items-center gap-1 cursor-help"
-												>
+												<span {...props} class="inline-flex cursor-help items-center gap-1">
 													Public IP
 													<Info class="size-3 text-muted-foreground" aria-hidden="true" />
 												</span>
@@ -855,10 +915,7 @@ $effect(() => {
 									<Tooltip>
 										<TooltipTrigger>
 											{#snippet child({ props })}
-												<span
-													{...props}
-													class="inline-flex items-center gap-1 cursor-help"
-												>
+												<span {...props} class="inline-flex cursor-help items-center gap-1">
 													Username
 													<Info class="size-3 text-muted-foreground" aria-hidden="true" />
 												</span>
@@ -873,10 +930,7 @@ $effect(() => {
 									<Tooltip>
 										<TooltipTrigger>
 											{#snippet child({ props })}
-												<span
-													{...props}
-													class="inline-flex items-center gap-1 cursor-help"
-												>
+												<span {...props} class="inline-flex cursor-help items-center gap-1">
 													Tags
 													<Info class="size-3 text-muted-foreground" aria-hidden="true" />
 												</span>
@@ -893,7 +947,7 @@ $effect(() => {
 											{#snippet child({ props })}
 												<span
 													{...props}
-													class="inline-flex w-full items-center justify-center gap-1 cursor-help"
+													class="inline-flex w-full cursor-help items-center justify-center gap-1"
 												>
 													OS
 													<Info class="size-3 text-muted-foreground" aria-hidden="true" />
@@ -909,10 +963,7 @@ $effect(() => {
 									<Tooltip>
 										<TooltipTrigger>
 											{#snippet child({ props })}
-												<span
-													{...props}
-													class="inline-flex items-center gap-1 cursor-help"
-												>
+												<span {...props} class="inline-flex cursor-help items-center gap-1">
 													Ping
 													<Info class="size-3 text-muted-foreground" aria-hidden="true" />
 												</span>
@@ -927,10 +978,7 @@ $effect(() => {
 									<Tooltip>
 										<TooltipTrigger>
 											{#snippet child({ props })}
-												<span
-													{...props}
-													class="inline-flex items-center gap-1 cursor-help"
-												>
+												<span {...props} class="inline-flex cursor-help items-center gap-1">
 													Version
 													<Info class="size-3 text-muted-foreground" aria-hidden="true" />
 												</span>
@@ -947,7 +995,7 @@ $effect(() => {
 											{#snippet child({ props })}
 												<span
 													{...props}
-													class="inline-flex w-full items-center justify-center gap-1 cursor-help"
+													class="inline-flex w-full cursor-help items-center justify-center gap-1"
 												>
 													Status
 													<Info class="size-3 text-muted-foreground" aria-hidden="true" />
