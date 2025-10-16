@@ -441,6 +441,7 @@ func (c *remoteDesktopSessionController) stream(ctx context.Context, session *Re
 		}
 	}()
 	defer session.wg.Done()
+	defer c.closeSessionTransport(session)
 	defer func() {
 		releaseFrameBuffer(session.LastFrame)
 		session.LastFrame = nil
@@ -774,7 +775,7 @@ func (c *remoteDesktopSessionController) handleVideoFrame(
 		return interval, time.Time{}
 	}
 
-	err = c.sendFrame(ctx, frame)
+	err = c.sendFrame(ctx, session, frame)
 	if err != nil {
 		if !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
 			c.logf("remote desktop clip send error: %v", err)
@@ -1034,7 +1035,7 @@ func (c *remoteDesktopSessionController) handleImageFrame(
 		return interval, time.Time{}
 	}
 
-	err = c.sendFrame(ctx, frame)
+	err = c.sendFrame(ctx, session, frame)
 	if err != nil {
 		if !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
 			c.logf("remote desktop frame send error: %v", err)
@@ -1129,7 +1130,39 @@ func (c *remoteDesktopSessionController) forceMonitorRefresh(session *RemoteDesk
 	c.refreshMonitorsLocked(c.session, true)
 }
 
-func (c *remoteDesktopSessionController) sendFrame(ctx context.Context, frame RemoteDesktopFramePacket) error {
+func (c *remoteDesktopSessionController) sendFrame(ctx context.Context, session *RemoteDesktopSession, frame RemoteDesktopFramePacket) error {
+	if session == nil {
+		return errors.New("remote desktop: missing session")
+	}
+
+	transport := RemoteTransportHTTP
+	var sender frameTransport
+
+	c.mu.Lock()
+	if c.session != nil && c.session.ID == session.ID {
+		if c.session.Transport != "" {
+			transport = c.session.Transport
+		}
+		sender = c.session.transport
+	}
+	c.mu.Unlock()
+
+	if transport == "" {
+		transport = RemoteTransportHTTP
+	}
+	frame.Transport = transport
+
+	if sender != nil {
+		return sender.Send(ctx, frame)
+	}
+
+	if transport != RemoteTransportHTTP {
+		frame.Transport = RemoteTransportHTTP
+	}
+	return c.sendFrameHTTP(ctx, frame)
+}
+
+func (c *remoteDesktopSessionController) sendFrameHTTP(ctx context.Context, frame RemoteDesktopFramePacket) error {
 	cfg := c.config()
 
 	endpoint, err := c.frameEndpoint(cfg)

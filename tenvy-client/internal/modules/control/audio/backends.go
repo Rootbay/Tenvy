@@ -18,12 +18,12 @@ func fallbackAudioBackendAttempts() [][]malgo.Backend {
 		}
 	case "darwin":
 		return [][]malgo.Backend{
-			{malgo.BackendCoreAudio},
+			{malgo.BackendCoreaudio},
 		}
 	case "android":
 		return [][]malgo.Backend{
-			{malgo.BackendAAudio},
-			{malgo.BackendOpenSLES},
+			{malgo.BackendAaudio},
+			{malgo.BackendOpensl},
 		}
 	case "linux":
 		fallthrough
@@ -33,7 +33,7 @@ func fallbackAudioBackendAttempts() [][]malgo.Backend {
 		fallthrough
 	case "netbsd":
 		return [][]malgo.Backend{
-			{malgo.BackendPulseAudio},
+			{malgo.BackendPulseaudio},
 			{malgo.BackendAlsa},
 			{malgo.BackendJack},
 		}

@@ -8,6 +8,7 @@ import (
 	"image"
 	"math"
 	"net"
+	"net/http"
 	"net/url"
 	"strings"
 	"time"
@@ -26,6 +27,12 @@ const (
 )
 
 type frameEndpointCache struct {
+	base     string
+	agentID  string
+	endpoint string
+}
+
+type transportEndpointCache struct {
 	base     string
 	agentID  string
 	endpoint string
@@ -150,6 +157,11 @@ func (c *remoteDesktopSessionController) Start(ctx context.Context, payload Remo
 		cancel:        cancel,
 	}
 	session.ActiveEncoder = normalizeEncoder(session.Settings.Encoder)
+	if session.ActiveEncoder == "" {
+		session.ActiveEncoder = RemoteEncoderAuto
+	}
+	session.NegotiatedCodec = session.ActiveEncoder
+	session.Transport = RemoteTransportHTTP
 	session.wg.Add(1)
 	profile, ladder, idx := selectQualityProfile(settings.Quality, monitorInfo)
 	session.qualityLadder = ladder
@@ -157,6 +169,10 @@ func (c *remoteDesktopSessionController) Start(ctx context.Context, payload Remo
 	c.configureProfileLocked(session, monitorInfo, profile, true)
 	c.session = session
 	c.mu.Unlock()
+
+	if err := c.initializeTransport(streamCtx, session); err != nil {
+		c.logf("remote desktop transport negotiation failed: %v", err)
+	}
 
 	go c.stream(streamCtx, session)
 	c.logf("remote desktop session %s started", sessionID)
@@ -188,6 +204,265 @@ func (c *remoteDesktopSessionController) Stop(sessionID string) error {
 	return nil
 }
 
+func (c *remoteDesktopSessionController) initializeTransport(ctx context.Context, session *RemoteDesktopSession) error {
+	if session == nil {
+		return errors.New("remote desktop: missing session")
+	}
+
+	cfg := c.config()
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	timeout := cfg.RequestTimeout
+	if timeout <= 0 {
+		timeout = defaultFrameRequestTimeout
+	}
+	var cancel context.CancelFunc
+	negotiationCtx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+
+	codecs := []RemoteDesktopEncoder{RemoteEncoderHEVC, RemoteEncoderAVC, RemoteEncoderJPEG}
+	supportsIntra := normalizeStreamMode(session.Settings.Mode) == RemoteStreamModeVideo
+
+	transports := []RemoteDesktopTransportCapability{{
+		Transport: RemoteTransportHTTP,
+		Codecs:    append([]RemoteDesktopEncoder(nil), codecs...),
+	}}
+
+	offerHandle, offerErr := prepareWebRTCOffer(negotiationCtx)
+	if offerErr == nil && offerHandle != nil {
+		features := map[string]bool{}
+		if supportsIntra {
+			features["intraRefresh"] = true
+		}
+		transports = append(transports, RemoteDesktopTransportCapability{
+			Transport: RemoteTransportWebRTC,
+			Codecs:    append([]RemoteDesktopEncoder(nil), codecs...),
+			Features:  features,
+		})
+	} else if offerErr != nil {
+		c.logf("remote desktop webrtc negotiation unavailable: %v", offerErr)
+	}
+
+	request := RemoteDesktopSessionNegotiationRequest{
+		SessionID:    session.ID,
+		Transports:   transports,
+		Codecs:       append([]RemoteDesktopEncoder(nil), codecs...),
+		IntraRefresh: supportsIntra,
+	}
+	if offerHandle != nil {
+		request.WebRTC = &RemoteDesktopWebRTCOffer{
+			Offer:       offerHandle.Offer(),
+			DataChannel: offerHandle.Label(),
+		}
+	}
+
+	response, err := c.sendNegotiationRequest(negotiationCtx, request)
+
+	selectedTransport := RemoteTransportHTTP
+	selectedCodec := session.NegotiatedCodec
+	if selectedCodec == "" {
+		selectedCodec = session.ActiveEncoder
+	}
+	if selectedCodec == "" {
+		selectedCodec = RemoteEncoderAuto
+	}
+	selectedIntra := false
+	var sender frameTransport
+
+	if err != nil {
+		if offerHandle != nil {
+			offerHandle.Close()
+		}
+		c.assignSessionTransport(session, selectedTransport, nil, selectedCodec, selectedIntra)
+		return err
+	}
+
+	if response.Accepted {
+		if response.Transport != "" {
+			selectedTransport = response.Transport
+		}
+		if normalized := normalizeEncoder(response.Codec); normalized != "" {
+			selectedCodec = normalized
+		}
+		selectedIntra = response.IntraRefresh
+
+		if selectedTransport == RemoteTransportWebRTC {
+			if offerHandle != nil && response.WebRTC != nil {
+				sender, err = offerHandle.Accept(negotiationCtx, response.WebRTC.Answer)
+				if err != nil {
+					c.logf("remote desktop webrtc establishment failed: %v", err)
+					selectedTransport = RemoteTransportHTTP
+					sender = nil
+				}
+			} else {
+				selectedTransport = RemoteTransportHTTP
+			}
+		}
+	} else {
+		if offerHandle != nil {
+			offerHandle.Close()
+		}
+		reason := strings.TrimSpace(response.Reason)
+		if reason != "" {
+			err = errors.New(reason)
+		} else {
+			err = errors.New("remote desktop negotiation rejected")
+		}
+		c.assignSessionTransport(session, selectedTransport, nil, selectedCodec, selectedIntra)
+		return err
+	}
+
+	if offerHandle != nil && (selectedTransport != RemoteTransportWebRTC || sender == nil) {
+		offerHandle.Close()
+	}
+
+	if selectedTransport != RemoteTransportWebRTC {
+		selectedIntra = false
+	}
+
+	c.assignSessionTransport(session, selectedTransport, sender, selectedCodec, selectedIntra)
+	if selectedTransport == RemoteTransportWebRTC && sender == nil {
+		if err != nil {
+			return err
+		}
+		return errors.New("remote desktop: webrtc transport unavailable")
+	}
+	return err
+}
+
+func (c *remoteDesktopSessionController) sendNegotiationRequest(ctx context.Context, request RemoteDesktopSessionNegotiationRequest) (RemoteDesktopSessionNegotiationResponse, error) {
+	cfg := c.config()
+	endpoint, err := c.transportEndpoint(cfg)
+	if err != nil {
+		return RemoteDesktopSessionNegotiationResponse{}, err
+	}
+	client := cfg.Client
+	if client == nil {
+		return RemoteDesktopSessionNegotiationResponse{}, errors.New("remote desktop: missing http client")
+	}
+
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if timeout := cfg.RequestTimeout; timeout > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, timeout)
+		defer cancel()
+	}
+
+	body := acquireJSONBody()
+	defer releaseJSONBody(body)
+
+	encoder := json.NewEncoder(body)
+	encoder.SetEscapeHTML(false)
+	if err := encoder.Encode(request); err != nil {
+		return RemoteDesktopSessionNegotiationResponse{}, err
+	}
+	if body.Len() > 0 {
+		raw := body.Bytes()
+		if raw[len(raw)-1] == '\n' {
+			body.Truncate(body.Len() - 1)
+		}
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, body)
+	if err != nil {
+		return RemoteDesktopSessionNegotiationResponse{}, err
+	}
+	req.ContentLength = int64(body.Len())
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json")
+	if ua := strings.TrimSpace(c.userAgent()); ua != "" {
+		req.Header.Set("User-Agent", ua)
+	}
+	if cfg.authHeader != "" {
+		req.Header.Set("Authorization", cfg.authHeader)
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return RemoteDesktopSessionNegotiationResponse{}, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode >= 300 {
+		drainErr := drainResponseBody(resp.Body)
+		if drainErr != nil {
+			return RemoteDesktopSessionNegotiationResponse{}, fmt.Errorf("transport negotiation failed: status %d: %w", resp.StatusCode, drainErr)
+		}
+		return RemoteDesktopSessionNegotiationResponse{}, fmt.Errorf("transport negotiation failed: status %d", resp.StatusCode)
+	}
+
+	var response RemoteDesktopSessionNegotiationResponse
+	decoder := json.NewDecoder(resp.Body)
+	if err := decoder.Decode(&response); err != nil {
+		return RemoteDesktopSessionNegotiationResponse{}, fmt.Errorf("transport negotiation response invalid: %w", err)
+	}
+	return response, nil
+}
+
+func (c *remoteDesktopSessionController) assignSessionTransport(session *RemoteDesktopSession, transport RemoteDesktopTransport, sender frameTransport, codec RemoteDesktopEncoder, intra bool) {
+	var toClose frameTransport
+	var replaced frameTransport
+	var changed bool
+	c.mu.Lock()
+	if c.session == nil || session == nil || c.session.ID != session.ID {
+		toClose = sender
+	} else {
+		if c.session.transport != nil && c.session.transport != sender {
+			replaced = c.session.transport
+		}
+		if codec != "" {
+			c.session.NegotiatedCodec = codec
+		}
+		c.session.IntraRefresh = intra
+		previous := c.session.Transport
+		c.session.Transport = transport
+		c.session.transport = sender
+
+		session.Transport = transport
+		session.transport = sender
+		if codec != "" {
+			session.NegotiatedCodec = codec
+		}
+		session.IntraRefresh = intra
+
+		changed = previous != transport
+	}
+	c.mu.Unlock()
+
+	if replaced != nil {
+		replaced.Close()
+	}
+	if toClose != nil {
+		toClose.Close()
+	}
+
+	if changed {
+		c.logf("remote desktop session %s using %s transport", session.ID, transport)
+	}
+}
+
+func (c *remoteDesktopSessionController) closeSessionTransport(session *RemoteDesktopSession) {
+	var toClose frameTransport
+	c.mu.Lock()
+	if session != nil && session.transport != nil {
+		toClose = session.transport
+		session.transport = nil
+	}
+	if c.session != nil && session != nil && c.session.ID == session.ID {
+		if c.session.transport != nil && c.session.transport != toClose {
+			toClose = c.session.transport
+		}
+		c.session.transport = nil
+	}
+	c.mu.Unlock()
+
+	if toClose != nil {
+		toClose.Close()
+	}
+}
 func (c *remoteDesktopSessionController) Configure(payload RemoteDesktopCommandPayload) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -837,6 +1112,7 @@ func (c *remoteDesktopSessionController) updateConfig(cfg Config) {
 	sanitized := sanitizeConfig(cfg)
 	c.cfg.Store(sanitized)
 	c.endpointCache.Store(frameEndpointCache{})
+	c.transportCache.Store(transportEndpointCache{})
 }
 
 func (c *remoteDesktopSessionController) config() Config {
@@ -919,6 +1195,40 @@ func (c *remoteDesktopSessionController) frameEndpoint(cfg Config) (string, erro
 	pathRef := &url.URL{Path: fmt.Sprintf("/api/agents/%s/remote-desktop/frames", url.PathEscape(agentID))}
 	endpoint := parsed.ResolveReference(pathRef).String()
 	c.endpointCache.Store(frameEndpointCache{base: base, agentID: agentID, endpoint: endpoint})
+	return endpoint, nil
+}
+
+func (c *remoteDesktopSessionController) transportEndpoint(cfg Config) (string, error) {
+	base := strings.TrimSpace(cfg.BaseURL)
+	if base == "" {
+		return "", errors.New("remote desktop: missing base URL")
+	}
+
+	agentID := strings.TrimSpace(cfg.AgentID)
+	if agentID == "" {
+		return "", errors.New("remote desktop: missing agent identifier")
+	}
+
+	if value := c.transportCache.Load(); value != nil {
+		if cached, ok := value.(transportEndpointCache); ok {
+			if cached.base == base && cached.agentID == agentID && cached.endpoint != "" {
+				return cached.endpoint, nil
+			}
+		}
+	}
+
+	parsed, err := url.Parse(base)
+	if err != nil {
+		return "", fmt.Errorf("remote desktop: invalid base URL: %w", err)
+	}
+
+	if err := enforceEndpointSecurity(parsed); err != nil {
+		return "", err
+	}
+
+	pathRef := &url.URL{Path: fmt.Sprintf("/api/agents/%s/remote-desktop/transport", url.PathEscape(agentID))}
+	endpoint := parsed.ResolveReference(pathRef).String()
+	c.transportCache.Store(transportEndpointCache{base: base, agentID: agentID, endpoint: endpoint})
 	return endpoint, nil
 }
 

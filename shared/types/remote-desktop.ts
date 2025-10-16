@@ -4,6 +4,39 @@ export type RemoteDesktopStreamMode = "images" | "video";
 
 export type RemoteDesktopEncoder = "auto" | "hevc" | "avc" | "jpeg";
 
+export type RemoteDesktopTransport = "http" | "webrtc";
+
+export interface RemoteDesktopTransportCapability {
+  transport: RemoteDesktopTransport;
+  codecs: RemoteDesktopEncoder[];
+  features?: {
+    intraRefresh?: boolean;
+  };
+}
+
+export interface RemoteDesktopSessionNegotiationRequest {
+  sessionId: string;
+  transports: RemoteDesktopTransportCapability[];
+  codecs?: RemoteDesktopEncoder[];
+  intraRefresh?: boolean;
+  webrtc?: {
+    offer?: string;
+    dataChannel?: string;
+  };
+}
+
+export interface RemoteDesktopSessionNegotiationResponse {
+  accepted: boolean;
+  transport?: RemoteDesktopTransport;
+  codec?: RemoteDesktopEncoder;
+  intraRefresh?: boolean;
+  reason?: string;
+  webrtc?: {
+    answer?: string;
+    dataChannel?: string;
+  };
+}
+
 export interface RemoteDesktopSettings {
   quality: RemoteDesktopQuality;
   monitor: number;
@@ -122,6 +155,7 @@ export interface RemoteDesktopFramePacket {
   height: number;
   keyFrame: boolean;
   encoding: "png" | "jpeg" | "clip";
+  transport?: RemoteDesktopTransport;
   image?: string;
   deltas?: RemoteDesktopDeltaRect[];
   clip?: RemoteDesktopVideoClip;
@@ -147,6 +181,9 @@ export interface RemoteDesktopSessionState {
   lastSequence?: number;
   settings: RemoteDesktopSettings;
   activeEncoder?: RemoteDesktopEncoder;
+  negotiatedTransport?: RemoteDesktopTransport;
+  negotiatedCodec?: RemoteDesktopEncoder;
+  intraRefresh?: boolean;
   monitors: RemoteDesktopMonitor[];
   metrics?: RemoteDesktopFrameMetrics;
 }

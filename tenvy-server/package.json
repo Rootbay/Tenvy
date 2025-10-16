@@ -72,10 +72,10 @@
 		"vitest-browser-svelte": "^1.1.0"
 	},
 	"dependencies": {
-		"@lucia-auth/adapter-drizzle": "^1.1.0",
-		"@node-rs/argon2": "^2.0.2",
-		"@simplewebauthn/browser": "^13.2.2",
-		"@simplewebauthn/server": "^13.2.2",
+                "@lucia-auth/adapter-drizzle": "^1.1.0",
+                "@node-rs/argon2": "^2.0.2",
+                "@simplewebauthn/browser": "^13.2.2",
+                "@simplewebauthn/server": "^13.2.2",
 		"better-sqlite3": "^12.4.1",
 		"d3-geo": "^3.1.1",
 		"d3-selection": "^3.0.0",
@@ -88,7 +88,8 @@
 		"shell-quote": "^1.8.3",
 		"systeminformation": "^5.27.11",
 		"topojson-client": "^3.1.0",
-		"world-atlas": "^2.0.2",
-		"zod": "^4.1.12"
-	}
+                "@koush/wrtc": "^0.5.3",
+                "world-atlas": "^2.0.2",
+                "zod": "^4.1.12"
+        }
 }
