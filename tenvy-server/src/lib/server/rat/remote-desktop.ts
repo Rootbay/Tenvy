@@ -650,6 +650,16 @@ export class RemoteDesktopManager {
 		record.inputSequence = 0;
 		this.broadcastSession(agentId);
 		this.broadcast(agentId, 'end', { reason: 'closed' });
+
+		record.history = [];
+		record.hasKeyFrame = false;
+		record.lastSequence = undefined;
+		record.metrics = undefined;
+		record.activeEncoder = undefined;
+		record.negotiatedCodec = undefined;
+		record.transport = undefined;
+		record.intraRefresh = undefined;
+		record.encoderHardware = undefined;
 	}
 
 	ingestFrame(agentId: string, frame: RemoteDesktopFramePacket) {
@@ -737,35 +747,63 @@ export class RemoteDesktopManager {
 				subscribers.add(subscriber);
 
 				const session = this.sessions.get(agentId);
-				if (session) {
-					controller.enqueue(
-						encoder.encode(formatEvent('session', { session: toSessionState(session) }))
+				if (session && subscriber) {
+					const sessionChunk = encoder.encode(
+						formatEvent('session', { session: toSessionState(session) })
 					);
+					if (!this.enqueueSubscriber(agentId, subscriber, sessionChunk)) {
+						subscriber = null;
+						return;
+					}
+
 					for (const item of session.history) {
-						if (!sessionId || sessionId === item.sessionId) {
-							controller.enqueue(encoder.encode(formatEvent('frame', { frame: item })));
+						if (!subscriber || subscriber.closed) {
+							return;
+						}
+						if (sessionId && sessionId !== item.sessionId) {
+							continue;
+						}
+						const frameChunk = encoder.encode(formatEvent('frame', { frame: item }));
+						if (!this.enqueueSubscriber(agentId, subscriber, frameChunk)) {
+							subscriber = null;
+							return;
 						}
 					}
-				} else {
-					controller.enqueue(
-						encoder.encode(
-							formatEvent('session', {
-								session: {
-									sessionId: '',
-									agentId,
-									active: false,
-									createdAt: new Date().toISOString(),
-									settings: cloneSettings(defaultSettings),
-									monitors: cloneMonitors(defaultMonitors)
-								}
-							})
-						)
+				} else if (subscriber) {
+					const sessionChunk = encoder.encode(
+						formatEvent('session', {
+							session: {
+								sessionId: '',
+								agentId,
+								active: false,
+								createdAt: new Date().toISOString(),
+								settings: cloneSettings(defaultSettings),
+								monitors: cloneMonitors(defaultMonitors)
+							}
+						})
 					);
+					if (!this.enqueueSubscriber(agentId, subscriber, sessionChunk)) {
+						subscriber = null;
+						return;
+					}
+				}
+
+				if (!subscriber || subscriber.closed) {
+					subscriber = null;
+					return;
 				}
 
 				subscriber.heartbeat = setInterval(() => {
-					if (subscriber?.closed) return;
-					controller.enqueue(encoder.encode(`: heartbeat ${Date.now()}\n\n`));
+					if (!subscriber || subscriber.closed) {
+						if (subscriber?.heartbeat) {
+							clearInterval(subscriber.heartbeat);
+						}
+						return;
+					}
+					const heartbeatChunk = encoder.encode(`: heartbeat ${Date.now()}\n\n`);
+					if (!this.enqueueSubscriber(agentId, subscriber, heartbeatChunk)) {
+						subscriber = null;
+					}
 				}, HEARTBEAT_INTERVAL_MS);
 			},
 			cancel: () => {
@@ -793,12 +831,16 @@ export class RemoteDesktopManager {
 
 		if (event === 'frame') {
 			const frame = (payload as { frame: RemoteDesktopFramePacket }).frame;
+			let encoded: Uint8Array | null = null;
 			for (const subscriber of subscribers) {
 				if (subscriber.closed) continue;
 				if (subscriber.sessionId && subscriber.sessionId !== frame.sessionId) {
 					continue;
 				}
-				subscriber.controller.enqueue(encoder.encode(formatEvent(event, { frame })));
+				if (!encoded) {
+					encoded = encoder.encode(formatEvent(event, { frame }));
+				}
+				this.enqueueSubscriber(agentId, subscriber, encoded);
 			}
 			return;
 		}
@@ -806,9 +848,33 @@ export class RemoteDesktopManager {
 		const data = encoder.encode(formatEvent(event, payload));
 		for (const subscriber of subscribers) {
 			if (subscriber.closed) continue;
-			subscriber.controller.enqueue(data);
+			this.enqueueSubscriber(agentId, subscriber, data);
 		}
 	}
+
+
+	private enqueueSubscriber(
+		agentId: string,
+		subscriber: RemoteDesktopSubscriber,
+		chunk: Uint8Array
+	): boolean {
+		if (!chunk || chunk.byteLength === 0 || subscriber.closed) {
+			return false;
+		}
+
+		try {
+			subscriber.controller.enqueue(chunk);
+			return true;
+		} catch (err) {
+			const message = err instanceof Error ? err.message : String(err);
+			if (!/close|abort|cancel/i.test(message)) {
+				console.warn('Failed to deliver remote desktop event', err);
+			}
+			this.removeSubscriber(agentId, subscriber);
+			return false;
+		}
+	}
+
 
 	private replaceTransportHandle(
 		record: RemoteDesktopSessionRecord,
@@ -853,7 +919,7 @@ export class RemoteDesktopManager {
 		const { RTCPeerConnection } = (await import('@koush/wrtc')) as typeof import('@koush/wrtc');
 		const pc: RTCPeerConnection = new RTCPeerConnection();
 		let channel: RTCDataChannel | null = null;
-		let handle: RemoteDesktopTransportHandle;
+		let handle: RemoteDesktopTransportHandle | null = null;
 
 		const offerSdp = decodeBase64(params.offer ?? '');
 		if (!offerSdp) {
@@ -868,7 +934,7 @@ export class RemoteDesktopManager {
 				this.handleWebRTCFrame(agentId, record.id, evt.data);
 			};
 			channel.onclose = () => {
-				if (record.transportHandle && record.transportHandle === handle) {
+				if (handle && record.transportHandle === handle) {
 					this.replaceTransportHandle(record, null);
 					record.transport = 'http';
 					record.intraRefresh = false;
@@ -889,7 +955,7 @@ export class RemoteDesktopManager {
 			throw new RemoteDesktopError('Failed to finalize WebRTC transport', 500);
 		}
 
-		handle = {
+		const transportHandle: RemoteDesktopTransportHandle = {
 			close: () => {
 				try {
 					channel?.close();
@@ -907,7 +973,7 @@ export class RemoteDesktopManager {
 		pc.onconnectionstatechange = () => {
 			const state = pc.connectionState;
 			if (state === 'failed' || state === 'closed' || state === 'disconnected') {
-				if (record.transportHandle && record.transportHandle === handle) {
+				if (handle && record.transportHandle === handle) {
 					this.replaceTransportHandle(record, null);
 					record.transport = 'http';
 					record.intraRefresh = false;
@@ -917,7 +983,9 @@ export class RemoteDesktopManager {
 			}
 		};
 
-		return { handle, answer: encodeBase64(local.sdp) };
+		handle = transportHandle;
+
+		return { handle: transportHandle, answer: encodeBase64(local.sdp) };
 	}
 
 	private handleWebRTCFrame(agentId: string, sessionId: string, data: unknown) {
