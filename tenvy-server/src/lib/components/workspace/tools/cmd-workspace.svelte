@@ -7,19 +7,14 @@
 	import {
 		Card,
 		CardContent,
-		CardDescription,
-		CardFooter,
-		CardHeader,
-		CardTitle
+		CardFooter
 	} from '$lib/components/ui/card/index.js';
-	import { Badge } from '$lib/components/ui/badge/index.js';
 	import { Textarea } from '$lib/components/ui/textarea/index.js';
 	import { getClientTool } from '$lib/data/client-tools';
 	import type { Client } from '$lib/data/clients';
 	import {
 		appendWorkspaceLog,
-		createWorkspaceLogEntry,
-		formatWorkspaceTimestamp
+		createWorkspaceLogEntry
 	} from '$lib/workspace/utils';
 	import type { WorkspaceLogEntry } from '$lib/workspace/types';
 	import type { AgentDetailResponse, AgentSnapshot } from '../../../../../../shared/types/agent';
@@ -304,12 +299,6 @@
 
 <div class="space-y-6">
 	<Card>
-		<CardHeader>
-			<CardTitle class="text-base">Command template</CardTitle>
-			<CardDescription
-				>Define the command, execution context, and guardrails before dispatch.</CardDescription
-			>
-		</CardHeader>
 		<CardContent class="space-y-6">
 			<div class="grid gap-2">
 				<Label for="cmd-working-directory">Working directory</Label>
@@ -370,87 +359,5 @@
 				<p class="text-sm text-destructive">{dispatchError}</p>
 			{/if}
 		</CardFooter>
-	</Card>
-
-	<Card>
-		<CardHeader>
-			<CardTitle class="text-base">Latest command result</CardTitle>
-			<CardDescription>Review the most recent shell output returned by the agent.</CardDescription>
-		</CardHeader>
-		<CardContent class="space-y-4">
-			{#if latestResult}
-				<div class="flex flex-wrap items-center justify-between gap-3">
-					<Badge variant={getResultVariant(latestResult)}>
-						{latestResult.success ? 'Success' : 'Failure'}
-					</Badge>
-					<span class="text-xs text-muted-foreground">
-						Completed {formatWorkspaceTimestamp(latestResult.completedAt)}
-					</span>
-				</div>
-				{#if latestResult.error && !latestResult.success}
-					<p
-						class="rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive"
-					>
-						{latestResult.error}
-					</p>
-				{/if}
-				<pre
-					class="max-h-72 overflow-auto rounded-md border border-border/60 bg-muted/40 p-3 text-xs leading-relaxed text-foreground">{latestResult.output?.trim() ||
-						'—'}</pre>
-			{:else}
-				<p class="text-sm text-muted-foreground">
-					Dispatch a command to retrieve live output from the client.
-				</p>
-			{/if}
-
-			{#if history.length > 1}
-				<div class="space-y-2">
-					<h3 class="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
-						Recent results
-					</h3>
-					<ul class="space-y-2">
-						{#each history.slice(1) as result (result.commandId)}
-							<li class="rounded-lg border border-border/60 bg-muted/30 p-3">
-								<div class="flex flex-wrap items-center justify-between gap-2 text-xs">
-									<span class="font-medium">
-										{result.success ? 'Success' : 'Failure'}
-									</span>
-									<span class="text-muted-foreground">
-										{formatWorkspaceTimestamp(result.completedAt)}
-									</span>
-								</div>
-								{#if summarizeOutput(result.output)}
-									<p class="mt-1 text-xs text-muted-foreground">
-										{summarizeOutput(result.output)}
-									</p>
-								{/if}
-							</li>
-						{/each}
-					</ul>
-				</div>
-			{/if}
-		</CardContent>
-	</Card>
-
-	<Card class="border-dashed">
-		<CardHeader>
-			<CardTitle class="text-base">Draft history</CardTitle>
-			<CardDescription>Recently staged commands stay local until you dispatch them.</CardDescription
-			>
-		</CardHeader>
-		<CardContent class="space-y-3 text-sm">
-			{#if drafts.length === 0}
-				<p class="text-muted-foreground">No commands staged yet.</p>
-			{:else}
-				<ul class="space-y-2">
-					{#each drafts as draft (draft.id)}
-						<li class="rounded-lg border border-border/60 bg-muted/40 p-3">
-							<p class="font-medium text-foreground">{draft.command}</p>
-							<p class="text-xs text-muted-foreground">{describeDraft(draft)}</p>
-						</li>
-					{/each}
-				</ul>
-			{/if}
-		</CardContent>
 	</Card>
 </div>
