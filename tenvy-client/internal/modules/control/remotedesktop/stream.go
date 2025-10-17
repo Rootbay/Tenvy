@@ -65,7 +65,8 @@ type sessionSnapshot struct {
 	tile            int
 	frameInterval   time.Duration
 	mode            RemoteDesktopStreamMode
-	encoder         RemoteDesktopEncoder
+	negotiatedCodec RemoteDesktopEncoder
+	activeEncoder   RemoteDesktopEncoder
 	forceKey        bool
 	minClipQuality  int
 	maxClipQuality  int
@@ -530,8 +531,11 @@ func (c *remoteDesktopSessionController) prepareSnapshotLocked(session *RemoteDe
 	}
 
 	mode := normalizeStreamMode(session.Settings.Mode)
-	encoder := normalizeEncoder(session.Settings.Encoder)
-	session.Settings.Encoder = encoder
+	negotiated := normalizeEncoder(session.NegotiatedCodec)
+	activeEncoder := normalizeEncoder(session.ActiveEncoder)
+	if negotiated == RemoteEncoderAuto {
+		negotiated = activeEncoder
+	}
 	state.onModeChange(session, mode)
 
 	width := session.Width
@@ -572,7 +576,8 @@ func (c *remoteDesktopSessionController) prepareSnapshotLocked(session *RemoteDe
 		tile:            tile,
 		frameInterval:   interval,
 		mode:            mode,
-		encoder:         encoder,
+		negotiatedCodec: negotiated,
+		activeEncoder:   activeEncoder,
 		forceKey:        forceKey,
 		minClipQuality:  minAllowed,
 		maxClipQuality:  maxAllowed,
@@ -697,27 +702,11 @@ func (c *remoteDesktopSessionController) handleVideoFrame(
 	framesPayload := []RemoteDesktopClipFrame{}
 	selectedEncoder := RemoteEncoderAuto
 
-	switch normalizeEncoder(snapshot.encoder) {
-	case RemoteEncoderHEVC:
-		selectedEncoder = c.tryClipEncoders(state, session, snapshot, interval, &framesPayload, &encodeDuration, remoteClipEncodingHEVC)
-		if len(framesPayload) == 0 {
-			selectedEncoder = c.tryClipEncoders(state, session, snapshot, interval, &framesPayload, &encodeDuration, remoteClipEncodingH264)
+	if snapshot.negotiatedCodec != RemoteEncoderJPEG {
+		order := clipEncoderOrder(snapshot)
+		if len(order) > 0 {
+			selectedEncoder = c.tryClipEncoders(state, session, snapshot, interval, &framesPayload, &encodeDuration, order...)
 		}
-	case RemoteEncoderAVC:
-		selectedEncoder = c.tryClipEncoders(state, session, snapshot, interval, &framesPayload, &encodeDuration, remoteClipEncodingH264)
-	case RemoteEncoderJPEG:
-		selectedEncoder = RemoteEncoderJPEG
-	default:
-		selectedEncoder = c.tryClipEncoders(
-			state,
-			session,
-			snapshot,
-			interval,
-			&framesPayload,
-			&encodeDuration,
-			remoteClipEncodingHEVC,
-			remoteClipEncodingH264,
-		)
 	}
 
 	if len(framesPayload) == 0 {
@@ -794,6 +783,42 @@ func (c *remoteDesktopSessionController) handleVideoFrame(
 	state.resetClipBuffer()
 	state.clipKeyPending = false
 	return nextInterval, timestamp
+}
+
+func clipEncoderOrder(snapshot sessionSnapshot) []string {
+	target := normalizeEncoder(snapshot.negotiatedCodec)
+	if target == RemoteEncoderAuto {
+		target = normalizeEncoder(snapshot.activeEncoder)
+	}
+
+	order := make([]string, 0, 2)
+	appendUnique := func(kind string) {
+		if kind == "" {
+			return
+		}
+		for _, existing := range order {
+			if existing == kind {
+				return
+			}
+		}
+		order = append(order, kind)
+	}
+
+	switch target {
+	case RemoteEncoderJPEG:
+		return order
+	case RemoteEncoderAVC:
+		appendUnique(remoteClipEncodingH264)
+		appendUnique(remoteClipEncodingHEVC)
+	case RemoteEncoderHEVC:
+		appendUnique(remoteClipEncodingHEVC)
+		appendUnique(remoteClipEncodingH264)
+	default:
+		appendUnique(remoteClipEncodingHEVC)
+		appendUnique(remoteClipEncodingH264)
+	}
+
+	return order
 }
 
 func (c *remoteDesktopSessionController) tryClipEncoders(
