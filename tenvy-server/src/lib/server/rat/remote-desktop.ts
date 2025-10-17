@@ -306,14 +306,9 @@ function resolveSettings(settings?: RemoteDesktopSettingsPatch): RemoteDesktopSe
 		if (typeof settings.keyboard === 'boolean') {
 			resolved.keyboard = settings.keyboard;
 		}
-		if (settings.encoder) {
-			if (!encoders.has(settings.encoder)) {
-				throw new RemoteDesktopError('Invalid encoder preference', 400);
-			}
-			resolved.encoder = settings.encoder;
-		}
-	}
-	return resolved;
+        }
+        resolved.encoder = 'auto';
+        return resolved;
 }
 
 function applySettings(target: RemoteDesktopSettings, updates: RemoteDesktopSettingsPatch) {
@@ -341,12 +336,7 @@ function applySettings(target: RemoteDesktopSettings, updates: RemoteDesktopSett
 	if (typeof updates.keyboard === 'boolean') {
 		target.keyboard = updates.keyboard;
 	}
-	if (updates.encoder) {
-		if (!encoders.has(updates.encoder)) {
-			throw new RemoteDesktopError('Invalid encoder preference', 400);
-		}
-		target.encoder = updates.encoder;
-	}
+        target.encoder = 'auto';
 }
 
 function formatEvent(event: string, payload: unknown): string {
@@ -450,7 +440,6 @@ export class RemoteDesktopManager {
                         active: true,
                         createdAt: new Date(),
                         settings: resolved,
-                        activeEncoder: resolved.encoder,
                         monitors: cloneMonitors(defaultMonitors),
                         history: [],
                         hasKeyFrame: false,
@@ -481,10 +470,7 @@ export class RemoteDesktopManager {
                         throw new RemoteDesktopError('No active remote desktop session', 404);
                 }
 		applySettings(record.settings, updates);
-		if (updates.encoder) {
-			record.activeEncoder = updates.encoder;
-		}
-		if (record.settings.monitor >= record.monitors.length) {
+                if (record.settings.monitor >= record.monitors.length) {
 			record.settings.monitor = Math.max(
 				0,
 				Math.min(record.settings.monitor, record.monitors.length - 1)
