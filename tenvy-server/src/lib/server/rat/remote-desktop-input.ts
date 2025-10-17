@@ -9,6 +9,8 @@ const mouseButtons = new Set<RemoteDesktopMouseButton>(['left', 'middle', 'right
 const DEFAULT_ALPN = 'tenvy.remote-desktop.input.v1';
 const DEFAULT_ADDRESS = process.env.TENVY_QUIC_INPUT_ADDRESS ?? '0.0.0.0';
 const DEFAULT_PORT = Number.parseInt(process.env.TENVY_QUIC_INPUT_PORT ?? '0', 10) || 9543;
+const MAX_INPUT_BUFFER = 1_048_576; // 1 MiB
+const MAX_EVENT_BATCH = 256;
 
 const numberFromUnknown = (value: unknown): number | null => {
 	if (typeof value === 'number') {
@@ -209,13 +211,21 @@ export class RemoteDesktopQuicInputService {
 			return this.startPromise;
 		}
 
-		this.startPromise = this.initialize(options).catch((err) => {
-			console.warn('Failed to initialize QUIC input service:', err);
-			throw err;
-		});
+		const startOperation = (async () => {
+			try {
+				await this.initialize(options);
+			} catch (err) {
+				console.warn('Failed to initialize QUIC input service:', err);
+				throw err;
+			} finally {
+				this.startPromise = null;
+			}
+		})();
+
+		this.startPromise = startOperation;
 
 		try {
-			await this.startPromise;
+			await startOperation;
 		} catch {
 			// initialization failure already logged
 		}
@@ -270,6 +280,7 @@ export class RemoteDesktopQuicInputService {
 		}
 
 		this.attachSessionListener(socket);
+		this.attachSocketLifecycleHandlers(socket);
 
 		const listen = (socket as { listen?: (opts: Record<string, unknown>) => Promise<void> }).listen;
 		if (typeof listen !== 'function') {
@@ -277,15 +288,54 @@ export class RemoteDesktopQuicInputService {
 			return;
 		}
 
-		await listen.call(socket, {
-			key,
-			cert,
-			alpn: [alpn]
-		});
+		try {
+			await listen.call(socket, {
+				key,
+				cert,
+				alpn: [alpn]
+			});
+		} catch (err) {
+			this.closeSocketQuietly(socket);
+			throw err;
+		}
 
 		this.socket = socket;
 		this.started = true;
 		console.info(`Remote desktop QUIC input listening on ${address}:${port} (${alpn}).`);
+	}
+
+	private attachSocketLifecycleHandlers(socket: QuicSocket) {
+		const on = (socket as { on?: (event: string, handler: (...args: unknown[]) => void) => void })
+			.on;
+		if (typeof on !== 'function') {
+			return;
+		}
+
+		on.call(socket, 'close', () => {
+			if (this.socket === socket) {
+				this.socket = null;
+				this.started = false;
+			}
+		});
+
+		on.call(socket, 'error', (err: unknown) => {
+			console.warn('Remote desktop QUIC input socket error:', err);
+			if (this.socket === socket) {
+				this.socket = null;
+				this.started = false;
+			}
+		});
+	}
+
+	private closeSocketQuietly(socket: QuicSocket) {
+		const close = (socket as { close?: () => void }).close;
+		if (typeof close === 'function') {
+			try {
+				close.call(socket);
+			} catch (err) {
+				console.warn('Failed to close QUIC socket after error:', err);
+			}
+		}
 	}
 
 	private attachSessionListener(socket: QuicSocket) {
@@ -362,6 +412,12 @@ export class RemoteDesktopQuicInputService {
 				console.warn('Failed to handle QUIC input packet:', err);
 			});
 		}
+
+		if (remaining.length > MAX_INPUT_BUFFER) {
+			console.warn('Remote desktop QUIC input buffer exceeded limit, discarding partial payload.');
+			return '';
+		}
+
 		return remaining;
 	}
 
@@ -385,9 +441,16 @@ export class RemoteDesktopQuicInputService {
 			return;
 		}
 
-		const eventsRaw = Array.isArray(packet.events) ? (packet.events as RawInputEvent[]) : [];
+		let eventsRaw = Array.isArray(packet.events) ? (packet.events as RawInputEvent[]) : [];
 		if (eventsRaw.length === 0) {
 			return;
+		}
+
+		if (eventsRaw.length > MAX_EVENT_BATCH) {
+			console.warn(
+				`Remote desktop QUIC input batch truncated from ${eventsRaw.length} to ${MAX_EVENT_BATCH} events.`
+			);
+			eventsRaw = eventsRaw.slice(0, MAX_EVENT_BATCH);
 		}
 
 		const sanitized = sanitizeInputEvents(
