@@ -1,7 +1,5 @@
 import { error, json } from '@sveltejs/kit';
-import { registry } from '$lib/server/rat/store';
 import { remoteDesktopManager } from '$lib/server/rat/remote-desktop';
-import type { RemoteDesktopCommandPayload } from '$lib/types/remote-desktop';
 import type { RequestHandler } from './$types';
 import { sanitizeInputEvents, type RawInputEvent } from '$lib/server/rat/remote-desktop-input';
 
@@ -42,17 +40,15 @@ export const POST: RequestHandler = async ({ params, request }) => {
 		return json({ accepted: false, reason: 'filtered' });
 	}
 
-	const command: RemoteDesktopCommandPayload = {
-		action: 'input',
-		sessionId: session.sessionId,
-		events: sanitized
-	};
-
-	try {
-		registry.queueCommand(id, { name: 'remote-desktop', payload: command });
-	} catch (err) {
-		throw error(500, 'Failed to queue remote desktop input command');
-	}
-
-	return json({ accepted: true, count: sanitized.length });
+        try {
+                const result = remoteDesktopManager.dispatchInput(id, session.sessionId, sanitized);
+                return json({
+                        accepted: true,
+                        count: sanitized.length,
+                        delivered: result.delivered,
+                        sequence: result.sequence ?? undefined
+                });
+        } catch (err) {
+                throw error(500, 'Failed to dispatch remote desktop input command');
+        }
 };

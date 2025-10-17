@@ -35,6 +35,7 @@ type clipEncodeOptions struct {
 	ForceKey      bool
 	TargetBitrate int
 	FrameInterval time.Duration
+	IntraRefresh  bool
 }
 
 type clipEncodeResult struct {
@@ -215,6 +216,9 @@ func (e *ffmpegClipEncoder) encodeWithCandidate(
 
 	if len(candidate.extraArgs) > 0 {
 		args = append(args, candidate.extraArgs...)
+	}
+	if opts.IntraRefresh {
+		args = append(args, "-intra-refresh", "1")
 	}
 
 	container := strings.TrimSpace(e.container)

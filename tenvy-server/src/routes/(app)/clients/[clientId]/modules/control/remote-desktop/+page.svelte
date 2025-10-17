@@ -22,15 +22,18 @@
 	import { Badge } from '$lib/components/ui/badge/index.js';
 	import { Separator } from '$lib/components/ui/separator/index.js';
 	import type { Client } from '$lib/data/clients';
-	import type {
-		RemoteDesktopFramePacket,
-		RemoteDesktopInputEvent,
-		RemoteDesktopMonitor,
-		RemoteDesktopMouseButton,
-		RemoteDesktopSessionState,
-		RemoteDesktopSettings,
-		RemoteDesktopSettingsPatch
-	} from '$lib/types/remote-desktop';
+        import type {
+                RemoteDesktopFramePacket,
+                RemoteDesktopInputEvent,
+                RemoteDesktopMonitor,
+                RemoteDesktopMouseButton,
+                RemoteDesktopSessionState,
+                RemoteDesktopSettings,
+                RemoteDesktopSettingsPatch
+        } from '$lib/types/remote-desktop';
+        import SessionMetricsGrid from './SessionMetricsGrid.svelte';
+        import { createInputChannel } from './input-channel';
+        import { formatTimestamp } from './formatters';
 
 	const fallbackMonitors = [
 		{ id: 0, label: 'Primary', width: 1280, height: 720 }
@@ -67,13 +70,15 @@
 	let monitor = $state(0);
 	let mouseEnabled = $state(false);
 	let keyboardEnabled = $state(false);
-	let activeEncoderValue = $state<RemoteDesktopSettings['encoder']>('auto');
-	let fps = $state<number | null>(null);
-	let bandwidth = $state<number | null>(null);
-	let clipQuality = $state<number | null>(null);
-	let streamWidth = $state<number | null>(null);
-	let streamHeight = $state<number | null>(null);
-	let latencyMs = $state<number | null>(null);
+        let activeEncoderValue = $state<RemoteDesktopSettings['encoder']>('auto');
+        let encoderHardware = $state<string | null>(null);
+        let intraRefreshEnabled = $state(false);
+        let fps = $state<number | null>(null);
+        let bandwidth = $state<number | null>(null);
+        let clipQuality = $state<number | null>(null);
+        let streamWidth = $state<number | null>(null);
+        let streamHeight = $state<number | null>(null);
+        let latencyMs = $state<number | null>(null);
 	let droppedFrames = $state(0);
 	let isStarting = $state(false);
 	let isStopping = $state(false);
@@ -84,38 +89,51 @@
 	let sessionActive = $state(false);
 	let sessionId = $state('');
 
-	let viewportEl: HTMLDivElement | null = null;
-	let viewportFocused = false;
-	let pointerCaptured = false;
-	let activePointerId: number | null = null;
-	let inputQueue: RemoteDesktopInputEvent[] = [];
-	let inputFlushHandle: number | null = null;
-	let inputSending = false;
-	const pressedKeys = new Set<number>();
-	const pressedKeyMeta = new Map<number, { key?: string; code?: string }>();
+        let viewportEl: HTMLDivElement | null = null;
+        let viewportFocused = false;
+        let pointerCaptured = false;
+        let activePointerId: number | null = null;
 
-	const pointerButtonMap: Record<number, RemoteDesktopMouseButton> = {
-		0: 'left',
-		1: 'middle',
-		2: 'right'
-	};
+        const inputChannel = browser
+                ? createInputChannel({
+                                dispatch: async (events) => {
+                                        if (!client || !sessionActive || !sessionId) {
+                                                return false;
+                                        }
+                                        const response = await fetch(
+                                                `/api/agents/${client.id}/remote-desktop/input`,
+                                                {
+                                                        method: 'POST',
+                                                        headers: { 'Content-Type': 'application/json' },
+                                                        body: JSON.stringify({ sessionId, events }),
+                                                        keepalive: true
+                                                }
+                                        );
+                                        if (!response.ok) {
+                                                const message = await response.text();
+                                                console.warn('Remote desktop input dispatch failed', message);
+                                                return false;
+                                        }
+                                        return true;
+                                },
+                                onDispatchError: (error) => {
+                                        console.error('Failed to send remote desktop input events', error);
+                                }
+                        })
+                : null;
 
-	const captureTimestamp = () => {
-		if (typeof performance !== 'undefined' && typeof performance.now === 'function') {
-			return Math.round(performance.timeOrigin + performance.now());
-		}
-		return Date.now();
-	};
+        const captureTimestamp = () => inputChannel?.captureTimestamp() ?? Date.now();
 
-	function normalizeCapturedAt(event: RemoteDesktopInputEvent) {
-		if (typeof event.capturedAt !== 'number' || !Number.isFinite(event.capturedAt)) {
-			event.capturedAt = captureTimestamp();
-			return;
-		}
-		event.capturedAt = Math.trunc(event.capturedAt);
-	}
+        const pressedKeys = new Set<number>();
+        const pressedKeyMeta = new Map<number, { key?: string; code?: string }>();
 
-	let canvasEl: HTMLCanvasElement | null = null;
+        const pointerButtonMap: Record<number, RemoteDesktopMouseButton> = {
+                0: 'left',
+                1: 'middle',
+                2: 'right'
+        };
+
+        let canvasEl: HTMLCanvasElement | null = null;
 	let canvasContext: CanvasRenderingContext2D | null = null;
 	let eventSource: EventSource | null = null;
 	let streamSessionId: string | null = null;
@@ -193,12 +211,13 @@
 			eventSource.close();
 			eventSource = null;
 		}
-		streamSessionId = null;
-		stopRequested = true;
-		frameQueue = [];
-		processing = false;
-		imageBitmapFallbackLogged = false;
-	}
+                streamSessionId = null;
+                stopRequested = true;
+                frameQueue = [];
+                processing = false;
+                imageBitmapFallbackLogged = false;
+                inputChannel?.clear();
+        }
 
 	function connectStream(id?: string) {
 		if (!browser) return;
@@ -339,12 +358,18 @@
 						clipQuality =
 							typeof metrics.clipQuality === 'number' ? metrics.clipQuality : clipQuality;
 					}
-					streamWidth = typeof next.width === 'number' ? next.width : streamWidth;
-					streamHeight = typeof next.height === 'number' ? next.height : streamHeight;
-					latencyMs = computeLatency(next.timestamp);
-					if (next.monitors && next.monitors.length > 0) {
-						monitors = next.monitors;
-					}
+                                        streamWidth = typeof next.width === 'number' ? next.width : streamWidth;
+                                        streamHeight = typeof next.height === 'number' ? next.height : streamHeight;
+                                        latencyMs = inputChannel?.computeLatency(next.timestamp) ?? null;
+                                        if (typeof next.encoderHardware === 'string' && next.encoderHardware.length > 0) {
+                                                encoderHardware = next.encoderHardware;
+                                        }
+                                        if (typeof next.intraRefresh === 'boolean') {
+                                                intraRefreshEnabled = next.intraRefresh;
+                                        }
+                                        if (next.monitors && next.monitors.length > 0) {
+                                                monitors = next.monitors;
+                                        }
 					if (session) {
 						session = {
 							...session,
@@ -544,19 +569,7 @@
 		console.warn('ImageBitmap decode failed, falling back to <img> rendering', err);
 	}
 
-	function computeLatency(timestamp?: string | null) {
-		if (!timestamp) {
-			return null;
-		}
-		const parsed = Date.parse(timestamp);
-		if (Number.isNaN(parsed)) {
-			return null;
-		}
-		const delta = Date.now() - parsed;
-		return delta < 0 ? 0 : delta;
-	}
-
-	async function startSession() {
+        async function startSession() {
 		if (!client || isStarting) return;
 		errorMessage = null;
 		infoMessage = null;
@@ -647,122 +660,22 @@
 		}
 	}
 
-	function formatMetric(value: number | null, suffix: string, digits = 1) {
-		if (value === null || Number.isNaN(value)) {
-			return `-- ${suffix}`;
-		}
-		return `${value.toFixed(digits)} ${suffix}`;
-	}
+        function queueInput(event: RemoteDesktopInputEvent) {
+                if (!browser || !sessionActive || !sessionId || !client || !inputChannel) {
+                        return;
+                }
+                inputChannel.enqueue(event);
+        }
 
-	function formatPercent(value: number | null) {
-		if (value === null || Number.isNaN(value)) {
-			return '-- %';
-		}
-		return `${Math.round(value)}%`;
-	}
-
-	function formatResolution(width: number | null, height: number | null) {
-		if (width === null || height === null || Number.isNaN(width) || Number.isNaN(height)) {
-			return '--';
-		}
-		return `${width}×${height}`;
-	}
-
-	function formatLatency(value: number | null) {
-		if (value === null || Number.isNaN(value)) {
-			return '-- ms';
-		}
-		if (value >= 1000) {
-			return `${(value / 1000).toFixed(1)} s`;
-		}
-		return `${Math.round(value)} ms`;
-	}
-
-	function formatTimestamp(value: string | null | undefined) {
-		if (!value) return '—';
-		const parsed = new Date(value);
-		if (Number.isNaN(parsed.getTime())) {
-			return value;
-		}
-		return parsed.toLocaleTimeString();
-	}
-
-	function queueInput(event: RemoteDesktopInputEvent) {
-		if (!browser || !sessionActive || !sessionId || !client) {
-			return;
-		}
-		normalizeCapturedAt(event);
-		inputQueue.push(event);
-		scheduleInputFlush();
-	}
-
-	function queueInputBatch(events: RemoteDesktopInputEvent[]) {
-		if (!browser || !sessionActive || !sessionId || !client) {
-			return;
-		}
-		if (events.length === 0) {
-			return;
-		}
-		for (const event of events) {
-			normalizeCapturedAt(event);
-		}
-		inputQueue.push(...events);
-		scheduleInputFlush();
-	}
-
-	function scheduleInputFlush() {
-		if (!browser || inputQueue.length === 0) {
-			return;
-		}
-		if (inputFlushHandle !== null) {
-			return;
-		}
-		inputFlushHandle = requestAnimationFrame(() => {
-			inputFlushHandle = null;
-			void flushInputQueue();
-		});
-	}
-
-	async function flushInputQueue() {
-		if (!browser || !client || !sessionId || !sessionActive) {
-			inputSending = false;
-			return;
-		}
-		if (inputSending || inputQueue.length === 0) {
-			return;
-		}
-		inputSending = true;
-		const events = inputQueue.splice(0, inputQueue.length);
-		try {
-			const response = await fetch(`/api/agents/${client.id}/remote-desktop/input`, {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ sessionId, events }),
-				keepalive: true
-			});
-			if (!response.ok) {
-				inputQueue = [...events, ...inputQueue];
-				const message = await response.text();
-				console.warn('Remote desktop input dispatch failed', message);
-			}
-		} catch (err) {
-			inputQueue = [...events, ...inputQueue];
-			console.error('Failed to send remote desktop input events', err);
-		} finally {
-			inputSending = false;
-			if (inputQueue.length > 0) {
-				scheduleInputFlush();
-			}
-		}
-	}
-
-	function clearInputQueue() {
-		inputQueue = [];
-		if (browser && inputFlushHandle !== null) {
-			cancelAnimationFrame(inputFlushHandle);
-			inputFlushHandle = null;
-		}
-	}
+        function queueInputBatch(events: RemoteDesktopInputEvent[]) {
+                if (!browser || !sessionActive || !sessionId || !client || !inputChannel) {
+                        return;
+                }
+                if (events.length === 0) {
+                        return;
+                }
+                inputChannel.enqueueBatch(events);
+        }
 
 	function releasePointerCapture() {
 		if (!viewportEl) {
@@ -1007,36 +920,40 @@
 		}
 	});
 
-	$effect(() => {
-		sessionActive;
-		if (!sessionActive) {
-			releasePointerCapture();
-			releaseAllPressedKeys();
-			clearInputQueue();
-		}
-	});
+        $effect(() => {
+                sessionActive;
+                if (!sessionActive) {
+                        releasePointerCapture();
+                        releaseAllPressedKeys();
+                        inputChannel?.clear();
+                }
+        });
 
 	$effect(() => {
 		const current = session;
-		if (!current) {
-			quality = 'auto';
-			encoder = 'auto';
-			activeEncoderValue = 'auto';
-			mode = 'video';
-			monitor = 0;
-			mouseEnabled = true;
-			keyboardEnabled = true;
-			sessionActive = false;
+                if (!current) {
+                        quality = 'auto';
+                        encoder = 'auto';
+                        activeEncoderValue = 'auto';
+                        encoderHardware = null;
+                        intraRefreshEnabled = false;
+                        mode = 'video';
+                        monitor = 0;
+                        mouseEnabled = true;
+                        keyboardEnabled = true;
+                        sessionActive = false;
 			sessionId = '';
 			monitors = fallbackMonitors;
 			resetMetrics();
 			return;
-		}
-		quality = current.settings.quality;
-		const configuredEncoder = current.settings.encoder ?? 'auto';
-		encoder = configuredEncoder;
-		activeEncoderValue = current.activeEncoder ?? configuredEncoder;
-		mode = current.settings.mode;
+                }
+                quality = current.settings.quality;
+                const configuredEncoder = current.settings.encoder ?? 'auto';
+                encoder = configuredEncoder;
+                activeEncoderValue = current.activeEncoder ?? configuredEncoder;
+                encoderHardware = current.encoderHardware ?? encoderHardware;
+                intraRefreshEnabled = current.intraRefresh === true;
+                mode = current.settings.mode;
 		monitor = current.settings.monitor;
 		mouseEnabled = current.settings.mouse;
 		keyboardEnabled = current.settings.keyboard;
@@ -1161,15 +1078,21 @@
 		</div>
 	</CardHeader>
 	<CardContent>
-		<div class="flex items-center gap-2">
-			<Badge variant={sessionActive ? 'default' : 'outline'}>
-				{sessionActive ? 'Active' : 'Inactive'}
-			</Badge>
-			<Badge variant="outline">Encoder: {encoderLabel(activeEncoderValue)}</Badge>
-			{#if sessionId}
-				<span class="text-xs text-muted-foreground">Session ID: {sessionId}</span>
-			{/if}
-		</div>
+                <div class="flex items-center gap-2">
+                        <Badge variant={sessionActive ? 'default' : 'outline'}>
+                                {sessionActive ? 'Active' : 'Inactive'}
+                        </Badge>
+                        <Badge variant="outline">Encoder: {encoderLabel(activeEncoderValue)}</Badge>
+                        {#if encoderHardware}
+                                <Badge variant="outline">Hardware: {encoderHardware}</Badge>
+                        {/if}
+                        {#if intraRefreshEnabled}
+                                <Badge variant="outline">Intra-refresh</Badge>
+                        {/if}
+                        {#if sessionId}
+                                <span class="text-xs text-muted-foreground">Session ID: {sessionId}</span>
+                        {/if}
+                </div>
 		<div
 			tabindex="-1"
 			bind:this={viewportEl}
@@ -1195,32 +1118,14 @@
 				</div>
 			{/if}
 		</div>
-		<div class="grid gap-3 text-sm sm:grid-cols-2 lg:grid-cols-5">
-			<div class="rounded-lg border border-border/60 bg-background/60 p-3">
-				<p class="text-xs text-muted-foreground uppercase">FPS</p>
-				<p class="text-sm font-semibold text-foreground">{formatMetric(fps, 'fps')}</p>
-			</div>
-			<div class="rounded-lg border border-border/60 bg-background/60 p-3">
-				<p class="text-xs text-muted-foreground uppercase">Bandwidth</p>
-				<p class="text-sm font-semibold text-foreground">{formatMetric(bandwidth, 'kbps')}</p>
-			</div>
-			<div class="rounded-lg border border-border/60 bg-background/60 p-3">
-				<p class="text-xs text-muted-foreground">JPEG quality</p>
-				<p class="text-sm font-semibold text-foreground">
-					{clipQuality === null || Number.isNaN(clipQuality) ? '--' : `Q${Math.round(clipQuality)}`}
-				</p>
-			</div>
-			<div class="rounded-lg border border-border/60 bg-background/60 p-3">
-				<p class="text-xs text-muted-foreground">Resolution</p>
-				<p class="text-sm font-semibold text-foreground">
-					{formatResolution(streamWidth, streamHeight)}
-				</p>
-			</div>
-			<div class="rounded-lg border border-border/60 bg-background/60 p-3">
-				<p class="text-xs text-muted-foreground">Latency</p>
-				<p class="text-sm font-semibold text-foreground">{formatLatency(latencyMs)}</p>
-			</div>
-		</div>
+                <SessionMetricsGrid
+                        {fps}
+                        {bandwidth}
+                        {clipQuality}
+                        {streamWidth}
+                        {streamHeight}
+                        latencyMs={latencyMs}
+                />
 		{#if errorMessage}
 			<p class="text-sm text-destructive">{errorMessage}</p>
 		{/if}

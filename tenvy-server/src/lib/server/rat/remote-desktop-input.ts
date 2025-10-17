@@ -1,7 +1,6 @@
 import path from 'node:path';
 import { readFile } from 'node:fs/promises';
 import type { RemoteDesktopInputEvent, RemoteDesktopMouseButton } from '$lib/types/remote-desktop';
-import { registry } from './store';
 import { remoteDesktopManager } from './remote-desktop';
 
 export type RawInputEvent = Record<string, unknown>;
@@ -193,10 +192,9 @@ export interface RemoteDesktopQuicInputOptions {
 type QuicSocket = unknown;
 
 export class RemoteDesktopQuicInputService {
-	private socket: QuicSocket | null = null;
-	private started = false;
-	private startPromise: Promise<void> | null = null;
-	private sequences = new Map<string, number>();
+        private socket: QuicSocket | null = null;
+        private started = false;
+        private startPromise: Promise<void> | null = null;
 
 	async start(options: RemoteDesktopQuicInputOptions = {}): Promise<void> {
 		if (options.disabled || process.env.TENVY_QUIC_INPUT_DISABLED === '1') {
@@ -402,30 +400,15 @@ export class RemoteDesktopQuicInputService {
 			return;
 		}
 
-		const key = `${agentId}:${sessionId}`;
-		const sequence = numberFromUnknown(packet.sequence);
-		if (sequence !== null) {
-			const normalized = Math.trunc(sequence);
-			const previous = this.sequences.get(key);
-			if (previous !== undefined && normalized <= previous) {
-				return;
-			}
-			this.sequences.set(key, normalized);
-		}
-
-		try {
-			registry.queueCommand(agentId, {
-				name: 'remote-desktop',
-				payload: {
-					action: 'input',
-					sessionId,
-					events: sanitized
-				}
-			});
-		} catch (err) {
-			console.error('Failed to enqueue remote desktop input from QUIC service:', err);
-		}
-	}
+                const sequenceHint = numberFromUnknown(packet.sequence);
+                try {
+                        remoteDesktopManager.dispatchInput(agentId, sessionId, sanitized, {
+                                sequence: sequenceHint === null ? undefined : Math.trunc(sequenceHint)
+                        });
+                } catch (err) {
+                        console.error('Failed to dispatch remote desktop input from QUIC service:', err);
+                }
+        }
 
 	private async resolveCredential(source: string): Promise<string | null> {
 		if (source.includes('-----BEGIN')) {

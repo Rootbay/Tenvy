@@ -100,6 +100,19 @@ func (s *RemoteDesktopStreamer) Shutdown() {
 	s.controller.Shutdown()
 }
 
+func (s *RemoteDesktopStreamer) HandleInputPayload(ctx context.Context, payload RemoteDesktopCommandPayload) error {
+	if s == nil || s.controller == nil {
+		return errors.New("remote desktop subsystem not initialized")
+	}
+	if strings.TrimSpace(payload.SessionID) == "" {
+		return errors.New("missing session identifier")
+	}
+	if strings.TrimSpace(payload.Action) == "" {
+		payload.Action = "input"
+	}
+	return s.controller.HandleInput(payload)
+}
+
 func decodeRemoteDesktopPayload(raw json.RawMessage) (RemoteDesktopCommandPayload, error) {
 	var payload RemoteDesktopCommandPayload
 	if err := json.Unmarshal(raw, &payload); err != nil {
@@ -147,14 +160,15 @@ func (c *remoteDesktopSessionController) Start(ctx context.Context, payload Remo
 	monitorInfo := infos[settings.Monitor]
 	streamCtx, cancel := context.WithCancelCause(context.Background())
 	session := &RemoteDesktopSession{
-		ID:            sessionID,
-		Settings:      settings,
-		ForceKeyFrame: true,
-		monitors:      monitors,
-		monitorInfos:  infos,
-		monitorsDirty: true,
-		ctx:           streamCtx,
-		cancel:        cancel,
+		ID:              sessionID,
+		Settings:        settings,
+		ForceKeyFrame:   true,
+		monitors:        monitors,
+		monitorInfos:    infos,
+		monitorsDirty:   true,
+		ctx:             streamCtx,
+		cancel:          cancel,
+		EncoderHardware: "",
 	}
 	session.ActiveEncoder = normalizeEncoder(session.Settings.Encoder)
 	if session.ActiveEncoder == "" {

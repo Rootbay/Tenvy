@@ -166,10 +166,44 @@ func (a *Agent) consumeCommandStream(ctx context.Context, conn *websocket.Conn) 
 			continue
 		}
 
-		if !strings.EqualFold(envelope.Type, "command") || envelope.Command == nil {
+		switch strings.ToLower(strings.TrimSpace(envelope.Type)) {
+		case "command":
+			if envelope.Command == nil {
+				continue
+			}
+			a.processCommands(ctx, []protocol.Command{*envelope.Command})
+		case "remote-desktop-input":
+			if envelope.Input == nil {
+				continue
+			}
+			a.handleRemoteDesktopInput(ctx, *envelope.Input)
+		default:
 			continue
 		}
-
-		a.processCommands(ctx, []protocol.Command{*envelope.Command})
 	}
+}
+
+func (a *Agent) handleRemoteDesktopInput(ctx context.Context, burst protocol.RemoteDesktopInputBurst) {
+	if a == nil || len(burst.Events) == 0 {
+		return
+	}
+	if a.modules == nil {
+		return
+	}
+
+	module := a.modules.remoteDesktopModule()
+	if module == nil {
+		if a.logger != nil {
+			a.logger.Printf("remote desktop input ignored: module unavailable")
+		}
+		return
+	}
+
+	go func() {
+		if err := module.HandleInputBurst(ctx, burst); err != nil {
+			if a.logger != nil {
+				a.logger.Printf("remote desktop input error: %v", err)
+			}
+		}
+	}()
 }

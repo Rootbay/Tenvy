@@ -1,6 +1,9 @@
 import type { AgentConfig } from "./config";
 import type { AgentMetrics, AgentStatus } from "./agent";
-import type { RemoteDesktopCommandPayload } from "./remote-desktop";
+import type {
+  RemoteDesktopCommandPayload,
+  RemoteDesktopInputBurst,
+} from "./remote-desktop";
 import type { AudioControlCommandPayload } from "./audio";
 import type { ClipboardCommandPayload } from "./clipboard";
 import type { RecoveryCommandPayload } from "./recovery";
@@ -121,3 +124,12 @@ export interface AgentCommandEnvelope {
   type: "command";
   command: Command;
 }
+
+export interface AgentRemoteDesktopInputEnvelope {
+  type: "remote-desktop-input";
+  input: RemoteDesktopInputBurst;
+}
+
+export type AgentEnvelope =
+  | AgentCommandEnvelope
+  | AgentRemoteDesktopInputEnvelope;
