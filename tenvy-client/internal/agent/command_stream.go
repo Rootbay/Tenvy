@@ -8,10 +8,13 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 
 	"github.com/rootbay/tenvy-client/internal/protocol"
 	"nhooyr.io/websocket"
 )
+
+const commandStreamDialTimeout = 15 * time.Second
 
 func (a *Agent) commandStreamURL() (string, error) {
 	if a == nil {
@@ -75,8 +78,23 @@ func (a *Agent) runCommandStream(ctx context.Context) {
 			headers.Set("Authorization", fmt.Sprintf("Bearer %s", trimmed))
 		}
 
-		conn, _, err := websocket.Dial(ctx, streamURL, &websocket.DialOptions{HTTPHeader: headers})
+		dialCtx, cancel := context.WithTimeout(ctx, commandStreamDialTimeout)
+		conn, resp, err := websocket.Dial(dialCtx, streamURL, &websocket.DialOptions{
+			HTTPHeader:      headers,
+			Subprotocols:    []string{protocol.CommandStreamSubprotocol},
+			CompressionMode: websocket.CompressionDisabled,
+		})
+		cancel()
 		if err != nil {
+			if resp != nil {
+				resp.Body.Close()
+				if shouldReRegisterStatus(resp.StatusCode) {
+					if a.logger != nil {
+						a.logger.Printf("command stream rejected with status %d; scheduling re-registration", resp.StatusCode)
+					}
+					a.requestReconnect()
+				}
+			}
 			if a.logger != nil && !errors.Is(err, context.Canceled) {
 				a.logger.Printf("command stream connection failed: %v", err)
 			}
@@ -87,6 +105,23 @@ func (a *Agent) runCommandStream(ctx context.Context) {
 			continue
 		}
 
+		if selected := conn.Subprotocol(); selected != protocol.CommandStreamSubprotocol {
+			if a.logger != nil {
+				if selected == "" {
+					a.logger.Printf("command stream rejected connection without subprotocol")
+				} else {
+					a.logger.Printf("command stream negotiated unexpected subprotocol %q", selected)
+				}
+			}
+			_ = conn.Close(websocket.StatusPolicyViolation, "unsupported protocol")
+			if err := sleepContext(ctx, backoff); err != nil {
+				return
+			}
+			backoff = minDuration(backoff*2, a.maxBackoff())
+			continue
+		}
+
+		conn.SetReadLimit(protocol.CommandStreamMaxMessageSize)
 		backoff = a.pollInterval()
 		if a.logger != nil {
 			a.logger.Printf("command stream connected")

@@ -53,7 +53,11 @@ func TestCommandStreamDeliversImmediately(t *testing.T) {
 			http.Error(w, "unauthorized", http.StatusUnauthorized)
 			return
 		}
-		c, err := websocket.Accept(w, r, nil)
+		if r.Header.Get("Sec-WebSocket-Protocol") != protocol.CommandStreamSubprotocol {
+			http.Error(w, "protocol", http.StatusBadRequest)
+			return
+		}
+		c, err := websocket.Accept(w, r, &websocket.AcceptOptions{Subprotocols: []string{protocol.CommandStreamSubprotocol}})
 		if err != nil {
 			t.Errorf("accept websocket: %v", err)
 			return
@@ -183,5 +187,46 @@ func TestCommandStreamFallsBackToSync(t *testing.T) {
 		}
 	case <-ctx.Done():
 		t.Fatalf("command from sync not executed: %v", ctx.Err())
+	}
+}
+
+func TestCommandStreamRequestsReconnectOnUnauthorized(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	router := newCommandRouter()
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/agents/agent-1/session", func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+	})
+	mux.HandleFunc("/api/agents/agent-1/sync", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(protocol.AgentSyncResponse{
+			AgentID:    "agent-1",
+			Config:     protocol.AgentConfig{},
+			ServerTime: time.Now().UTC().Format(time.RFC3339Nano),
+		})
+	})
+
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	agent := makeTestAgent(srv.URL, srv.Client(), router)
+
+	go agent.runCommandStream(ctx)
+
+	deadline := time.After(500 * time.Millisecond)
+	for {
+		if agent.connectionFlag.Load() == connectionDirectiveReconnect {
+			return
+		}
+		select {
+		case <-ctx.Done():
+			t.Fatalf("context ended before reconnect flag set: %v", ctx.Err())
+		case <-deadline:
+			t.Fatalf("reconnect flag not set in time")
+		default:
+			time.Sleep(10 * time.Millisecond)
+		}
 	}
 }
