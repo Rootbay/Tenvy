@@ -11,7 +11,7 @@ checking: bun check
 
 - **tenvy-server** — the controller, built with **Svelte 5 (Runes Mode)**, **SvelteKit**, **TypeScript**, **TailwindCSS v4**, **shadcn-svelte**, **lucide**, and **Bun**.
 - **tenvy-client** — the target agent, written in **Go**, optimized for persistent, reliable, and adaptive remote management.
-- **Shared Plugin** — Implements both UI and agent-side logic.
+- **shared/** — Houses shared schemas and utilities—TypeScript definitions under `shared/types` and the Go manifest validator in `shared/pluginmanifest`—consumed by both the server (e.g., importing `shared/types/plugin-manifest`) and the Go agent (`shared/pluginmanifest`).
 
 ---
 
