@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onMount, tick } from 'svelte';
+	import { SvelteSet } from 'svelte/reactivity';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import { Input } from '$lib/components/ui/input/index.js';
 	import { Label } from '$lib/components/ui/label/index.js';
@@ -48,9 +49,11 @@
 		frameRate: number | null;
 	};
 
-	const { client } = $props<{ client: Client }>();
+const { client } = $props<{ client: Client }>();
+void client;
 
-	const tool = getClientTool('webcam-control');
+const tool = getClientTool('webcam-control');
+void tool;
 
 	const RESOLUTION_OPTIONS = [
 		{ value: '3840×2160', label: '3840×2160 · 4K' },
@@ -86,7 +89,7 @@
 	let recordingStartedAt = 0;
 	let discardRecording = false;
 
-	const objectUrls = new Set<string>();
+const objectUrls = new SvelteSet<string>();
 
 	function generateId(): string {
 		return `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -118,25 +121,15 @@
 		return value;
 	}
 
-	function cameraLabel(): string {
-		if (selectedCamera === '') {
-			return devices.length > 0 ? 'Auto select' : 'No camera';
-		}
-		const match = devices.find((device) => device.id === selectedCamera);
-		return match?.label ?? 'Selected device';
+function cameraLabel(): string {
+	if (selectedCamera === '') {
+		return devices.length > 0 ? 'Auto select' : 'No camera';
 	}
+	const match = devices.find((device) => device.id === selectedCamera);
+	return match?.label ?? 'Selected device';
+}
 
-	function cameraHint(): string | undefined {
-		if (devices.length === 0) {
-			return 'Connect a camera to enable live controls.';
-		}
-		if (selectedCamera === '') {
-			return 'System default camera will be used when starting the preview.';
-		}
-		return undefined;
-	}
-
-	function describeTrack(track: MediaStreamTrack | null): string {
+function describeTrack(track: MediaStreamTrack | null): string {
 		const label = cameraLabel();
 		const { width: fallbackWidth, height: fallbackHeight } = parseResolution(resolution);
 		if (!track || typeof track.getSettings !== 'function') {
@@ -681,9 +674,8 @@
 			return;
 		}
 
-		const track = stream.getVideoTracks()[0] ?? null;
-		const detail = describeTrack(track);
-		const settings = track?.getSettings() ?? null;
+	const track = stream.getVideoTracks()[0] ?? null;
+	const settings = track?.getSettings() ?? null;
 		const resolutionLabel = formatResolutionLabel(settings);
 		const fps =
 			typeof settings?.frameRate === 'number' && !Number.isNaN(settings.frameRate)

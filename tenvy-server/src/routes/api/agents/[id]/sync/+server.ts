@@ -20,7 +20,7 @@ export const POST: RequestHandler = async ({ params, request, getClientAddress }
 	let payload: AgentSyncRequest;
 	try {
 		payload = (await request.json()) as AgentSyncRequest;
-	} catch (err) {
+	} catch {
 		throw error(400, 'Invalid sync payload');
 	}
 

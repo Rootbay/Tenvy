@@ -22,13 +22,14 @@
 	import type {
 		RecoveryArchive,
 		RecoveryArchiveDetail,
-		RecoveryArchiveManifestEntry,
 		RecoveryTargetSelection
 	} from '$lib/types/recovery';
 
-	const { client } = $props<{ client: Client }>();
+const { client } = $props<{ client: Client }>();
+void client;
 
-	const tool = getClientTool('recovery');
+const tool = getClientTool('recovery');
+void tool;
 
 	type BuiltInTarget = Exclude<RecoveryTargetSelection['type'], 'custom-path'>;
 
@@ -308,14 +309,15 @@
 		targetOptions.filter((option) => targetSelections[option.id]).length + customPathList.length
 	);
 
-	const heroMetadata = $derived([
-		{ label: 'Configured targets', value: selectedTargetCount.toString() },
-		{ label: 'Archives stored', value: archives.length.toString() },
-		{
-			label: 'Last archive',
-			value: archives[0]?.createdAt ? formatRelative(archives[0].createdAt) : '—'
-		}
-	]);
+const heroMetadata = $derived([
+	{ label: 'Configured targets', value: selectedTargetCount.toString() },
+	{ label: 'Archives stored', value: archives.length.toString() },
+	{
+		label: 'Last archive',
+		value: archives[0]?.createdAt ? formatRelative(archives[0].createdAt) : '-'
+	}
+]);
+void heroMetadata;
 
 	const dateFormatter = new Intl.DateTimeFormat(undefined, {
 		dateStyle: 'medium',

@@ -872,7 +872,7 @@
 						</SelectTrigger>
 						<SelectContent>
 							<SelectItem value="all">All types</SelectItem>
-							{#each valueTypes as type}
+							{#each valueTypes as type (type)}
 								<SelectItem value={type}>{type}</SelectItem>
 							{/each}
 						</SelectContent>
@@ -965,7 +965,7 @@
 				</p>
 			</div>
 			<div class="grid gap-3 text-right sm:grid-cols-2">
-				{#each heroMetadata as item}
+				{#each heroMetadata as item (item.label)}
 					<div class="rounded-xl border border-border/40 bg-background/70 px-4 py-2 shadow-sm">
 						<p class="text-[10px] font-semibold tracking-wide text-muted-foreground/70 uppercase">
 							{item.label}
@@ -1164,7 +1164,7 @@
 										<span>{valueFormType}</span>
 									</SelectTrigger>
 									<SelectContent>
-										{#each valueTypes as type}
+										{#each valueTypes as type (type)}
 											<SelectItem value={type}>{type}</SelectItem>
 										{/each}
 									</SelectContent>

@@ -6,9 +6,9 @@
 	import { browser } from '$app/environment';
 	import type { Snippet } from 'svelte';
 
-        function defaultFormatter(value: unknown) {
-                return `${value}`;
-        }
+	function defaultFormatter(value: unknown) {
+		return `${value}`;
+	}
 
 	let {
 		ref = $bindable(null),
@@ -32,8 +32,9 @@
 		labelKey?: string;
 		hideIndicator?: boolean;
 		labelClassName?: string;
-                labelFormatter?:
-                        ((value: unknown, payload: TooltipPayload[]) => string | number | Snippet) | null;
+		labelFormatter?:
+			| ((value: unknown, payload: TooltipPayload[]) => string | number | Snippet)
+			| null;
 		formatter?: Snippet<
 			[
 				{

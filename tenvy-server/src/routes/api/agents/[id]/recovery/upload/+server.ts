@@ -21,6 +21,15 @@ function getBearerToken(header: string | null): string | undefined {
 	return match?.[1]?.trim();
 }
 
+function normalizeWhitespace(value: string): string {
+	let withSpaces = '';
+	for (const char of value) {
+		const code = char.charCodeAt(0);
+		withSpaces += code >= 0 && code <= 31 ? ' ' : char;
+	}
+	return withSpaces.replace(/\s{2,}/g, ' ').trim();
+}
+
 function parseJsonField(value: FormDataEntryValue | null): unknown | undefined {
 	if (typeof value !== 'string') {
 		return undefined;
@@ -36,10 +45,7 @@ function sanitizeOptionalText(value: FormDataEntryValue | null): string | undefi
 	if (typeof value !== 'string') {
 		return undefined;
 	}
-	const normalized = value
-		.replace(/[\u0000-\u001f]+/g, ' ')
-		.trim()
-		.replace(/\s{2,}/g, ' ');
+	const normalized = normalizeWhitespace(value);
 	return normalized.length > 0 ? normalized : undefined;
 }
 
@@ -49,10 +55,7 @@ function sanitizeArchiveName(
 	requestId: string
 ): string {
 	const normalize = (input: string) =>
-		input
-			.replace(/[\u0000-\u001f]+/g, ' ')
-			.replace(/\s{2,}/g, ' ')
-			.trim();
+		normalizeWhitespace(input);
 	const preferred = candidate ? normalize(candidate) : '';
 	if (preferred) {
 		return preferred;

@@ -21,9 +21,11 @@
 	import { appendWorkspaceLog, createWorkspaceLogEntry } from '$lib/workspace/utils';
 	import type { WorkspaceLogEntry } from '$lib/workspace/types';
 
-	const { client } = $props<{ client: Client }>();
+const { client } = $props<{ client: Client }>();
+void client;
 
-	const tool = getClientTool('app-vnc');
+const tool = getClientTool('app-vnc');
+void tool;
 
 	let quality = $state<'lossless' | 'balanced' | 'bandwidth'>('balanced');
 	let monitor = $state('Primary');

@@ -58,7 +58,7 @@ export const POST: RequestHandler = async ({ params, request }) => {
 	let payload: ClipboardActionRequest;
 	try {
 		payload = (await request.json()) as ClipboardActionRequest;
-	} catch (err) {
+	} catch {
 		throw error(400, 'Invalid clipboard action payload');
 	}
 

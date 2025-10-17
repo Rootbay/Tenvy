@@ -25,9 +25,10 @@
 		workingDirectory: string;
 	};
 
-	const { client, agent } = $props<{ client: Client; agent: AgentSnapshot }>();
+const { client, agent } = $props<{ client: Client; agent: AgentSnapshot }>();
 
-	const tool = getClientTool('cmd');
+const tool = getClientTool('cmd');
+void tool;
 	const defaultWorkingDirectory = getDefaultWorkingDirectory(agent);
 
 	let command = $state('whoami');
@@ -36,16 +37,20 @@
 	let workingDirectory = $state(defaultWorkingDirectory);
 	let drafts = $state<CommandDraft[]>([]);
 	let log = $state<WorkspaceLogEntry[]>([]);
-	const initialHistory = agent.recentResults?.slice(0, 5) ?? [];
-	let history = $state<CommandResult[]>(initialHistory);
-	let latestResult = $state<CommandResult | null>(initialHistory[0] ?? null);
-	let dispatching = $state(false);
-	let dispatchError = $state<string | null>(null);
-	let agentSnapshot = $state(agent);
-	let activePollController: AbortController | null = null;
+const initialHistory = agent.recentResults?.slice(0, 5) ?? [];
+let history = $state<CommandResult[]>(initialHistory);
+let dispatching = $state(false);
+let dispatchError = $state<string | null>(null);
+let activePollController: AbortController | null = null;
+
+function trackDependency(...values: unknown[]) {
+	values.forEach(() => {
+		/* no-op */
+	});
+}
 
 	$effect(() => {
-		elevated;
+		trackDependency(elevated);
 		if (dispatchError) {
 			dispatchError = null;
 		}
@@ -96,11 +101,10 @@
 		log = log.map((entry) => (entry.id === id ? { ...entry, ...updates } : entry));
 	}
 
-	function recordResult(result: CommandResult) {
-		latestResult = result;
-		const deduped = history.filter((item) => item.commandId !== result.commandId);
-		history = [result, ...deduped].slice(0, 5);
-	}
+function recordResult(result: CommandResult) {
+	const deduped = history.filter((item) => item.commandId !== result.commandId);
+	history = [result, ...deduped].slice(0, 5);
+}
 
 	function summarizeOutput(output?: string | null): string | null {
 		if (!output) {
@@ -128,14 +132,7 @@
 		return segments.join(' — ');
 	}
 
-	function getResultVariant(result: CommandResult | null): 'secondary' | 'destructive' {
-		if (!result) {
-			return 'secondary';
-		}
-		return result.success ? 'secondary' : 'destructive';
-	}
-
-	function cancelActivePoll() {
+function cancelActivePoll() {
 		if (activePollController) {
 			activePollController.abort();
 			activePollController = null;
@@ -175,7 +172,6 @@
 			while (!controller.signal.aborted) {
 				const snapshot = await fetchAgent(controller.signal);
 				if (snapshot) {
-					agentSnapshot = snapshot;
 					const match = snapshot.recentResults.find((result) => result.commandId === commandId);
 					if (match) {
 						return match;

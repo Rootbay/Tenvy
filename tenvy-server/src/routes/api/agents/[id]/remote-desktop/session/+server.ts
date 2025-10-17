@@ -48,7 +48,7 @@ export const POST: RequestHandler = async ({ params, request }) => {
 	let body: Record<string, unknown> = {};
 	try {
 		body = (await request.json()) as Record<string, unknown>;
-	} catch (err) {
+	} catch {
 		body = {};
 	}
 
@@ -89,7 +89,7 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 	let body: Record<string, unknown>;
 	try {
 		body = (await request.json()) as Record<string, unknown>;
-	} catch (err) {
+	} catch {
 		throw error(400, 'Invalid session payload');
 	}
 

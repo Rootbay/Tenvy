@@ -7,7 +7,7 @@ export const POST: RequestHandler = async ({ request, getClientAddress }) => {
 	let payload: AgentRegistrationRequest;
 	try {
 		payload = (await request.json()) as AgentRegistrationRequest;
-	} catch (err) {
+	} catch {
 		throw error(400, 'Invalid registration payload');
 	}
 

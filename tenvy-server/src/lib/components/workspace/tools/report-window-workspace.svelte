@@ -22,9 +22,11 @@
 	import { appendWorkspaceLog, createWorkspaceLogEntry } from '$lib/workspace/utils';
 	import type { WorkspaceLogEntry } from '$lib/workspace/types';
 
-	const { client } = $props<{ client: Client }>();
+const { client } = $props<{ client: Client }>();
+void client;
 
-	const tool = getClientTool('report-window');
+const tool = getClientTool('report-window');
+void tool;
 
 	let feed = $state<'live' | 'batch'>('live');
 	let refreshSeconds = $state(5);

@@ -104,7 +104,7 @@ export const POST: RequestHandler = async ({ params, request }) => {
 	let payload: ChatActionRequest;
 	try {
 		payload = (await request.json()) as ChatActionRequest;
-	} catch (err) {
+	} catch {
 		throw error(400, 'Invalid chat action payload');
 	}
 
@@ -252,3 +252,4 @@ export const POST: RequestHandler = async ({ params, request }) => {
 			throw error(400, 'Unsupported chat action');
 	}
 };
+

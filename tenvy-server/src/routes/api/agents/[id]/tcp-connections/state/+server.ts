@@ -12,7 +12,7 @@ export const POST: RequestHandler = async ({ params, request }) => {
 	let payload: TcpConnectionSnapshotEnvelope;
 	try {
 		payload = (await request.json()) as TcpConnectionSnapshotEnvelope;
-	} catch (err) {
+	} catch {
 		throw error(400, 'Invalid TCP connections snapshot payload');
 	}
 

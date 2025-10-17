@@ -15,17 +15,14 @@ function handleAction(agentId: string, event: ClipboardTriggerEvent) {
 	const actionType = event.action?.type ?? 'notify';
 	switch (actionType) {
 		case 'notify':
-			// eslint-disable-next-line no-console
 			console.info(`[clipboard] ${describeEvent(agentId, event)}`);
 			break;
 		case 'command':
-			// eslint-disable-next-line no-console
 			console.warn(
-				`[clipboard] command action requested for ${describeEvent(agentId, event)} – not implemented`
+				`[clipboard] command action requested for ${describeEvent(agentId, event)} - not implemented`
 			);
 			break;
 		default:
-			// eslint-disable-next-line no-console
 			console.warn(
 				`[clipboard] unsupported action ${actionType} for ${describeEvent(agentId, event)}`
 			);
@@ -62,7 +59,7 @@ export const POST: RequestHandler = async ({ params, request }) => {
 	let envelope: ClipboardEventEnvelope;
 	try {
 		envelope = (await request.json()) as ClipboardEventEnvelope;
-	} catch (err) {
+	} catch {
 		throw error(400, 'Invalid clipboard event payload');
 	}
 

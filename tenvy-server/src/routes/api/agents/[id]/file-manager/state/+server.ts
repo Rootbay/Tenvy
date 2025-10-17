@@ -18,7 +18,7 @@ export const POST: RequestHandler = async ({ params, request }) => {
 	let payload: FileManagerStatePayload;
 	try {
 		payload = (await request.json()) as FileManagerStatePayload;
-	} catch (err) {
+	} catch {
 		throw error(400, 'Invalid file manager payload');
 	}
 

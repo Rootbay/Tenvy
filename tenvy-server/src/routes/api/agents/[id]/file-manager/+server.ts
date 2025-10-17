@@ -104,7 +104,7 @@ export const POST: RequestHandler = async ({ params, request }) => {
 	let payload: Record<string, unknown>;
 	try {
 		payload = (await request.json()) as Record<string, unknown>;
-	} catch (err) {
+	} catch {
 		throw error(400, 'Invalid file manager payload');
 	}
 
@@ -162,7 +162,7 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 	let payload: Record<string, unknown>;
 	try {
 		payload = (await request.json()) as Record<string, unknown>;
-	} catch (err) {
+	} catch {
 		throw error(400, 'Invalid file manager payload');
 	}
 
@@ -225,7 +225,7 @@ export const DELETE: RequestHandler = async ({ params, request }) => {
 	let payload: Record<string, unknown>;
 	try {
 		payload = (await request.json()) as Record<string, unknown>;
-	} catch (err) {
+	} catch {
 		throw error(400, 'Invalid file manager payload');
 	}
 

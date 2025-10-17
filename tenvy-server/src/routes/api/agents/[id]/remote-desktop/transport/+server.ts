@@ -12,7 +12,7 @@ export const POST: RequestHandler = async ({ params, request }) => {
 	let payload: RemoteDesktopSessionNegotiationRequest;
 	try {
 		payload = (await request.json()) as RemoteDesktopSessionNegotiationRequest;
-	} catch (err) {
+	} catch {
 		throw error(400, 'Invalid negotiation payload');
 	}
 

@@ -48,7 +48,7 @@ export const POST: RequestHandler = async ({ params, request }) => {
 			delivered: result.delivered,
 			sequence: result.sequence ?? undefined
 		});
-	} catch (err) {
+	} catch {
 		throw error(500, 'Failed to dispatch remote desktop input command');
 	}
 };

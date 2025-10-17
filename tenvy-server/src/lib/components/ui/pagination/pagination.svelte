@@ -5,30 +5,32 @@
 
 	type $$Props = PaginationPrimitive.RootProps;
 
-	type ChildSnippetProps = Parameters<NonNullable<PaginationPrimitive.RootProps['child']>>[0];
+type ChildSnippetProps = Parameters<NonNullable<$$Props['child']>>[0];
 	type PaginationRange = { start: number; end: number };
 	type PaginationItem =
 		| { type: 'page'; value: number; key: string }
 		| { type: 'ellipsis'; key: string };
 
-	interface $$Slots {
-		default: {
-			pages: PaginationItem[];
-			range: PaginationRange;
-			currentPage: number;
-		};
-	}
+interface $$Slots {
+	default: {
+		pages: PaginationItem[];
+		range: PaginationRange;
+		currentPage: number;
+	};
+}
 
-	let {
-		ref = $bindable(null),
-		class: className,
-		children,
-		count = 0,
-		perPage = 10,
-		page = $bindable(1),
-		siblingCount = 1,
-		...restProps
-	}: PaginationPrimitive.RootProps = $props();
+export type { $$Props as PaginationProps, $$Slots as PaginationSlots };
+
+let {
+	ref = $bindable(null),
+	class: className,
+	children,
+	count = 0,
+	perPage = 10,
+	page = $bindable(1),
+	siblingCount = 1,
+	...restProps
+}: $$Props = $props();
 </script>
 
 {#snippet RootChild({ props, pages, range, currentPage }: ChildSnippetProps)}

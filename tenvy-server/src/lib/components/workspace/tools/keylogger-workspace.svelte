@@ -45,11 +45,13 @@
 		}
 	};
 
-	const props = $props<{ client: Client; mode: KeyloggerMode }>();
-	const client = props.client;
-	const mode = props.mode;
+const props = $props<{ client: Client; mode: KeyloggerMode }>();
+const client = props.client;
+void client;
+const mode = props.mode;
 
-	const tool = getClientTool(toolMap[mode as keyof typeof toolMap]);
+const tool = getClientTool(toolMap[mode as keyof typeof toolMap]);
+void tool;
 
 	let cadence = $state(mode === 'offline' ? 15 : 250);
 	let bufferSize = $state(mode === 'offline' ? 5000 : 300);
@@ -85,17 +87,18 @@
 
 	const copy = modeCopy[mode as KeyloggerMode];
 
-	const metadata = $derived(() => [
-		{
-			label: 'Mode',
-			value: mode,
-			hint: copy.subtitle
+const metadata = $derived(() => [
+	{
+		label: 'Mode',
+		value: mode,
+		hint: copy.subtitle
 		},
 		{
-			label: 'Encryption',
-			value: encryptAtRest ? 'Enabled' : 'Disabled'
-		}
-	]);
+		label: 'Encryption',
+		value: encryptAtRest ? 'Enabled' : 'Disabled'
+	}
+]);
+void metadata;
 
 	const watchers = [
 		{ id: 'foreground', description: 'Track active window focus changes' },

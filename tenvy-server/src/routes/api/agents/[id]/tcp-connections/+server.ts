@@ -134,7 +134,7 @@ export const POST: RequestHandler = async ({ params, request }) => {
 	let payload: TcpConnectionsActionRequest;
 	try {
 		payload = (await request.json()) as TcpConnectionsActionRequest;
-	} catch (err) {
+	} catch {
 		throw error(400, 'Invalid TCP connections action payload');
 	}
 

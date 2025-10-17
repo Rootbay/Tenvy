@@ -12,7 +12,7 @@ export const POST: RequestHandler = async ({ params, request }) => {
 	let payload: RemoteDesktopFramePacket;
 	try {
 		payload = (await request.json()) as RemoteDesktopFramePacket;
-	} catch (err) {
+	} catch {
 		throw error(400, 'Invalid frame payload');
 	}
 

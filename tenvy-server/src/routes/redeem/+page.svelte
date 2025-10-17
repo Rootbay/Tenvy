@@ -1,6 +1,6 @@
 <script lang="ts">
-        import { goto } from '$app/navigation';
-        import { resolve } from '$app/paths';
+	import { goto } from '$app/navigation';
+	import { resolve } from '$app/paths';
 	import { startRegistration } from '@simplewebauthn/browser';
 	import { AlertCircle, Check, KeyRound, Shield } from '@lucide/svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
@@ -93,8 +93,8 @@
 	}
 
 	async function finishOnboarding() {
-                await goto(resolve('/dashboard'));
-        }
+		await goto(resolve('/dashboard'));
+	}
 </script>
 
 <svelte:head>
@@ -196,13 +196,13 @@
 							<h2 class="text-sm font-medium tracking-wide text-muted-foreground uppercase">
 								One-time recovery codes
 							</h2>
-                                                        <div class="grid gap-2 md:grid-cols-2">
-                                                                {#each recoveryCodes as code, index (code ?? index)}
-                                                                        <div
-                                                                                class="rounded-md border border-dashed border-emerald-400/50 bg-emerald-400/10 px-3 py-2 font-mono text-sm tracking-widest text-emerald-400"
-                                                                        >
-                                                                                {code}
-                                                                        </div>
+							<div class="grid gap-2 md:grid-cols-2">
+								{#each recoveryCodes as code, index (code ?? index)}
+									<div
+										class="rounded-md border border-dashed border-emerald-400/50 bg-emerald-400/10 px-3 py-2 font-mono text-sm tracking-widest text-emerald-400"
+									>
+										{code}
+									</div>
 								{/each}
 							</div>
 							<p class="text-xs text-muted-foreground">

@@ -12,7 +12,7 @@ export const POST: RequestHandler = async ({ params, request }) => {
 	let payload: ClipboardStateEnvelope;
 	try {
 		payload = (await request.json()) as ClipboardStateEnvelope;
-	} catch (err) {
+	} catch {
 		throw error(400, 'Invalid clipboard snapshot payload');
 	}
 

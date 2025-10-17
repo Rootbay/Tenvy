@@ -1,6 +1,6 @@
 <script lang="ts">
-        import { goto } from '$app/navigation';
-        import { resolve } from '$app/paths';
+	import { goto } from '$app/navigation';
+	import { resolve } from '$app/paths';
 	import { startAuthentication } from '@simplewebauthn/browser';
 	import { AlertCircle, KeyRound, LogIn } from '@lucide/svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
@@ -50,7 +50,7 @@
 				throw new Error(message ?? 'Passkey verification failed.');
 			}
 
-                        await goto(resolve('/dashboard'));
+			await goto(resolve('/dashboard'));
 		} catch (error) {
 			errorMessage =
 				error instanceof Error ? error.message : 'Unable to authenticate with passkey.';

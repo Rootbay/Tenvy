@@ -49,7 +49,7 @@ function normalizeTrigger(input: ClipboardTriggerInput, now: string): ClipboardT
 	if (pattern) {
 		try {
 			new RegExp(pattern, caseSensitive ? undefined : 'i');
-		} catch (err) {
+		} catch {
 			throw error(400, `Invalid trigger pattern for ${label}`);
 		}
 	}
@@ -102,7 +102,7 @@ export const PUT: RequestHandler = async ({ params, request }) => {
 	let payload: TriggerUpdateRequest;
 	try {
 		payload = (await request.json()) as TriggerUpdateRequest;
-	} catch (err) {
+	} catch {
 		throw error(400, 'Invalid trigger payload');
 	}
 

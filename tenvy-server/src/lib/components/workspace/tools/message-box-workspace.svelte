@@ -21,9 +21,11 @@
 	import { appendWorkspaceLog, createWorkspaceLogEntry } from '$lib/workspace/utils';
 	import type { WorkspaceLogEntry } from '$lib/workspace/types';
 
-	const { client } = $props<{ client: Client }>();
+const { client } = $props<{ client: Client }>();
+void client;
 
-	const tool = getClientTool('message-box');
+const tool = getClientTool('message-box');
+void tool;
 
 	let title = $state('System notice');
 	let body = $state('');

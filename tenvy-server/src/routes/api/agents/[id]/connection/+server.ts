@@ -20,7 +20,7 @@ export const POST: RequestHandler = async ({ params, request }) => {
 	let payload: AgentConnectionRequest;
 	try {
 		payload = (await request.json()) as AgentConnectionRequest;
-	} catch (err) {
+	} catch {
 		throw error(400, 'Invalid connection request payload');
 	}
 

@@ -15,7 +15,7 @@ export const POST: RequestHandler = async ({ params, request }) => {
 	let payload: CommandInput;
 	try {
 		payload = (await request.json()) as CommandInput;
-	} catch (err) {
+	} catch {
 		throw error(400, 'Invalid command payload');
 	}
 

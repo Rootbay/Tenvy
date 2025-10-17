@@ -12,7 +12,7 @@ export const POST: RequestHandler = async ({ params, request }) => {
 	let payload: ClientChatMessageEnvelope;
 	try {
 		payload = (await request.json()) as ClientChatMessageEnvelope;
-	} catch (err) {
+	} catch {
 		throw error(400, 'Invalid chat message payload');
 	}
 

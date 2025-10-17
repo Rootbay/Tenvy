@@ -55,9 +55,11 @@
 	type SortKey = 'name' | 'impact' | 'status' | 'publisher' | 'startupTime';
 	type SortDirection = 'asc' | 'desc';
 
-	const { client } = $props<{ client: Client }>();
+const { client } = $props<{ client: Client }>();
+void client;
 
-	const tool = getClientTool('startup-manager');
+const tool = getClientTool('startup-manager');
+void tool;
 
 	const dateFormatter = new Intl.DateTimeFormat(undefined, {
 		dateStyle: 'medium',
@@ -354,29 +356,29 @@
 		}
 	}
 
-	function ensureRefreshTimer() {
+function ensureRefreshTimer(shouldRefresh: boolean, intervalSeconds: number) {
+	if (refreshTimer) {
+		clearInterval(refreshTimer);
+		refreshTimer = null;
+	}
+	if (!shouldRefresh) {
+		return;
+	}
+	const interval = Math.max(intervalSeconds, 5) * 1000;
+	refreshTimer = setInterval(() => {
+		refreshInventory({ silent: true });
+	}, interval);
+}
+
+$effect(() => {
+	const shouldRefresh = autoRefresh;
+	const intervalSeconds = refreshInterval;
+	ensureRefreshTimer(shouldRefresh, intervalSeconds);
+	return () => {
 		if (refreshTimer) {
 			clearInterval(refreshTimer);
 			refreshTimer = null;
 		}
-		if (!autoRefresh) {
-			return;
-		}
-		const interval = Math.max(refreshInterval, 5) * 1000;
-		refreshTimer = setInterval(() => {
-			refreshInventory({ silent: true });
-		}, interval);
-	}
-
-	$effect(() => {
-		autoRefresh;
-		refreshInterval;
-		ensureRefreshTimer();
-		return () => {
-			if (refreshTimer) {
-				clearInterval(refreshTimer);
-				refreshTimer = null;
-			}
 		};
 	});
 
@@ -470,9 +472,11 @@
 				}
 			];
 		})()
-	);
+);
 
-	const sortOptions: { label: string; value: SortKey }[] = [
+void heroMetadata;
+
+const sortOptions: { label: string; value: SortKey }[] = [
 		{ label: 'Impact', value: 'impact' },
 		{ label: 'Name', value: 'name' },
 		{ label: 'Publisher', value: 'publisher' },
@@ -637,7 +641,7 @@
 							>
 						</SelectTrigger>
 						<SelectContent>
-							{#each impactOptions as option}
+							{#each impactOptions as option (option.value)}
 								<SelectItem value={option.value}>{option.label}</SelectItem>
 							{/each}
 						</SelectContent>
@@ -704,7 +708,7 @@
 							</span>
 						</SelectTrigger>
 						<SelectContent>
-							{#each sortOptions as option}
+							{#each sortOptions as option (option.value)}
 								<SelectItem value={option.value}>{option.label}</SelectItem>
 							{/each}
 						</SelectContent>

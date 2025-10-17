@@ -22,7 +22,7 @@ export const POST: RequestHandler = async ({ params, request }) => {
 	let payload: AudioDeviceInventory;
 	try {
 		payload = (await request.json()) as AudioDeviceInventory;
-	} catch (err) {
+	} catch {
 		throw error(400, 'Invalid audio inventory payload');
 	}
 
@@ -37,3 +37,4 @@ export const POST: RequestHandler = async ({ params, request }) => {
 
 	return json({ accepted: true });
 };
+

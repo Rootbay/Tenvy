@@ -1,5 +1,4 @@
 <script lang="ts">
-	import { animate, spring } from '@motionone/dom';
 	import { nextZ } from '$lib/stores/windowZ';
 
 	let {
@@ -28,7 +27,8 @@
 	let velocityY = 0;
 	let lastX = x;
 	let lastY = y;
-	let windowRef: HTMLElement | null = null;
+let windowRef: HTMLElement | null = null;
+let isVisible = $state(true);
 
 	function bringToFront() {
 		z = nextZ();
@@ -69,25 +69,22 @@
 		const targetX = Math.min(bounds.maxX, Math.max(bounds.minX, x + velocityX * 25));
 		const targetY = Math.min(bounds.maxY, Math.max(bounds.minY, y + velocityY * 25));
 
-		animate([x, targetX], {
-			duration: 0.8,
-			easing: spring({ stiffness: 200, damping: 25 })
-		} as any).finished.then(() => {
-			x = targetX;
-		});
-
-		animate([y, targetY], {
-			duration: 0.8,
-			easing: spring({ stiffness: 200, damping: 25 })
-		} as any).finished.then(() => {
-			y = targetY;
-		});
+		x = targetX;
+		y = targetY;
 	}
 
-	function handlePointerDown(e: PointerEvent) {
-		bringToFront();
-		startDrag(e);
+function handlePointerDown(e: PointerEvent) {
+	bringToFront();
+	startDrag(e);
+}
+
+function handleClose() {
+	if (onClose) {
+		onClose();
+		return;
 	}
+	isVisible = false;
+}
 
 	$effect(() => {
 		document.addEventListener('pointermove', moveDrag);
@@ -99,26 +96,28 @@
 	});
 </script>
 
-<div
-	bind:this={windowRef}
-	class="fixed flex flex-col overflow-hidden rounded-2xl border border-border bg-card text-card-foreground shadow-2xl select-none"
-	style:top={`${y}px`}
-	style:left={`${x}px`}
-	style:width={`${width}px`}
-	style:height={`${height}px`}
-	style:z-index={z}
-	onpointerdown={handlePointerDown}
->
+{#if isVisible}
 	<div
-		class="window-header flex cursor-move items-center justify-between border-b border-border bg-muted/70 px-4 py-2 text-sm font-medium backdrop-blur-sm"
+		bind:this={windowRef}
+		class="fixed flex flex-col overflow-hidden rounded-2xl border border-border bg-card text-card-foreground shadow-2xl select-none"
+		style:top={`${y}px`}
+		style:left={`${x}px`}
+		style:width={`${width}px`}
+		style:height={`${height}px`}
+		style:z-index={z}
+		onpointerdown={handlePointerDown}
 	>
-		<span>{title}</span>
-		<button
-			class="h-3 w-3 rounded-full bg-destructive/80 transition-colors hover:bg-destructive"
-			onclick={() => (onClose ? onClose() : windowRef?.remove())}
-			aria-label="Close"
-		></button>
-	</div>
+		<div
+			class="window-header flex cursor-move items-center justify-between border-b border-border bg-muted/70 px-4 py-2 text-sm font-medium backdrop-blur-sm"
+		>
+			<span>{title}</span>
+			<button
+				class="h-3 w-3 rounded-full bg-destructive/80 transition-colors hover:bg-destructive"
+				onclick={handleClose}
+				aria-label="Close"
+			></button>
+		</div>
 
-	{@render children()}
-</div>
+		{@render children()}
+	</div>
+{/if}

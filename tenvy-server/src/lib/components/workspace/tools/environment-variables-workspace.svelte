@@ -23,9 +23,11 @@
 		scope: 'machine' | 'user';
 	};
 
-	const { client } = $props<{ client: Client }>();
+const { client } = $props<{ client: Client }>();
+void client;
 
-	const tool = getClientTool('environment-variables');
+const tool = getClientTool('environment-variables');
+void tool;
 
 	let variables = $state<EnvVar[]>([
 		{ id: 'env-1', key: 'PATH', value: 'C:/Windows;C:/Windows/System32', scope: 'machine' },

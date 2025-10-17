@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onDestroy, onMount } from 'svelte';
+	import { SvelteMap, SvelteURLSearchParams } from 'svelte/reactivity';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import { Input } from '$lib/components/ui/input/index.js';
 	import { Label } from '$lib/components/ui/label/index.js';
@@ -12,7 +13,6 @@
 	import type {
 		DirectoryListing,
 		FileContent,
-		FileManagerCommandPayload,
 		FileManagerResource,
 		FileOperationResponse,
 		FileSystemEntry
@@ -109,7 +109,7 @@
 		}
 	}
 
-	const resourcePollTimers = new Map<string, ReturnType<typeof setTimeout>>();
+const resourcePollTimers = new SvelteMap<string, ReturnType<typeof setTimeout>>();
 	const RESOURCE_POLL_INITIAL_DELAY = 600;
 	const RESOURCE_POLL_MAX_DELAY = 5_000;
 	const RESOURCE_POLL_BACKOFF_FACTOR = 1.5;
@@ -207,22 +207,7 @@
 		scheduleResourcePoll(kind, normalized, extras, options, 0);
 	}
 
-	async function queueAgentCommand(payload: FileManagerCommandPayload): Promise<void> {
-		const response = await fetch(commandEndpoint, {
-			method: 'POST',
-			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({
-				name: 'file-manager',
-				payload
-			})
-		});
-		if (!response.ok) {
-			const detail = await response.text().catch(() => '');
-			throw new Error(detail || 'Failed to queue agent request');
-		}
-	}
-
-	function filteredEntriesList(): FileSystemEntry[] {
+function filteredEntriesList(): FileSystemEntry[] {
 		const entries = listing
 			? listing.entries.filter((entry) => includeHidden || !entry.isHidden)
 			: [];
@@ -446,7 +431,7 @@
 		path?: string,
 		options: FetchResourceOptions = {}
 	): Promise<FileManagerResource> {
-		const params = new URLSearchParams();
+		const params = new SvelteURLSearchParams();
 		if (path && path.trim() !== '') {
 			params.set('path', path);
 		}

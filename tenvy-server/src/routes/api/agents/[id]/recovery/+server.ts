@@ -15,7 +15,7 @@ function normalizeArchiveName(input: string | undefined | null): string {
 		return '';
 	}
 	const name = trimmed.endsWith('.zip') ? trimmed : `${trimmed}.zip`;
-	return name.replace(/[^\w\-\.]+/g, '-');
+	return name.replace(/[^\w.-]+/g, '-');
 }
 
 export const GET: RequestHandler = async ({ params }) => {
@@ -37,7 +37,7 @@ export const POST: RequestHandler = async ({ params, request }) => {
 	let payload: RecoveryRequestInput;
 	try {
 		payload = (await request.json()) as RecoveryRequestInput;
-	} catch (err) {
+	} catch {
 		throw error(400, 'Invalid recovery request payload');
 	}
 
