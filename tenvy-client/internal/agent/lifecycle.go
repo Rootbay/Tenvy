@@ -202,7 +202,7 @@ func (a *Agent) reRegister(ctx context.Context) error {
 		return ctx.Err()
 	}
 
-	metadata := CollectMetadata(a.buildVersion)
+	metadata := CollectMetadataWithClient(a.buildVersion, a.client)
 	registration, err := registerAgentWithRetry(ctx, a.logger, a.client, a.baseURL, a.sharedSecret, metadata, a.maxBackoff())
 	if err != nil {
 		return err

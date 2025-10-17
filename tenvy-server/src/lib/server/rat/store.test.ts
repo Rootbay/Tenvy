@@ -1,9 +1,9 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { mkdtempSync, rmSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import path from 'path';
 import { createHash } from 'crypto';
-import { AgentRegistry } from './store';
+import { AgentRegistry, MAX_PENDING_COMMANDS } from './store';
 import { defaultAgentConfig } from '../../../../../shared/types/config';
 
 const baseMetadata = {
@@ -173,5 +173,30 @@ describe('AgentRegistry persistence hygiene', () => {
                 expect(followUp.config.pollIntervalMs).toBe(defaultAgentConfig.pollIntervalMs);
 
                 await registry.flush();
+        });
+
+        it('caps pending command queues and drops oldest entries when full', () => {
+                const storagePath = path.join(tempDir, 'queue-limit.json');
+                const registry = new AgentRegistry({ storagePath });
+                const registration = registry.registerAgent({ metadata: baseMetadata });
+
+                const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+                try {
+                        for (let idx = 0; idx < MAX_PENDING_COMMANDS + 5; idx += 1) {
+                                registry.queueCommand(registration.agentId, {
+                                        name: 'ping',
+                                        payload: { idx }
+                                });
+                        }
+
+                        const queued = registry.peekCommands(registration.agentId);
+                        expect(queued).toHaveLength(MAX_PENDING_COMMANDS);
+                        const firstPayload = queued[0]?.payload as { idx?: number };
+                        expect(firstPayload?.idx).toBe(5);
+                        expect(warnSpy).toHaveBeenCalled();
+                } finally {
+                        warnSpy.mockRestore();
+                }
         });
 });

@@ -49,7 +49,7 @@ func Run(ctx context.Context, opts RuntimeOptions) error {
 
 	metadata := opts.Metadata
 	if strings.TrimSpace(metadata.Hostname) == "" {
-		metadata = CollectMetadata(opts.BuildVersion)
+		metadata = CollectMetadataWithClient(opts.BuildVersion, opts.HTTPClient)
 	}
 
 	client := opts.HTTPClient

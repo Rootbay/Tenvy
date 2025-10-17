@@ -34,6 +34,8 @@ const MAX_TAG_LENGTH = 32;
 const TAG_PATTERN = /^[\p{L}\p{N}_\-\s]+$/u;
 
 const MAX_RECENT_RESULTS = 25;
+export const MAX_PENDING_COMMANDS = 200;
+const PENDING_COMMAND_DROP_WARN_INTERVAL_MS = 30_000;
 const PERSIST_DEBOUNCE_MS = 2_000;
 const PERSIST_FILE_VERSION = 1;
 
@@ -98,19 +100,20 @@ interface AgentSessionRecord {
 }
 
 interface AgentRecord {
-	id: string;
-	key: string;
-	metadata: AgentMetadata;
-	status: AgentStatus;
+        id: string;
+        key: string;
+        metadata: AgentMetadata;
+        status: AgentStatus;
 	connectedAt: Date;
 	lastSeen: Date;
 	metrics?: AgentMetrics;
 	config: AgentConfig;
 	pendingCommands: Command[];
-	recentResults: CommandResult[];
-	sharedNotes: Map<string, SharedNoteRecord>;
-	fingerprint: string;
-	session?: AgentSessionRecord;
+        recentResults: CommandResult[];
+        sharedNotes: Map<string, SharedNoteRecord>;
+        fingerprint: string;
+        session?: AgentSessionRecord;
+        lastQueueDropWarning?: number;
 }
 
 interface SharedNoteRecord {
@@ -375,9 +378,15 @@ export class AgentRegistry {
 				}
 			}
 
-			const pendingCommands = Array.isArray(entry.pendingCommands)
-				? entry.pendingCommands.map((command) => ({ ...command }))
-				: [];
+                        let pendingCommands = Array.isArray(entry.pendingCommands)
+                                ? entry.pendingCommands.map((command) => ({ ...command }))
+                                : [];
+                        if (pendingCommands.length > MAX_PENDING_COMMANDS) {
+                                console.warn(
+                                        `Pending command snapshot for agent ${id} exceeded capacity (${pendingCommands.length}); trimming to latest ${MAX_PENDING_COMMANDS}.`
+                                );
+                                pendingCommands = pendingCommands.slice(-MAX_PENDING_COMMANDS);
+                        }
 
 			const recentResults = Array.isArray(entry.recentResults)
 				? entry.recentResults.map((result) => ({ ...result }))
@@ -471,7 +480,7 @@ export class AgentRegistry {
 			agents
 		};
 
-		const data = JSON.stringify(payload, null, 2);
+                const data = JSON.stringify(payload);
 		await ensureParentDirectory(this.storagePath);
 		await writeFileAtomic(this.storagePath, data);
 	}
@@ -534,11 +543,11 @@ export class AgentRegistry {
 		}
 	}
 
-	private deliverViaSession(record: AgentRecord, command: Command): boolean {
-		const session = record.session;
-		if (!session) {
-			return false;
-		}
+        private deliverViaSession(record: AgentRecord, command: Command): boolean {
+                const session = record.session;
+                if (!session) {
+                        return false;
+                }
 
 		const socket = session.socket;
 		if (!socket || (socket.readyState ?? 0) !== SOCKET_OPEN_STATE) {
@@ -553,8 +562,42 @@ export class AgentRegistry {
 		} catch {
 			this.detachSession(record, session.id, { close: false });
 			return false;
-		}
-	}
+                }
+        }
+
+        private clampPendingCommands(record: AgentRecord, dropFrom: 'front' | 'back' = 'front'): void {
+                const overflow = record.pendingCommands.length - MAX_PENDING_COMMANDS;
+                if (overflow <= 0) {
+                        return;
+                }
+
+                if (dropFrom === 'back') {
+                        record.pendingCommands.splice(record.pendingCommands.length - overflow, overflow);
+                        this.warnPendingCommandDrop(record, overflow, dropFrom);
+                        return;
+                }
+
+                record.pendingCommands.splice(0, overflow);
+                this.warnPendingCommandDrop(record, overflow, dropFrom);
+        }
+
+        private warnPendingCommandDrop(record: AgentRecord, dropped: number, dropFrom: 'front' | 'back'): void {
+                if (dropped <= 0) {
+                        return;
+                }
+
+                const now = Date.now();
+                if (record.lastQueueDropWarning && now - record.lastQueueDropWarning < PENDING_COMMAND_DROP_WARN_INTERVAL_MS) {
+                        return;
+                }
+
+                record.lastQueueDropWarning = now;
+                const direction = dropFrom === 'front' ? 'oldest' : 'newest';
+                const plural = dropped === 1 ? '' : 's';
+                console.warn(
+                        `Pending command queue for agent ${record.id} reached capacity (${MAX_PENDING_COMMANDS}); dropped ${dropped} ${direction} command${plural}.`
+                );
+        }
 
 	registerAgent(
 		payload: AgentRegistrationRequest,
@@ -713,10 +756,11 @@ export class AgentRegistry {
 			record.pendingCommands = [];
 			for (let idx = 0; idx < queued.length; idx += 1) {
 				const command = queued[idx];
-				if (!this.deliverViaSession(record, command)) {
-					record.pendingCommands = queued.slice(idx);
-					break;
-				}
+                                if (!this.deliverViaSession(record, command)) {
+                                        record.pendingCommands = queued.slice(idx);
+                                        this.clampPendingCommands(record, 'front');
+                                        break;
+                                }
 			}
 		}
 
@@ -780,11 +824,12 @@ export class AgentRegistry {
 			createdAt: new Date().toISOString()
 		};
 
-		const delivered = this.deliverViaSession(record, command);
-		if (!delivered) {
-			record.pendingCommands.push(command);
-			this.schedulePersist();
-		}
+                const delivered = this.deliverViaSession(record, command);
+                if (!delivered) {
+                        record.pendingCommands.push(command);
+                        this.clampPendingCommands(record, 'front');
+                        this.schedulePersist();
+                }
 
 		const delivery: CommandDeliveryMode = delivered ? 'session' : 'queued';
 		return { command, delivery };
@@ -842,12 +887,13 @@ export class AgentRegistry {
 			createdAt: new Date().toISOString()
 		};
 
-		record.pendingCommands = [];
-		if (!this.deliverViaSession(record, command)) {
-			record.pendingCommands.push(command);
-		}
+                record.pendingCommands = [];
+                if (!this.deliverViaSession(record, command)) {
+                        record.pendingCommands.push(command);
+                        this.clampPendingCommands(record, 'front');
+                }
 
-		this.schedulePersist();
+                this.schedulePersist();
 
 		return this.toSnapshot(record);
 	}
@@ -905,9 +951,10 @@ export class AgentRegistry {
 			createdAt: now.toISOString()
 		};
 
-		if (!this.deliverViaSession(record, command)) {
-			record.pendingCommands.unshift(command);
-		}
+                if (!this.deliverViaSession(record, command)) {
+                        record.pendingCommands.unshift(command);
+                        this.clampPendingCommands(record, 'back');
+                }
 
 		this.schedulePersist();
 
