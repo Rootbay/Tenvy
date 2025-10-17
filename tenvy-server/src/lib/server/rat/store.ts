@@ -4,6 +4,7 @@ import { mkdir, rename, rm, writeFile } from 'fs/promises';
 import path from 'path';
 import { defaultAgentConfig, type AgentConfig } from '../../../../../shared/types/config';
 import type { NoteEnvelope } from '../../../../../shared/types/notes';
+import { COMMAND_STREAM_SUBPROTOCOL } from '../../../../../shared/constants/protocol';
 import type {
 	AgentMetadata,
 	AgentMetrics,
@@ -590,14 +591,16 @@ export class AgentRegistry {
 		record.lastSeen = new Date();
 		record.status = 'online';
 
-		const acceptingSocket = socket as unknown as { accept?: () => void };
-		if (typeof acceptingSocket.accept === 'function') {
-			try {
-				acceptingSocket.accept();
-			} catch {
-				// Ignore accept failures; send will surface errors later.
-			}
-		}
+                const acceptingSocket = socket as unknown as {
+                        accept?: (options?: { protocol?: string }) => void;
+                };
+                if (typeof acceptingSocket.accept === 'function') {
+                        try {
+                                acceptingSocket.accept({ protocol: COMMAND_STREAM_SUBPROTOCOL });
+                        } catch {
+                                // Ignore accept failures; send will surface errors later.
+                        }
+                }
 
 		const closeListener = () => {
 			this.detachSession(record, sessionId, { close: false });
