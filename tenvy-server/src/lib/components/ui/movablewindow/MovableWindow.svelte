@@ -8,6 +8,7 @@
     y = 100,
     width = 400,
     height = 300,
+    onClose,
     children
   } = $props<{
     title?: string;
@@ -15,6 +16,7 @@
     y?: number;
     width?: number;
     height?: number;
+    onClose?: () => void;
     children?: () => unknown;
   }>();
 
@@ -119,7 +121,7 @@
     <span>{title}</span>
     <button
       class="w-3 h-3 rounded-full bg-destructive/80 hover:bg-destructive transition-colors"
-      onclick={() => windowRef?.remove()}
+      onclick={() => (onClose ? onClose() : windowRef?.remove())}
       aria-label="Close"
     ></button>
   </div>
