@@ -115,7 +115,28 @@ function monitorsEqual(a: readonly RemoteDesktopMonitor[], b: readonly RemoteDes
 }
 
 function cloneFrame(frame: RemoteDesktopFramePacket): RemoteDesktopFramePacket {
-	return structuredClone(frame);
+	const cloned: RemoteDesktopFramePacket = { ...frame };
+
+	if (Array.isArray(frame.deltas)) {
+		cloned.deltas = frame.deltas.map((delta) => ({ ...delta }));
+	}
+
+	if (frame.clip) {
+		cloned.clip = {
+			durationMs: frame.clip.durationMs,
+			frames: frame.clip.frames.map((clipFrame) => ({ ...clipFrame }))
+		};
+	}
+
+	if (Array.isArray(frame.monitors)) {
+		cloned.monitors = cloneMonitors(frame.monitors);
+	}
+
+	if (frame.metrics) {
+		cloned.metrics = { ...frame.metrics };
+	}
+
+	return cloned;
 }
 
 function isFiniteNumber(value: unknown): value is number {
