@@ -1,9 +1,10 @@
 <script lang="ts">
-	import { onDestroy } from 'svelte';
+	import { onDestroy, tick } from 'svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import { Input } from '$lib/components/ui/input/index.js';
 	import { Label } from '$lib/components/ui/label/index.js';
 	import { Badge } from '$lib/components/ui/badge/index.js';
+	import { Textarea } from '$lib/components/ui/textarea/index.js';
 	import {
 		Select,
 		SelectContent,
@@ -11,14 +12,6 @@
 		SelectTrigger
 	} from '$lib/components/ui/select/index.js';
 	import { Switch } from '$lib/components/ui/switch/index.js';
-	import {
-		Card,
-		CardContent,
-		CardDescription,
-		CardFooter,
-		CardHeader,
-		CardTitle
-	} from '$lib/components/ui/card/index.js';
 	import { ScrollArea } from '$lib/components/ui/scroll-area/index.js';
 	import {
 		Body as TableBody,
@@ -28,7 +21,23 @@
 		Row as TableRow,
 		Root as Table
 	} from '$lib/components/ui/table/index.js';
-	import { RefreshCw, ArrowUpDown, Trash2, Plus, Save } from '@lucide/svelte';
+	import {
+		ContextMenu,
+		ContextMenuContent,
+		ContextMenuItem,
+		ContextMenuSeparator,
+		ContextMenuTrigger
+	} from '$lib/components/ui/context-menu/index.js';
+	import {
+		RefreshCw,
+		ArrowUpDown,
+		Trash2,
+		Plus,
+		Save,
+		FolderPlus,
+		ListPlus,
+		PencilLine
+	} from '@lucide/svelte';
 	import { getClientTool } from '$lib/data/client-tools';
 	import type { Client } from '$lib/data/clients';
 	import { createInitialRegistry, normalizeHive } from '$lib/data/mock-registry';
@@ -43,6 +52,10 @@
 	import { appendWorkspaceLog, createWorkspaceLogEntry } from '$lib/workspace/utils';
 	import { notifyToolActivationCommand } from '$lib/utils/agent-commands.js';
 	import type { WorkspaceLogEntry } from '$lib/workspace/types';
+	import { cn } from '$lib/utils.js';
+	import { ContextMenu as ContextMenuPrimitive } from 'bits-ui';
+
+	type TriggerChildProps = Parameters<NonNullable<ContextMenuPrimitive.TriggerProps['child']>>[0];
 
 	type RegistrySortColumn = 'name' | 'type' | 'data' | 'modified' | 'size';
 
@@ -693,315 +706,512 @@
 	}
 </script>
 
-<div class="space-y-6">
-	<div class="grid gap-6 lg:grid-cols-[320px_1fr]">
-		<Card>
-			<CardHeader>
-				<CardTitle class="text-base">Registry explorer</CardTitle>
-				<CardDescription>Browse keys and values across the selected hive.</CardDescription>
-			</CardHeader>
-			<CardContent class="space-y-4">
-				<div class="flex flex-wrap gap-2">
-					<div class="relative min-w-[200px] flex-1">
-						<Input
-							id="registry-search"
-							bind:value={searchTerm}
-							placeholder="Search keys or values..."
-						/>
-					</div>
-					<Button
-						type="button"
-						variant="outline"
-						onclick={() => (searchTerm = '')}
-						disabled={!searchTerm.trim()}
+{#snippet TreePane({ props }: TriggerChildProps)}
+	{@const className = cn(
+		'relative flex w-full max-w-[320px] flex-shrink-0 flex-col border-r border-border/60 bg-background/70 backdrop-blur-sm',
+		(props as { class?: string }).class
+	)}
+	<aside {...props} class={className}>
+		<div class="bg-muted/30/70 space-y-4 border-b border-border/60 px-4 py-4">
+			<div class="grid gap-2">
+				<Label
+					for="registry-hive"
+					class="text-xs font-semibold tracking-wide text-muted-foreground/80 uppercase"
+				>
+					Active hive
+				</Label>
+				<Select
+					type="single"
+					value={selectedHive}
+					onValueChange={(value) => (selectedHive = value as RegistryHiveName)}
+				>
+					<SelectTrigger
+						id="registry-hive"
+						class="h-9 w-full rounded-xl border border-border/50 bg-background/90 px-3 text-sm font-medium"
 					>
-						Clear
-					</Button>
+						<span class="truncate">{selectedHive}</span>
+					</SelectTrigger>
+					<SelectContent>
+						<SelectItem value="HKEY_LOCAL_MACHINE">HKEY_LOCAL_MACHINE</SelectItem>
+						<SelectItem value="HKEY_CURRENT_USER">HKEY_CURRENT_USER</SelectItem>
+						<SelectItem value="HKEY_USERS">HKEY_USERS</SelectItem>
+					</SelectContent>
+				</Select>
+			</div>
+			<div class="grid gap-2">
+				<Label
+					for="registry-search"
+					class="text-xs font-semibold tracking-wide text-muted-foreground/80 uppercase"
+				>
+					Search
+				</Label>
+				<Input
+					id="registry-search"
+					bind:value={searchTerm}
+					placeholder="Search keys or values..."
+					class="h-9 rounded-xl border-border/50 bg-background/90 text-sm"
+				/>
+			</div>
+			<label
+				class="flex items-center justify-between gap-3 rounded-xl border border-border/60 bg-background/80 px-3 py-2"
+			>
+				<div>
+					<p class="text-xs font-semibold text-foreground">Show populated keys</p>
+					<p class="text-[11px] text-muted-foreground">Hide empty keys unless a match exists.</p>
 				</div>
-				<div class="grid gap-3">
-					<div class="grid gap-2">
-						<Label for="registry-hive">Hive</Label>
-						<Select
-							type="single"
-							value={selectedHive}
-							onValueChange={(value) => (selectedHive = value as RegistryHiveName)}
-						>
-							<SelectTrigger id="registry-hive" class="w-full">
-								<span class="truncate">{selectedHive}</span>
-							</SelectTrigger>
-							<SelectContent>
-								<SelectItem value="HKEY_LOCAL_MACHINE">HKEY_LOCAL_MACHINE</SelectItem>
-								<SelectItem value="HKEY_CURRENT_USER">HKEY_CURRENT_USER</SelectItem>
-								<SelectItem value="HKEY_USERS">HKEY_USERS</SelectItem>
-							</SelectContent>
-						</Select>
-					</div>
-					<label
-						class="flex items-center justify-between gap-3 rounded-lg border border-border/60 bg-muted/30 p-3"
+				<Switch bind:checked={showOnlyPopulatedKeys} />
+			</label>
+		</div>
+		<ScrollArea class="flex-1">
+			<ul class="space-y-1 px-2 py-3">
+				{#if keyTree.length > 0}
+					{#each keyTree as node (node.key.path)}
+						{@const isActive = selectedKeyPath === node.key.path}
+						<li>
+							<button
+								type="button"
+								class={cn(
+									'group flex w-full items-center justify-between gap-3 rounded-lg px-3 py-2 text-left text-sm transition focus-visible:ring-2 focus-visible:ring-ring/60 focus-visible:ring-offset-2 focus-visible:outline-none',
+									isActive
+										? 'bg-primary/10 text-primary-foreground shadow-inner ring-1 ring-primary/30'
+										: node.matched
+											? 'text-foreground hover:bg-muted/70'
+											: 'text-muted-foreground hover:bg-muted/60'
+								)}
+								style={`padding-left: ${(node.depth + 1) * 1.1}rem;`}
+								onclick={() => (selectedKeyPath = node.key.path)}
+								oncontextmenu={() => (selectedKeyPath = node.key.path)}
+								title={`${node.key.hive}\\${node.key.path}`}
+							>
+								<span class="truncate font-medium">{node.key.name}</span>
+								<Badge
+									variant={node.key.values.length > 0 ? 'secondary' : 'outline'}
+									class="ml-auto shrink-0 rounded-full px-2 py-0 text-[11px] font-semibold"
+								>
+									{node.key.values.length}
+								</Badge>
+							</button>
+						</li>
+					{/each}
+				{:else}
+					<li
+						class="rounded-lg border border-dashed border-border/60 px-3 py-6 text-center text-sm text-muted-foreground"
 					>
-						<div>
-							<p class="text-sm font-medium text-foreground">Show populated keys</p>
-							<p class="text-xs text-muted-foreground">Hide empty keys unless a match exists.</p>
-						</div>
-						<Switch bind:checked={showOnlyPopulatedKeys} />
-					</label>
+						No keys match the current filters.
+					</li>
+				{/if}
+			</ul>
+		</ScrollArea>
+		<div
+			class="flex items-center justify-between gap-2 border-t border-border/60 bg-muted/30 px-4 py-3 text-[11px] tracking-wide text-muted-foreground/80 uppercase"
+		>
+			<span>Live as of {formatDate(liveClock)}</span>
+			<span>{keyTree.length} keys</span>
+		</div>
+	</aside>
+{/snippet}
+
+{#snippet ValuesPane({ props }: TriggerChildProps)}
+	{@const className = cn(
+		'flex flex-1 min-h-0 flex-col bg-background/60 backdrop-blur-sm',
+		(props as { class?: string }).class
+	)}
+	<section {...props} class={className}>
+		<div
+			class="flex flex-wrap items-center justify-between gap-4 border-b border-border/60 bg-muted/20 px-5 py-4"
+		>
+			<div>
+				<h3 class="text-sm font-semibold text-foreground">Registry values</h3>
+				<p class="text-xs text-muted-foreground">
+					{selectedKey
+						? `Entries at ${selectedPathLabel}`
+						: 'Select a key to display registry values.'}
+				</p>
+			</div>
+			<div class="flex flex-wrap items-center gap-2 text-xs">
+				<div
+					class="flex items-center gap-2 rounded-full border border-border/60 bg-background/80 px-3 py-1.5"
+				>
+					<span class="text-[10px] tracking-wide text-muted-foreground/80 uppercase">Sort</span>
+					<Select
+						type="single"
+						value={sortColumn}
+						onValueChange={(value) => (sortColumn = value as RegistrySortColumn)}
+					>
+						<SelectTrigger
+							id="value-sort"
+							class="h-7 w-[130px] rounded-full border-none bg-transparent px-0 text-xs font-semibold focus:ring-0 focus:outline-none"
+						>
+							<span class="capitalize">{sortColumn}</span>
+						</SelectTrigger>
+						<SelectContent>
+							<SelectItem value="name">Name</SelectItem>
+							<SelectItem value="type">Type</SelectItem>
+							<SelectItem value="data">Data</SelectItem>
+							<SelectItem value="size">Size</SelectItem>
+							<SelectItem value="modified">Modified</SelectItem>
+						</SelectContent>
+					</Select>
 				</div>
 				<div
-					class="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border/60 bg-muted/30 px-3 py-2 text-xs"
+					class="flex items-center gap-2 rounded-full border border-border/60 bg-background/80 px-3 py-1.5"
 				>
-					<span class="font-medium text-foreground">Live as of {formatDate(liveClock)}</span>
-					<Button type="button" variant="ghost" size="sm" class="gap-2" onclick={resetRegistry}>
-						<RefreshCw class="h-4 w-4" /> Reset snapshot
-					</Button>
-				</div>
-				<ScrollArea class="h-[420px] rounded-md border border-border/60 bg-background">
-					<ul class="divide-y divide-border/40">
-						{#if keyTree.length > 0}
-							{#each keyTree as node}
-								<li>
-									<button
-										type="button"
-										class={`flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-sm transition hover:bg-muted ${
-											selectedKeyPath === node.key.path ? 'bg-muted font-medium' : ''
-										}`}
-										onclick={() => (selectedKeyPath = node.key.path)}
-										title={`${node.key.hive}\\${node.key.path}`}
-									>
-										<span
-											class={`flex min-w-0 flex-1 items-center gap-2 ${
-												node.matched ? 'text-foreground' : 'text-muted-foreground'
-											}`}
-											style={`padding-left: ${node.depth * 0.75}rem`}
-										>
-											<span class="truncate">{node.key.name}</span>
-										</span>
-										<Badge
-											variant={node.key.values.length > 0 ? 'secondary' : 'outline'}
-											class="shrink-0"
-										>
-											{node.key.values.length}
-										</Badge>
-									</button>
-								</li>
+					<span class="text-[10px] tracking-wide text-muted-foreground/80 uppercase">Type</span>
+					<Select
+						type="single"
+						value={valueTypeFilter}
+						onValueChange={(value) => (valueTypeFilter = value as 'all' | RegistryValueType)}
+					>
+						<SelectTrigger
+							id="value-type-filter"
+							class="h-7 w-[140px] rounded-full border-none bg-transparent px-0 text-xs font-semibold focus:ring-0 focus:outline-none"
+						>
+							<span class="truncate">
+								{valueTypeFilter === 'all' ? 'All types' : valueTypeFilter}
+							</span>
+						</SelectTrigger>
+						<SelectContent>
+							<SelectItem value="all">All types</SelectItem>
+							{#each valueTypes as type}
+								<SelectItem value={type}>{type}</SelectItem>
 							{/each}
-						{:else}
-							<li class="px-3 py-4 text-sm text-muted-foreground">
-								No keys match the current filters.
-							</li>
-						{/if}
-					</ul>
-				</ScrollArea>
-			</CardContent>
-		</Card>
-
-		<div class="space-y-6">
-			<Card>
-				<CardHeader>
-					<div class="flex flex-wrap items-start justify-between gap-3">
-						<div>
-							<CardTitle class="text-base">Values</CardTitle>
-							<CardDescription>
-								{selectedKey
-									? `Entries at ${selectedPathLabel}`
-									: 'Select a key to display registry values.'}
-							</CardDescription>
-						</div>
-						<Button
-							type="button"
-							variant="secondary"
-							size="sm"
-							class="gap-2"
-							onclick={startNewValue}
-							disabled={!selectedKey}
-						>
-							<Plus class="h-4 w-4" /> New value
-						</Button>
-					</div>
-				</CardHeader>
-				<CardContent class="space-y-4">
-					<div class="grid gap-3 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] md:items-end">
-						<div class="grid gap-2">
-							<Label for="value-sort">Sort by</Label>
-							<Select
-								type="single"
-								value={sortColumn}
-								onValueChange={(value) => (sortColumn = value as RegistrySortColumn)}
-							>
-								<SelectTrigger id="value-sort" class="w-full">
-									<span class="capitalize">{sortColumn}</span>
-								</SelectTrigger>
-								<SelectContent>
-									<SelectItem value="name">Name</SelectItem>
-									<SelectItem value="type">Type</SelectItem>
-									<SelectItem value="data">Data</SelectItem>
-									<SelectItem value="size">Size</SelectItem>
-									<SelectItem value="modified">Modified</SelectItem>
-								</SelectContent>
-							</Select>
-						</div>
-						<div class="grid gap-2">
-							<Label for="value-type-filter">Type filter</Label>
-							<Select
-								type="single"
-								value={valueTypeFilter}
-								onValueChange={(value) => (valueTypeFilter = value as 'all' | RegistryValueType)}
-							>
-								<SelectTrigger id="value-type-filter" class="w-full">
-									<span class="truncate">
-										{valueTypeFilter === 'all' ? 'All types' : valueTypeFilter}
-									</span>
-								</SelectTrigger>
-								<SelectContent>
-									<SelectItem value="all">All types</SelectItem>
-									{#each valueTypes as type}
-										<SelectItem value={type}>{type}</SelectItem>
-									{/each}
-								</SelectContent>
-							</Select>
-						</div>
-						<Button
-							type="button"
-							variant="outline"
-							size="icon"
-							class="mt-6"
-							aria-label="Toggle sort direction"
-							onclick={() => (sortDirection = sortDirection === 'asc' ? 'desc' : 'asc')}
-						>
-							<ArrowUpDown class="h-4 w-4" />
-						</Button>
-					</div>
-					<Table>
-						<TableHeader>
-							<TableRow>
-								<TableHead class="w-[30%]">Name</TableHead>
-								<TableHead class="w-[16%]">Type</TableHead>
-								<TableHead>Data</TableHead>
-								<TableHead class="w-[12%]">Size</TableHead>
-								<TableHead class="w-[18%]">Modified</TableHead>
-							</TableRow>
-						</TableHeader>
-						<TableBody>
-							{#if selectedKey}
-								{#if filteredValues.length > 0}
-									{#each filteredValues as value (value.name)}
-										<TableRow
-											class={`cursor-pointer transition ${
-												selectedValueName === value.name
-													? 'bg-muted/70 font-medium'
-													: 'hover:bg-muted/60'
-											}`}
-											onclick={() => selectValue(value)}
-										>
-											<TableCell>{value.name}</TableCell>
-											<TableCell>{value.type}</TableCell>
-											<TableCell class="max-w-[320px] truncate" title={value.data || '—'}>
-												{value.data || '—'}
-											</TableCell>
-											<TableCell>{formatSize(value.size)}</TableCell>
-											<TableCell>{formatDateString(value.lastModified)}</TableCell>
-										</TableRow>
-									{/each}
-								{:else}
-									<TableRow>
-										<TableCell colspan={5} class="py-6 text-center text-sm text-muted-foreground">
-											{normalizedSearch || valueTypeFilter !== 'all'
-												? 'No values match the current filters.'
-												: 'This key has no values.'}
+						</SelectContent>
+					</Select>
+				</div>
+				<Button
+					type="button"
+					variant="ghost"
+					size="icon"
+					class="h-8 w-8 rounded-full border border-border/50 bg-background/80"
+					aria-label="Toggle sort direction"
+					onclick={() => (sortDirection = sortDirection === 'asc' ? 'desc' : 'asc')}
+				>
+					<ArrowUpDown
+						class={cn('h-4 w-4', sortDirection === 'desc' ? 'rotate-180 transition-transform' : '')}
+					/>
+				</Button>
+			</div>
+		</div>
+		<div class="flex-1 overflow-auto px-5 pb-5">
+			<div
+				class="overflow-hidden rounded-2xl border border-border/60 bg-background/90 shadow-inner"
+			>
+				<Table>
+					<TableHeader class="bg-muted/30">
+						<TableRow>
+							<TableHead class="w-[30%]">Name</TableHead>
+							<TableHead class="w-[16%]">Type</TableHead>
+							<TableHead>Data</TableHead>
+							<TableHead class="w-[12%]">Size</TableHead>
+							<TableHead class="w-[18%]">Modified</TableHead>
+						</TableRow>
+					</TableHeader>
+					<TableBody>
+						{#if selectedKey}
+							{#if filteredValues.length > 0}
+								{#each filteredValues as value (value.name)}
+									<TableRow
+										class={cn(
+											'cursor-pointer text-sm transition hover:bg-muted/60 data-[state=selected]:bg-primary/10',
+											selectedValueName === value.name ? 'bg-primary/5 font-semibold' : ''
+										)}
+										onclick={() => selectValue(value)}
+										oncontextmenu={() => (selectedValueName = value.name)}
+									>
+										<TableCell>{value.name}</TableCell>
+										<TableCell>{value.type}</TableCell>
+										<TableCell class="max-w-[320px] truncate" title={value.data || '—'}>
+											{value.data || '—'}
 										</TableCell>
+										<TableCell>{formatSize(value.size)}</TableCell>
+										<TableCell>{formatDateString(value.lastModified)}</TableCell>
 									</TableRow>
-								{/if}
+								{/each}
 							{:else}
 								<TableRow>
 									<TableCell colspan={5} class="py-6 text-center text-sm text-muted-foreground">
-										Select a key from the explorer to view values.
+										{normalizedSearch || valueTypeFilter !== 'all'
+											? 'No values match the current filters.'
+											: 'This key has no values.'}
 									</TableCell>
 								</TableRow>
 							{/if}
-						</TableBody>
-					</Table>
-				</CardContent>
-			</Card>
+						{:else}
+							<TableRow>
+								<TableCell colspan={5} class="py-6 text-center text-sm text-muted-foreground">
+									Select a key from the explorer to view values.
+								</TableCell>
+							</TableRow>
+						{/if}
+					</TableBody>
+				</Table>
+			</div>
+		</div>
+	</section>
+{/snippet}
 
-			<Card>
-				<CardHeader>
-					<CardTitle class="text-base">
-						{valueFormOriginalName ? 'Update registry value' : 'Create registry value'}
-					</CardTitle>
-					<CardDescription>
-						{selectedKey
-							? `Define the data stored at ${selectedPathLabel}.`
-							: 'Choose a registry key to add or modify values.'}
-					</CardDescription>
-				</CardHeader>
-				<CardContent class="space-y-4">
-					{#if valueFormError}
-						<p class="text-sm text-destructive">{valueFormError}</p>
-					{/if}
-					<div class="grid gap-4 md:grid-cols-2">
-						<div class="grid gap-2">
-							<Label for="value-name">Name</Label>
-							<Input id="value-name" bind:value={valueFormName} placeholder="NewValue" />
-						</div>
-						<div class="grid gap-2">
-							<Label for="value-type">Type</Label>
-							<Select
-								type="single"
-								value={valueFormType}
-								onValueChange={(value) => (valueFormType = value as RegistryValueType)}
-							>
-								<SelectTrigger id="value-type" class="w-full">
-									<span>{valueFormType}</span>
-								</SelectTrigger>
-								<SelectContent>
-									{#each valueTypes as type}
-										<SelectItem value={type}>{type}</SelectItem>
-									{/each}
-								</SelectContent>
-							</Select>
-						</div>
-					</div>
-					<div class="grid gap-2">
-						<Label for="value-data">Data</Label>
-						<textarea
-							id="value-data"
-							class="min-h-24 w-full rounded-md border border-border/60 bg-background px-3 py-2 text-sm focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none"
-							bind:value={valueFormData}
-							placeholder={valueFormType === 'REG_DWORD' || valueFormType === 'REG_QWORD'
-								? '0x00000000'
-								: 'Value data'}
-						></textarea>
-						<p class="text-xs text-muted-foreground">
-							{valueFormType === 'REG_MULTI_SZ'
-								? 'Use new lines to separate entries.'
-								: 'Provide the raw data stored for this value.'}
+<div
+	class="flex h-full min-h-[720px] flex-col overflow-hidden rounded-2xl border border-border/60 bg-background/80 shadow-xl"
+>
+	<header
+		class="border-b border-border/60 bg-gradient-to-r from-background via-background to-muted/40 px-6 py-5"
+	>
+		<div class="flex flex-wrap items-start justify-between gap-6">
+			<div class="space-y-1">
+				<h1 class="text-lg font-semibold text-foreground">{tool.title}</h1>
+				<p class="text-sm text-muted-foreground">{tool.description}</p>
+				<p class="text-xs text-muted-foreground/80">
+					Connected to <span class="font-semibold text-foreground">{client.hostname}</span> · {client.os}
+				</p>
+			</div>
+			<div class="grid gap-3 text-right sm:grid-cols-2">
+				{#each heroMetadata as item}
+					<div class="rounded-xl border border-border/40 bg-background/70 px-4 py-2 shadow-sm">
+						<p class="text-[10px] font-semibold tracking-wide text-muted-foreground/70 uppercase">
+							{item.label}
 						</p>
+						<p class="text-sm font-semibold text-foreground">{item.value}</p>
 					</div>
-				</CardContent>
-				<CardFooter class="flex flex-wrap gap-3">
-					<Button type="button" class="gap-2" onclick={upsertValue} disabled={!selectedKey}>
-						<Save class="h-4 w-4" /> Save value
-					</Button>
-					<Button type="button" variant="outline" onclick={startNewValue}>Clear form</Button>
-					<Button
-						type="button"
-						variant="destructive"
-						class="gap-2"
-						onclick={deleteSelectedValue}
-						disabled={!selectedValue}
-					>
-						<Trash2 class="h-4 w-4" /> Delete value
-					</Button>
-				</CardFooter>
-			</Card>
+				{/each}
+			</div>
+		</div>
+	</header>
 
-			<Card>
-				<CardHeader>
-					<CardTitle class="text-base">Key maintenance</CardTitle>
-					<CardDescription>Manage the lifecycle of registry keys.</CardDescription>
-				</CardHeader>
-				<CardContent class="space-y-5">
-					<div class="space-y-3">
-						<div class="grid gap-2 md:grid-cols-2">
+	<div class="flex flex-wrap items-center gap-2 border-b border-border/60 bg-muted/20 px-5 py-3">
+		<Button
+			type="button"
+			variant="ghost"
+			size="sm"
+			class="gap-2 rounded-full border border-border/50 bg-background/80 px-4"
+			onclick={() => {
+				keyCreateParent = selectedKey?.path ?? '';
+				keyCreateName = '';
+				keyCreateError = null;
+			}}
+		>
+			<FolderPlus class="h-4 w-4" /> New key
+		</Button>
+		<Button
+			type="button"
+			variant="ghost"
+			size="sm"
+			class="gap-2 rounded-full border border-border/50 bg-background/80 px-4"
+			onclick={() => {
+				if (!selectedKey) {
+					return;
+				}
+				startNewValue();
+			}}
+			disabled={!selectedKey}
+		>
+			<ListPlus class="h-4 w-4" /> New value
+		</Button>
+		<Button
+			type="button"
+			variant="ghost"
+			size="sm"
+			class="gap-2 rounded-full border border-border/50 bg-background/80 px-4"
+			onclick={upsertValue}
+			disabled={!selectedKey}
+		>
+			<Save class="h-4 w-4" /> Save value
+		</Button>
+		<Button
+			type="button"
+			variant="ghost"
+			size="sm"
+			class="gap-2 rounded-full border border-border/50 bg-background/80 px-4 text-destructive hover:text-destructive"
+			onclick={deleteSelectedValue}
+			disabled={!selectedValue}
+		>
+			<Trash2 class="h-4 w-4" /> Delete value
+		</Button>
+		<Button
+			type="button"
+			variant="ghost"
+			size="sm"
+			class="ml-auto gap-2 rounded-full border border-border/50 bg-background/80 px-4"
+			onclick={resetRegistry}
+		>
+			<RefreshCw class="h-4 w-4" /> Reset snapshot
+		</Button>
+	</div>
+
+	<div class="flex min-h-0 flex-1">
+		<ContextMenu>
+			<ContextMenuTrigger child={TreePane} />
+			<ContextMenuContent class="w-56">
+				<ContextMenuItem
+					onSelect={() => {
+						keyCreateParent = selectedKey?.path ?? '';
+						keyCreateName = '';
+						keyCreateError = null;
+					}}
+				>
+					<FolderPlus class="mr-2 h-4 w-4" /> New subkey here
+				</ContextMenuItem>
+				<ContextMenuItem
+					disabled={!selectedKey}
+					onSelect={() => {
+						if (!selectedKey) {
+							return;
+						}
+						startNewValue();
+					}}
+				>
+					<ListPlus class="mr-2 h-4 w-4" /> New value
+				</ContextMenuItem>
+				<ContextMenuSeparator />
+				<ContextMenuItem
+					disabled={!selectedKey}
+					onSelect={() => {
+						if (!selectedKey) {
+							return;
+						}
+						keyRenameName = selectedKey.name;
+						keyRenameError = null;
+					}}
+				>
+					<PencilLine class="mr-2 h-4 w-4" /> Prepare rename
+				</ContextMenuItem>
+				<ContextMenuItem
+					class="text-destructive focus:text-destructive"
+					disabled={!selectedKey}
+					onSelect={async () => {
+						if (!selectedKey) {
+							return;
+						}
+						await tick();
+						deleteSelectedKey();
+					}}
+				>
+					<Trash2 class="mr-2 h-4 w-4" /> Delete key
+				</ContextMenuItem>
+			</ContextMenuContent>
+		</ContextMenu>
+
+		<div class="flex min-h-0 flex-1 flex-col">
+			<ContextMenu>
+				<ContextMenuTrigger child={ValuesPane} />
+				<ContextMenuContent class="w-52">
+					<ContextMenuItem
+						disabled={!selectedKey}
+						onSelect={() => {
+							if (!selectedKey) {
+								return;
+							}
+							startNewValue();
+						}}
+					>
+						<ListPlus class="mr-2 h-4 w-4" /> New value
+					</ContextMenuItem>
+					<ContextMenuItem disabled={!selectedKey} onSelect={upsertValue}>
+						<Save class="mr-2 h-4 w-4" /> Save value
+					</ContextMenuItem>
+					<ContextMenuSeparator />
+					<ContextMenuItem
+						class="text-destructive focus:text-destructive"
+						disabled={!selectedValue}
+						onSelect={deleteSelectedValue}
+					>
+						<Trash2 class="mr-2 h-4 w-4" /> Delete value
+					</ContextMenuItem>
+				</ContextMenuContent>
+			</ContextMenu>
+
+			<section
+				class="grid gap-6 border-t border-border/60 bg-muted/10 px-5 py-6 xl:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]"
+			>
+				<div class="space-y-6">
+					<div class="rounded-2xl border border-border/60 bg-background/95 p-5 shadow-sm">
+						<div class="flex flex-wrap items-start justify-between gap-4">
+							<div>
+								<h2 class="text-sm font-semibold text-foreground">
+									{valueFormOriginalName ? 'Edit registry value' : 'Create registry value'}
+								</h2>
+								<p class="text-xs text-muted-foreground">
+									{selectedKey
+										? `Define the data stored at ${selectedPathLabel}.`
+										: 'Choose a registry key to add or modify values.'}
+								</p>
+							</div>
+							{#if selectedValue}
+								<Badge variant="secondary" class="rounded-full px-3 text-[11px]">
+									{selectedValue.type}
+								</Badge>
+							{/if}
+						</div>
+						{#if valueFormError}
+							<p
+								class="mt-4 rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive"
+							>
+								{valueFormError}
+							</p>
+						{/if}
+						<div class="mt-4 grid gap-4 md:grid-cols-2">
+							<div class="grid gap-2">
+								<Label for="value-name">Name</Label>
+								<Input id="value-name" bind:value={valueFormName} placeholder="NewValue" />
+							</div>
+							<div class="grid gap-2">
+								<Label for="value-type">Type</Label>
+								<Select
+									type="single"
+									value={valueFormType}
+									onValueChange={(value) => (valueFormType = value as RegistryValueType)}
+								>
+									<SelectTrigger id="value-type" class="h-9 rounded-lg">
+										<span>{valueFormType}</span>
+									</SelectTrigger>
+									<SelectContent>
+										{#each valueTypes as type}
+											<SelectItem value={type}>{type}</SelectItem>
+										{/each}
+									</SelectContent>
+								</Select>
+							</div>
+						</div>
+						<div class="mt-4 grid gap-2">
+							<Label for="value-data">Data</Label>
+							<Textarea
+								id="value-data"
+								bind:value={valueFormData}
+								class="min-h-28"
+								placeholder={valueFormType === 'REG_DWORD' || valueFormType === 'REG_QWORD'
+									? '0x00000000'
+									: 'Value data'}
+							/>
+							<p class="text-xs text-muted-foreground">
+								{valueFormType === 'REG_MULTI_SZ'
+									? 'Use new lines to separate entries.'
+									: 'Provide the raw data stored for this value.'}
+							</p>
+						</div>
+						<div class="mt-5 flex flex-wrap gap-3">
+							<Button type="button" class="gap-2" onclick={upsertValue} disabled={!selectedKey}>
+								<Save class="h-4 w-4" /> Save value
+							</Button>
+							<Button type="button" variant="outline" onclick={startNewValue}>Clear form</Button>
+							<Button
+								type="button"
+								variant="destructive"
+								class="gap-2"
+								onclick={deleteSelectedValue}
+								disabled={!selectedValue}
+							>
+								<Trash2 class="h-4 w-4" /> Delete value
+							</Button>
+						</div>
+					</div>
+
+					<div class="rounded-2xl border border-border/60 bg-background/95 p-5 shadow-sm">
+						<div class="flex items-center justify-between gap-3">
+							<h2 class="text-sm font-semibold text-foreground">Key maintenance</h2>
+							<Badge variant="outline" class="rounded-full px-3 text-[11px] font-semibold">
+								{selectedKey ? selectedKey.name : 'No key selected'}
+							</Badge>
+						</div>
+						<div class="mt-4 grid gap-4 md:grid-cols-2">
 							<div class="grid gap-2">
 								<Label for="key-parent">Parent path</Label>
 								<Input
@@ -1015,39 +1225,57 @@
 								<Input id="key-name" bind:value={keyCreateName} placeholder="Policies" />
 							</div>
 						</div>
-						<div class="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-							<span>Current selection:</span>
-							<span class="font-medium text-foreground">
-								{selectedKey ? selectedPathLabel : 'No key selected'}
-							</span>
-						</div>
+						<p class="mt-2 text-xs text-muted-foreground">
+							Current selection: <span class="font-semibold text-foreground"
+								>{selectedKey ? selectedPathLabel : 'None'}</span
+							>
+						</p>
 						{#if keyCreateError}
-							<p class="text-sm text-destructive">{keyCreateError}</p>
+							<p
+								class="mt-2 rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive"
+							>
+								{keyCreateError}
+							</p>
 						{/if}
-						<Button type="button" onclick={createKeyFromForm}>
-							<Plus class="mr-2 h-4 w-4" /> Create key
-						</Button>
-					</div>
-					<div class="space-y-3 border-t border-border/50 pt-4">
-						<div class="grid gap-2 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
-							<div>
-								<p class="text-xs text-muted-foreground uppercase">Selected key path</p>
-								<p
+						<div class="mt-4 flex flex-wrap gap-3">
+							<Button type="button" class="gap-2" onclick={createKeyFromForm}>
+								<Plus class="h-4 w-4" /> Create key
+							</Button>
+						</div>
+						<div
+							class="mt-6 grid gap-3 border-t border-border/60 pt-4 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]"
+						>
+							<div class="grid gap-2">
+								<Label for="key-rename" class="text-xs text-muted-foreground uppercase"
+									>Rename key to</Label
+								>
+								<Input id="key-rename" bind:value={keyRenameName} placeholder="NewName" />
+							</div>
+							<div class="grid gap-2 text-xs text-muted-foreground">
+								<span class="uppercase">Full path</span>
+								<span
 									class="truncate text-sm font-medium text-foreground"
 									title={selectedKey ? selectedPathLabel : '—'}
 								>
 									{selectedKey ? selectedPathLabel : '—'}
-								</p>
-							</div>
-							<div class="grid gap-2">
-								<Label for="key-rename">Rename key to</Label>
-								<Input id="key-rename" bind:value={keyRenameName} placeholder="NewName" />
+								</span>
 							</div>
 						</div>
 						{#if keyRenameError}
-							<p class="text-sm text-destructive">{keyRenameError}</p>
+							<p
+								class="mt-2 rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive"
+							>
+								{keyRenameError}
+							</p>
 						{/if}
-						<div class="flex flex-wrap gap-3">
+						{#if keyDeleteError}
+							<p
+								class="mt-2 rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive"
+							>
+								{keyDeleteError}
+							</p>
+						{/if}
+						<div class="mt-4 flex flex-wrap gap-3">
 							<Button
 								type="button"
 								variant="outline"
@@ -1066,41 +1294,35 @@
 								<Trash2 class="h-4 w-4" /> Delete key
 							</Button>
 						</div>
-						{#if keyDeleteError}
-							<p class="text-sm text-destructive">{keyDeleteError}</p>
-						{/if}
 					</div>
-				</CardContent>
-			</Card>
+				</div>
 
-			<div class="grid gap-6 md:grid-cols-2">
-				<Card>
-					<CardHeader>
-						<CardTitle class="text-base">Key details</CardTitle>
-						<CardDescription>Full metadata for the active registry key.</CardDescription>
-					</CardHeader>
-					<CardContent>
+				<div class="space-y-6">
+					<div class="rounded-2xl border border-border/60 bg-background/95 p-5 shadow-sm">
+						<h2 class="text-sm font-semibold text-foreground">Key details</h2>
 						{#if selectedKey}
-							<div class="space-y-3 text-sm">
+							<div class="mt-4 space-y-3 text-sm">
 								<div>
-									<p class="text-xs text-muted-foreground uppercase">Full path</p>
+									<p class="text-xs tracking-wide text-muted-foreground uppercase">Full path</p>
 									<p class="font-medium break-words text-foreground">{selectedPathLabel}</p>
 								</div>
-								<div class="grid gap-2 sm:grid-cols-2">
+								<div class="grid gap-3 sm:grid-cols-2">
 									<div>
-										<p class="text-xs text-muted-foreground uppercase">Values</p>
+										<p class="text-xs tracking-wide text-muted-foreground uppercase">Values</p>
 										<p class="font-medium text-foreground">{selectedKey.values.length}</p>
 									</div>
 									<div>
-										<p class="text-xs text-muted-foreground uppercase">Subkeys</p>
+										<p class="text-xs tracking-wide text-muted-foreground uppercase">Subkeys</p>
 										<p class="font-medium text-foreground">{selectedKey.subKeys.length}</p>
 									</div>
 									<div>
-										<p class="text-xs text-muted-foreground uppercase">Owner</p>
+										<p class="text-xs tracking-wide text-muted-foreground uppercase">Owner</p>
 										<p class="font-medium text-foreground">{selectedKey.owner}</p>
 									</div>
 									<div>
-										<p class="text-xs text-muted-foreground uppercase">Last modified</p>
+										<p class="text-xs tracking-wide text-muted-foreground uppercase">
+											Last modified
+										</p>
 										<p class="font-medium text-foreground">
 											{formatDateString(selectedKey.lastModified)}
 										</p>
@@ -1109,41 +1331,43 @@
 								<div class="flex flex-wrap gap-2">
 									<Badge
 										variant={selectedKey.wow64Mirrored ? 'default' : 'outline'}
-										class="uppercase"
+										class="rounded-full px-3 text-[11px] uppercase"
 									>
 										{selectedKey.wow64Mirrored ? 'WOW64 mirrored' : '64-bit view'}
 									</Badge>
-									<Badge variant="outline">{selectedKey.hive}</Badge>
+									<Badge variant="outline" class="rounded-full px-3 text-[11px] uppercase">
+										{selectedKey.hive}
+									</Badge>
 								</div>
 								{#if selectedKey.description}
 									<p class="text-sm text-muted-foreground">{selectedKey.description}</p>
 								{/if}
 							</div>
 						{:else}
-							<p class="text-sm text-muted-foreground">
+							<p class="mt-4 text-sm text-muted-foreground">
 								Pick a key from the explorer to view its metadata.
 							</p>
 						{/if}
-					</CardContent>
-				</Card>
-				<Card>
-					<CardHeader>
-						<CardTitle class="text-base">Value details</CardTitle>
-						<CardDescription>Inspect the selected registry value.</CardDescription>
-					</CardHeader>
-					<CardContent>
+					</div>
+
+					<div class="rounded-2xl border border-border/60 bg-background/95 p-5 shadow-sm">
+						<h2 class="text-sm font-semibold text-foreground">Value details</h2>
 						{#if selectedValue}
-							<div class="space-y-3 text-sm">
+							<div class="mt-4 space-y-3 text-sm">
 								<div class="flex flex-wrap items-center gap-2">
-									<Badge variant="secondary">{selectedValue.type}</Badge>
-									<Badge variant="outline">{formatSize(selectedValue.size)}</Badge>
+									<Badge variant="secondary" class="rounded-full px-3 text-[11px]">
+										{selectedValue.type}
+									</Badge>
+									<Badge variant="outline" class="rounded-full px-3 text-[11px]">
+										{formatSize(selectedValue.size)}
+									</Badge>
 								</div>
 								<div>
-									<p class="text-xs text-muted-foreground uppercase">Name</p>
+									<p class="text-xs tracking-wide text-muted-foreground uppercase">Name</p>
 									<p class="font-medium text-foreground">{selectedValue.name}</p>
 								</div>
 								<div>
-									<p class="text-xs text-muted-foreground uppercase">Last modified</p>
+									<p class="text-xs tracking-wide text-muted-foreground uppercase">Last modified</p>
 									<p class="font-medium text-foreground">
 										{formatDateString(selectedValue.lastModified)}
 									</p>
@@ -1152,21 +1376,30 @@
 									<p class="text-sm text-muted-foreground">{selectedValue.description}</p>
 								{/if}
 								<div>
-									<p class="text-xs text-muted-foreground uppercase">Data</p>
+									<p class="text-xs tracking-wide text-muted-foreground uppercase">Data</p>
 									<pre
-										class="rounded-md border border-border/60 bg-muted/30 px-3 py-2 text-xs break-all whitespace-pre-wrap text-foreground">
+										class="max-h-40 overflow-auto rounded-lg border border-border/60 bg-muted/20 px-3 py-2 text-xs text-foreground">
 {selectedValue.data || '—'}
                                                                         </pre>
 								</div>
 							</div>
 						{:else}
-							<p class="text-sm text-muted-foreground">
+							<p class="mt-4 text-sm text-muted-foreground">
 								Select a value from the table to view its details.
 							</p>
 						{/if}
-					</CardContent>
-				</Card>
-			</div>
+					</div>
+				</div>
+			</section>
 		</div>
 	</div>
+
+	<footer
+		class="flex items-center justify-between border-t border-border/60 bg-muted/20 px-5 py-3 text-xs text-muted-foreground"
+	>
+		<span class="truncate" title={selectedKey ? selectedPathLabel : 'No key selected'}>
+			{selectedKey ? selectedPathLabel : 'No key selected'}
+		</span>
+		<span>Last change {formatRelative(lastChangeAt)}</span>
+	</footer>
 </div>
