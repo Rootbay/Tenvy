@@ -789,27 +789,29 @@ export class RemoteDesktopManager {
 		}
 	}
 
-    private replaceTransportHandle(
-        record: RemoteDesktopSessionRecord,
-        handle: RemoteDesktopTransportHandle | null
+        private replaceTransportHandle(
+                record: RemoteDesktopSessionRecord,
+                handle: RemoteDesktopTransportHandle | null
         ) {
-        if (!record) {
-			return;
-		}
-		const previous = record.transportHandle;
-		record.transportHandle = handle ?? null;
-		if (previous && previous !== handle) {
-			try {
-				previous.close();
-			} catch (err) {
-				console.error('Failed to close remote desktop transport', err);
+                if (!record) {
+                        return;
+                }
+
+                const previous = record.transportHandle;
+                record.transportHandle = handle ?? null;
+
+                if (previous && previous !== handle) {
+                        try {
+                                previous.close();
+                        } catch (err) {
+                                console.error('Failed to close remote desktop transport', err);
+                        }
                 }
         }
-	}
 
-    private reserveInputSequence(
-        record: RemoteDesktopSessionRecord,
-        hint?: number
+        private reserveInputSequence(
+                record: RemoteDesktopSessionRecord,
+                hint?: number
         ): number | null {
                 const current = record.inputSequence ?? 0;
                 if (typeof hint === 'number' && Number.isFinite(hint)) {
@@ -824,7 +826,6 @@ export class RemoteDesktopManager {
                 record.inputSequence = next;
                 return next;
         }
-	}
 
 	private async establishWebRTCTransport(
 		agentId: string,

@@ -424,6 +424,23 @@
 	}
 </script>
 
+{#snippet SettingsLink({ props }: SidebarMenuButtonChildContext)}
+        {@const { class: existingClass } = props as { class?: string }}
+        {@const className = cn('cursor-pointer', existingClass)}
+        <a
+                {...props}
+                class={className}
+                href="/settings"
+                data-sveltekit-preload-data="hover"
+                aria-current={(layoutData as LayoutData).activeNav === 'settings' ? 'page' : undefined}
+        >
+                <Settings />
+                <div class="flex min-w-0 flex-col gap-0.5 text-left">
+                        <span class="truncate text-sm font-medium">Settings</span>
+                </div>
+        </a>
+{/snippet}
+
 <SidebarProvider>
 	<Sidebar collapsible="icon">
 		<SidebarHeader class="border-b border-sidebar-border px-2 pt-3 pb-4">
@@ -471,27 +488,11 @@
 						{/if}
 					</SidebarMenuItem>
 				{/each}
-				{#snippet SettingsLink({ props }: SidebarMenuButtonChildContext)}
-					{@const { class: existingClass } = props as { class?: string }}
-					{@const className = cn('cursor-pointer', existingClass)}
-					<a
-						{...props}
-						class={className}
-						href="/settings"
-						data-sveltekit-preload-data="hover"
-						aria-current={(layoutData as LayoutData).activeNav === 'settings' ? 'page' : undefined}
-					>
-						<Settings />
-						<div class="flex min-w-0 flex-col gap-0.5 text-left">
-							<span class="truncate text-sm font-medium">Settings</span>
-						</div>
-					</a>
-				{/snippet}
-				<SidebarMenuItem class="hidden cursor-pointer group-data-[state=collapsed]:block">
-					<SidebarMenuButton
-						isActive={(layoutData as LayoutData).activeNav === 'settings'}
-						tooltipContent="Settings"
-						child={SettingsLink}
+                                <SidebarMenuItem class="hidden cursor-pointer group-data-[state=collapsed]:block">
+                                        <SidebarMenuButton
+                                                isActive={(layoutData as LayoutData).activeNav === 'settings'}
+                                                tooltipContent="Settings"
+                                                child={SettingsLink}
 					/>
 				</SidebarMenuItem>
 			</SidebarMenu>
