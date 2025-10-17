@@ -123,8 +123,7 @@
 		},
 		clients: {
 			title: 'Clients',
-			description:
-				'Inspect connected endpoints, filter by posture, and triage which agents need attention next.'
+			description: 'Inspect connected endpoints, filter by posture, and triage which agents need attention next.'
 		},
 		build: {
 			title: 'Builder',
