@@ -21,21 +21,21 @@ const definitions = {
 		title: 'App VNC',
 		description: 'Coordinate app VNC sessions for covert remote access.',
 		segments: ['control', 'app-vnc'],
-		target: '_blank'
+		target: 'dialog'
 	},
 	'remote-desktop': {
 		id: 'remote-desktop',
 		title: 'Remote Desktop',
 		description: 'Plan standard remote desktop streaming capabilities.',
 		segments: ['control', 'remote-desktop'],
-		target: '_blank'
+		target: 'dialog'
 	},
 	'webcam-control': {
 		id: 'webcam-control',
 		title: 'Webcam Control',
 		description: 'Prepare webcam capture, streaming, and media controls.',
 		segments: ['control', 'webcam-control'],
-		target: '_blank'
+		target: 'dialog'
 	},
 	'audio-control': {
 		id: 'audio-control',
@@ -43,91 +43,91 @@ const definitions = {
 		description:
 			'Enumerate agent audio hardware and bridge live microphone streams to the controller.',
 		segments: ['control', 'audio-control'],
-		target: '_blank'
+		target: 'dialog'
 	},
 	'keylogger-online': {
 		id: 'keylogger-online',
 		title: 'Keylogger · Online',
 		description: 'Stream live keystrokes with contextual awareness.',
 		segments: ['control', 'keylogger', 'online'],
-		target: '_blank'
+		target: 'dialog'
 	},
 	'keylogger-offline': {
 		id: 'keylogger-offline',
 		title: 'Keylogger · Offline',
 		description: 'Manage offline keylogging buffers and retrieval scheduling.',
 		segments: ['control', 'keylogger', 'offline'],
-		target: '_blank'
+		target: 'dialog'
 	},
 	'keylogger-advanced-online': {
 		id: 'keylogger-advanced-online',
 		title: 'Keylogger · Advanced Online',
 		description: 'Prototype advanced live keylogging with application correlation.',
 		segments: ['control', 'keylogger', 'advanced-online'],
-		target: '_blank'
+		target: 'dialog'
 	},
 	cmd: {
 		id: 'cmd',
 		title: 'Command Shell',
 		description: 'Queue remote shell executions and monitor results.',
 		segments: ['control', 'command-shell'],
-		target: '_blank'
+		target: 'dialog'
 	},
 	'file-manager': {
 		id: 'file-manager',
 		title: 'File Manager',
 		description: 'Draft remote file browsing, transfer, and manipulation workflows.',
 		segments: ['management', 'file-manager'],
-		target: '_blank'
+		target: 'dialog'
 	},
 	'task-manager': {
 		id: 'task-manager',
 		title: 'Task Manager',
 		description: 'Outline remote process inspection and lifecycle management.',
 		segments: ['management', 'task-manager'],
-		target: '_blank'
+		target: 'dialog'
 	},
 	'registry-manager': {
 		id: 'registry-manager',
 		title: 'Registry Manager',
 		description: 'Plan registry exploration and editing capabilities.',
 		segments: ['management', 'registry-manager'],
-		target: '_blank'
+		target: 'dialog'
 	},
 	'startup-manager': {
 		id: 'startup-manager',
 		title: 'Startup Manager',
 		description: 'Configure startup program discovery and modification flows.',
 		segments: ['management', 'startup-manager'],
-		target: '_blank'
+		target: 'dialog'
 	},
 	'clipboard-manager': {
 		id: 'clipboard-manager',
 		title: 'Clipboard Manager',
 		description: 'Manage clipboard monitoring and injection utilities.',
 		segments: ['management', 'clipboard-manager'],
-		target: '_blank'
+		target: 'dialog'
 	},
 	'tcp-connections': {
 		id: 'tcp-connections',
 		title: 'TCP Connections',
 		description: 'Survey active and listening sockets for the client.',
 		segments: ['management', 'tcp-connections'],
-		target: '_blank'
+		target: 'dialog'
 	},
 	recovery: {
 		id: 'recovery',
 		title: 'Recovery',
 		description: 'Assemble recovery tooling for credential and config extraction.',
 		segments: ['operations', 'recovery'],
-		target: '_blank'
+		target: 'dialog'
 	},
 	options: {
 		id: 'options',
 		title: 'Options',
 		description: 'Adjust client runtime preferences and behavioral flags.',
 		segments: ['operations', 'options'],
-		target: '_blank'
+		target: 'dialog'
 	},
 	'open-url': {
 		id: 'open-url',
@@ -148,28 +148,28 @@ const definitions = {
 		title: 'Client Chat',
 		description: 'Prototype two-way messaging pipelines with the agent.',
 		segments: ['misc', 'client-chat'],
-		target: '_blank'
+		target: 'dialog'
 	},
 	'report-window': {
 		id: 'report-window',
 		title: 'Report Window',
 		description: 'Collect and review structured telemetry from the client.',
 		segments: ['misc', 'report-window'],
-		target: '_blank'
+		target: 'dialog'
 	},
 	'ip-geolocation': {
 		id: 'ip-geolocation',
 		title: 'IP Geolocation',
 		description: 'Resolve and visualize the client location from network data.',
 		segments: ['misc', 'ip-geolocation'],
-		target: '_blank'
+		target: 'dialog'
 	},
 	'environment-variables': {
 		id: 'environment-variables',
 		title: 'Environment Variables',
 		description: 'Enumerate and manage environment variables on the client.',
 		segments: ['misc', 'environment-variables'],
-		target: '_blank'
+		target: 'dialog'
 	},
 	reconnect: {
 		id: 'reconnect',
@@ -218,10 +218,30 @@ const definitions = {
 export type ClientToolId = keyof typeof definitions;
 
 export const dialogToolIds = [
-	'system-info',
-	'notes',
-	'open-url',
-	'message-box'
+        'system-info',
+        'notes',
+        'app-vnc',
+        'remote-desktop',
+        'webcam-control',
+        'audio-control',
+        'keylogger-online',
+        'keylogger-offline',
+        'keylogger-advanced-online',
+        'cmd',
+        'file-manager',
+        'task-manager',
+        'registry-manager',
+        'startup-manager',
+        'clipboard-manager',
+        'tcp-connections',
+        'recovery',
+        'options',
+        'open-url',
+        'message-box',
+        'client-chat',
+        'report-window',
+        'ip-geolocation',
+        'environment-variables'
 ] as const satisfies readonly ClientToolId[];
 
 const dialogToolSet = new Set<ClientToolId>(dialogToolIds);

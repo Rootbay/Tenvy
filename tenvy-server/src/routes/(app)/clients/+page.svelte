@@ -1210,11 +1210,12 @@
 
 	{#if toolDialog && toolDialogAgent && toolDialogClient}
 		{#key `${toolDialog.agentId}-${toolDialog.toolId}`}
-			<ClientToolDialog
-				client={toolDialogClient}
-				toolId={toolDialog.toolId}
-				on:close={() => (toolDialog = null)}
-			/>
+                        <ClientToolDialog
+                                client={toolDialogClient}
+                                agent={toolDialogAgent}
+                                toolId={toolDialog.toolId}
+                                on:close={() => (toolDialog = null)}
+                        />
 		{/key}
 	{/if}
 
