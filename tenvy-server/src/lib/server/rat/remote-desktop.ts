@@ -803,11 +803,11 @@ export class RemoteDesktopManager {
 		}
 	}
 
-        private replaceTransportHandle(
-                record: RemoteDesktopSessionRecord,
-                handle: RemoteDesktopTransportHandle | null
+    private replaceTransportHandle(
+        record: RemoteDesktopSessionRecord,
+        handle: RemoteDesktopTransportHandle | null
         ) {
-                if (!record) {
+        if (!record) {
 			return;
 		}
 		const previous = record.transportHandle;
@@ -819,10 +819,11 @@ export class RemoteDesktopManager {
 				console.error('Failed to close remote desktop transport', err);
                 }
         }
+	}
 
-        private reserveInputSequence(
-                record: RemoteDesktopSessionRecord,
-                hint?: number
+    private reserveInputSequence(
+        record: RemoteDesktopSessionRecord,
+        hint?: number
         ): number | null {
                 const current = record.inputSequence ?? 0;
                 if (typeof hint === 'number' && Number.isFinite(hint)) {
