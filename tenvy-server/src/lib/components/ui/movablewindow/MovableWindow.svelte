@@ -1,0 +1,128 @@
+<script lang="ts">
+  import { animate, spring } from "@motionone/dom";
+  import { nextZ } from "$lib/stores/windowZ";
+
+  let {
+    title = "Untitled",
+    x = 100,
+    y = 100,
+    width = 400,
+    height = 300,
+    children
+  } = $props<{
+    title?: string;
+    x?: number;
+    y?: number;
+    width?: number;
+    height?: number;
+    children?: () => unknown;
+  }>();
+
+  let z = $state(10);
+  let dragging = $state(false);
+  let offsetX = 0;
+  let offsetY = 0;
+  let velocityX = 0;
+  let velocityY = 0;
+  let lastX = x;
+  let lastY = y;
+  let windowRef: HTMLElement | null = null;
+
+  function bringToFront() {
+    z = nextZ();
+  }
+
+  function startDrag(e: PointerEvent) {
+    const header = (e.target as HTMLElement).closest(".window-header");
+    if (!header) return;
+    dragging = true;
+    offsetX = e.clientX - x;
+    offsetY = e.clientY - y;
+    lastX = e.clientX;
+    lastY = e.clientY;
+  }
+
+  function moveDrag(e: PointerEvent) {
+    if (!dragging) return;
+    velocityX = e.clientX - lastX;
+    velocityY = e.clientY - lastY;
+    lastX = e.clientX;
+    lastY = e.clientY;
+
+    x = e.clientX - offsetX;
+    y = e.clientY - offsetY;
+  }
+
+  function endDrag() {
+    if (!dragging) return;
+    dragging = false;
+
+    const bounds = {
+        maxX: window.innerWidth - width,
+        maxY: window.innerHeight - height,
+        minX: 0,
+        minY: 0,
+    };
+
+    const targetX = Math.min(bounds.maxX, Math.max(bounds.minX, x + velocityX * 25));
+    const targetY = Math.min(bounds.maxY, Math.max(bounds.minY, y + velocityY * 25));
+
+    animate(
+        [x, targetX],
+        {
+        duration: 0.8,
+        easing: spring({ stiffness: 200, damping: 25 }),
+        } as any
+    ).finished.then(() => {
+        x = targetX;
+    });
+
+    animate(
+        [y, targetY],
+        {
+        duration: 0.8,
+        easing: spring({ stiffness: 200, damping: 25 }),
+        } as any
+    ).finished.then(() => {
+        y = targetY;
+    });
+  }
+
+  function handlePointerDown(e: PointerEvent) {
+    bringToFront();
+    startDrag(e);
+  }
+
+  $effect(() => {
+    document.addEventListener("pointermove", moveDrag);
+    document.addEventListener("pointerup", endDrag);
+    return () => {
+      document.removeEventListener("pointermove", moveDrag);
+      document.removeEventListener("pointerup", endDrag);
+    };
+  });
+</script>
+
+<div
+  bind:this={windowRef}
+  class="fixed select-none shadow-2xl rounded-2xl overflow-hidden border border-border bg-card text-card-foreground flex flex-col"
+  style:top={`${y}px`}
+  style:left={`${x}px`}
+  style:width={`${width}px`}
+  style:height={`${height}px`}
+  style:z-index={z}
+  onpointerdown={handlePointerDown}
+>
+  <div
+    class="window-header cursor-move bg-muted/70 backdrop-blur-sm px-4 py-2 text-sm font-medium flex justify-between items-center border-b border-border"
+  >
+    <span>{title}</span>
+    <button
+      class="w-3 h-3 rounded-full bg-destructive/80 hover:bg-destructive transition-colors"
+      onclick={() => windowRef?.remove()}
+      aria-label="Close"
+    ></button>
+  </div>
+
+  {@render children()}
+</div>

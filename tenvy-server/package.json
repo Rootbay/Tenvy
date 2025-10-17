@@ -72,7 +72,9 @@
 		"vitest-browser-svelte": "^1.1.0"
 	},
 	"dependencies": {
+		"@koush/wrtc": "^0.5.3",
 		"@lucia-auth/adapter-drizzle": "^1.1.0",
+		"@motionone/dom": "^10.18.0",
 		"@node-rs/argon2": "^2.0.2",
 		"@simplewebauthn/browser": "^13.2.2",
 		"@simplewebauthn/server": "^13.2.2",
@@ -88,7 +90,6 @@
 		"shell-quote": "^1.8.3",
 		"systeminformation": "^5.27.11",
 		"topojson-client": "^3.1.0",
-		"@koush/wrtc": "^0.5.3",
 		"world-atlas": "^2.0.2",
 		"zod": "^4.1.12"
 	}
