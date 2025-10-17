@@ -1,17 +1,20 @@
 import { randomUUID } from 'crypto';
 import type {
-	RemoteDesktopEncoder,
-	RemoteDesktopFrameMetrics,
-	RemoteDesktopFramePacket,
-	RemoteDesktopMonitor,
-	RemoteDesktopSessionNegotiationRequest,
-	RemoteDesktopSessionNegotiationResponse,
-	RemoteDesktopSessionState,
-	RemoteDesktopSettings,
-	RemoteDesktopSettingsPatch,
-	RemoteDesktopTransport,
-	RemoteDesktopTransportCapability
+        RemoteDesktopEncoder,
+        RemoteDesktopFrameMetrics,
+        RemoteDesktopFramePacket,
+        RemoteDesktopInputBurst,
+        RemoteDesktopInputEvent,
+        RemoteDesktopMonitor,
+        RemoteDesktopSessionNegotiationRequest,
+        RemoteDesktopSessionNegotiationResponse,
+        RemoteDesktopSessionState,
+        RemoteDesktopSettings,
+        RemoteDesktopSettingsPatch,
+        RemoteDesktopTransport,
+        RemoteDesktopTransportCapability
 } from '$lib/types/remote-desktop';
+import { registry } from './store';
 
 const encoder = new TextEncoder();
 const HEARTBEAT_INTERVAL_MS = 15_000;
@@ -53,22 +56,24 @@ class RemoteDesktopError extends Error {
 }
 
 interface RemoteDesktopSessionRecord {
-	id: string;
-	agentId: string;
-	active: boolean;
-	createdAt: Date;
-	lastUpdatedAt?: Date;
-	lastSequence?: number;
-	settings: RemoteDesktopSettings;
-	activeEncoder?: RemoteDesktopEncoder;
-	negotiatedCodec?: RemoteDesktopEncoder;
-	transport?: RemoteDesktopTransport;
-	intraRefresh?: boolean;
-	monitors: RemoteDesktopMonitor[];
-	metrics?: RemoteDesktopFrameMetrics;
-	history: RemoteDesktopFramePacket[];
-	hasKeyFrame: boolean;
-	transportHandle?: RemoteDesktopTransportHandle | null;
+        id: string;
+        agentId: string;
+        active: boolean;
+        createdAt: Date;
+        lastUpdatedAt?: Date;
+        lastSequence?: number;
+        settings: RemoteDesktopSettings;
+        activeEncoder?: RemoteDesktopEncoder;
+        negotiatedCodec?: RemoteDesktopEncoder;
+        transport?: RemoteDesktopTransport;
+        intraRefresh?: boolean;
+        encoderHardware?: string;
+        monitors: RemoteDesktopMonitor[];
+        metrics?: RemoteDesktopFrameMetrics;
+        history: RemoteDesktopFramePacket[];
+        hasKeyFrame: boolean;
+        transportHandle?: RemoteDesktopTransportHandle | null;
+        inputSequence: number;
 }
 
 interface RemoteDesktopSubscriber {
@@ -136,12 +141,18 @@ function validateFramePacket(frame: RemoteDesktopFramePacket) {
 	if (!isFiniteNumber(frame.sequence)) {
 		throw new RemoteDesktopError('Invalid frame sequence number', 400);
 	}
-	if (typeof frame.encoding !== 'string' || frame.encoding.length === 0) {
-		throw new RemoteDesktopError('Frame encoding is required', 400);
-	}
-	if (typeof frame.timestamp !== 'string' || frame.timestamp.length === 0) {
-		throw new RemoteDesktopError('Frame timestamp is required', 400);
-	}
+        if (typeof frame.encoding !== 'string' || frame.encoding.length === 0) {
+                throw new RemoteDesktopError('Frame encoding is required', 400);
+        }
+        if (typeof frame.timestamp !== 'string' || frame.timestamp.length === 0) {
+                throw new RemoteDesktopError('Frame timestamp is required', 400);
+        }
+        if (frame.encoderHardware !== undefined && typeof frame.encoderHardware !== 'string') {
+                throw new RemoteDesktopError('Encoder hardware label must be a string', 400);
+        }
+        if (frame.intraRefresh !== undefined && typeof frame.intraRefresh !== 'boolean') {
+                throw new RemoteDesktopError('Intra-refresh flag must be boolean', 400);
+        }
 
 	if (frame.image) {
 		validateBase64Payload(frame.image, 'Frame');
@@ -411,14 +422,15 @@ function toSessionState(record: RemoteDesktopSessionRecord): RemoteDesktopSessio
 		createdAt: record.createdAt.toISOString(),
 		lastUpdatedAt: record.lastUpdatedAt?.toISOString(),
 		lastSequence: record.lastSequence,
-		settings: cloneSettings(record.settings),
-		activeEncoder: record.activeEncoder,
-		negotiatedTransport: record.transport,
-		negotiatedCodec: record.negotiatedCodec,
-		intraRefresh: record.intraRefresh,
-		monitors: cloneMonitors(record.monitors),
-		metrics: record.metrics ? { ...record.metrics } : undefined
-	};
+                settings: cloneSettings(record.settings),
+                activeEncoder: record.activeEncoder,
+                negotiatedTransport: record.transport,
+                negotiatedCodec: record.negotiatedCodec,
+                intraRefresh: record.intraRefresh,
+                encoderHardware: record.encoderHardware,
+                monitors: cloneMonitors(record.monitors),
+                metrics: record.metrics ? { ...record.metrics } : undefined
+        };
 }
 
 export class RemoteDesktopManager {
@@ -432,18 +444,19 @@ export class RemoteDesktopManager {
 		}
 
 		const resolved = resolveSettings(settings);
-		const record: RemoteDesktopSessionRecord = {
-			id: randomUUID(),
-			agentId,
-			active: true,
-			createdAt: new Date(),
-			settings: resolved,
-			activeEncoder: resolved.encoder,
-			monitors: cloneMonitors(defaultMonitors),
-			history: [],
-			hasKeyFrame: false,
-			transportHandle: null
-		};
+                const record: RemoteDesktopSessionRecord = {
+                        id: randomUUID(),
+                        agentId,
+                        active: true,
+                        createdAt: new Date(),
+                        settings: resolved,
+                        activeEncoder: resolved.encoder,
+                        monitors: cloneMonitors(defaultMonitors),
+                        history: [],
+                        hasKeyFrame: false,
+                        transportHandle: null,
+                        inputSequence: 0
+                };
 
 		this.sessions.set(agentId, record);
 		this.broadcastSession(agentId);
@@ -462,11 +475,11 @@ export class RemoteDesktopManager {
 		return toSessionState(record);
 	}
 
-	updateSettings(agentId: string, updates: RemoteDesktopSettingsPatch) {
-		const record = this.sessions.get(agentId);
-		if (!record || !record.active) {
-			throw new RemoteDesktopError('No active remote desktop session', 404);
-		}
+        updateSettings(agentId: string, updates: RemoteDesktopSettingsPatch) {
+                const record = this.sessions.get(agentId);
+                if (!record || !record.active) {
+                        throw new RemoteDesktopError('No active remote desktop session', 404);
+                }
 		applySettings(record.settings, updates);
 		if (updates.encoder) {
 			record.activeEncoder = updates.encoder;
@@ -477,8 +490,57 @@ export class RemoteDesktopManager {
 				Math.min(record.settings.monitor, record.monitors.length - 1)
 			);
 		}
-		this.broadcastSession(agentId);
-	}
+                this.broadcastSession(agentId);
+        }
+
+        dispatchInput(
+                agentId: string,
+                sessionId: string,
+                events: RemoteDesktopInputEvent[],
+                options: { sequence?: number } = {}
+        ): { delivered: boolean; sequence: number | null } {
+                const record = this.sessions.get(agentId);
+                if (!record || !record.active) {
+                        throw new RemoteDesktopError('No active remote desktop session', 404);
+                }
+                if (record.id !== sessionId) {
+                        throw new RemoteDesktopError('Session identifier mismatch', 409);
+                }
+                if (!Array.isArray(events) || events.length === 0) {
+                        return { delivered: false, sequence: null };
+                }
+
+                const sequence = this.reserveInputSequence(record, options.sequence);
+                if (sequence === null) {
+                        return { delivered: false, sequence: null };
+                }
+
+                const burst: RemoteDesktopInputBurst = { sessionId, events, sequence };
+
+                let delivered = false;
+                try {
+                        delivered = registry.sendRemoteDesktopInput(agentId, burst);
+                } catch (err) {
+                        console.error('Failed to deliver remote desktop input burst', err);
+                }
+
+                if (!delivered) {
+                        try {
+                                registry.queueCommand(agentId, {
+                                        name: 'remote-desktop',
+                                        payload: {
+                                                action: 'input',
+                                                sessionId,
+                                                events
+                                        }
+                                });
+                        } catch (err) {
+                                console.error('Failed to enqueue remote desktop input fallback command', err);
+                        }
+                }
+
+                return { delivered, sequence };
+        }
 
 	async negotiateTransport(
 		agentId: string,
@@ -574,13 +636,14 @@ export class RemoteDesktopManager {
 		const record = this.sessions.get(agentId);
 		if (!record) {
 			return;
-		}
-		record.active = false;
-		this.replaceTransportHandle(record, null);
-		record.lastUpdatedAt = new Date();
-		this.broadcastSession(agentId);
-		this.broadcast(agentId, 'end', { reason: 'closed' });
-	}
+                }
+                record.active = false;
+                this.replaceTransportHandle(record, null);
+                record.lastUpdatedAt = new Date();
+                record.inputSequence = 0;
+                this.broadcastSession(agentId);
+                this.broadcast(agentId, 'end', { reason: 'closed' });
+        }
 
 	ingestFrame(agentId: string, frame: RemoteDesktopFramePacket) {
 		const record = this.sessions.get(agentId);
@@ -593,47 +656,60 @@ export class RemoteDesktopManager {
 
 		validateFramePacket(frame);
 
-		let transportChanged = false;
-		if (frame.transport && transports.has(frame.transport)) {
-			if (record.transport !== frame.transport) {
-				record.transport = frame.transport;
-				transportChanged = true;
-			}
-		}
+                let sessionChanged = false;
+                if (frame.transport && transports.has(frame.transport)) {
+                        if (record.transport !== frame.transport) {
+                                record.transport = frame.transport;
+                                sessionChanged = true;
+                        }
+                }
 
-		record.lastSequence = frame.sequence;
-		record.lastUpdatedAt = new Date();
-		if (frame.metrics) {
-			record.metrics = { ...frame.metrics };
-		}
+                record.lastSequence = frame.sequence;
+                record.lastUpdatedAt = new Date();
+                if (frame.metrics) {
+                        record.metrics = { ...frame.metrics };
+                }
 
-		if (frame.encoder && encoders.has(frame.encoder)) {
-			record.activeEncoder = frame.encoder;
-		}
+                if (frame.encoder && encoders.has(frame.encoder)) {
+                        record.activeEncoder = frame.encoder;
+                }
 
-		if (frame.monitors && frame.monitors.length > 0) {
-			const next = cloneMonitors(frame.monitors);
-			if (!monitorsEqual(record.monitors, next)) {
-				record.monitors = next;
+                if (typeof frame.intraRefresh === 'boolean' && frame.intraRefresh !== record.intraRefresh) {
+                        record.intraRefresh = frame.intraRefresh;
+                        sessionChanged = true;
+                }
+
+                if (typeof frame.encoderHardware === 'string' && frame.encoderHardware.trim() !== '') {
+                        const normalizedHardware = frame.encoderHardware.trim();
+                        if (record.encoderHardware !== normalizedHardware) {
+                                record.encoderHardware = normalizedHardware;
+                                sessionChanged = true;
+                        }
+                }
+
+                if (frame.monitors && frame.monitors.length > 0) {
+                        const next = cloneMonitors(frame.monitors);
+                        if (!monitorsEqual(record.monitors, next)) {
+                                record.monitors = next;
 				if (record.settings.monitor >= record.monitors.length) {
 					record.settings.monitor = Math.max(
 						0,
 						Math.min(record.settings.monitor, record.monitors.length - 1)
 					);
 				}
-				this.broadcastSession(agentId);
-				transportChanged = false;
-			}
-		}
+                                this.broadcastSession(agentId);
+                                sessionChanged = false;
+                        }
+                }
 
-		appendFrameHistory(record, cloneFrame(frame));
+                appendFrameHistory(record, cloneFrame(frame));
 
-		if (transportChanged) {
-			this.broadcastSession(agentId);
-		}
+                if (sessionChanged) {
+                        this.broadcastSession(agentId);
+                }
 
-		this.broadcast(agentId, 'frame', { frame });
-	}
+                this.broadcast(agentId, 'frame', { frame });
+        }
 
 	subscribe(agentId: string, sessionId?: string): ReadableStream<Uint8Array> {
 		let subscriber: RemoteDesktopSubscriber | null = null;
@@ -727,11 +803,11 @@ export class RemoteDesktopManager {
 		}
 	}
 
-	private replaceTransportHandle(
-		record: RemoteDesktopSessionRecord,
-		handle: RemoteDesktopTransportHandle | null
-	) {
-		if (!record) {
+        private replaceTransportHandle(
+                record: RemoteDesktopSessionRecord,
+                handle: RemoteDesktopTransportHandle | null
+        ) {
+                if (!record) {
 			return;
 		}
 		const previous = record.transportHandle;
@@ -741,8 +817,26 @@ export class RemoteDesktopManager {
 				previous.close();
 			} catch (err) {
 				console.error('Failed to close remote desktop transport', err);
-			}
-		}
+                }
+        }
+
+        private reserveInputSequence(
+                record: RemoteDesktopSessionRecord,
+                hint?: number
+        ): number | null {
+                const current = record.inputSequence ?? 0;
+                if (typeof hint === 'number' && Number.isFinite(hint)) {
+                        const normalized = Math.trunc(hint);
+                        if (normalized <= current) {
+                                return null;
+                        }
+                        record.inputSequence = normalized;
+                        return normalized;
+                }
+                const next = current + 1;
+                record.inputSequence = next;
+                return next;
+        }
 	}
 
 	private async establishWebRTCTransport(

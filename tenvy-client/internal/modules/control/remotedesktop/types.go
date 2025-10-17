@@ -167,20 +167,22 @@ type RemoteDesktopDeltaRect struct {
 }
 
 type RemoteDesktopFramePacket struct {
-	SessionID string                     `json:"sessionId"`
-	Sequence  uint64                     `json:"sequence"`
-	Timestamp string                     `json:"timestamp"`
-	Width     int                        `json:"width"`
-	Height    int                        `json:"height"`
-	KeyFrame  bool                       `json:"keyFrame"`
-	Encoding  string                     `json:"encoding"`
-	Transport RemoteDesktopTransport     `json:"transport,omitempty"`
-	Image     string                     `json:"image,omitempty"`
-	Deltas    []RemoteDesktopDeltaRect   `json:"deltas,omitempty"`
-	Clip      *RemoteDesktopVideoClip    `json:"clip,omitempty"`
-	Encoder   RemoteDesktopEncoder       `json:"encoder,omitempty"`
-	Monitors  []RemoteDesktopMonitorInfo `json:"monitors,omitempty"`
-	Metrics   *RemoteDesktopFrameMetrics `json:"metrics,omitempty"`
+	SessionID       string                     `json:"sessionId"`
+	Sequence        uint64                     `json:"sequence"`
+	Timestamp       string                     `json:"timestamp"`
+	Width           int                        `json:"width"`
+	Height          int                        `json:"height"`
+	KeyFrame        bool                       `json:"keyFrame"`
+	Encoding        string                     `json:"encoding"`
+	Transport       RemoteDesktopTransport     `json:"transport,omitempty"`
+	Image           string                     `json:"image,omitempty"`
+	Deltas          []RemoteDesktopDeltaRect   `json:"deltas,omitempty"`
+	Clip            *RemoteDesktopVideoClip    `json:"clip,omitempty"`
+	Encoder         RemoteDesktopEncoder       `json:"encoder,omitempty"`
+	EncoderHardware string                     `json:"encoderHardware,omitempty"`
+	IntraRefresh    bool                       `json:"intraRefresh,omitempty"`
+	Monitors        []RemoteDesktopMonitorInfo `json:"monitors,omitempty"`
+	Metrics         *RemoteDesktopFrameMetrics `json:"metrics,omitempty"`
 }
 
 type RemoteDesktopTransportCapability struct {
@@ -236,6 +238,7 @@ type RemoteDesktopSession struct {
 	NegotiatedCodec    RemoteDesktopEncoder
 	Transport          RemoteDesktopTransport
 	IntraRefresh       bool
+	EncoderHardware    string
 	Width              int
 	Height             int
 	TileSize           int

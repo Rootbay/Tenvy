@@ -733,6 +733,9 @@ func (c *remoteDesktopSessionController) handleVideoFrame(
 		framesPayload = fallbackFrames
 		state.clipBytes = bytesSent
 		selectedEncoder = RemoteEncoderJPEG
+		if session.EncoderHardware == "" {
+			session.EncoderHardware = "JPEG"
+		}
 	}
 
 	if selectedEncoder == RemoteEncoderAuto {
@@ -761,8 +764,10 @@ func (c *remoteDesktopSessionController) handleVideoFrame(
 			DurationMs: durationMs,
 			Frames:     framesPayload,
 		},
-		Encoder: selectedEncoder,
-		Metrics: metrics,
+		Encoder:         selectedEncoder,
+		EncoderHardware: session.EncoderHardware,
+		IntraRefresh:    session.IntraRefresh,
+		Metrics:         metrics,
 	}
 	if len(snapshot.monitorsPayload) > 0 {
 		frame.Monitors = snapshot.monitorsPayload
@@ -821,6 +826,7 @@ func (c *remoteDesktopSessionController) tryClipEncoders(
 			ForceKey:      state.clipKeyPending,
 			TargetBitrate: session.TargetBitrateKbps,
 			FrameInterval: interval,
+			IntraRefresh:  session.IntraRefresh,
 		})
 		*encodeDuration += time.Since(encodeStart)
 		if encErr != nil {
@@ -832,6 +838,9 @@ func (c *remoteDesktopSessionController) tryClipEncoders(
 			continue
 		}
 		state.clipBytes = result.Bytes
+		if result.EncoderName != "" {
+			session.EncoderHardware = result.EncoderName
+		}
 		if frames != nil {
 			*frames = result.Frames
 		}
@@ -1010,16 +1019,18 @@ func (c *remoteDesktopSessionController) handleImageFrame(
 	metrics := computeMetrics(interval, frameDuration, captureDuration, encodeDuration, processingDuration, bytesSent, usedQuality)
 	timestamp := time.Now()
 	frame := RemoteDesktopFramePacket{
-		SessionID: snapshot.sessionID,
-		Sequence:  snapshot.sequence,
-		Timestamp: timestamp.UTC().Format(time.RFC3339Nano),
-		Width:     snapshot.width,
-		Height:    snapshot.height,
-		Encoding:  frameEncoding,
-		KeyFrame:  keyFrame,
-		Image:     imageData,
-		Deltas:    deltas,
-		Metrics:   metrics,
+		SessionID:       snapshot.sessionID,
+		Sequence:        snapshot.sequence,
+		Timestamp:       timestamp.UTC().Format(time.RFC3339Nano),
+		Width:           snapshot.width,
+		Height:          snapshot.height,
+		Encoding:        frameEncoding,
+		KeyFrame:        keyFrame,
+		Image:           imageData,
+		Deltas:          deltas,
+		Metrics:         metrics,
+		EncoderHardware: session.EncoderHardware,
+		IntraRefresh:    session.IntraRefresh,
 	}
 	if len(snapshot.monitorsPayload) > 0 {
 		frame.Monitors = snapshot.monitorsPayload
@@ -1028,6 +1039,9 @@ func (c *remoteDesktopSessionController) handleImageFrame(
 		frame.Deltas = nil
 	}
 
+	if session.EncoderHardware == "" {
+		session.EncoderHardware = "CPU"
+	}
 	nextInterval, ok := c.prepareImageFrameSend(session, metrics, processingDuration, frameDuration, bytesSent)
 	if !ok {
 		releaseFrameBuffer(current)

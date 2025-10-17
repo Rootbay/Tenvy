@@ -62,6 +62,7 @@ type moduleRegistry struct {
 	mu        sync.RWMutex
 	modules   map[string]*moduleEntry
 	lifecycle []*moduleEntry
+	remote    *remoteDesktopModule
 }
 
 func newDefaultModuleRegistry() *moduleRegistry {
@@ -97,6 +98,9 @@ func (r *moduleRegistry) register(m module) {
 		module:   m,
 		metadata: metadata,
 		commands: append([]string(nil), commands...),
+	}
+	if remote, ok := m.(*remoteDesktopModule); ok {
+		r.remote = remote
 	}
 	r.lifecycle = append(r.lifecycle, entry)
 	for _, command := range entry.commands {
@@ -157,6 +161,12 @@ func (r *moduleRegistry) Shutdown(ctx context.Context) {
 	for index := len(entries) - 1; index >= 0; index-- {
 		entries[index].module.Shutdown(ctx)
 	}
+}
+
+func (r *moduleRegistry) remoteDesktopModule() *remoteDesktopModule {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return r.remote
 }
 
 func (a *Agent) moduleRuntime() moduleRuntime {
@@ -227,6 +237,49 @@ func (m *remoteDesktopModule) HandleCommand(ctx context.Context, cmd protocol.Co
 		}
 	}
 	return m.streamer.HandleCommand(ctx, cmd)
+}
+
+func (m *remoteDesktopModule) HandleInputBurst(ctx context.Context, burst protocol.RemoteDesktopInputBurst) error {
+	if m.streamer == nil {
+		return errors.New("remote desktop subsystem not initialized")
+	}
+	if len(burst.Events) == 0 {
+		return nil
+	}
+
+	events := make([]remotedesktop.RemoteDesktopInputEvent, 0, len(burst.Events))
+	for _, evt := range burst.Events {
+		event := remotedesktop.RemoteDesktopInputEvent{
+			Type:       remotedesktop.RemoteDesktopInputType(evt.Type),
+			CapturedAt: evt.CapturedAt,
+			X:          evt.X,
+			Y:          evt.Y,
+			Normalized: evt.Normalized,
+			Monitor:    evt.Monitor,
+			Button:     remotedesktop.RemoteDesktopMouseButton(evt.Button),
+			Pressed:    evt.Pressed,
+			DeltaX:     evt.DeltaX,
+			DeltaY:     evt.DeltaY,
+			DeltaMode:  evt.DeltaMode,
+			Key:        evt.Key,
+			Code:       evt.Code,
+			KeyCode:    evt.KeyCode,
+			Repeat:     evt.Repeat,
+			AltKey:     evt.AltKey,
+			CtrlKey:    evt.CtrlKey,
+			ShiftKey:   evt.ShiftKey,
+			MetaKey:    evt.MetaKey,
+		}
+		events = append(events, event)
+	}
+
+	payload := remotedesktop.RemoteDesktopCommandPayload{
+		Action:    "input",
+		SessionID: burst.SessionID,
+		Events:    events,
+	}
+
+	return m.streamer.HandleInputPayload(ctx, payload)
 }
 
 func (m *remoteDesktopModule) Shutdown(context.Context) {
