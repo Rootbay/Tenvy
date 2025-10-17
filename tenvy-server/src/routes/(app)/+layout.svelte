@@ -17,15 +17,15 @@
 	import { Avatar, AvatarFallback } from '$lib/components/ui/avatar/index.js';
 	import { Badge } from '$lib/components/ui/badge/index.js';
 	import { Button } from '$lib/components/ui/button/index.js';
-    import { Input } from '$lib/components/ui/input/index.js';
-    import {
-            Breadcrumb,
-            BreadcrumbItem,
-            BreadcrumbLink,
-            BreadcrumbList,
-            BreadcrumbPage,
-            BreadcrumbSeparator
-    } from '$lib/components/ui/breadcrumb/index.js';
+	import { Input } from '$lib/components/ui/input/index.js';
+	import {
+		Breadcrumb,
+		BreadcrumbItem,
+		BreadcrumbLink,
+		BreadcrumbList,
+		BreadcrumbPage,
+		BreadcrumbSeparator
+	} from '$lib/components/ui/breadcrumb/index.js';
 	import { Label } from '$lib/components/ui/label/index.js';
 	import { Popover, PopoverContent, PopoverTrigger } from '$lib/components/ui/popover/index.js';
 	import { Separator } from '$lib/components/ui/separator/index.js';
@@ -123,7 +123,8 @@
 		},
 		clients: {
 			title: 'Clients',
-			description: 'Inspect connected endpoints, filter by posture, and triage which agents need attention next.'
+			description:
+				'Inspect connected endpoints, filter by posture, and triage which agents need attention next.'
 		},
 		build: {
 			title: 'Builder',
@@ -683,33 +684,31 @@
 			<div class="flex flex-1 flex-col gap-8 overflow-hidden p-6">
 				{#key (layoutData as LayoutData).activeNav}
 					{@const summary = activeSummary()}
-                                        <section class="flex flex-wrap items-center justify-between gap-4">
-                                                <div class="space-y-2">
-                                                        <Breadcrumb>
-                                                                <BreadcrumbList>
-                                                                        <BreadcrumbItem>
-                                                                                <BreadcrumbLink href="/dashboard">
-                                                                                        Console
-                                                                                </BreadcrumbLink>
-                                                                        </BreadcrumbItem>
-                                                                        <BreadcrumbSeparator />
-                                                                        <BreadcrumbItem>
-                                                                                <BreadcrumbPage>
-                                                                                        {summary.title}
-                                                                                </BreadcrumbPage>
-                                                                        </BreadcrumbItem>
-                                                                </BreadcrumbList>
-                                                        </Breadcrumb>
-                                                        <div>
-                                                                <h1 class="text-2xl font-semibold tracking-tight">
-                                                                        {summary.title}
-                                                                </h1>
-                                                                <p class="text-sm text-muted-foreground">
-                                                                        {summary.description}
-                                                                </p>
-                                                        </div>
-                                                </div>
-                                        </section>
+					<section class="flex flex-wrap items-center justify-between gap-4">
+						<div class="space-y-2">
+							<Breadcrumb>
+								<BreadcrumbList>
+									<BreadcrumbItem>
+										<BreadcrumbLink href="/dashboard">Console</BreadcrumbLink>
+									</BreadcrumbItem>
+									<BreadcrumbSeparator />
+									<BreadcrumbItem>
+										<BreadcrumbPage>
+											{summary.title}
+										</BreadcrumbPage>
+									</BreadcrumbItem>
+								</BreadcrumbList>
+							</Breadcrumb>
+							<div>
+								<h1 class="text-2xl font-semibold tracking-tight">
+									{summary.title}
+								</h1>
+								<p class="text-sm text-muted-foreground">
+									{summary.description}
+								</p>
+							</div>
+						</div>
+					</section>
 					<div class="flex min-h-0 flex-1 flex-col gap-8">
 						{@render children?.()}
 					</div>

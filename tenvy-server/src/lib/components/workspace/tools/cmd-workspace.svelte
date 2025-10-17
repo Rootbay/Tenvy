@@ -4,18 +4,11 @@
 	import { Input } from '$lib/components/ui/input/index.js';
 	import { Label } from '$lib/components/ui/label/index.js';
 	import { Switch } from '$lib/components/ui/switch/index.js';
-	import {
-		Card,
-		CardContent,
-		CardFooter
-	} from '$lib/components/ui/card/index.js';
+	import { Card, CardContent, CardFooter } from '$lib/components/ui/card/index.js';
 	import { Textarea } from '$lib/components/ui/textarea/index.js';
 	import { getClientTool } from '$lib/data/client-tools';
 	import type { Client } from '$lib/data/clients';
-	import {
-		appendWorkspaceLog,
-		createWorkspaceLogEntry
-	} from '$lib/workspace/utils';
+	import { appendWorkspaceLog, createWorkspaceLogEntry } from '$lib/workspace/utils';
 	import type { WorkspaceLogEntry } from '$lib/workspace/types';
 	import type { AgentDetailResponse, AgentSnapshot } from '../../../../../../shared/types/agent';
 	import type {

@@ -852,7 +852,6 @@ export class RemoteDesktopManager {
 		}
 	}
 
-
 	private enqueueSubscriber(
 		agentId: string,
 		subscriber: RemoteDesktopSubscriber,
@@ -874,7 +873,6 @@ export class RemoteDesktopManager {
 			return false;
 		}
 	}
-
 
 	private replaceTransportHandle(
 		record: RemoteDesktopSessionRecord,

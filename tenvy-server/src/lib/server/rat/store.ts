@@ -100,20 +100,20 @@ interface AgentSessionRecord {
 }
 
 interface AgentRecord {
-        id: string;
-        key: string;
-        metadata: AgentMetadata;
-        status: AgentStatus;
+	id: string;
+	key: string;
+	metadata: AgentMetadata;
+	status: AgentStatus;
 	connectedAt: Date;
 	lastSeen: Date;
 	metrics?: AgentMetrics;
 	config: AgentConfig;
 	pendingCommands: Command[];
-        recentResults: CommandResult[];
-        sharedNotes: Map<string, SharedNoteRecord>;
-        fingerprint: string;
-        session?: AgentSessionRecord;
-        lastQueueDropWarning?: number;
+	recentResults: CommandResult[];
+	sharedNotes: Map<string, SharedNoteRecord>;
+	fingerprint: string;
+	session?: AgentSessionRecord;
+	lastQueueDropWarning?: number;
 }
 
 interface SharedNoteRecord {
@@ -193,97 +193,91 @@ function computeFingerprint(metadata: AgentMetadata): string {
 }
 
 function parsePersistedDate(value: unknown, fallback: Date): Date {
-        if (typeof value === 'string') {
-                const parsed = new Date(value);
-                if (!Number.isNaN(parsed.getTime())) {
-                        return parsed;
-                }
-        }
-        return fallback;
+	if (typeof value === 'string') {
+		const parsed = new Date(value);
+		if (!Number.isNaN(parsed.getTime())) {
+			return parsed;
+		}
+	}
+	return fallback;
 }
 
 function parseNumeric(value: unknown): number | null {
-        if (typeof value === 'number') {
-                return Number.isFinite(value) ? value : null;
-        }
-        if (typeof value === 'string' && value.trim() !== '') {
-                const parsed = Number(value);
-                return Number.isFinite(parsed) ? parsed : null;
-        }
-        return null;
+	if (typeof value === 'number') {
+		return Number.isFinite(value) ? value : null;
+	}
+	if (typeof value === 'string' && value.trim() !== '') {
+		const parsed = Number(value);
+		return Number.isFinite(parsed) ? parsed : null;
+	}
+	return null;
 }
 
 function normalizeConfig(config?: Partial<AgentConfig> | null): AgentConfig {
-        const normalized: AgentConfig = {
-                ...defaultAgentConfig
-        };
+	const normalized: AgentConfig = {
+		...defaultAgentConfig
+	};
 
-        if (!config) {
-                return normalized;
-        }
+	if (!config) {
+		return normalized;
+	}
 
-        const pollInterval = parseNumeric(config.pollIntervalMs);
-        if (pollInterval !== null && pollInterval > 0) {
-                normalized.pollIntervalMs = Math.max(1, Math.round(pollInterval));
-        }
+	const pollInterval = parseNumeric(config.pollIntervalMs);
+	if (pollInterval !== null && pollInterval > 0) {
+		normalized.pollIntervalMs = Math.max(1, Math.round(pollInterval));
+	}
 
-        const maxBackoff = parseNumeric(config.maxBackoffMs);
-        if (maxBackoff !== null && maxBackoff > 0) {
-                normalized.maxBackoffMs = Math.max(
-                        normalized.pollIntervalMs,
-                        Math.round(maxBackoff)
-                );
-        }
+	const maxBackoff = parseNumeric(config.maxBackoffMs);
+	if (maxBackoff !== null && maxBackoff > 0) {
+		normalized.maxBackoffMs = Math.max(normalized.pollIntervalMs, Math.round(maxBackoff));
+	}
 
-        const jitter = parseNumeric(config.jitterRatio);
-        if (jitter !== null && jitter >= 0 && jitter <= 1) {
-                normalized.jitterRatio = jitter;
-        }
+	const jitter = parseNumeric(config.jitterRatio);
+	if (jitter !== null && jitter >= 0 && jitter <= 1) {
+		normalized.jitterRatio = jitter;
+	}
 
-        return normalized;
+	return normalized;
 }
 
 function cloneMetadata(metadata: AgentMetadata): AgentMetadata {
-        const clone: AgentMetadata = { ...metadata };
-        if (Array.isArray(metadata.tags)) {
-                clone.tags = [...metadata.tags];
-        }
-        if (metadata.location) {
-                clone.location = { ...metadata.location };
-        }
-        return clone;
+	const clone: AgentMetadata = { ...metadata };
+	if (Array.isArray(metadata.tags)) {
+		clone.tags = [...metadata.tags];
+	}
+	if (metadata.location) {
+		clone.location = { ...metadata.location };
+	}
+	return clone;
 }
 
 function cloneMetrics(metrics: AgentMetrics | undefined): AgentMetrics | undefined {
-        return metrics ? { ...metrics } : undefined;
+	return metrics ? { ...metrics } : undefined;
 }
 
-function mergeRecentResults(
-        existing: CommandResult[],
-        incoming: CommandResult[]
-): CommandResult[] {
-        if (incoming.length === 0) {
-                return existing;
-        }
+function mergeRecentResults(existing: CommandResult[], incoming: CommandResult[]): CommandResult[] {
+	if (incoming.length === 0) {
+		return existing;
+	}
 
-        const merged: CommandResult[] = [];
-        const seen = new Set<string>();
+	const merged: CommandResult[] = [];
+	const seen = new Set<string>();
 
-        for (const result of [...incoming, ...existing]) {
-                if (!result?.commandId) {
-                        continue;
-                }
-                if (seen.has(result.commandId)) {
-                        continue;
-                }
-                seen.add(result.commandId);
-                merged.push({ ...result });
-                if (merged.length >= MAX_RECENT_RESULTS) {
-                        break;
-                }
-        }
+	for (const result of [...incoming, ...existing]) {
+		if (!result?.commandId) {
+			continue;
+		}
+		if (seen.has(result.commandId)) {
+			continue;
+		}
+		seen.add(result.commandId);
+		merged.push({ ...result });
+		if (merged.length >= MAX_RECENT_RESULTS) {
+			break;
+		}
+	}
 
-        return merged;
+	return merged;
 }
 
 export class AgentRegistry {
@@ -347,15 +341,15 @@ export class AgentRegistry {
 				continue;
 			}
 
-                        const connectedAt = parsePersistedDate(entry.connectedAt, new Date());
-                        let lastSeen = parsePersistedDate(entry.lastSeen, connectedAt);
-                        let normalizedStatus = status as AgentStatus;
-                        if (normalizedStatus === 'online') {
-                                normalizedStatus = 'offline';
-                                if (lastSeen.getTime() < connectedAt.getTime()) {
-                                        lastSeen = connectedAt;
-                                }
-                        }
+			const connectedAt = parsePersistedDate(entry.connectedAt, new Date());
+			let lastSeen = parsePersistedDate(entry.lastSeen, connectedAt);
+			let normalizedStatus = status as AgentStatus;
+			if (normalizedStatus === 'online') {
+				normalizedStatus = 'offline';
+				if (lastSeen.getTime() < connectedAt.getTime()) {
+					lastSeen = connectedAt;
+				}
+			}
 
 			const sharedNotes = new Map<string, SharedNoteRecord>();
 			if (Array.isArray(entry.sharedNotes)) {
@@ -378,26 +372,26 @@ export class AgentRegistry {
 				}
 			}
 
-                        let pendingCommands = Array.isArray(entry.pendingCommands)
-                                ? entry.pendingCommands.map((command) => ({ ...command }))
-                                : [];
-                        if (pendingCommands.length > MAX_PENDING_COMMANDS) {
-                                console.warn(
-                                        `Pending command snapshot for agent ${id} exceeded capacity (${pendingCommands.length}); trimming to latest ${MAX_PENDING_COMMANDS}.`
-                                );
-                                pendingCommands = pendingCommands.slice(-MAX_PENDING_COMMANDS);
-                        }
+			let pendingCommands = Array.isArray(entry.pendingCommands)
+				? entry.pendingCommands.map((command) => ({ ...command }))
+				: [];
+			if (pendingCommands.length > MAX_PENDING_COMMANDS) {
+				console.warn(
+					`Pending command snapshot for agent ${id} exceeded capacity (${pendingCommands.length}); trimming to latest ${MAX_PENDING_COMMANDS}.`
+				);
+				pendingCommands = pendingCommands.slice(-MAX_PENDING_COMMANDS);
+			}
 
 			const recentResults = Array.isArray(entry.recentResults)
 				? entry.recentResults.map((result) => ({ ...result }))
 				: [];
 
-                        const normalizedMetadata: AgentMetadata = {
-                                ...(metadata as AgentMetadata),
-                                tags: Array.isArray((metadata as AgentMetadata).tags)
-                                        ? this.normalizeTags((metadata as AgentMetadata).tags!)
-                                        : (metadata as AgentMetadata).tags
-                        };
+			const normalizedMetadata: AgentMetadata = {
+				...(metadata as AgentMetadata),
+				tags: Array.isArray((metadata as AgentMetadata).tags)
+					? this.normalizeTags((metadata as AgentMetadata).tags!)
+					: (metadata as AgentMetadata).tags
+			};
 
 			const fingerprint = entry.fingerprint
 				? entry.fingerprint
@@ -410,8 +404,8 @@ export class AgentRegistry {
 				status: normalizedStatus,
 				connectedAt,
 				lastSeen,
-                                metrics: entry.metrics ? { ...entry.metrics } : undefined,
-                                config: normalizeConfig(entry.config),
+				metrics: entry.metrics ? { ...entry.metrics } : undefined,
+				config: normalizeConfig(entry.config),
 				pendingCommands,
 				recentResults,
 				sharedNotes,
@@ -453,34 +447,34 @@ export class AgentRegistry {
 	}
 
 	private async persistToDisk(): Promise<void> {
-                const agents = Array.from(this.agents.values()).map<PersistedAgentRecord>((record) => ({
-                        id: record.id,
-                        key: record.key,
-                        metadata: cloneMetadata(record.metadata),
-                        status: record.status,
-                        connectedAt: record.connectedAt.toISOString(),
-                        lastSeen: record.lastSeen.toISOString(),
-                        metrics: cloneMetrics(record.metrics),
-                        config: { ...record.config },
-                        pendingCommands: record.pendingCommands.map((command) => ({ ...command })),
-                        recentResults: record.recentResults.map((result) => ({ ...result })),
-                        sharedNotes: Array.from(record.sharedNotes.values()).map((note) => ({
-                                id: note.id,
-                                ciphertext: note.ciphertext,
-                                nonce: note.nonce,
-                                digest: note.digest,
-                                version: note.version,
-                                updatedAt: note.updatedAt.toISOString()
-                        })),
-                        fingerprint: record.fingerprint
-                }));
+		const agents = Array.from(this.agents.values()).map<PersistedAgentRecord>((record) => ({
+			id: record.id,
+			key: record.key,
+			metadata: cloneMetadata(record.metadata),
+			status: record.status,
+			connectedAt: record.connectedAt.toISOString(),
+			lastSeen: record.lastSeen.toISOString(),
+			metrics: cloneMetrics(record.metrics),
+			config: { ...record.config },
+			pendingCommands: record.pendingCommands.map((command) => ({ ...command })),
+			recentResults: record.recentResults.map((result) => ({ ...result })),
+			sharedNotes: Array.from(record.sharedNotes.values()).map((note) => ({
+				id: note.id,
+				ciphertext: note.ciphertext,
+				nonce: note.nonce,
+				digest: note.digest,
+				version: note.version,
+				updatedAt: note.updatedAt.toISOString()
+			})),
+			fingerprint: record.fingerprint
+		}));
 
 		const payload: PersistedRegistryFile = {
 			version: PERSIST_FILE_VERSION,
 			agents
 		};
 
-                const data = JSON.stringify(payload);
+		const data = JSON.stringify(payload);
 		await ensureParentDirectory(this.storagePath);
 		await writeFileAtomic(this.storagePath, data);
 	}
@@ -500,19 +494,19 @@ export class AgentRegistry {
 		}
 	}
 
-        private toSnapshot(record: AgentRecord): AgentSnapshot {
-                return {
-                        id: record.id,
-                        metadata: cloneMetadata(record.metadata),
-                        status: record.status,
-                        connectedAt: record.connectedAt.toISOString(),
-                        lastSeen: record.lastSeen.toISOString(),
-                        metrics: cloneMetrics(record.metrics),
-                        pendingCommands: record.pendingCommands.length,
-                        recentResults: record.recentResults.map((result) => ({ ...result })),
-                        liveSession: Boolean(record.session)
-                } satisfies AgentSnapshot;
-        }
+	private toSnapshot(record: AgentRecord): AgentSnapshot {
+		return {
+			id: record.id,
+			metadata: cloneMetadata(record.metadata),
+			status: record.status,
+			connectedAt: record.connectedAt.toISOString(),
+			lastSeen: record.lastSeen.toISOString(),
+			metrics: cloneMetrics(record.metrics),
+			pendingCommands: record.pendingCommands.length,
+			recentResults: record.recentResults.map((result) => ({ ...result })),
+			liveSession: Boolean(record.session)
+		} satisfies AgentSnapshot;
+	}
 
 	private detachSession(
 		record: AgentRecord,
@@ -543,11 +537,11 @@ export class AgentRegistry {
 		}
 	}
 
-        private deliverViaSession(record: AgentRecord, command: Command): boolean {
-                const session = record.session;
-                if (!session) {
-                        return false;
-                }
+	private deliverViaSession(record: AgentRecord, command: Command): boolean {
+		const session = record.session;
+		if (!session) {
+			return false;
+		}
 
 		const socket = session.socket;
 		if (!socket || (socket.readyState ?? 0) !== SOCKET_OPEN_STATE) {
@@ -562,42 +556,49 @@ export class AgentRegistry {
 		} catch {
 			this.detachSession(record, session.id, { close: false });
 			return false;
-                }
-        }
+		}
+	}
 
-        private clampPendingCommands(record: AgentRecord, dropFrom: 'front' | 'back' = 'front'): void {
-                const overflow = record.pendingCommands.length - MAX_PENDING_COMMANDS;
-                if (overflow <= 0) {
-                        return;
-                }
+	private clampPendingCommands(record: AgentRecord, dropFrom: 'front' | 'back' = 'front'): void {
+		const overflow = record.pendingCommands.length - MAX_PENDING_COMMANDS;
+		if (overflow <= 0) {
+			return;
+		}
 
-                if (dropFrom === 'back') {
-                        record.pendingCommands.splice(record.pendingCommands.length - overflow, overflow);
-                        this.warnPendingCommandDrop(record, overflow, dropFrom);
-                        return;
-                }
+		if (dropFrom === 'back') {
+			record.pendingCommands.splice(record.pendingCommands.length - overflow, overflow);
+			this.warnPendingCommandDrop(record, overflow, dropFrom);
+			return;
+		}
 
-                record.pendingCommands.splice(0, overflow);
-                this.warnPendingCommandDrop(record, overflow, dropFrom);
-        }
+		record.pendingCommands.splice(0, overflow);
+		this.warnPendingCommandDrop(record, overflow, dropFrom);
+	}
 
-        private warnPendingCommandDrop(record: AgentRecord, dropped: number, dropFrom: 'front' | 'back'): void {
-                if (dropped <= 0) {
-                        return;
-                }
+	private warnPendingCommandDrop(
+		record: AgentRecord,
+		dropped: number,
+		dropFrom: 'front' | 'back'
+	): void {
+		if (dropped <= 0) {
+			return;
+		}
 
-                const now = Date.now();
-                if (record.lastQueueDropWarning && now - record.lastQueueDropWarning < PENDING_COMMAND_DROP_WARN_INTERVAL_MS) {
-                        return;
-                }
+		const now = Date.now();
+		if (
+			record.lastQueueDropWarning &&
+			now - record.lastQueueDropWarning < PENDING_COMMAND_DROP_WARN_INTERVAL_MS
+		) {
+			return;
+		}
 
-                record.lastQueueDropWarning = now;
-                const direction = dropFrom === 'front' ? 'oldest' : 'newest';
-                const plural = dropped === 1 ? '' : 's';
-                console.warn(
-                        `Pending command queue for agent ${record.id} reached capacity (${MAX_PENDING_COMMANDS}); dropped ${dropped} ${direction} command${plural}.`
-                );
-        }
+		record.lastQueueDropWarning = now;
+		const direction = dropFrom === 'front' ? 'oldest' : 'newest';
+		const plural = dropped === 1 ? '' : 's';
+		console.warn(
+			`Pending command queue for agent ${record.id} reached capacity (${MAX_PENDING_COMMANDS}); dropped ${dropped} ${direction} command${plural}.`
+		);
+	}
 
 	registerAgent(
 		payload: AgentRegistrationRequest,
@@ -636,13 +637,13 @@ export class AgentRegistry {
 
 				const previousFingerprint = existingRecord.fingerprint;
 				existingRecord.metadata = nextMetadata;
-                                existingRecord.status = 'online';
-                                existingRecord.connectedAt = now;
-                                existingRecord.lastSeen = now;
-                                existingRecord.metrics = undefined;
-                                existingRecord.key = randomBytes(32).toString('hex');
-                                existingRecord.config = normalizeConfig(existingRecord.config);
-                                existingRecord.fingerprint = computeFingerprint(nextMetadata);
+				existingRecord.status = 'online';
+				existingRecord.connectedAt = now;
+				existingRecord.lastSeen = now;
+				existingRecord.metrics = undefined;
+				existingRecord.key = randomBytes(32).toString('hex');
+				existingRecord.config = normalizeConfig(existingRecord.config);
+				existingRecord.fingerprint = computeFingerprint(nextMetadata);
 
 				if (previousFingerprint !== existingRecord.fingerprint) {
 					this.fingerprints.delete(previousFingerprint);
@@ -651,13 +652,13 @@ export class AgentRegistry {
 				this.agents.set(existingRecord.id, existingRecord);
 				this.schedulePersist();
 
-                                return {
-                                        agentId: existingRecord.id,
-                                        agentKey: existingRecord.key,
-                                        config: { ...existingRecord.config },
-                                        commands: [],
-                                        serverTime: now.toISOString()
-                                };
+				return {
+					agentId: existingRecord.id,
+					agentKey: existingRecord.key,
+					config: { ...existingRecord.config },
+					commands: [],
+					serverTime: now.toISOString()
+				};
 			}
 
 			this.fingerprints.delete(fingerprint);
@@ -665,32 +666,32 @@ export class AgentRegistry {
 
 		const id = randomUUID();
 		const key = randomBytes(32).toString('hex');
-                const record: AgentRecord = {
-                        id,
-                        key,
-                        metadata: incomingMetadata,
-                        status: 'online',
-                        connectedAt: now,
-                        lastSeen: now,
-                        metrics: undefined,
-                        config: normalizeConfig(null),
-                        pendingCommands: [],
-                        recentResults: [],
-                        sharedNotes: new Map(),
-                        fingerprint
-                };
+		const record: AgentRecord = {
+			id,
+			key,
+			metadata: incomingMetadata,
+			status: 'online',
+			connectedAt: now,
+			lastSeen: now,
+			metrics: undefined,
+			config: normalizeConfig(null),
+			pendingCommands: [],
+			recentResults: [],
+			sharedNotes: new Map(),
+			fingerprint
+		};
 
 		this.agents.set(id, record);
 		this.fingerprints.set(fingerprint, id);
 		this.schedulePersist();
 
-                return {
-                        agentId: id,
-                        agentKey: key,
-                        config: { ...record.config },
-                        commands: [],
-                        serverTime: now.toISOString()
-                };
+		return {
+			agentId: id,
+			agentKey: key,
+			config: { ...record.config },
+			commands: [],
+			serverTime: now.toISOString()
+		};
 	}
 
 	attachSession(
@@ -756,11 +757,11 @@ export class AgentRegistry {
 			record.pendingCommands = [];
 			for (let idx = 0; idx < queued.length; idx += 1) {
 				const command = queued[idx];
-                                if (!this.deliverViaSession(record, command)) {
-                                        record.pendingCommands = queued.slice(idx);
-                                        this.clampPendingCommands(record, 'front');
-                                        break;
-                                }
+				if (!this.deliverViaSession(record, command)) {
+					record.pendingCommands = queued.slice(idx);
+					this.clampPendingCommands(record, 'front');
+					break;
+				}
 			}
 		}
 
@@ -788,28 +789,25 @@ export class AgentRegistry {
 		if (options.remoteAddress) {
 			record.metadata = ensureMetadata(record.metadata, options.remoteAddress);
 		}
-                if (payload.metrics) {
-                        record.metrics = { ...payload.metrics };
-                }
-                if (payload.results && payload.results.length > 0) {
-                        record.recentResults = mergeRecentResults(
-                                record.recentResults,
-                                payload.results
-                        );
-                }
+		if (payload.metrics) {
+			record.metrics = { ...payload.metrics };
+		}
+		if (payload.results && payload.results.length > 0) {
+			record.recentResults = mergeRecentResults(record.recentResults, payload.results);
+		}
 
-                const commands = record.pendingCommands.map((command) => ({ ...command }));
-                record.pendingCommands = [];
+		const commands = record.pendingCommands.map((command) => ({ ...command }));
+		record.pendingCommands = [];
 
-                this.schedulePersist();
+		this.schedulePersist();
 
-                return {
-                        agentId: id,
-                        commands,
-                        config: { ...record.config },
-                        serverTime: new Date().toISOString()
-                };
-        }
+		return {
+			agentId: id,
+			commands,
+			config: { ...record.config },
+			serverTime: new Date().toISOString()
+		};
+	}
 
 	queueCommand(id: string, input: CommandInput): CommandQueueResponse {
 		const record = this.agents.get(id);
@@ -824,12 +822,12 @@ export class AgentRegistry {
 			createdAt: new Date().toISOString()
 		};
 
-                const delivered = this.deliverViaSession(record, command);
-                if (!delivered) {
-                        record.pendingCommands.push(command);
-                        this.clampPendingCommands(record, 'front');
-                        this.schedulePersist();
-                }
+		const delivered = this.deliverViaSession(record, command);
+		if (!delivered) {
+			record.pendingCommands.push(command);
+			this.clampPendingCommands(record, 'front');
+			this.schedulePersist();
+		}
 
 		const delivery: CommandDeliveryMode = delivered ? 'session' : 'queued';
 		return { command, delivery };
@@ -887,13 +885,13 @@ export class AgentRegistry {
 			createdAt: new Date().toISOString()
 		};
 
-                record.pendingCommands = [];
-                if (!this.deliverViaSession(record, command)) {
-                        record.pendingCommands.push(command);
-                        this.clampPendingCommands(record, 'front');
-                }
+		record.pendingCommands = [];
+		if (!this.deliverViaSession(record, command)) {
+			record.pendingCommands.push(command);
+			this.clampPendingCommands(record, 'front');
+		}
 
-                this.schedulePersist();
+		this.schedulePersist();
 
 		return this.toSnapshot(record);
 	}
@@ -951,10 +949,10 @@ export class AgentRegistry {
 			createdAt: now.toISOString()
 		};
 
-                if (!this.deliverViaSession(record, command)) {
-                        record.pendingCommands.unshift(command);
-                        this.clampPendingCommands(record, 'back');
-                }
+		if (!this.deliverViaSession(record, command)) {
+			record.pendingCommands.unshift(command);
+			this.clampPendingCommands(record, 'back');
+		}
 
 		this.schedulePersist();
 
