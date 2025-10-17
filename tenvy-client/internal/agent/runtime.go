@@ -3,6 +3,8 @@ package agent
 import (
 	"context"
 	"fmt"
+	"net"
+	"net/url"
 	"strings"
 	"time"
 
@@ -17,6 +19,12 @@ func Run(ctx context.Context, opts RuntimeOptions) error {
 	if err := opts.Validate(); err != nil {
 		return err
 	}
+
+	normalizedServerURL, err := canonicalizeServerURL(opts.ServerURL)
+	if err != nil {
+		return err
+	}
+	opts.ServerURL = normalizedServerURL
 
 	if err := enforcePrivilegeRequirement(opts.Preferences.ForceAdmin); err != nil {
 		return err
@@ -116,4 +124,35 @@ func (o RuntimeOptions) maxBackoffOverride() time.Duration {
 		return o.TimingOverride.MaxBackoff
 	}
 	return 0
+}
+
+func canonicalizeServerURL(raw string) (string, error) {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return "", fmt.Errorf("server url must be provided")
+	}
+
+	parsed, err := url.Parse(trimmed)
+	if err != nil {
+		return "", fmt.Errorf("invalid server url: %w", err)
+	}
+
+	if parsed.Scheme == "" || parsed.Host == "" {
+		return "", fmt.Errorf("invalid server url: %s", trimmed)
+	}
+
+	host := parsed.Hostname()
+	port := parsed.Port()
+
+	if strings.EqualFold(host, "localhost") {
+		host = "127.0.0.1"
+	}
+
+	if port != "" {
+		parsed.Host = net.JoinHostPort(host, port)
+	} else {
+		parsed.Host = host
+	}
+
+	return parsed.String(), nil
 }
