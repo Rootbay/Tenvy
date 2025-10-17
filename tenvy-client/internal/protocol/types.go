@@ -32,8 +32,9 @@ type Command struct {
 }
 
 type CommandEnvelope struct {
-	Type    string   `json:"type"`
-	Command *Command `json:"command,omitempty"`
+	Type    string                   `json:"type"`
+	Command *Command                 `json:"command,omitempty"`
+	Input   *RemoteDesktopInputBurst `json:"input,omitempty"`
 }
 
 type CommandResult struct {
@@ -42,6 +43,43 @@ type CommandResult struct {
 	Output      string `json:"output,omitempty"`
 	Error       string `json:"error,omitempty"`
 	CompletedAt string `json:"completedAt"`
+}
+
+type RemoteDesktopInputType string
+
+const (
+	RemoteDesktopInputMouseMove   RemoteDesktopInputType = "mouse-move"
+	RemoteDesktopInputMouseButton RemoteDesktopInputType = "mouse-button"
+	RemoteDesktopInputMouseScroll RemoteDesktopInputType = "mouse-scroll"
+	RemoteDesktopInputKey         RemoteDesktopInputType = "key"
+)
+
+type RemoteDesktopInputEvent struct {
+	Type       RemoteDesktopInputType `json:"type"`
+	CapturedAt int64                  `json:"capturedAt"`
+	X          float64                `json:"x,omitempty"`
+	Y          float64                `json:"y,omitempty"`
+	Normalized bool                   `json:"normalized,omitempty"`
+	Monitor    *int                   `json:"monitor,omitempty"`
+	Button     string                 `json:"button,omitempty"`
+	Pressed    bool                   `json:"pressed,omitempty"`
+	DeltaX     float64                `json:"deltaX,omitempty"`
+	DeltaY     float64                `json:"deltaY,omitempty"`
+	DeltaMode  int                    `json:"deltaMode,omitempty"`
+	Key        string                 `json:"key,omitempty"`
+	Code       string                 `json:"code,omitempty"`
+	KeyCode    int                    `json:"keyCode,omitempty"`
+	Repeat     bool                   `json:"repeat,omitempty"`
+	AltKey     bool                   `json:"altKey,omitempty"`
+	CtrlKey    bool                   `json:"ctrlKey,omitempty"`
+	ShiftKey   bool                   `json:"shiftKey,omitempty"`
+	MetaKey    bool                   `json:"metaKey,omitempty"`
+}
+
+type RemoteDesktopInputBurst struct {
+	SessionID string                    `json:"sessionId"`
+	Sequence  int64                     `json:"sequence,omitempty"`
+	Events    []RemoteDesktopInputEvent `json:"events"`
 }
 
 type AgentMetadata struct {

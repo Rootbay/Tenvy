@@ -108,6 +108,12 @@ export interface RemoteDesktopCommandPayload {
   events?: RemoteDesktopInputEvent[];
 }
 
+export interface RemoteDesktopInputBurst {
+  sessionId: string;
+  events: RemoteDesktopInputEvent[];
+  sequence?: number;
+}
+
 export interface RemoteDesktopFrameMetrics {
   fps?: number;
   bandwidthKbps?: number;
@@ -164,6 +170,8 @@ export interface RemoteDesktopFramePacket {
   deltas?: RemoteDesktopDeltaRect[];
   clip?: RemoteDesktopVideoClip;
   encoder?: RemoteDesktopEncoder;
+  encoderHardware?: string;
+  intraRefresh?: boolean;
   monitors?: RemoteDesktopMonitor[];
   cursor?: RemoteDesktopCursorState;
   metrics?: RemoteDesktopFrameMetrics;
@@ -188,6 +196,7 @@ export interface RemoteDesktopSessionState {
   negotiatedTransport?: RemoteDesktopTransport;
   negotiatedCodec?: RemoteDesktopEncoder;
   intraRefresh?: boolean;
+  encoderHardware?: string;
   monitors: RemoteDesktopMonitor[];
   metrics?: RemoteDesktopFrameMetrics;
 }

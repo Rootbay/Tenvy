@@ -12,20 +12,22 @@ import type {
 	AgentStatus
 } from '../../../../../shared/types/agent';
 import type {
-	AgentRegistrationRequest,
-	AgentRegistrationResponse
+        AgentRegistrationRequest,
+        AgentRegistrationResponse
 } from '../../../../../shared/types/auth';
 import type {
-	AgentControlCommandPayload,
-	AgentSyncRequest,
-	AgentSyncResponse,
-	AgentCommandEnvelope,
-	Command,
-	CommandDeliveryMode,
-	CommandInput,
-	CommandQueueResponse,
-	CommandResult
+        AgentControlCommandPayload,
+        AgentSyncRequest,
+        AgentSyncResponse,
+        AgentCommandEnvelope,
+        AgentRemoteDesktopInputEnvelope,
+        Command,
+        CommandDeliveryMode,
+        CommandInput,
+        CommandQueueResponse,
+        CommandResult
 } from '../../../../../shared/types/messages';
+import type { RemoteDesktopInputBurst } from '../../../../../shared/types/remote-desktop';
 
 const MAX_TAGS = 16;
 const MAX_TAG_LENGTH = 32;
@@ -680,11 +682,11 @@ export class AgentRegistry {
 		};
 	}
 
-	queueCommand(id: string, input: CommandInput): CommandQueueResponse {
-		const record = this.agents.get(id);
-		if (!record) {
-			throw new RegistryError('Agent not found', 404);
-		}
+        queueCommand(id: string, input: CommandInput): CommandQueueResponse {
+                const record = this.agents.get(id);
+                if (!record) {
+                        throw new RegistryError('Agent not found', 404);
+                }
 
 		const command: Command = {
 			id: randomUUID(),
@@ -701,6 +703,42 @@ export class AgentRegistry {
 
                 const delivery: CommandDeliveryMode = delivered ? 'session' : 'queued';
                 return { command, delivery };
+        }
+
+        sendRemoteDesktopInput(id: string, burst: RemoteDesktopInputBurst): boolean {
+                const record = this.agents.get(id);
+                if (!record) {
+                        throw new RegistryError('Agent not found', 404);
+                }
+
+                const session = record.session;
+                if (!session) {
+                        return false;
+                }
+
+                const socket = session.socket;
+                if (!socket || (socket.readyState ?? 0) !== SOCKET_OPEN_STATE) {
+                        this.detachSession(record, session.id, { close: false });
+                        return false;
+                }
+
+                const envelope: AgentRemoteDesktopInputEnvelope = {
+                        type: 'remote-desktop-input',
+                        input: {
+                                sessionId: burst.sessionId,
+                                events: burst.events,
+                                sequence: burst.sequence
+                        }
+                };
+
+                try {
+                        socket.send(JSON.stringify(envelope));
+                        return true;
+                } catch (err) {
+                        this.detachSession(record, session.id, { close: false });
+                        console.error('Failed to transmit remote desktop input burst', err);
+                        return false;
+                }
         }
 
 	disconnectAgent(id: string): AgentSnapshot {
