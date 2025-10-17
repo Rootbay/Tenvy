@@ -8,12 +8,24 @@ checking: bun check
 # Agents Specification
 
 ## Overview
-The **agent system** consists of two main components:
 
 - **tenvy-server** — the controller, built with **Svelte 5 (Runes Mode)**, **SvelteKit**, **TypeScript**, **TailwindCSS v4**, **shadcn-svelte**, **lucide**, and **Bun**.
 - **tenvy-client** — the target agent, written in **Go**, optimized for persistent, reliable, and adaptive remote management.
+- **Shared Plugin** — Implements both UI and agent-side logic.
 
-The agent maintains a continuous, resilient connection with the server, automatically handling reconnection and synchronization using adaptive timing intervals.
+---
+
+## Features
+
+- **System Info**
+- **Notes**
+- **Control** (App VNC, Remote Desktop, Webcam, Audio, Keylogger, CMD)
+- **Management** (File, Task, Registry, Startup, Clipboard, TCP)
+- **Recovery**
+- **Options**
+- **Miscellaneous** (Open URL, Message Box, Client Chat, Report Window, IP Geolocation, Env Vars)
+- **System Controls** (Reconnect, Disconnect)
+- **Power** (Shutdown, Restart, Sleep, Logoff)
 
 ---
 
@@ -50,10 +62,8 @@ This separation allows the system to remain lightweight by default while support
 
 ## Behavior
 
-- **Reconnection Strategy:** adaptive and self-optimizing; avoids fixed intervals  
-- **Command Dispatch:** request/response pattern with optional streaming support  
-- **Extensibility:** supports dynamic addition of plugins without core recompilation  
-- **Synchronization:** client state is mirrored on the server dashboard in real time
+- **Reconnection Strategy:** adaptive and self-optimizing; avoids fixed intervals
+- **Extensibility:** supports dynamic addition of plugins without core recompilation
 
 ---
 

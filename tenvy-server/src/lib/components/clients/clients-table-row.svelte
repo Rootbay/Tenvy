@@ -423,8 +423,8 @@ function buildStatusMeta(agent: AgentSnapshot): {
 		<ContextMenuSub>
 			<ContextMenuSubTrigger>Control</ContextMenuSubTrigger>
 			<ContextMenuSubContent class="w-48">
-				<ContextMenuItem onSelect={() => openSection('hiddenVnc', agent)}>
-					Hidden VNC
+				<ContextMenuItem onSelect={() => openSection('appVnc', agent)}>
+					App VNC
 				</ContextMenuItem>
 				<ContextMenuItem onSelect={() => openSection('remoteDesktop', agent)}>
 					Remote Desktop

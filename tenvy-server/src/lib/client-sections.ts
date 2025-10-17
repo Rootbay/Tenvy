@@ -3,7 +3,7 @@ import type { ClientToolId } from '$lib/data/client-tools';
 export const sectionToolMap = {
 	systemInfo: 'system-info',
 	notes: 'notes',
-	hiddenVnc: 'hidden-vnc',
+	appVnc: 'app-vnc',
 	remoteDesktop: 'remote-desktop',
 	webcamControl: 'webcam-control',
 	audioControl: 'audio-control',

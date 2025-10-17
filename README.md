@@ -20,32 +20,13 @@ The server handles orchestration, visualization, and plugin management.
 
 ---
 
-## 📂 Project Structure
-
-tenvy/
-├── tenvy-server/ # Controller UI and logic (SvelteKit)
-│ ├── src/
-│ ├── static/
-│ └── package.json
-│
-├── tenvy-client/ # Go agent source code
-│ ├── cmd/
-│ ├── internal/
-│ ├── modules/
-│ └── go.mod
-│
-├── Agents.md
-└── README.md
-
----
-
-## 🚀 Features (Planned)
+## 🚀 Features
 
 Tenvy aims for a complete modular agent architecture with the following feature categories:
 
 - **System Info**
 - **Notes**
-- **Control** (Hidden VNC, Remote Desktop, Webcam, Audio, Keylogger, CMD)
+- **Control** (App VNC, Remote Desktop, Webcam, Audio, Keylogger, CMD)
 - **Management** (File, Task, Registry, Startup, Clipboard, TCP)
 - **Recovery**
 - **Options**
@@ -54,20 +35,6 @@ Tenvy aims for a complete modular agent architecture with the following feature 
 - **Power** (Shutdown, Restart, Sleep, Logoff)
 
 Each feature group is represented as a module, dynamically managed and executed from the controller UI.
-
----
-
-## 🖥️ Server UI Overview
-
-The **Tenvy Server** provides a fast, responsive desktop interface built with **Svelte 5**.
-
-**Navigation Tabs**
-- **Dashboard** — system overview and active session stats  
-- **Clients** — connected agents with details and actions  
-- **Plugins** — modular feature extensions  
-- **Settings** — configuration and preferences
-
-Future updates include **multi-admin synchronization**, allowing shared agent state between servers.
 
 ---
 
@@ -82,12 +49,6 @@ Future updates include **multi-admin synchronization**, allowing shared agent st
 | Agent           | Go                                              |
 
 ---
-
-## 🧠 Internal Documentation
-
-- \[`Agents.md`](./Agents.md) — structured specification of all agent modules, commands, and internal behavior.  
-
-&nbsp; Used for AI reasoning, automation, and code generation context.
 
 ### 🔑 Development access voucher
 
@@ -111,9 +72,7 @@ Plugins are dynamically loadable and communicate via defined message schemas.
 ## 🔮 Future Plans
 
 - Multi-admin synchronization (shared agent state)
-- Real-time distributed control
 - Plugin registry (TypeScript + Go integration)
-- Unified telemetry and audit logging
 - Remote desktop streaming optimizations ([roadmap](./docs/remote-desktop-optimizations.md))
 
 ---

@@ -204,7 +204,7 @@
 		<ContextMenuSub>
 			<ContextMenuSubTrigger>Control</ContextMenuSubTrigger>
 			<ContextMenuSubContent class="w-48">
-				<ContextMenuItem on:select={() => openTool('hidden-vnc')}>Hidden VNC</ContextMenuItem>
+				<ContextMenuItem on:select={() => openTool('app-vnc')}>App VNC</ContextMenuItem>
 				<ContextMenuItem on:select={() => openTool('remote-desktop')}>
 					Remote Desktop
 				</ContextMenuItem>

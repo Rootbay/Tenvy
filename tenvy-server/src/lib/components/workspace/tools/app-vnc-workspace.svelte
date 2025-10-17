@@ -23,7 +23,7 @@
 
 	const { client } = $props<{ client: Client }>();
 
-	const tool = getClientTool('hidden-vnc');
+	const tool = getClientTool('app-vnc');
 
 	let quality = $state<'lossless' | 'balanced' | 'bandwidth'>('balanced');
 	let monitor = $state('Primary');
@@ -40,14 +40,14 @@
 	function stageSession() {
 		log = appendWorkspaceLog(
 			log,
-			createWorkspaceLogEntry('Hidden VNC session drafted', formatPlan(), 'draft')
+			createWorkspaceLogEntry('App VNC session drafted', formatPlan(), 'draft')
 		);
 	}
 
 	function queueSession() {
 		log = appendWorkspaceLog(
 			log,
-			createWorkspaceLogEntry('Hidden VNC session queued', formatPlan(), 'queued')
+			createWorkspaceLogEntry('App VNC session queued', formatPlan(), 'queued')
 		);
 	}
 </script>
@@ -57,7 +57,7 @@
 		<CardHeader>
 			<CardTitle class="text-base">Session parameters</CardTitle>
 			<CardDescription>
-				Define how the hidden VNC worker should negotiate buffers and input forwarding with the
+				Define how the app VNC worker should negotiate buffers and input forwarding with the
 				agent.
 			</CardDescription>
 		</CardHeader>
