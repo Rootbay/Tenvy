@@ -8,7 +8,8 @@
 		ContextMenuSubContent,
 		ContextMenuSubTrigger
 	} from '$lib/components/ui/context-menu/index.js';
-	import { goto, invalidateAll } from '$app/navigation';
+        import { goto, invalidateAll } from '$app/navigation';
+        import { resolve } from '$app/paths';
 	import { browser } from '$app/environment';
 	import type { Client } from '$lib/data/clients';
 	import ClientToolDialog from '$lib/components/client-tool-dialog.svelte';
@@ -182,10 +183,10 @@
 
 		if (!browser) return;
 
-		if (target === '_self') {
-			goto(url);
-			return;
-		}
+                if (target === '_self') {
+                        goto(resolve(url));
+                        return;
+                }
 
 		window.open(url, target, 'noopener,noreferrer');
 	}

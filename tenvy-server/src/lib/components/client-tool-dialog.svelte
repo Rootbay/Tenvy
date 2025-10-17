@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { browser } from '$app/environment';
-	import { goto } from '$app/navigation';
+        import { goto } from '$app/navigation';
+        import { resolve } from '$app/paths';
 	import { createEventDispatcher, onMount } from 'svelte';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import MovableWindow from '$lib/components/ui/movablewindow/MovableWindow.svelte';
@@ -160,8 +161,8 @@
 	async function openWorkspace() {
 		if (!browser) return;
 		requestClose();
-		await goto(workspaceUrl);
-	}
+                await goto(resolve(workspaceUrl));
+        }
 
 	const selectClasses =
 		'flex h-9 w-full min-w-0 rounded-md border border-input bg-background px-3 py-1 text-sm shadow-xs ring-offset-background transition-[color,box-shadow] outline-none disabled:cursor-not-allowed disabled:opacity-50 focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 dark:bg-input/30';
