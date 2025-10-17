@@ -206,7 +206,7 @@
 
 <section class="space-y-6">
 	<div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-		{#each summaryMetrics as metric}
+		{#each summaryMetrics as metric (metric.id)}
 			<Card class="border-border/60">
 				<CardHeader class="space-y-2">
 					<CardTitle class="text-sm font-medium text-muted-foreground">{metric.label}</CardTitle>
@@ -326,7 +326,7 @@
 				</CardDescription>
 			</CardHeader>
 			<CardContent class="space-y-4">
-				{#each flaggedSessions as session}
+				{#each flaggedSessions as session (session.client)}
 					<div class="rounded-lg border border-border/60 p-4">
 						<div class="flex items-start justify-between gap-4">
 							<div class="space-y-1">

@@ -59,8 +59,23 @@ function archiveFilename(id: string): string {
 }
 
 function stripInternal(meta: StoredArchiveMetadata): RecoveryArchive {
-	const { archiveFile: _archiveFile, manifestFile: _manifestFile, ...rest } = meta;
+	const { archiveFile, manifestFile, ...rest } = meta;
+	void archiveFile;
+	void manifestFile;
 	return rest;
+}
+
+function sanitizeFreeformText(value: string | null | undefined): string | undefined {
+	if (value == null) {
+		return undefined;
+	}
+
+	const normalized = Array.from(value, (char) => (char.charCodeAt(0) <= 0x1f ? ' ' : char))
+		.join('')
+		.replace(/\s{2,}/g, ' ')
+		.trim();
+
+	return normalized;
 }
 
 async function writeFileAtomic(destination: string, data: string | Uint8Array): Promise<void> {
@@ -239,14 +254,8 @@ export async function saveRecoveryArchive(options: {
 		(a.label || a.type).localeCompare(b.label || b.type, undefined, { sensitivity: 'base' })
 	);
 
-	const notes = options.notes
-		?.replace(/[\u0000-\u001f]+/g, ' ')
-		.trim()
-		.replace(/\s{2,}/g, ' ');
-	const archiveNameSanitized = options.archiveName
-		.replace(/[\u0000-\u001f]+/g, ' ')
-		.replace(/\s{2,}/g, ' ')
-		.trim();
+	const notes = sanitizeFreeformText(options.notes);
+	const archiveNameSanitized = sanitizeFreeformText(options.archiveName) ?? '';
 	const archiveName = archiveNameSanitized || `Recovery archive ${requestId}`;
 
 	const metadata: StoredArchiveMetadata = {
@@ -314,12 +323,7 @@ export async function saveRecoveryArchive(options: {
 
 async function readMetadata(agentId: string, archiveId: string): Promise<StoredArchiveMetadata> {
 	const file = path.join(agentDirectory(agentId), metadataFilename(archiveId));
-	let raw: string;
-	try {
-		raw = await readFile(file, 'utf-8');
-	} catch (err) {
-		throw err;
-	}
+	const raw = await readFile(file, 'utf-8');
 
 	let parsed: unknown;
 	try {

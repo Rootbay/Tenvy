@@ -49,11 +49,11 @@
 		frameRate: number | null;
 	};
 
-const { client } = $props<{ client: Client }>();
-void client;
+	const { client } = $props<{ client: Client }>();
+	void client;
 
-const tool = getClientTool('webcam-control');
-void tool;
+	const tool = getClientTool('webcam-control');
+	void tool;
 
 	const RESOLUTION_OPTIONS = [
 		{ value: '3840×2160', label: '3840×2160 · 4K' },
@@ -89,7 +89,7 @@ void tool;
 	let recordingStartedAt = 0;
 	let discardRecording = false;
 
-const objectUrls = new SvelteSet<string>();
+	const objectUrls = new SvelteSet<string>();
 
 	function generateId(): string {
 		return `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -121,15 +121,15 @@ const objectUrls = new SvelteSet<string>();
 		return value;
 	}
 
-function cameraLabel(): string {
-	if (selectedCamera === '') {
-		return devices.length > 0 ? 'Auto select' : 'No camera';
+	function cameraLabel(): string {
+		if (selectedCamera === '') {
+			return devices.length > 0 ? 'Auto select' : 'No camera';
+		}
+		const match = devices.find((device) => device.id === selectedCamera);
+		return match?.label ?? 'Selected device';
 	}
-	const match = devices.find((device) => device.id === selectedCamera);
-	return match?.label ?? 'Selected device';
-}
 
-function describeTrack(track: MediaStreamTrack | null): string {
+	function describeTrack(track: MediaStreamTrack | null): string {
 		const label = cameraLabel();
 		const { width: fallbackWidth, height: fallbackHeight } = parseResolution(resolution);
 		if (!track || typeof track.getSettings !== 'function') {
@@ -674,8 +674,8 @@ function describeTrack(track: MediaStreamTrack | null): string {
 			return;
 		}
 
-	const track = stream.getVideoTracks()[0] ?? null;
-	const settings = track?.getSettings() ?? null;
+		const track = stream.getVideoTracks()[0] ?? null;
+		const settings = track?.getSettings() ?? null;
 		const resolutionLabel = formatResolutionLabel(settings);
 		const fps =
 			typeof settings?.frameRate === 'number' && !Number.isNaN(settings.frameRate)

@@ -17,10 +17,10 @@
 	import { notifyToolActivationCommand } from '$lib/utils/agent-commands.js';
 	import type { WorkspaceLogEntry } from '$lib/workspace/types';
 
-const { client } = $props<{ client: Client }>();
+	const { client } = $props<{ client: Client }>();
 
-const tool = getClientTool('clipboard-manager');
-void tool;
+	const tool = getClientTool('clipboard-manager');
+	void tool;
 
 	let captureText = $state(true);
 	let captureFiles = $state(false);

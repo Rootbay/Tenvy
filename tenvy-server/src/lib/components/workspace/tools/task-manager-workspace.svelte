@@ -39,11 +39,11 @@
 	type SortKey = 'cpu' | 'memory' | 'name' | 'pid';
 	type SortDirection = 'asc' | 'desc';
 
-const { client } = $props<{ client: Client }>();
-void client;
+	const { client } = $props<{ client: Client }>();
+	void client;
 
-const tool = getClientTool('task-manager');
-void tool;
+	const tool = getClientTool('task-manager');
+	void tool;
 
 	let processes = $state<ProcessSummary[]>([]);
 	let lastUpdated = $state<string | null>(null);
@@ -424,43 +424,43 @@ void tool;
 		})()
 	);
 
-const heroMetadata = $derived(
-	(() => [
-		{ label: 'Processes', value: processes.length ? `${processes.length}` : '-' },
-		{ label: 'Auto refresh', value: autoRefresh ? `Every ${sampleInterval}s` : 'Paused' },
-		{ label: 'Last update', value: formatTimestamp(lastUpdated) }
-	])()
-);
+	const heroMetadata = $derived(
+		(() => [
+			{ label: 'Processes', value: processes.length ? `${processes.length}` : '-' },
+			{ label: 'Auto refresh', value: autoRefresh ? `Every ${sampleInterval}s` : 'Paused' },
+			{ label: 'Last update', value: formatTimestamp(lastUpdated) }
+		])()
+	);
 
-void heroMetadata;
+	void heroMetadata;
 
-function refreshImmediately() {
+	function refreshImmediately() {
 		void loadProcesses();
 	}
 
-function ensureRefreshTimer(shouldRefresh: boolean, intervalSeconds: number) {
-	if (refreshTimer) {
-		clearInterval(refreshTimer);
-		refreshTimer = null;
-	}
-	if (!shouldRefresh) {
-		return;
-	}
-	const interval = Math.max(intervalSeconds, 5) * 1000;
-	refreshTimer = setInterval(() => {
-		void loadProcesses({ silent: true });
-	}, interval);
-}
-
-$effect(() => {
-	const shouldRefresh = autoRefresh;
-	const intervalSeconds = sampleInterval;
-	ensureRefreshTimer(shouldRefresh, intervalSeconds);
-	return () => {
+	function ensureRefreshTimer(shouldRefresh: boolean, intervalSeconds: number) {
 		if (refreshTimer) {
 			clearInterval(refreshTimer);
 			refreshTimer = null;
 		}
+		if (!shouldRefresh) {
+			return;
+		}
+		const interval = Math.max(intervalSeconds, 5) * 1000;
+		refreshTimer = setInterval(() => {
+			void loadProcesses({ silent: true });
+		}, interval);
+	}
+
+	$effect(() => {
+		const shouldRefresh = autoRefresh;
+		const intervalSeconds = sampleInterval;
+		ensureRefreshTimer(shouldRefresh, intervalSeconds);
+		return () => {
+			if (refreshTimer) {
+				clearInterval(refreshTimer);
+				refreshTimer = null;
+			}
 		};
 	});
 

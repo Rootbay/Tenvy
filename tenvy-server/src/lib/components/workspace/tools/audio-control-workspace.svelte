@@ -33,9 +33,9 @@
 
 	const { client } = $props<{ client: Client }>();
 
-const tool = getClientTool('audio-control');
-void tool;
-const isBrowser = typeof window !== 'undefined';
+	const tool = getClientTool('audio-control');
+	void tool;
+	const isBrowser = typeof window !== 'undefined';
 
 	let inventory = $state<AudioDeviceInventory | null>(null);
 	let pendingInventory = $state(false);
@@ -87,23 +87,23 @@ const isBrowser = typeof window !== 'undefined';
 		return 'Serious operator detected';
 	});
 
-const heroMetadata = $derived([
-	{
-		label: 'Inputs discovered',
-		value: inventory ? inventory.inputs.length.toString() : pendingInventory ? 'Pending' : '0'
-	},
+	const heroMetadata = $derived([
+		{
+			label: 'Inputs discovered',
+			value: inventory ? inventory.inputs.length.toString() : pendingInventory ? 'Pending' : '0'
+		},
 		{
 			label: 'Session state',
 			value: session ? (session.active ? 'Active' : 'Stopped') : 'Idle',
 			hint: listening ? 'Streaming live microphone audio to the controller.' : undefined
 		},
-	{
-		label: 'Uploaded bops',
-		value: uploads.length ? uploads.length.toString() : '0',
-		hint: uploads.length ? mischiefMeter : undefined
-	}
-]);
-void heroMetadata;
+		{
+			label: 'Uploaded bops',
+			value: uploads.length ? uploads.length.toString() : '0',
+			hint: uploads.length ? mischiefMeter : undefined
+		}
+	]);
+	void heroMetadata;
 
 	let eventSource: EventSource | null = null;
 	let audioContext: AudioContext | null = null;

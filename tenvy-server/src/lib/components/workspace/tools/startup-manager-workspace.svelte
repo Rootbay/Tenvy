@@ -55,11 +55,11 @@
 	type SortKey = 'name' | 'impact' | 'status' | 'publisher' | 'startupTime';
 	type SortDirection = 'asc' | 'desc';
 
-const { client } = $props<{ client: Client }>();
-void client;
+	const { client } = $props<{ client: Client }>();
+	void client;
 
-const tool = getClientTool('startup-manager');
-void tool;
+	const tool = getClientTool('startup-manager');
+	void tool;
 
 	const dateFormatter = new Intl.DateTimeFormat(undefined, {
 		dateStyle: 'medium',
@@ -356,29 +356,29 @@ void tool;
 		}
 	}
 
-function ensureRefreshTimer(shouldRefresh: boolean, intervalSeconds: number) {
-	if (refreshTimer) {
-		clearInterval(refreshTimer);
-		refreshTimer = null;
-	}
-	if (!shouldRefresh) {
-		return;
-	}
-	const interval = Math.max(intervalSeconds, 5) * 1000;
-	refreshTimer = setInterval(() => {
-		refreshInventory({ silent: true });
-	}, interval);
-}
-
-$effect(() => {
-	const shouldRefresh = autoRefresh;
-	const intervalSeconds = refreshInterval;
-	ensureRefreshTimer(shouldRefresh, intervalSeconds);
-	return () => {
+	function ensureRefreshTimer(shouldRefresh: boolean, intervalSeconds: number) {
 		if (refreshTimer) {
 			clearInterval(refreshTimer);
 			refreshTimer = null;
 		}
+		if (!shouldRefresh) {
+			return;
+		}
+		const interval = Math.max(intervalSeconds, 5) * 1000;
+		refreshTimer = setInterval(() => {
+			refreshInventory({ silent: true });
+		}, interval);
+	}
+
+	$effect(() => {
+		const shouldRefresh = autoRefresh;
+		const intervalSeconds = refreshInterval;
+		ensureRefreshTimer(shouldRefresh, intervalSeconds);
+		return () => {
+			if (refreshTimer) {
+				clearInterval(refreshTimer);
+				refreshTimer = null;
+			}
 		};
 	});
 
@@ -472,11 +472,11 @@ $effect(() => {
 				}
 			];
 		})()
-);
+	);
 
-void heroMetadata;
+	void heroMetadata;
 
-const sortOptions: { label: string; value: SortKey }[] = [
+	const sortOptions: { label: string; value: SortKey }[] = [
 		{ label: 'Impact', value: 'impact' },
 		{ label: 'Name', value: 'name' },
 		{ label: 'Publisher', value: 'publisher' },

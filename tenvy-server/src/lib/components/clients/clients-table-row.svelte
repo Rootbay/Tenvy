@@ -36,6 +36,8 @@
 		openManageTags,
 		onTagClick,
 		copyAgentId,
+		openPingDialog,
+		openShellDialog,
 		getAgentLocation,
 		getAgentTags,
 		formatPing,
@@ -45,6 +47,8 @@
 		openSection: (section: SectionKey, agent: AgentSnapshot) => void;
 		openManageTags: (agent: AgentSnapshot) => void;
 		copyAgentId: (agentId: string) => void;
+		openPingDialog: (agentId: string) => void;
+		openShellDialog: (agentId: string) => void;
 		onTagClick: (tag: string) => void;
 		getAgentLocation: (agent: AgentSnapshot) => { label: string; flag: string };
 		getAgentTags: (agent: AgentSnapshot) => string[];
@@ -415,6 +419,8 @@
 		<ContextMenuItem onSelect={() => openSection('systemInfo', agent)}>System Info</ContextMenuItem>
 		<ContextMenuItem onSelect={() => openSection('notes', agent)}>Notes</ContextMenuItem>
 		<ContextMenuItem onSelect={() => openManageTags(agent)}>Manage Tags</ContextMenuItem>
+		<ContextMenuItem onSelect={() => openPingDialog(agent.id)}>Ping Agent</ContextMenuItem>
+		<ContextMenuItem onSelect={() => openShellDialog(agent.id)}>Run Shell Command</ContextMenuItem>
 
 		<ContextMenuSeparator />
 

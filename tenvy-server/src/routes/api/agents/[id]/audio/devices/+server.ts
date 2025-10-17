@@ -37,4 +37,3 @@ export const POST: RequestHandler = async ({ params, request }) => {
 
 	return json({ accepted: true });
 };
-

@@ -218,7 +218,6 @@ export class ClipboardManager {
 		try {
 			handler(entry);
 		} catch (err) {
-			// eslint-disable-next-line no-console
 			console.error('Failed to settle clipboard request', err);
 		}
 	}
@@ -234,7 +233,6 @@ export class ClipboardManager {
 			try {
 				handler(entry);
 			} catch (err) {
-				// eslint-disable-next-line no-console
 				console.error('Failed to settle clipboard request', err);
 			}
 		}

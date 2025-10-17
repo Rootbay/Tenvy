@@ -120,7 +120,6 @@ export class TcpConnectionsManager {
 		try {
 			entry.reject(error);
 		} catch (err) {
-			// eslint-disable-next-line no-console
 			console.error('Failed to reject TCP connections request', err);
 		}
 	}
@@ -138,7 +137,6 @@ export class TcpConnectionsManager {
 		try {
 			entry.resolve(snapshot);
 		} catch (err) {
-			// eslint-disable-next-line no-console
 			console.error('Failed to resolve TCP connections request', err);
 		}
 	}

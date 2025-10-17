@@ -252,4 +252,3 @@ export const POST: RequestHandler = async ({ params, request }) => {
 			throw error(400, 'Unsupported chat action');
 	}
 };
-

@@ -15,7 +15,7 @@ function normalizePath(path: string): string {
 		return trimmed;
 	}
 
-	if (/^[a-zA-Z]:[\/]?$/.test(trimmed)) {
+	if (/^[a-zA-Z]:[\\/]?$/.test(trimmed)) {
 		const slash = trimmed.includes('/') ? '/' : '\\';
 		return `${trimmed[0]}:${slash}`;
 	}

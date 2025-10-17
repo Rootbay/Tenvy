@@ -25,10 +25,10 @@
 		timestamp: string;
 	};
 
-const { client } = $props<{ client: Client }>();
+	const { client } = $props<{ client: Client }>();
 
-const tool = getClientTool('client-chat');
-void tool;
+	const tool = getClientTool('client-chat');
+	void tool;
 
 	let messages = $state<ChatMessage[]>([
 		{

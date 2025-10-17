@@ -21,11 +21,11 @@
 	import { appendWorkspaceLog, createWorkspaceLogEntry } from '$lib/workspace/utils';
 	import type { WorkspaceLogEntry } from '$lib/workspace/types';
 
-const { client } = $props<{ client: Client }>();
-void client;
+	const { client } = $props<{ client: Client }>();
+	void client;
 
-const tool = getClientTool('open-url');
-void tool;
+	const tool = getClientTool('open-url');
+	void tool;
 
 	let url = $state('https://');
 	let referer = $state('');

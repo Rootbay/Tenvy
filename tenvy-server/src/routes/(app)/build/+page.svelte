@@ -8,20 +8,9 @@
 		CardHeader,
 		CardTitle
 	} from '$lib/components/ui/card/index.js';
-	import {
-		Collapsible,
-		CollapsibleContent,
-		CollapsibleTrigger
-	} from '$lib/components/ui/collapsible/index.js';
-	import * as Dialog from '$lib/components/ui/dialog/index.js';
-	import { Input } from '$lib/components/ui/input/index.js';
-	import { Label } from '$lib/components/ui/label/index.js';
-	import { Progress } from '$lib/components/ui/progress/index.js';
-	import { Switch } from '$lib/components/ui/switch/index.js';
-	import { Textarea } from '$lib/components/ui/textarea/index.js';
 	import { Tabs, TabsContent, TabsList, TabsTrigger } from '$lib/components/ui/tabs/index.js';
-	import { ChevronDown, Plus, Trash2, Wand2 } from '@lucide/svelte';
 	import { onDestroy } from 'svelte';
+	import { SvelteSet } from 'svelte/reactivity';
 	import { toast } from 'svelte-sonner';
 	import ConnectionTab from './components/ConnectionTab.svelte';
 	import PersistenceTab from './components/PersistenceTab.svelte';
@@ -34,11 +23,7 @@
 		EXTENSION_OPTIONS_BY_OS,
 		EXTENSION_SPOOF_PRESETS,
 		FILE_PUMPER_UNIT_TO_BYTES,
-		FILE_PUMPER_UNITS,
-		INPUT_FIELD_CLASSES,
-		INSTALLATION_PATH_PRESETS,
 		MAX_FILE_PUMPER_BYTES,
-		TARGET_OS_OPTIONS,
 		type CookieKV,
 		type ExtensionSpoofPreset,
 		type FilePumperUnit,
@@ -50,7 +35,6 @@
 		addCustomCookie as createCustomCookie,
 		addCustomHeader as createCustomHeader,
 		generateMutexName as randomMutexSuffix,
-		inputValueFromEvent,
 		normalizeSpoofExtension,
 		parseListInput,
 		removeCustomCookie as deleteCustomCookie,
@@ -152,7 +136,7 @@
 			...KNOWN_EXTENSION_SUFFIXES
 		];
 
-		const seen = new Set<string>();
+		const seen = new SvelteSet<string>();
 		for (const suffix of suffixes) {
 			if (!suffix || seen.has(suffix)) {
 				continue;

@@ -43,6 +43,7 @@
 	} from '$lib/utils/rat-port-preferences.js';
 	import { browser } from '$app/environment';
 	import { goto } from '$app/navigation';
+	import { resolve } from '$app/paths';
 	import {
 		Activity,
 		Bell,
@@ -429,25 +430,26 @@
 
 	function navigateToSettings(event?: Event) {
 		event?.preventDefault();
-		void goto('/settings');
+		void goto(resolve('/settings'));
 	}
 </script>
 
 {#snippet SettingsLink({ props }: SidebarMenuButtonChildContext)}
 	{@const { class: existingClass } = props as { class?: string }}
 	{@const className = cn('cursor-pointer', existingClass)}
-	<a
+	<button
 		{...props}
+		type="button"
+		role="link"
 		class={className}
-		href="/settings"
-		data-sveltekit-preload-data="hover"
+		onclick={navigateToSettings}
 		aria-current={(layoutData as LayoutData).activeNav === 'settings' ? 'page' : undefined}
 	>
 		<Settings />
 		<div class="flex min-w-0 flex-col gap-0.5 text-left">
 			<span class="truncate text-sm font-medium">Settings</span>
 		</div>
-	</a>
+	</button>
 {/snippet}
 
 <SidebarProvider>
@@ -472,7 +474,7 @@
 						<a
 							{...props}
 							class={className}
-							href={item.href}
+							href={resolve(item.href)}
 							data-sveltekit-preload-data="hover"
 							aria-current={item.slug === layoutData.activeNav ? 'page' : undefined}
 						>

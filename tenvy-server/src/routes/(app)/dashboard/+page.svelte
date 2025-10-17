@@ -40,7 +40,6 @@
 	const gbFormatter = new Intl.NumberFormat('en-US', { maximumFractionDigits: 2 });
 	const percentageFormatter = new Intl.NumberFormat('en-US', { maximumFractionDigits: 1 });
 	const timeFormatter = new Intl.DateTimeFormat(undefined, { hour: '2-digit', minute: '2-digit' });
-	const dayFormatter = new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric' });
 	const relativeFormatter = new Intl.RelativeTimeFormat(undefined, { numeric: 'auto' });
 	const latencyFormatter = new Intl.NumberFormat('en-US', { maximumFractionDigits: 1 });
 
@@ -55,12 +54,6 @@
 	type TrendDescriptor = { text: string; tone: TrendTone; icon: TrendIcon | null };
 
 	const generatedAt = new Date(data.generatedAt);
-
-	const countryNameMap = new Map<string, string>(
-		data.countries.map(
-			(entry: DashboardCountryStat) => [entry.countryCode, entry.countryName] as const
-		)
-	);
 
 	const newClientSnapshot = derived(
 		newClientRange,
@@ -83,21 +76,6 @@
 			: data.clients
 	);
 	const countryStats: DashboardCountryStat[] = data.countries;
-	type SelectedCountrySummary = { flag: string; name: string; total: number };
-	const selectedCountrySummary = derived(
-		[selectedCountry, filteredClients],
-		([$selectedCountry, $filteredClients]): SelectedCountrySummary | null => {
-			if (!$selectedCountry) {
-				return null;
-			}
-			const name = countryNameMap.get($selectedCountry) ?? $selectedCountry;
-			return {
-				flag: resolveFlag($selectedCountry),
-				name,
-				total: $filteredClients.length
-			};
-		}
-	);
 	const bandwidthDelta = describePercentDelta(data.bandwidth.deltaPercent);
 	const latencyDelta = describeLatencyDelta(data.latency.deltaMs);
 
@@ -115,63 +93,6 @@
 		warning: 'text-amber-500',
 		critical: 'text-destructive'
 	};
-
-	const newClientsChartConfig = {
-		count: {
-			label: 'New clients',
-			theme: {
-				light: 'var(--chart-1)',
-				dark: 'var(--chart-1)'
-			}
-		}
-	};
-
-	const newClientsSeries = [
-		{
-			key: 'count',
-			label: newClientsChartConfig.count.label,
-			value: (point: (typeof data.newClients.today.series)[number]) => point.count,
-			color: 'var(--chart-1)'
-		}
-	];
-
-	const bandwidthChartConfig = {
-		total: {
-			label: 'Total transfer (MB)',
-			theme: {
-				light: 'var(--chart-2)',
-				dark: 'var(--chart-2)'
-			}
-		}
-	};
-
-	const bandwidthSeries = [
-		{
-			key: 'totalMb',
-			label: bandwidthChartConfig.total.label,
-			value: (point: (typeof data.bandwidth.series)[number]) => point.totalMb,
-			color: 'var(--chart-2)'
-		}
-	];
-
-	const latencyChartConfig = {
-		latency: {
-			label: 'Average latency (ms)',
-			theme: {
-				light: 'var(--chart-3)',
-				dark: 'var(--chart-3)'
-			}
-		}
-	};
-
-	const latencySeries = [
-		{
-			key: 'latencyMs',
-			label: latencyChartConfig.latency.label,
-			value: (point: (typeof data.latency.series)[number]) => point.latencyMs,
-			color: 'var(--chart-3)'
-		}
-	];
 
 	function describePercentDelta(delta: number | null): TrendDescriptor {
 		if (delta === null) {

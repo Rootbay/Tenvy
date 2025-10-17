@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { browser } from '$app/environment';
 	import { goto, invalidateAll } from '$app/navigation';
+	import { resolve } from '$app/paths';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import { Alert, AlertDescription, AlertTitle } from '$lib/components/ui/alert/index.js';
 	import { Input } from '$lib/components/ui/input/index.js';
@@ -244,6 +245,7 @@
 	}
 
 	function formatPing(agent: AgentSnapshot): string {
+		void agent;
 		const latency = controllerPingLatency;
 		if (typeof latency === 'number' && Number.isFinite(latency) && latency >= 0) {
 			return `${Math.round(latency)} ms`;
@@ -837,12 +839,14 @@
 		}
 
 		if (target === '_self') {
-			goto(url);
+			goto(resolve(url));
 			return;
 		}
 
+		const resolvedUrl = resolve(url);
+
 		if (target === '_blank') {
-			const newWindow = window.open(url, '_blank', 'noopener');
+			const newWindow = window.open(resolvedUrl, '_blank', 'noopener');
 
 			if (!newWindow) {
 				console.warn('Pop-up blocked when attempting to open client tool in a new tab.');
@@ -854,7 +858,7 @@
 			return;
 		}
 
-		window.open(url, target, 'noopener');
+		window.open(resolvedUrl, target, 'noopener');
 	}
 </script>
 
@@ -1136,6 +1140,8 @@
 										{getAgentTags}
 										{getAgentLocation}
 										openManageTags={openManageTagsDialog}
+										{openPingDialog}
+										{openShellDialog}
 										onTagClick={handleTagFilter}
 										{openSection}
 										{copyAgentId}
@@ -1173,7 +1179,7 @@
 							<span class="sr-only sm:not-sr-only">Previous</span>
 						</Button>
 					</li>
-					{#each $clientsTable.paginationItems as item}
+					{#each $clientsTable.paginationItems as item, index (typeof item === 'number' ? `page-${item}` : `ellipsis-${index}`)}
 						<li>
 							{#if item === 'ellipsis'}
 								<span class="flex h-9 w-9 items-center justify-center text-sm text-muted-foreground"

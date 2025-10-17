@@ -163,7 +163,7 @@ const baseSnapshot: RegistrySnapshot = {
 			],
 			'User specific software settings',
 			false,
-			'TEN\Analyst'
+			'TEN\\Analyst'
 		),
 		'SOFTWARE\\Tenvy': key(
 			'HKEY_CURRENT_USER',

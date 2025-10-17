@@ -41,7 +41,6 @@
 	const { client } = $props<{ client: Client }>();
 
 	const fileManagerEndpoint = $derived(`/api/agents/${encodeURIComponent(client.id)}/file-manager`);
-	const commandEndpoint = $derived(`/api/agents/${encodeURIComponent(client.id)}/commands`);
 
 	type SortField = 'name' | 'modifiedAt' | 'type' | 'size';
 
@@ -109,7 +108,7 @@
 		}
 	}
 
-const resourcePollTimers = new SvelteMap<string, ReturnType<typeof setTimeout>>();
+	const resourcePollTimers = new SvelteMap<string, ReturnType<typeof setTimeout>>();
 	const RESOURCE_POLL_INITIAL_DELAY = 600;
 	const RESOURCE_POLL_MAX_DELAY = 5_000;
 	const RESOURCE_POLL_BACKOFF_FACTOR = 1.5;
@@ -207,7 +206,7 @@ const resourcePollTimers = new SvelteMap<string, ReturnType<typeof setTimeout>>(
 		scheduleResourcePoll(kind, normalized, extras, options, 0);
 	}
 
-function filteredEntriesList(): FileSystemEntry[] {
+	function filteredEntriesList(): FileSystemEntry[] {
 		const entries = listing
 			? listing.entries.filter((entry) => includeHidden || !entry.isHidden)
 			: [];

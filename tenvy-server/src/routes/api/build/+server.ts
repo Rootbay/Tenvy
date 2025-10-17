@@ -167,7 +167,7 @@ export const POST: RequestHandler = async ({ request }) => {
 	let body: unknown;
 	try {
 		body = await request.json();
-	} catch (err) {
+	} catch {
 		throw error(400, 'Invalid build payload');
 	}
 
@@ -177,7 +177,6 @@ export const POST: RequestHandler = async ({ request }) => {
 		port,
 		targetOS,
 		targetArch,
-		outputExtension,
 		outputFilename,
 		installationPath,
 		meltAfterRun,

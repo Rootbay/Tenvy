@@ -6,7 +6,7 @@ const webauthnLimiter = new RateLimiterMemory({ points: 10, duration: 60 });
 async function consume(limiter: RateLimiterMemory, key: string) {
 	try {
 		await limiter.consume(key);
-	} catch (error) {
+	} catch {
 		throw Object.assign(new Error('Too many attempts. Please slow down.'), { status: 429 });
 	}
 }

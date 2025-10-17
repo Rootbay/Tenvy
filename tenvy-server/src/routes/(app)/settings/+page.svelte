@@ -303,7 +303,7 @@
 					Digest frequency
 				</p>
 				<div class="flex flex-wrap gap-2">
-					{#each digestOptions as option}
+					{#each digestOptions as option (option.value)}
 						<Button
 							type="button"
 							size="sm"

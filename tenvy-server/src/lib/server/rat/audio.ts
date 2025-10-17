@@ -310,7 +310,7 @@ export class AudioBridgeManager {
 		for (const subscriber of record.subscribers) {
 			try {
 				subscriber.controller.enqueue(data);
-			} catch (err) {
+			} catch {
 				subscriber.closed = true;
 			}
 		}

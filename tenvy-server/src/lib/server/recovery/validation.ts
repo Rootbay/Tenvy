@@ -65,7 +65,7 @@ function sanitizeTrimmedString(value: unknown): string {
 	if (!trimmed) {
 		throw new Error('Value must not be empty');
 	}
-	if (/[\u0000-\u001f]/.test(trimmed)) {
+	if (Array.from(trimmed).some((char) => char.charCodeAt(0) <= 0x1f)) {
 		throw new Error('Value contains disallowed control characters');
 	}
 	return trimmed;

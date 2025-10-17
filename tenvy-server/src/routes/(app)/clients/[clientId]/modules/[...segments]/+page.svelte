@@ -8,11 +8,7 @@
 	} from '$lib/components/ui/card/index.js';
 	import { browser } from '$app/environment';
 	import { onMount } from 'svelte';
-	import {
-		buildClientToolUrl,
-		type ClientToolDefinition,
-		type ClientToolId
-	} from '$lib/data/client-tools';
+	import { type ClientToolId } from '$lib/data/client-tools';
 	import { notifyToolActivationCommand } from '$lib/utils/agent-commands.js';
 	import type { PageData } from './$types';
 	import AppVncWorkspace from '$lib/components/workspace/tools/app-vnc-workspace.svelte';
@@ -39,9 +35,7 @@
 	const client = $derived(data.client);
 	const agent = $derived(data.agent);
 	const tool = $derived(data.tool);
-	const tools = $derived((data.tools ?? []) as ClientToolDefinition[]);
 	const segments = $derived(data.segments);
-	const otherTools = $derived(tools.filter((item) => item.id !== tool.id));
 
 	const componentMap = {
 		'app-vnc': AppVncWorkspace,

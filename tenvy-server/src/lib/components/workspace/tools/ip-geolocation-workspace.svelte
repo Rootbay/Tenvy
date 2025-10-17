@@ -22,11 +22,11 @@
 	import { appendWorkspaceLog, createWorkspaceLogEntry } from '$lib/workspace/utils';
 	import type { WorkspaceLogEntry } from '$lib/workspace/types';
 
-const { client } = $props<{ client: Client }>();
-void client;
+	const { client } = $props<{ client: Client }>();
+	void client;
 
-const tool = getClientTool('ip-geolocation');
-void tool;
+	const tool = getClientTool('ip-geolocation');
+	void tool;
 
 	let provider = $state<'ipinfo' | 'maxmind' | 'db-ip'>('ipinfo');
 	let includeTimezone = $state(true);

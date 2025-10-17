@@ -21,7 +21,7 @@ declare module 'node:quic' {
 		setEncoding?(encoding: string): void;
 	}
 
-	interface QuicServerSession extends EventEmitter {}
+	type QuicServerSession = EventEmitter;
 
 	interface QuicSocket extends EventEmitter {
 		listen?(options: QuicServerListenOptions): Promise<void>;

@@ -27,8 +27,8 @@
 	let velocityY = 0;
 	let lastX = x;
 	let lastY = y;
-let windowRef: HTMLElement | null = null;
-let isVisible = $state(true);
+	let windowRef: HTMLElement | null = null;
+	let isVisible = $state(true);
 
 	function bringToFront() {
 		z = nextZ();
@@ -73,18 +73,18 @@ let isVisible = $state(true);
 		y = targetY;
 	}
 
-function handlePointerDown(e: PointerEvent) {
-	bringToFront();
-	startDrag(e);
-}
-
-function handleClose() {
-	if (onClose) {
-		onClose();
-		return;
+	function handlePointerDown(e: PointerEvent) {
+		bringToFront();
+		startDrag(e);
 	}
-	isVisible = false;
-}
+
+	function handleClose() {
+		if (onClose) {
+			onClose();
+			return;
+		}
+		isVisible = false;
+	}
 
 	$effect(() => {
 		document.addEventListener('pointermove', moveDrag);

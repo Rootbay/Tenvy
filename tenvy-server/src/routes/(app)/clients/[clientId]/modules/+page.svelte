@@ -6,6 +6,7 @@
 		CardHeader,
 		CardTitle
 	} from '$lib/components/ui/card/index.js';
+	import { resolve } from '$app/paths';
 	import { buildClientToolUrl, type ClientToolDefinition } from '$lib/data/client-tools';
 	import type { PageData } from './$types';
 
@@ -46,7 +47,7 @@
 				{#each tools as item (item.id)}
 					<a
 						class="group flex flex-col rounded-lg border border-slate-200/70 bg-white/60 p-4 transition hover:border-sky-400 hover:shadow-sm dark:border-slate-800/70 dark:bg-slate-900/60 dark:hover:border-sky-500"
-						href={buildClientToolUrl(client.id, item)}
+						href={resolve(buildClientToolUrl(client.id, item))}
 						target={item.target === '_blank' ? '_blank' : undefined}
 						rel={item.target === '_blank' ? 'noopener noreferrer' : undefined}
 					>

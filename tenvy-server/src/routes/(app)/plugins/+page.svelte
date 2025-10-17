@@ -130,7 +130,6 @@
 	});
 
 	const totalInstalled = $derived(registry.length);
-	const activeCount = $derived(registry.filter((p: Plugin) => p.enabled).length);
 	const updatesPending = $derived(registry.filter((p: Plugin) => p.status === 'update').length);
 	const autoManagedCount = $derived(registry.filter((p: Plugin) => p.autoUpdate).length);
 	const totalCoverage = $derived(
@@ -208,7 +207,7 @@
 							Status
 						</p>
 						<div class="flex flex-wrap gap-2">
-							{#each statusFilters as option}
+							{#each statusFilters as option (option.value)}
 								<Button
 									type="button"
 									size="sm"
@@ -225,7 +224,7 @@
 							Category
 						</p>
 						<div class="flex flex-wrap gap-2">
-							{#each categoryFilters as option}
+							{#each categoryFilters as option (option.value)}
 								<Button
 									type="button"
 									size="sm"
@@ -428,7 +427,7 @@
 									</p>
 								</div>
 								<div class="flex flex-wrap gap-2">
-									{#each distributionModes as mode}
+									{#each distributionModes as mode (mode)}
 										<Button
 											type="button"
 											size="sm"

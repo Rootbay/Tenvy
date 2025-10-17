@@ -1,14 +1,8 @@
 <script lang="ts">
 	import { browser } from '$app/environment';
 	import { onMount } from 'svelte';
-	import {
-		Card,
-		CardContent,
-		CardDescription,
-		CardFooter,
-		CardHeader,
-		CardTitle
-	} from '$lib/components/ui/card/index.js';
+	import { SvelteMap, SvelteSet } from 'svelte/reactivity';
+	import { Card, CardContent, CardFooter } from '$lib/components/ui/card/index.js';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import {
 		Select,
@@ -18,8 +12,6 @@
 	} from '$lib/components/ui/select/index.js';
 	import { Switch } from '$lib/components/ui/switch/index.js';
 	import { Label } from '$lib/components/ui/label/index.js';
-	import { Badge } from '$lib/components/ui/badge/index.js';
-	import { Separator } from '$lib/components/ui/separator/index.js';
 	import type { Client } from '$lib/data/clients';
 	import type {
 		RemoteDesktopFramePacket,
@@ -61,15 +53,12 @@
 	let monitor = $state(0);
 	let mouseEnabled = $state(false);
 	let keyboardEnabled = $state(false);
-	let activeEncoderValue = $state<RemoteDesktopSettings['encoder']>('auto');
 	let encoderHardware = $state<string | null>(null);
-	let intraRefreshEnabled = $state(false);
 	let fps = $state<number | null>(null);
 	let bandwidth = $state<number | null>(null);
 	let streamWidth = $state<number | null>(null);
 	let streamHeight = $state<number | null>(null);
 	let latencyMs = $state<number | null>(null);
-	let droppedFrames = $state(0);
 	let isStarting = $state(false);
 	let isStopping = $state(false);
 	let isUpdating = $state(false);
@@ -108,8 +97,8 @@
 		: null;
 
 	const captureTimestamp = () => inputChannel?.captureTimestamp() ?? Date.now();
-	const pressedKeys = new Set<number>();
-	const pressedKeyMeta = new Map<number, { key?: string; code?: string }>();
+	const pressedKeys = new SvelteSet<number>();
+	const pressedKeyMeta = new SvelteMap<number, { key?: string; code?: string }>();
 	const pointerButtonMap: Record<number, RemoteDesktopMouseButton> = {
 		0: 'left',
 		1: 'middle',
@@ -177,7 +166,6 @@
 		streamWidth = null;
 		streamHeight = null;
 		latencyMs = null;
-		droppedFrames = 0;
 	}
 
 	function disconnectStream() {
@@ -290,17 +278,12 @@
 		frameQueue.push(frame);
 
 		if (frameQueue.length > MAX_FRAME_QUEUE) {
-			let removed = 0;
 			while (frameQueue.length > MAX_FRAME_QUEUE) {
 				if (frameQueue[0]?.keyFrame && frameQueue.length > 1) {
 					frameQueue.splice(1, 1);
 				} else {
 					frameQueue.shift();
 				}
-				removed += 1;
-			}
-			if (removed > 0) {
-				droppedFrames += removed;
 			}
 		}
 
@@ -335,9 +318,6 @@
 					latencyMs = inputChannel?.computeLatency(next.timestamp) ?? null;
 					if (typeof next.encoderHardware === 'string' && next.encoderHardware.length > 0) {
 						encoderHardware = next.encoderHardware;
-					}
-					if (typeof next.intraRefresh === 'boolean') {
-						intraRefreshEnabled = next.intraRefresh;
 					}
 					if (next.monitors && next.monitors.length > 0) {
 						monitors = next.monitors;
@@ -879,21 +859,18 @@
 	}
 
 	$effect(() => {
-		mouseEnabled;
 		if (!mouseEnabled) {
 			releasePointerCapture();
 		}
 	});
 
 	$effect(() => {
-		keyboardEnabled;
 		if (!keyboardEnabled) {
 			releaseAllPressedKeys();
 		}
 	});
 
 	$effect(() => {
-		sessionActive;
 		if (!sessionActive) {
 			releasePointerCapture();
 			releaseAllPressedKeys();
@@ -906,9 +883,7 @@
 		if (!current) {
 			quality = 'auto';
 			encoder = 'auto';
-			activeEncoderValue = 'auto';
 			encoderHardware = null;
-			intraRefreshEnabled = false;
 			mode = 'video';
 			monitor = 0;
 			mouseEnabled = true;
@@ -922,9 +897,7 @@
 		quality = current.settings.quality;
 		const configuredEncoder = current.settings.encoder ?? 'auto';
 		encoder = configuredEncoder;
-		activeEncoderValue = current.activeEncoder ?? configuredEncoder;
 		encoderHardware = current.encoderHardware ?? encoderHardware;
-		intraRefreshEnabled = current.intraRefresh === true;
 		mode = current.settings.mode;
 		monitor = current.settings.monitor;
 		mouseEnabled = current.settings.mouse;
@@ -954,7 +927,6 @@
 			return;
 		}
 		const current = session;
-		mouseEnabled;
 		if (!current) {
 			return;
 		}
@@ -974,7 +946,6 @@
 			return;
 		}
 		const current = session;
-		keyboardEnabled;
 		if (!current) {
 			return;
 		}

@@ -113,7 +113,11 @@ export function buildActivitySnapshot(): ActivitySnapshot {
 	];
 
 	const moduleActivity: ActivityModuleEntry[] = moduleSeed.map(
-		({ previousExecuted, previousQueued, ...rest }) => rest
+		({ previousExecuted, previousQueued, ...rest }) => {
+			void previousExecuted;
+			void previousQueued;
+			return rest;
+		}
 	);
 
 	const latencySeed: ActivityLatencyPoint[] = [

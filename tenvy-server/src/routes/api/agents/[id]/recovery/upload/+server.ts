@@ -54,8 +54,7 @@ function sanitizeArchiveName(
 	fallback: string,
 	requestId: string
 ): string {
-	const normalize = (input: string) =>
-		normalizeWhitespace(input);
+	const normalize = (input: string) => normalizeWhitespace(input);
 	const preferred = candidate ? normalize(candidate) : '';
 	if (preferred) {
 		return preferred;
