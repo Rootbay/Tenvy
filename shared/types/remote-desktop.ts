@@ -117,9 +117,6 @@ export interface RemoteDesktopInputBurst {
 export interface RemoteDesktopFrameMetrics {
   fps?: number;
   bandwidthKbps?: number;
-  cpuPercent?: number;
-  gpuPercent?: number;
-  clipQuality?: number;
   captureLatencyMs?: number;
   encodeLatencyMs?: number;
   processingLatencyMs?: number;

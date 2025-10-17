@@ -138,9 +138,6 @@ type RemoteDesktopInputEvent struct {
 type RemoteDesktopFrameMetrics struct {
 	FPS                 float64 `json:"fps,omitempty"`
 	BandwidthKbps       float64 `json:"bandwidthKbps,omitempty"`
-	CPUPercent          float64 `json:"cpuPercent,omitempty"`
-	GPUPercent          float64 `json:"gpuPercent,omitempty"`
-	ClipQuality         int     `json:"clipQuality,omitempty"`
 	CaptureLatencyMs    float64 `json:"captureLatencyMs,omitempty"`
 	EncodeLatencyMs     float64 `json:"encodeLatencyMs,omitempty"`
 	ProcessingLatencyMs float64 `json:"processingLatencyMs,omitempty"`

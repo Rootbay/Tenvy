@@ -751,7 +751,7 @@ func (c *remoteDesktopSessionController) handleVideoFrame(
 		}
 	}
 
-	metrics := computeMetrics(interval, frameDuration, captureDuration, encodeDuration, processingDuration, state.clipBytes, snapshot.clipQuality)
+	metrics := computeMetrics(interval, frameDuration, captureDuration, encodeDuration, processingDuration, state.clipBytes)
 	timestamp := time.Now()
 	frame := RemoteDesktopFramePacket{
 		SessionID: snapshot.sessionID,
@@ -2010,7 +2010,6 @@ func clampMonitorIndex(monitors []remoteMonitor, index int) int {
 func computeMetrics(
 	targetInterval, frameDuration, captureDuration, encodeDuration, processing time.Duration,
 	bytesSent int,
-	clipQuality int,
 ) *RemoteDesktopFrameMetrics {
 	if targetInterval <= 0 {
 		targetInterval = 100 * time.Millisecond
@@ -2028,29 +2027,9 @@ func computeMetrics(
 		bandwidth = float64(bytesSent*8) / 1024 / frameDuration.Seconds()
 	}
 
-	cpuRatio := 0.0
-	if targetInterval > 0 && processing > 0 {
-		cpuRatio = processing.Seconds() / targetInterval.Seconds()
-	}
-	if cpuRatio < 0 {
-		cpuRatio = 0
-	}
-	cpuUsage := math.Min(95, math.Max(0, cpuRatio*100))
-	gpuUsage := math.Min(90, cpuUsage*0.6)
-
 	metrics := &RemoteDesktopFrameMetrics{
 		FPS:           math.Round(fps*10) / 10,
 		BandwidthKbps: math.Round(bandwidth*10) / 10,
-	}
-
-	if cpuUsage > 0 {
-		metrics.CPUPercent = math.Round(cpuUsage*10) / 10
-	}
-	if gpuUsage > 0 {
-		metrics.GPUPercent = math.Round(gpuUsage*10) / 10
-	}
-	if clipQuality > 0 {
-		metrics.ClipQuality = clampInt(clipQuality, 1, 100)
 	}
 
 	if captureDuration > 0 {

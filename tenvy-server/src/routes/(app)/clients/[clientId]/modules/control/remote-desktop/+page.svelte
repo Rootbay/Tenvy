@@ -1,7 +1,6 @@
 <script lang="ts">
 	import { browser } from '$app/environment';
 	import { onMount } from 'svelte';
-	import { Tabs, TabsContent, TabsList, TabsTrigger } from '$lib/components/ui/tabs/index.js';
 	import {
 		Card,
 		CardContent,
@@ -22,18 +21,17 @@
 	import { Badge } from '$lib/components/ui/badge/index.js';
 	import { Separator } from '$lib/components/ui/separator/index.js';
 	import type { Client } from '$lib/data/clients';
-        import type {
-                RemoteDesktopFramePacket,
-                RemoteDesktopInputEvent,
-                RemoteDesktopMonitor,
-                RemoteDesktopMouseButton,
-                RemoteDesktopSessionState,
-                RemoteDesktopSettings,
-                RemoteDesktopSettingsPatch
-        } from '$lib/types/remote-desktop';
-        import SessionMetricsGrid from './SessionMetricsGrid.svelte';
-        import { createInputChannel } from './input-channel';
-        import { formatTimestamp } from './formatters';
+    import type {
+            RemoteDesktopFramePacket,
+            RemoteDesktopInputEvent,
+            RemoteDesktopMonitor,
+            RemoteDesktopMouseButton,
+            RemoteDesktopSessionState,
+            RemoteDesktopSettings,
+            RemoteDesktopSettingsPatch
+    } from '$lib/types/remote-desktop';
+    import SessionMetricsGrid from './SessionMetricsGrid.svelte';
+    import { createInputChannel } from './input-channel';
 
 	const fallbackMonitors = [
 		{ id: 0, label: 'Primary', width: 1280, height: 720 }
@@ -70,15 +68,14 @@
 	let monitor = $state(0);
 	let mouseEnabled = $state(false);
 	let keyboardEnabled = $state(false);
-        let activeEncoderValue = $state<RemoteDesktopSettings['encoder']>('auto');
-        let encoderHardware = $state<string | null>(null);
-        let intraRefreshEnabled = $state(false);
-        let fps = $state<number | null>(null);
-        let bandwidth = $state<number | null>(null);
-        let clipQuality = $state<number | null>(null);
-        let streamWidth = $state<number | null>(null);
-        let streamHeight = $state<number | null>(null);
-        let latencyMs = $state<number | null>(null);
+    let activeEncoderValue = $state<RemoteDesktopSettings['encoder']>('auto');
+    let encoderHardware = $state<string | null>(null);
+    let intraRefreshEnabled = $state(false);
+    let fps = $state<number | null>(null);
+    let bandwidth = $state<number | null>(null);
+    let streamWidth = $state<number | null>(null);
+    let streamHeight = $state<number | null>(null);
+    let latencyMs = $state<number | null>(null);
 	let droppedFrames = $state(0);
 	let isStarting = $state(false);
 	let isStopping = $state(false);
@@ -88,52 +85,47 @@
 	let monitors = $state<RemoteDesktopMonitor[]>(fallbackMonitors);
 	let sessionActive = $state(false);
 	let sessionId = $state('');
-
-        let viewportEl: HTMLDivElement | null = null;
-        let viewportFocused = false;
-        let pointerCaptured = false;
-        let activePointerId: number | null = null;
-
-        const inputChannel = browser
-                ? createInputChannel({
-                                dispatch: async (events) => {
-                                        if (!client || !sessionActive || !sessionId) {
-                                                return false;
-                                        }
-                                        const response = await fetch(
-                                                `/api/agents/${client.id}/remote-desktop/input`,
-                                                {
-                                                        method: 'POST',
-                                                        headers: { 'Content-Type': 'application/json' },
-                                                        body: JSON.stringify({ sessionId, events }),
-                                                        keepalive: true
-                                                }
-                                        );
-                                        if (!response.ok) {
-                                                const message = await response.text();
-                                                console.warn('Remote desktop input dispatch failed', message);
-                                                return false;
-                                        }
-                                        return true;
-                                },
-                                onDispatchError: (error) => {
-                                        console.error('Failed to send remote desktop input events', error);
+    let viewportEl: HTMLDivElement | null = null;
+    let viewportFocused = false;
+    let pointerCaptured = false;
+    let activePointerId: number | null = null;
+    const inputChannel = browser
+        ? createInputChannel({
+                        dispatch: async (events) => {
+                                if (!client || !sessionActive || !sessionId) {
+                                        return false;
                                 }
-                        })
-                : null;
+                                const response = await fetch(
+                                        `/api/agents/${client.id}/remote-desktop/input`,
+                                        {
+                                                method: 'POST',
+                                                headers: { 'Content-Type': 'application/json' },
+                                                body: JSON.stringify({ sessionId, events }),
+                                                keepalive: true
+                                        }
+                                );
+                                if (!response.ok) {
+                                        const message = await response.text();
+                                        console.warn('Remote desktop input dispatch failed', message);
+                                        return false;
+                                }
+                                return true;
+                        },
+                        onDispatchError: (error) => {
+                                console.error('Failed to send remote desktop input events', error);
+                        }
+                })
+        : null;
 
-        const captureTimestamp = () => inputChannel?.captureTimestamp() ?? Date.now();
-
-        const pressedKeys = new Set<number>();
-        const pressedKeyMeta = new Map<number, { key?: string; code?: string }>();
-
-        const pointerButtonMap: Record<number, RemoteDesktopMouseButton> = {
-                0: 'left',
-                1: 'middle',
-                2: 'right'
-        };
-
-        let canvasEl: HTMLCanvasElement | null = null;
+    const captureTimestamp = () => inputChannel?.captureTimestamp() ?? Date.now();
+    const pressedKeys = new Set<number>();
+    const pressedKeyMeta = new Map<number, { key?: string; code?: string }>();
+    const pointerButtonMap: Record<number, RemoteDesktopMouseButton> = {
+            0: 'left',
+            1: 'middle',
+            2: 'right'
+    };
+    let canvasEl: HTMLCanvasElement | null = null;
 	let canvasContext: CanvasRenderingContext2D | null = null;
 	let eventSource: EventSource | null = null;
 	let streamSessionId: string | null = null;
@@ -141,7 +133,6 @@
 	let processing = false;
 	let stopRequested = false;
 	let imageBitmapFallbackLogged = false;
-
 	let skipMouseSync = true;
 	let skipKeyboardSync = true;
 
@@ -199,7 +190,6 @@
 	function resetMetrics() {
 		fps = null;
 		bandwidth = null;
-		clipQuality = null;
 		streamWidth = null;
 		streamHeight = null;
 		latencyMs = null;
@@ -355,21 +345,19 @@
 						fps = typeof metrics.fps === 'number' ? metrics.fps : fps;
 						bandwidth =
 							typeof metrics.bandwidthKbps === 'number' ? metrics.bandwidthKbps : bandwidth;
-						clipQuality =
-							typeof metrics.clipQuality === 'number' ? metrics.clipQuality : clipQuality;
 					}
-                                        streamWidth = typeof next.width === 'number' ? next.width : streamWidth;
-                                        streamHeight = typeof next.height === 'number' ? next.height : streamHeight;
-                                        latencyMs = inputChannel?.computeLatency(next.timestamp) ?? null;
-                                        if (typeof next.encoderHardware === 'string' && next.encoderHardware.length > 0) {
-                                                encoderHardware = next.encoderHardware;
-                                        }
-                                        if (typeof next.intraRefresh === 'boolean') {
-                                                intraRefreshEnabled = next.intraRefresh;
-                                        }
-                                        if (next.monitors && next.monitors.length > 0) {
-                                                monitors = next.monitors;
-                                        }
+                        streamWidth = typeof next.width === 'number' ? next.width : streamWidth;
+                        streamHeight = typeof next.height === 'number' ? next.height : streamHeight;
+                        latencyMs = inputChannel?.computeLatency(next.timestamp) ?? null;
+                        if (typeof next.encoderHardware === 'string' && next.encoderHardware.length > 0) {
+                                encoderHardware = next.encoderHardware;
+                        }
+                        if (typeof next.intraRefresh === 'boolean') {
+                                intraRefreshEnabled = next.intraRefresh;
+                        }
+                        if (next.monitors && next.monitors.length > 0) {
+                                monitors = next.monitors;
+                        }
 					if (session) {
 						session = {
 							...session,
@@ -967,8 +955,6 @@
 				typeof current.metrics.bandwidthKbps === 'number'
 					? current.metrics.bandwidthKbps
 					: bandwidth;
-			clipQuality =
-				typeof current.metrics.clipQuality === 'number' ? current.metrics.clipQuality : clipQuality;
 		}
 	});
 
@@ -1078,21 +1064,17 @@
 		</div>
 	</CardHeader>
 	<CardContent>
-                <div class="flex items-center gap-2">
-                        <Badge variant={sessionActive ? 'default' : 'outline'}>
-                                {sessionActive ? 'Active' : 'Inactive'}
-                        </Badge>
-                        <Badge variant="outline">Encoder: {encoderLabel(activeEncoderValue)}</Badge>
-                        {#if encoderHardware}
-                                <Badge variant="outline">Hardware: {encoderHardware}</Badge>
-                        {/if}
-                        {#if intraRefreshEnabled}
-                                <Badge variant="outline">Intra-refresh</Badge>
-                        {/if}
-                        {#if sessionId}
-                                <span class="text-xs text-muted-foreground">Session ID: {sessionId}</span>
-                        {/if}
-                </div>
+        <div class="flex items-center gap-2 mb-1">
+                {#if encoderHardware}
+                        <Badge variant="outline">Hardware: {encoderHardware}</Badge>
+                {/if}
+                {#if intraRefreshEnabled}
+                        <Badge variant="outline">Intra-refresh</Badge>
+                {/if}
+                {#if sessionId}
+                        <span class="text-xs text-muted-foreground">Session ID: {sessionId}</span>
+                {/if}
+        </div>
 		<div
 			tabindex="-1"
 			bind:this={viewportEl}
@@ -1121,7 +1103,6 @@
                 <SessionMetricsGrid
                         {fps}
                         {bandwidth}
-                        {clipQuality}
                         {streamWidth}
                         {streamHeight}
                         latencyMs={latencyMs}
@@ -1136,14 +1117,6 @@
 	<CardFooter
 		class="flex flex-wrap items-center justify-between gap-3 text-xs text-muted-foreground"
 	>
-		<div>
-			<span>Last frame: {formatTimestamp(session?.lastUpdatedAt)}</span>
-			{#if droppedFrames > 0}
-				<p class="text-xs text-muted-foreground">
-					Dropped {droppedFrames} frame{droppedFrames === 1 ? '' : 's'} to keep playback responsive.
-				</p>
-			{/if}
-		</div>
 		<div class="flex gap-4">
 			<div class="w-70">
 				<Label class="text-sm font-medium" for="quality-select">Quality</Label>
@@ -1167,7 +1140,7 @@
 					</SelectContent>
 				</Select>
 			</div>
-			<div class="w-70 space-y-2">
+			<div class="w-70">
 				<Label class="text-sm font-medium" for="encoder-select">Encoder</Label>
 				<Select
 					type="single"
@@ -1190,7 +1163,7 @@
 					</SelectContent>
 				</Select>
 			</div>
-			<div class="w-70 space-y-2">
+			<div class="w-70">
 				<Label class="text-sm font-medium" for="monitor-select">Monitor</Label>
 				<Select
 					type="single"
@@ -1215,27 +1188,22 @@
 					</SelectContent>
 				</Select>
 			</div>
-			<div class="flex rounded-lg border border-border bg-muted/40">
-				<div class="flex gap-2 p-3">
-					<div>
-						<p class="text-sm font-medium">Mouse control</p>
-					</div>
-					<Switch
-						bind:checked={mouseEnabled}
-						disabled={!sessionActive || isUpdating}
-						aria-label="Toggle mouse control"
-					/>
-				</div>
-				<div class="flex gap-2 p-3">
-					<div>
-						<p class="text-sm font-medium">Keyboard control</p>
-					</div>
-					<Switch
-						bind:checked={keyboardEnabled}
-						disabled={!sessionActive || isUpdating}
-						aria-label="Toggle keyboard control"
-					/>
-				</div>
+			<div class="flex items-center gap-2">
+				<p class="text-sm font-medium">Mouse control</p>
+				<Switch
+					bind:checked={mouseEnabled}
+					disabled={!sessionActive || isUpdating}
+					aria-label="Toggle mouse control"
+				/>
+			</div>
+
+			<div class="flex items-center gap-2">
+				<p class="text-sm font-medium">Keyboard control</p>
+				<Switch
+					bind:checked={keyboardEnabled}
+					disabled={!sessionActive || isUpdating}
+					aria-label="Toggle keyboard control"
+				/>
 			</div>
 		</div>
 		<div class="flex gap-2">
