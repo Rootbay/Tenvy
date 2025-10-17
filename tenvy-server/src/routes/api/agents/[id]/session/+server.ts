@@ -1,6 +1,7 @@
 import { error } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { registry, RegistryError } from '$lib/server/rat/store';
+import { COMMAND_STREAM_SUBPROTOCOL } from '../../../../../../../shared/constants/protocol';
 
 function extractBearerToken(headerValue: string | null): string | null {
 	if (!headerValue) {
@@ -8,6 +9,16 @@ function extractBearerToken(headerValue: string | null): string | null {
 	}
 	const match = /^Bearer\s+(?<token>.+)$/i.exec(headerValue.trim());
 	return match?.groups?.token?.trim() ?? null;
+}
+
+function parseSubprotocolHeader(headerValue: string | null): string[] {
+	if (!headerValue) {
+		return [];
+	}
+	return headerValue
+		.split(',')
+		.map((value) => value.trim())
+		.filter((value) => value !== '');
 }
 
 export const GET: RequestHandler = ({ request, params, getClientAddress }) => {
@@ -23,6 +34,11 @@ export const GET: RequestHandler = ({ request, params, getClientAddress }) => {
 	const key = extractBearerToken(request.headers.get('authorization'));
 	if (!key) {
 		throw error(401, 'Missing agent key');
+	}
+
+	const requestedProtocols = parseSubprotocolHeader(request.headers.get('sec-websocket-protocol'));
+	if (!requestedProtocols.includes(COMMAND_STREAM_SUBPROTOCOL)) {
+		throw error(426, 'Unsupported WebSocket protocol');
 	}
 
 	const pairFactory = (

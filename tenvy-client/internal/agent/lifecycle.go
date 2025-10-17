@@ -376,10 +376,16 @@ func shouldReRegister(err error) bool {
 	}
 	var httpErr *syncHTTPError
 	if errors.As(err, &httpErr) {
-		switch httpErr.StatusCode() {
-		case http.StatusUnauthorized, http.StatusForbidden, http.StatusNotFound, http.StatusGone:
-			return true
-		}
+		return shouldReRegisterStatus(httpErr.StatusCode())
 	}
 	return false
+}
+
+func shouldReRegisterStatus(status int) bool {
+	switch status {
+	case http.StatusUnauthorized, http.StatusForbidden, http.StatusNotFound, http.StatusGone:
+		return true
+	default:
+		return false
+	}
 }

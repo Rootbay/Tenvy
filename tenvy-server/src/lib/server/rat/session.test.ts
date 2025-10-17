@@ -16,12 +16,14 @@ const baseMetadata = {
 class MockSocket {
 	readyState = 1;
 	accepted = false;
+	protocol: string | null = null;
 	closed = false;
 	sent: string[] = [];
 	private listeners = new Map<string, Set<() => void>>();
 
-	accept() {
+	accept(options?: { protocol?: string }) {
 		this.accepted = true;
+		this.protocol = options?.protocol ?? null;
 	}
 
 	send(data: unknown) {
@@ -59,21 +61,21 @@ class MockSocket {
 }
 
 describe('AgentRegistry live sessions', () => {
-        let registry: AgentRegistry;
-        let registration: AgentRegistrationResponse;
-        let tempDir: string;
+	let registry: AgentRegistry;
+	let registration: AgentRegistrationResponse;
+	let tempDir: string;
 
-        beforeEach(() => {
-                tempDir = mkdtempSync(path.join(tmpdir(), 'agent-registry-test-'));
-                const storagePath = path.join(tempDir, 'registry.json');
-                registry = new AgentRegistry({ storagePath });
-                registration = registry.registerAgent({ metadata: baseMetadata });
-        });
+	beforeEach(() => {
+		tempDir = mkdtempSync(path.join(tmpdir(), 'agent-registry-test-'));
+		const storagePath = path.join(tempDir, 'registry.json');
+		registry = new AgentRegistry({ storagePath });
+		registration = registry.registerAgent({ metadata: baseMetadata });
+	});
 
-        afterEach(async () => {
-                await registry.flush();
-                rmSync(tempDir, { recursive: true, force: true });
-        });
+	afterEach(async () => {
+		await registry.flush();
+		rmSync(tempDir, { recursive: true, force: true });
+	});
 
 	function attach(socket: MockSocket) {
 		registry.attachSession(
