@@ -1,13 +1,13 @@
 declare module '@simplewebauthn/server' {
-	export const generateRegistrationOptions: (...args: any[]) => Promise<any>;
-	export const verifyRegistrationResponse: (...args: any[]) => Promise<any>;
-	export const generateAuthenticationOptions: (...args: any[]) => Promise<any>;
-	export const verifyAuthenticationResponse: (...args: any[]) => Promise<any>;
+        export const generateRegistrationOptions: (...args: unknown[]) => Promise<unknown>;
+        export const verifyRegistrationResponse: (...args: unknown[]) => Promise<unknown>;
+        export const generateAuthenticationOptions: (...args: unknown[]) => Promise<unknown>;
+        export const verifyAuthenticationResponse: (...args: unknown[]) => Promise<unknown>;
 }
 
 declare module '@simplewebauthn/browser' {
-	export const startRegistration: (...args: any[]) => Promise<any>;
-	export const startAuthentication: (...args: any[]) => Promise<any>;
+        export const startRegistration: (...args: unknown[]) => Promise<unknown>;
+        export const startAuthentication: (...args: unknown[]) => Promise<unknown>;
 }
 
 declare module '$lib/paraglide/server' {
@@ -22,6 +22,6 @@ declare module '$lib/paraglide/runtime' {
 }
 
 declare module 'systeminformation' {
-	const value: any;
-	export default value;
+        const value: unknown;
+        export default value;
 }

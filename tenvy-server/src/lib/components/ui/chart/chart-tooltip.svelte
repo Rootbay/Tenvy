@@ -6,10 +6,9 @@
 	import { browser } from '$app/environment';
 	import type { Snippet } from 'svelte';
 
-	// eslint-disable-next-line @typescript-eslint/no-explicit-any
-	function defaultFormatter(value: any, _payload: TooltipPayload[]) {
-		return `${value}`;
-	}
+        function defaultFormatter(value: unknown) {
+                return `${value}`;
+        }
 
 	let {
 		ref = $bindable(null),
@@ -33,8 +32,8 @@
 		labelKey?: string;
 		hideIndicator?: boolean;
 		labelClassName?: string;
-		labelFormatter?: // eslint-disable-next-line @typescript-eslint/no-explicit-any
-		((value: any, payload: TooltipPayload[]) => string | number | Snippet) | null;
+                labelFormatter?:
+                        ((value: unknown, payload: TooltipPayload[]) => string | number | Snippet) | null;
 		formatter?: Snippet<
 			[
 				{

@@ -40,41 +40,57 @@
 </script>
 
 <script lang="ts">
-	let {
-		class: className,
-		variant = 'default',
-		size = 'default',
-		ref = $bindable(null),
-		href = undefined,
-		type = 'button',
-		disabled,
-		children,
-		...restProps
-	}: ButtonProps = $props();
+        import { resolve } from '$app/paths';
+
+        let {
+                class: className,
+                variant = 'default',
+                size = 'default',
+                ref = $bindable(null),
+                href = undefined,
+                type = 'button',
+                disabled,
+                children,
+                ...restProps
+        }: ButtonProps = $props();
+
 </script>
 
 {#if href}
-	<a
-		bind:this={ref}
-		data-slot="button"
-		class={cn(buttonVariants({ variant, size }), className)}
-		href={disabled ? undefined : href}
-		aria-disabled={disabled}
-		role={disabled ? 'link' : undefined}
-		tabindex={disabled ? -1 : undefined}
-		{...restProps}
-	>
-		{@render children?.()}
-	</a>
+        {@const computedHref = typeof href === 'string' ? href : href.toString()}
+        {#if disabled}
+                <a
+                        bind:this={ref}
+                        data-slot="button"
+                        class={cn(buttonVariants({ variant, size }), className)}
+                        aria-disabled={true}
+                        role="link"
+                        tabindex={-1}
+                        {...restProps}
+                >
+                        {@render children?.()}
+                </a>
+        {:else}
+                <a
+                        bind:this={ref}
+                        data-slot="button"
+                        class={cn(buttonVariants({ variant, size }), className)}
+                        href={resolve(computedHref)}
+                        aria-disabled={false}
+                        {...restProps}
+                >
+                        {@render children?.()}
+                </a>
+        {/if}
 {:else}
-	<button
-		bind:this={ref}
-		data-slot="button"
-		class={cn(buttonVariants({ variant, size }), className)}
-		{type}
-		{disabled}
-		{...restProps}
-	>
-		{@render children?.()}
-	</button>
+        <button
+                bind:this={ref}
+                data-slot="button"
+                class={cn(buttonVariants({ variant, size }), className)}
+                {type}
+                {disabled}
+                {...restProps}
+        >
+                {@render children?.()}
+        </button>
 {/if}
