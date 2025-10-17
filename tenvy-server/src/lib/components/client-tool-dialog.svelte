@@ -7,7 +7,12 @@
 	import { Label } from '$lib/components/ui/label/index.js';
 	import { Badge } from '$lib/components/ui/badge/index.js';
 	import { Textarea } from '$lib/components/ui/textarea/index.js';
-	import { Select, SelectTrigger, SelectContent, SelectItem } from '$lib/components/ui/select/index.js';
+	import {
+		Select,
+		SelectTrigger,
+		SelectContent,
+		SelectItem
+	} from '$lib/components/ui/select/index.js';
 	import type { Client } from '$lib/data/clients';
 	import { buildClientToolUrl, getClientTool, type DialogToolId } from '$lib/data/client-tools';
 	import { notifyToolActivationCommand } from '$lib/utils/agent-commands.js';

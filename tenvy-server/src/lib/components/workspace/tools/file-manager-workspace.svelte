@@ -522,28 +522,28 @@
 		return selectedEntry?.path === entry.path || filePreview?.path === entry.path;
 	}
 
-        async function loadDirectory(
-                path?: string,
-                options: {
-                        silent?: boolean;
-                        fromHistory?: boolean;
-                        refresh?: boolean;
-                        includeHiddenOverride?: boolean;
-                } = {}
-        ) {
-                if (!options.silent) {
-                        loading = true;
-                        errorMessage = null;
-                        successMessage = null;
-                }
-                const targetPath = path ?? listing?.path ?? undefined;
-                const includeHiddenPreference = options.includeHiddenOverride ?? includeHidden;
-                try {
-                        const resource = await fetchResource(targetPath, {
-                                type: 'directory',
-                                refresh: options.refresh ?? !options.silent,
-                                includeHidden: includeHiddenPreference
-                        });
+	async function loadDirectory(
+		path?: string,
+		options: {
+			silent?: boolean;
+			fromHistory?: boolean;
+			refresh?: boolean;
+			includeHiddenOverride?: boolean;
+		} = {}
+	) {
+		if (!options.silent) {
+			loading = true;
+			errorMessage = null;
+			successMessage = null;
+		}
+		const targetPath = path ?? listing?.path ?? undefined;
+		const includeHiddenPreference = options.includeHiddenOverride ?? includeHidden;
+		try {
+			const resource = await fetchResource(targetPath, {
+				type: 'directory',
+				refresh: options.refresh ?? !options.silent,
+				includeHidden: includeHiddenPreference
+			});
 			if (resource.type !== 'directory') {
 				if (!options.silent) {
 					applyFilePreview(resource);
@@ -583,19 +583,19 @@
 					successMessage = err.message;
 					errorMessage = null;
 				}
-                                startResourcePoll('directory', err.path ?? targetPath ?? null, {
-                                        includeHidden: err.includeHidden ?? includeHiddenPreference
-                                });
-                                return null;
-                        }
-                        if (err instanceof FileManagerRequestError && err.status === 404 && !options.silent) {
-                                startResourcePoll('directory', targetPath ?? null, {
-                                        includeHidden: includeHiddenPreference
-                                });
-                                successMessage = 'Waiting for the agent to provide the directory listing…';
-                                errorMessage = null;
-                                return null;
-                        }
+				startResourcePoll('directory', err.path ?? targetPath ?? null, {
+					includeHidden: err.includeHidden ?? includeHiddenPreference
+				});
+				return null;
+			}
+			if (err instanceof FileManagerRequestError && err.status === 404 && !options.silent) {
+				startResourcePoll('directory', targetPath ?? null, {
+					includeHidden: includeHiddenPreference
+				});
+				successMessage = 'Waiting for the agent to provide the directory listing…';
+				errorMessage = null;
+				return null;
+			}
 			if (!options.silent) {
 				errorMessage = err instanceof Error ? err.message : 'Failed to load directory';
 			}

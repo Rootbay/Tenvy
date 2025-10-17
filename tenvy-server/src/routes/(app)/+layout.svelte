@@ -115,7 +115,8 @@
 		},
 		clients: {
 			title: 'Clients',
-			description: 'Inspect connected endpoints, filter by posture, and triage which agents need attention next.'
+			description:
+				'Inspect connected endpoints, filter by posture, and triage which agents need attention next.'
 		},
 		build: {
 			title: 'Builder',
@@ -425,20 +426,20 @@
 </script>
 
 {#snippet SettingsLink({ props }: SidebarMenuButtonChildContext)}
-        {@const { class: existingClass } = props as { class?: string }}
-        {@const className = cn('cursor-pointer', existingClass)}
-        <a
-                {...props}
-                class={className}
-                href="/settings"
-                data-sveltekit-preload-data="hover"
-                aria-current={(layoutData as LayoutData).activeNav === 'settings' ? 'page' : undefined}
-        >
-                <Settings />
-                <div class="flex min-w-0 flex-col gap-0.5 text-left">
-                        <span class="truncate text-sm font-medium">Settings</span>
-                </div>
-        </a>
+	{@const { class: existingClass } = props as { class?: string }}
+	{@const className = cn('cursor-pointer', existingClass)}
+	<a
+		{...props}
+		class={className}
+		href="/settings"
+		data-sveltekit-preload-data="hover"
+		aria-current={(layoutData as LayoutData).activeNav === 'settings' ? 'page' : undefined}
+	>
+		<Settings />
+		<div class="flex min-w-0 flex-col gap-0.5 text-left">
+			<span class="truncate text-sm font-medium">Settings</span>
+		</div>
+	</a>
 {/snippet}
 
 <SidebarProvider>
@@ -481,18 +482,18 @@
 						/>
 						{#if item.badge}
 							<SidebarMenuBadge
-								class={cn('bg-sidebar-accent text-sidebar-accent-foreground mr-2', item.badgeClass)}
+								class={cn('mr-2 bg-sidebar-accent text-sidebar-accent-foreground', item.badgeClass)}
 							>
 								{item.badge}
 							</SidebarMenuBadge>
 						{/if}
 					</SidebarMenuItem>
 				{/each}
-                                <SidebarMenuItem class="hidden cursor-pointer group-data-[state=collapsed]:block">
-                                        <SidebarMenuButton
-                                                isActive={(layoutData as LayoutData).activeNav === 'settings'}
-                                                tooltipContent="Settings"
-                                                child={SettingsLink}
+				<SidebarMenuItem class="hidden cursor-pointer group-data-[state=collapsed]:block">
+					<SidebarMenuButton
+						isActive={(layoutData as LayoutData).activeNav === 'settings'}
+						tooltipContent="Settings"
+						child={SettingsLink}
 					/>
 				</SidebarMenuItem>
 			</SidebarMenu>
@@ -681,7 +682,7 @@
 							<p class="text-sm text-muted-foreground">{summary.description}</p>
 						</div>
 					</section>
-					<div class="flex flex-1 min-h-0 flex-col gap-8">
+					<div class="flex min-h-0 flex-1 flex-col gap-8">
 						{@render children?.()}
 					</div>
 				{/key}

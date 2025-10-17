@@ -4,7 +4,7 @@
 	import { cn } from '$lib/utils.js';
 	import { Badge } from '$lib/components/ui/badge/index.js';
 	import { Popover, PopoverContent, PopoverTrigger } from '$lib/components/ui/popover/index.js';
-import { onMount } from 'svelte';
+	import { onMount } from 'svelte';
 	import { select } from 'd3-selection';
 	import { zoom, zoomIdentity, type D3ZoomEvent, type ZoomTransform } from 'd3-zoom';
 	import { geoNaturalEarth1, geoPath, geoGraticule10 } from 'd3-geo';
@@ -215,7 +215,9 @@ import { onMount } from 'svelte';
 	</svg>
 
 	{#if markers.length === 0}
-		<div class="pointer-events-none absolute inset-0 flex items-center justify-center text-sm text-muted-foreground">
+		<div
+			class="pointer-events-none absolute inset-0 flex items-center justify-center text-sm text-muted-foreground"
+		>
 			No clients available for this selection.
 		</div>
 	{/if}
@@ -230,7 +232,7 @@ import { onMount } from 'svelte';
 					<PopoverTrigger
 						type="button"
 						class={cn(
-							'group absolute -translate-x-1/2 -translate-y-1/2 rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60',
+							'group absolute -translate-x-1/2 -translate-y-1/2 rounded-full focus-visible:ring-2 focus-visible:ring-primary/60 focus-visible:outline-none',
 							marker.dimmed ? 'opacity-30 transition-opacity hover:opacity-60' : 'opacity-100'
 						)}
 						style={`left: ${marker.left}%; top: ${marker.top}%; pointer-events: auto;`}
@@ -247,12 +249,18 @@ import { onMount } from 'svelte';
 							></span>
 						</span>
 						<span class="sr-only">
-							{marker.client.codename} — {marker.client.location.city}, {marker.client.location.country}
+							{marker.client.codename} — {marker.client.location.city}, {marker.client.location
+								.country}
 						</span>
 					</PopoverTrigger>
-					<PopoverContent side="top" align="center" sideOffset={12} class="w-60 space-y-3 p-4 text-sm">
+					<PopoverContent
+						side="top"
+						align="center"
+						sideOffset={12}
+						class="w-60 space-y-3 p-4 text-sm"
+					>
 						<div class="space-y-1">
-							<p class="text-sm font-semibold leading-tight">{marker.client.codename}</p>
+							<p class="text-sm leading-tight font-semibold">{marker.client.codename}</p>
 							<p class="text-xs leading-tight text-muted-foreground">
 								{marker.client.location.city}, {marker.client.location.country}
 							</p>
@@ -260,7 +268,7 @@ import { onMount } from 'svelte';
 						<div class="space-y-2 text-xs text-muted-foreground">
 							<div class="flex items-center justify-between gap-4">
 								<span>Status</span>
-								<Badge variant="secondary" class="uppercase tracking-wide text-[10px]">
+								<Badge variant="secondary" class="text-[10px] tracking-wide uppercase">
 									{statusLabels[marker.client.status]}
 								</Badge>
 							</div>

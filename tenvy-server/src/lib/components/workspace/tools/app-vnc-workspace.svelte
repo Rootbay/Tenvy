@@ -57,8 +57,7 @@
 		<CardHeader>
 			<CardTitle class="text-base">Session parameters</CardTitle>
 			<CardDescription>
-				Define how the app VNC worker should negotiate buffers and input forwarding with the
-				agent.
+				Define how the app VNC worker should negotiate buffers and input forwarding with the agent.
 			</CardDescription>
 		</CardHeader>
 		<CardContent class="space-y-6">

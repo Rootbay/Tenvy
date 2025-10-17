@@ -321,9 +321,9 @@ export class FileManagerStore {
 		const directories = this.directories.get(agentId);
 		const files = this.files.get(agentId);
 
-                const pruneMap = <T extends FileManagerResource>(
-                        map: Map<string, ResourceRecord<T>> | undefined
-                ) => {
+		const pruneMap = <T extends FileManagerResource>(
+			map: Map<string, ResourceRecord<T>> | undefined
+		) => {
 			if (!map) {
 				return undefined;
 			}

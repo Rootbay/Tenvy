@@ -8,15 +8,11 @@
 		ContextMenuSeparator,
 		ContextMenuSub,
 		ContextMenuSubContent,
-	ContextMenuSubTrigger,
-	ContextMenuTrigger
+		ContextMenuSubTrigger,
+		ContextMenuTrigger
 	} from '$lib/components/ui/context-menu/index.js';
 	import { Badge } from '$lib/components/ui/badge/index.js';
-	import {
-		Tooltip,
-		TooltipContent,
-		TooltipTrigger
-	} from '$lib/components/ui/tooltip/index.js';
+	import { Tooltip, TooltipContent, TooltipTrigger } from '$lib/components/ui/tooltip/index.js';
 	import { TableCell } from '$lib/components/ui/table/index.js';
 	import OsLogo from '$lib/components/os-logo.svelte';
 	import { cn } from '$lib/utils.js';
@@ -25,165 +21,165 @@
 	import type { AgentSnapshot } from '../../../../../shared/types/agent';
 	import type { SectionKey } from '$lib/client-sections';
 
-type TriggerChildProps = Parameters<NonNullable<ContextMenuPrimitive.TriggerProps['child']>>[0];
+	type TriggerChildProps = Parameters<NonNullable<ContextMenuPrimitive.TriggerProps['child']>>[0];
 
-type ResolvedLocation = {
-	label: string;
-	flagEmoji: string;
-	flagUrl?: string;
-	isVpn: boolean;
-};
-
-let {
-	agent,
-	openSection,
-	openManageTags,
-	onTagClick,
-	copyAgentId,
-	getAgentLocation,
-	getAgentTags,
-	formatPing,
-	formatDate
-} = $props<{
-	agent: AgentSnapshot;
-	openSection: (section: SectionKey, agent: AgentSnapshot) => void;
-	openManageTags: (agent: AgentSnapshot) => void;
-	copyAgentId: (agentId: string) => void;
-	onTagClick: (tag: string) => void;
-	getAgentLocation: (agent: AgentSnapshot) => { label: string; flag: string };
-	getAgentTags: (agent: AgentSnapshot) => string[];
-	formatPing: (agent: AgentSnapshot) => string;
-	formatDate: (value: string) => string;
-}>();
-
-const globalRegistry = globalThis as Record<string, unknown>;
-
-if (!globalRegistry.__tenvyIpLocationCache) {
-	globalRegistry.__tenvyIpLocationCache = new Map<string, ResolvedLocation>();
-}
-
-if (!globalRegistry.__tenvyIpLocationPromises) {
-	globalRegistry.__tenvyIpLocationPromises = new Map<string, Promise<ResolvedLocation>>();
-}
-
-const ipLocationCache = globalRegistry.__tenvyIpLocationCache as Map<string, ResolvedLocation>;
-const ipLocationPromises = globalRegistry.__tenvyIpLocationPromises as Map<
-	string,
-	Promise<ResolvedLocation>
->;
-
-function toResolvedLocation(base: { label: string; flag: string }): ResolvedLocation {
-	return {
-		label: base.label,
-		flagEmoji: base.flag,
-		flagUrl: undefined,
-		isVpn: false
+	type ResolvedLocation = {
+		label: string;
+		flagEmoji: string;
+		flagUrl?: string;
+		isVpn: boolean;
 	};
-}
 
-let locationDisplay = $state<ResolvedLocation>(toResolvedLocation(getAgentLocation(agent)));
+	let {
+		agent,
+		openSection,
+		openManageTags,
+		onTagClick,
+		copyAgentId,
+		getAgentLocation,
+		getAgentTags,
+		formatPing,
+		formatDate
+	} = $props<{
+		agent: AgentSnapshot;
+		openSection: (section: SectionKey, agent: AgentSnapshot) => void;
+		openManageTags: (agent: AgentSnapshot) => void;
+		copyAgentId: (agentId: string) => void;
+		onTagClick: (tag: string) => void;
+		getAgentLocation: (agent: AgentSnapshot) => { label: string; flag: string };
+		getAgentTags: (agent: AgentSnapshot) => string[];
+		formatPing: (agent: AgentSnapshot) => string;
+		formatDate: (value: string) => string;
+	}>();
 
-$effect(() => {
-	const baseLocation = toResolvedLocation(getAgentLocation(agent));
-	locationDisplay = baseLocation;
+	const globalRegistry = globalThis as Record<string, unknown>;
 
-	const ip = agent.metadata.publicIpAddress?.trim();
-	if (!ip || isLikelyPrivateIp(ip)) {
-		return;
+	if (!globalRegistry.__tenvyIpLocationCache) {
+		globalRegistry.__tenvyIpLocationCache = new Map<string, ResolvedLocation>();
 	}
 
-	const cached = ipLocationCache.get(ip);
-	if (cached) {
-		locationDisplay = { ...cached };
-		return;
+	if (!globalRegistry.__tenvyIpLocationPromises) {
+		globalRegistry.__tenvyIpLocationPromises = new Map<string, Promise<ResolvedLocation>>();
 	}
 
-	if (!browser) {
-		return;
-	}
+	const ipLocationCache = globalRegistry.__tenvyIpLocationCache as Map<string, ResolvedLocation>;
+	const ipLocationPromises = globalRegistry.__tenvyIpLocationPromises as Map<
+		string,
+		Promise<ResolvedLocation>
+	>;
 
-	const existingPromise = ipLocationPromises.get(ip);
-	if (existingPromise) {
-		return attachLocationPromise(ip, existingPromise, baseLocation);
-	}
-
-	const lookupPromise = fetchIpLocation(ip, baseLocation);
-	ipLocationPromises.set(ip, lookupPromise);
-	return attachLocationPromise(ip, lookupPromise, baseLocation);
-});
-
-function resolvePublicIpValue(agent: AgentSnapshot): string {
-	return agent.metadata.publicIpAddress?.trim() || agent.metadata.ipAddress?.trim() || '';
-}
-
-function resolveUsernameValue(agent: AgentSnapshot): string {
-	return agent.metadata.username?.trim() ?? '';
-}
-
-async function handleCopyValue(event: MouseEvent, rawValue: string, label: string) {
-	event.stopPropagation();
-
-	const value = rawValue.trim();
-	if (!value) {
-		toast.error(`No ${label} available to copy`, { position: 'bottom-right' });
-		return;
-	}
-
-	if (!browser) {
-		toast.error('Clipboard unavailable in this environment', { position: 'bottom-right' });
-		return;
-	}
-
-	const clipboard = navigator.clipboard;
-	if (!clipboard?.writeText) {
-		toast.error('Clipboard API is not accessible', { position: 'bottom-right' });
-		return;
-	}
-
-	try {
-		await clipboard.writeText(value);
-		toast.success(`${label} copied`, {
-			description: value,
-			position: 'bottom-right'
-		});
-	} catch (error) {
-		console.error(`Failed to copy ${label}`, error);
-		toast.error(`Failed to copy ${label}`, { position: 'bottom-right' });
-	}
-}
-
-function buildStatusMeta(agent: AgentSnapshot): {
-	label: string;
-	className: string;
-	indicatorClass: string;
-	tooltip: string;
-} {
-	const connectedLabel = formatDate(agent.connectedAt);
-	const lastSeenLabel = formatDate(agent.lastSeen);
-	if (agent.status === 'online') {
+	function toResolvedLocation(base: { label: string; flag: string }): ResolvedLocation {
 		return {
-			label: 'Online',
-			className: 'text-emerald-500',
-			indicatorClass: 'bg-emerald-500',
-			tooltip: `Connected since ${connectedLabel}`
+			label: base.label,
+			flagEmoji: base.flag,
+			flagUrl: undefined,
+			isVpn: false
 		};
 	}
-	if (agent.status === 'offline') {
+
+	let locationDisplay = $state<ResolvedLocation>(toResolvedLocation(getAgentLocation(agent)));
+
+	$effect(() => {
+		const baseLocation = toResolvedLocation(getAgentLocation(agent));
+		locationDisplay = baseLocation;
+
+		const ip = agent.metadata.publicIpAddress?.trim();
+		if (!ip || isLikelyPrivateIp(ip)) {
+			return;
+		}
+
+		const cached = ipLocationCache.get(ip);
+		if (cached) {
+			locationDisplay = { ...cached };
+			return;
+		}
+
+		if (!browser) {
+			return;
+		}
+
+		const existingPromise = ipLocationPromises.get(ip);
+		if (existingPromise) {
+			return attachLocationPromise(ip, existingPromise, baseLocation);
+		}
+
+		const lookupPromise = fetchIpLocation(ip, baseLocation);
+		ipLocationPromises.set(ip, lookupPromise);
+		return attachLocationPromise(ip, lookupPromise, baseLocation);
+	});
+
+	function resolvePublicIpValue(agent: AgentSnapshot): string {
+		return agent.metadata.publicIpAddress?.trim() || agent.metadata.ipAddress?.trim() || '';
+	}
+
+	function resolveUsernameValue(agent: AgentSnapshot): string {
+		return agent.metadata.username?.trim() ?? '';
+	}
+
+	async function handleCopyValue(event: MouseEvent, rawValue: string, label: string) {
+		event.stopPropagation();
+
+		const value = rawValue.trim();
+		if (!value) {
+			toast.error(`No ${label} available to copy`, { position: 'bottom-right' });
+			return;
+		}
+
+		if (!browser) {
+			toast.error('Clipboard unavailable in this environment', { position: 'bottom-right' });
+			return;
+		}
+
+		const clipboard = navigator.clipboard;
+		if (!clipboard?.writeText) {
+			toast.error('Clipboard API is not accessible', { position: 'bottom-right' });
+			return;
+		}
+
+		try {
+			await clipboard.writeText(value);
+			toast.success(`${label} copied`, {
+				description: value,
+				position: 'bottom-right'
+			});
+		} catch (error) {
+			console.error(`Failed to copy ${label}`, error);
+			toast.error(`Failed to copy ${label}`, { position: 'bottom-right' });
+		}
+	}
+
+	function buildStatusMeta(agent: AgentSnapshot): {
+		label: string;
+		className: string;
+		indicatorClass: string;
+		tooltip: string;
+	} {
+		const connectedLabel = formatDate(agent.connectedAt);
+		const lastSeenLabel = formatDate(agent.lastSeen);
+		if (agent.status === 'online') {
+			return {
+				label: 'Online',
+				className: 'text-emerald-500',
+				indicatorClass: 'bg-emerald-500',
+				tooltip: `Connected since ${connectedLabel}`
+			};
+		}
+		if (agent.status === 'offline') {
+			return {
+				label: 'Offline',
+				className: 'text-muted-foreground',
+				indicatorClass: 'bg-muted-foreground',
+				tooltip: `Last seen ${lastSeenLabel}`
+			};
+		}
+		const referenceLabel = agent.lastSeen ? lastSeenLabel : connectedLabel;
 		return {
-			label: 'Offline',
-			className: 'text-muted-foreground',
-			indicatorClass: 'bg-muted-foreground',
-			tooltip: `Last seen ${lastSeenLabel}`
+			label: 'Error',
+			className: 'text-rose-500',
+			indicatorClass: 'bg-rose-500',
+			tooltip: `Last seen ${referenceLabel}`
 		};
 	}
-	const referenceLabel = agent.lastSeen ? lastSeenLabel : connectedLabel;
-	return {
-		label: 'Error',
-		className: 'text-rose-500',
-		indicatorClass: 'bg-rose-500',
-		tooltip: `Last seen ${referenceLabel}`
-	};
-}
 
 	function attachLocationPromise(
 		ip: string,
@@ -235,7 +231,10 @@ function buildStatusMeta(agent: AgentSnapshot): {
 		);
 	}
 
-	async function fetchIpLocation(ip: string, baseLocation: ResolvedLocation): Promise<ResolvedLocation> {
+	async function fetchIpLocation(
+		ip: string,
+		baseLocation: ResolvedLocation
+	): Promise<ResolvedLocation> {
 		const url = new URL(`http://ip-api.com/json/${encodeURIComponent(ip)}`);
 		url.searchParams.set('fields', 'status,message,country,countryCode,proxy,query');
 
@@ -309,10 +308,7 @@ function buildStatusMeta(agent: AgentSnapshot): {
 						<TooltipTrigger>
 							{#snippet child({ props })}
 								<span {...props}>
-									<Badge
-										variant="outline"
-										class="border-amber-500 bg-amber-500/10 text-amber-500"
-									>
+									<Badge variant="outline" class="border-amber-500 bg-amber-500/10 text-amber-500">
 										VPN
 									</Badge>
 								</span>
@@ -328,10 +324,12 @@ function buildStatusMeta(agent: AgentSnapshot): {
 		<TableCell class="text-center">
 			<button
 				type="button"
-				class="inline-flex w-full items-center justify-center truncate rounded-md px-2 py-1 text-sm text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background cursor-pointer"
+				class="inline-flex w-full cursor-pointer items-center justify-center truncate rounded-md px-2 py-1 text-sm text-muted-foreground transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background focus-visible:outline-none"
 				onclick={(event) => handleCopyValue(event, publicIpValue, 'Public IP')}
 				title={publicIpDisplay === 'Unknown' ? 'Public IP unavailable' : `Copy ${publicIpDisplay}`}
-				aria-label={publicIpDisplay === 'Unknown' ? 'Public IP unavailable' : `Copy public IP ${publicIpDisplay}`}
+				aria-label={publicIpDisplay === 'Unknown'
+					? 'Public IP unavailable'
+					: `Copy public IP ${publicIpDisplay}`}
 			>
 				<span class="truncate">{publicIpDisplay}</span>
 			</button>
@@ -339,10 +337,12 @@ function buildStatusMeta(agent: AgentSnapshot): {
 		<TableCell class="text-center">
 			<button
 				type="button"
-				class="inline-flex w-full items-center justify-center truncate rounded-md px-2 py-1 text-sm text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background cursor-pointer"
+				class="inline-flex w-full cursor-pointer items-center justify-center truncate rounded-md px-2 py-1 text-sm text-muted-foreground transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background focus-visible:outline-none"
 				onclick={(event) => handleCopyValue(event, usernameValue, 'Username')}
 				title={usernameDisplay === 'Unknown' ? 'Username unavailable' : `Copy ${usernameDisplay}`}
-				aria-label={usernameDisplay === 'Unknown' ? 'Username unavailable' : `Copy username ${usernameDisplay}`}
+				aria-label={usernameDisplay === 'Unknown'
+					? 'Username unavailable'
+					: `Copy username ${usernameDisplay}`}
 			>
 				<span class="truncate">{usernameDisplay}</span>
 			</button>
@@ -353,7 +353,7 @@ function buildStatusMeta(agent: AgentSnapshot): {
 					{#each tags as tag (tag)}
 						<button
 							type="button"
-							class="group rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background cursor-pointer"
+							class="group cursor-pointer rounded-md focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background focus-visible:outline-none"
 							onclick={(event) => {
 								event.stopPropagation();
 								onTagClick(tag);
@@ -378,10 +378,10 @@ function buildStatusMeta(agent: AgentSnapshot): {
 		<TableCell class="text-center">
 			<OsLogo os={agent.metadata.os} />
 		</TableCell>
-		<TableCell class="text-sm text-muted-foreground text-center">
+		<TableCell class="text-center text-sm text-muted-foreground">
 			{formatPing(agent)}
 		</TableCell>
-		<TableCell class="text-sm text-muted-foreground text-center">
+		<TableCell class="text-center text-sm text-muted-foreground">
 			{agent.metadata.version ?? 'N/A'}
 		</TableCell>
 		<TableCell class="text-center">
@@ -395,9 +395,7 @@ function buildStatusMeta(agent: AgentSnapshot): {
 								statusMeta.className
 							)}
 						>
-							<span
-								class={cn('h-2 w-2 rounded-full', statusMeta.indicatorClass)}
-								aria-hidden="true"
+							<span class={cn('h-2 w-2 rounded-full', statusMeta.indicatorClass)} aria-hidden="true"
 							></span>
 							{statusMeta.label}
 						</span>
@@ -423,9 +421,7 @@ function buildStatusMeta(agent: AgentSnapshot): {
 		<ContextMenuSub>
 			<ContextMenuSubTrigger>Control</ContextMenuSubTrigger>
 			<ContextMenuSubContent class="w-48">
-				<ContextMenuItem onSelect={() => openSection('appVnc', agent)}>
-					App VNC
-				</ContextMenuItem>
+				<ContextMenuItem onSelect={() => openSection('appVnc', agent)}>App VNC</ContextMenuItem>
 				<ContextMenuItem onSelect={() => openSection('remoteDesktop', agent)}>
 					Remote Desktop
 				</ContextMenuItem>

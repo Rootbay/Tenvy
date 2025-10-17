@@ -192,9 +192,9 @@ export interface RemoteDesktopQuicInputOptions {
 type QuicSocket = unknown;
 
 export class RemoteDesktopQuicInputService {
-        private socket: QuicSocket | null = null;
-        private started = false;
-        private startPromise: Promise<void> | null = null;
+	private socket: QuicSocket | null = null;
+	private started = false;
+	private startPromise: Promise<void> | null = null;
 
 	async start(options: RemoteDesktopQuicInputOptions = {}): Promise<void> {
 		if (options.disabled || process.env.TENVY_QUIC_INPUT_DISABLED === '1') {
@@ -400,15 +400,15 @@ export class RemoteDesktopQuicInputService {
 			return;
 		}
 
-                const sequenceHint = numberFromUnknown(packet.sequence);
-                try {
-                        remoteDesktopManager.dispatchInput(agentId, sessionId, sanitized, {
-                                sequence: sequenceHint === null ? undefined : Math.trunc(sequenceHint)
-                        });
-                } catch (err) {
-                        console.error('Failed to dispatch remote desktop input from QUIC service:', err);
-                }
-        }
+		const sequenceHint = numberFromUnknown(packet.sequence);
+		try {
+			remoteDesktopManager.dispatchInput(agentId, sessionId, sanitized, {
+				sequence: sequenceHint === null ? undefined : Math.trunc(sequenceHint)
+			});
+		} catch (err) {
+			console.error('Failed to dispatch remote desktop input from QUIC service:', err);
+		}
+	}
 
 	private async resolveCredential(source: string): Promise<string | null> {
 		if (source.includes('-----BEGIN')) {

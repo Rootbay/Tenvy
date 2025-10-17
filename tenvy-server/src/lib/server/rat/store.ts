@@ -12,20 +12,20 @@ import type {
 	AgentStatus
 } from '../../../../../shared/types/agent';
 import type {
-        AgentRegistrationRequest,
-        AgentRegistrationResponse
+	AgentRegistrationRequest,
+	AgentRegistrationResponse
 } from '../../../../../shared/types/auth';
 import type {
-        AgentControlCommandPayload,
-        AgentSyncRequest,
-        AgentSyncResponse,
-        AgentCommandEnvelope,
-        AgentRemoteDesktopInputEnvelope,
-        Command,
-        CommandDeliveryMode,
-        CommandInput,
-        CommandQueueResponse,
-        CommandResult
+	AgentControlCommandPayload,
+	AgentSyncRequest,
+	AgentSyncResponse,
+	AgentCommandEnvelope,
+	AgentRemoteDesktopInputEnvelope,
+	Command,
+	CommandDeliveryMode,
+	CommandInput,
+	CommandQueueResponse,
+	CommandResult
 } from '../../../../../shared/types/messages';
 import type { RemoteDesktopInputBurst } from '../../../../../shared/types/remote-desktop';
 
@@ -38,40 +38,40 @@ const PERSIST_DEBOUNCE_MS = 2_000;
 const PERSIST_FILE_VERSION = 1;
 
 const DEFAULT_STORAGE_PATH = process.env.TENVY_AGENT_REGISTRY_PATH
-        ? path.resolve(process.env.TENVY_AGENT_REGISTRY_PATH)
-        : path.join(process.cwd(), 'var', 'registry', 'clients.json');
+	? path.resolve(process.env.TENVY_AGENT_REGISTRY_PATH)
+	: path.join(process.cwd(), 'var', 'registry', 'clients.json');
 
 interface PersistedSharedNoteRecord {
-        id: string;
-        ciphertext: string;
-        nonce: string;
-        digest: string;
-        version: number;
-        updatedAt: string;
+	id: string;
+	ciphertext: string;
+	nonce: string;
+	digest: string;
+	version: number;
+	updatedAt: string;
 }
 
 interface PersistedAgentRecord {
-        id: string;
-        key: string;
-        metadata: AgentMetadata;
-        status: AgentStatus;
-        connectedAt: string;
-        lastSeen: string;
-        metrics?: AgentMetrics;
-        config: AgentConfig;
-        pendingCommands: Command[];
-        recentResults: CommandResult[];
-        sharedNotes: PersistedSharedNoteRecord[];
-        fingerprint: string;
+	id: string;
+	key: string;
+	metadata: AgentMetadata;
+	status: AgentStatus;
+	connectedAt: string;
+	lastSeen: string;
+	metrics?: AgentMetrics;
+	config: AgentConfig;
+	pendingCommands: Command[];
+	recentResults: CommandResult[];
+	sharedNotes: PersistedSharedNoteRecord[];
+	fingerprint: string;
 }
 
 interface PersistedRegistryFile {
-        version: number;
-        agents: PersistedAgentRecord[];
+	version: number;
+	agents: PersistedAgentRecord[];
 }
 
 interface AgentRegistryOptions {
-        storagePath?: string;
+	storagePath?: string;
 }
 
 const SOCKET_OPEN_STATE = (() => {
@@ -98,19 +98,19 @@ interface AgentSessionRecord {
 }
 
 interface AgentRecord {
-        id: string;
-        key: string;
-        metadata: AgentMetadata;
-        status: AgentStatus;
-        connectedAt: Date;
-        lastSeen: Date;
-        metrics?: AgentMetrics;
-        config: AgentConfig;
-        pendingCommands: Command[];
-        recentResults: CommandResult[];
-        sharedNotes: Map<string, SharedNoteRecord>;
-        fingerprint: string;
-        session?: AgentSessionRecord;
+	id: string;
+	key: string;
+	metadata: AgentMetadata;
+	status: AgentStatus;
+	connectedAt: Date;
+	lastSeen: Date;
+	metrics?: AgentMetrics;
+	config: AgentConfig;
+	pendingCommands: Command[];
+	recentResults: CommandResult[];
+	sharedNotes: Map<string, SharedNoteRecord>;
+	fingerprint: string;
+	session?: AgentSessionRecord;
 }
 
 interface SharedNoteRecord {
@@ -141,274 +141,274 @@ function ensureMetadata(metadata: AgentMetadata, remoteAddress?: string): AgentM
 }
 
 function validateToken(requestToken: string | undefined) {
-        const expected = process.env.TENVY_SHARED_SECRET;
-        if (expected && expected !== requestToken) {
-                throw new RegistryError('Invalid registration token', 401);
-        }
+	const expected = process.env.TENVY_SHARED_SECRET;
+	if (expected && expected !== requestToken) {
+		throw new RegistryError('Invalid registration token', 401);
+	}
 }
 
 function resolveStoragePath(storagePath?: string): string {
-        if (storagePath && storagePath.trim() !== '') {
-                return path.resolve(storagePath);
-        }
-        return DEFAULT_STORAGE_PATH;
+	if (storagePath && storagePath.trim() !== '') {
+		return path.resolve(storagePath);
+	}
+	return DEFAULT_STORAGE_PATH;
 }
 
 async function ensureParentDirectory(filePath: string): Promise<void> {
-        const directory = path.dirname(filePath);
-        await mkdir(directory, { recursive: true });
+	const directory = path.dirname(filePath);
+	await mkdir(directory, { recursive: true });
 }
 
 async function writeFileAtomic(destination: string, data: string): Promise<void> {
-        const tempPath = `${destination}.${randomUUID()}.tmp`;
-        try {
-                await writeFile(tempPath, data, 'utf-8');
-                await rename(tempPath, destination);
-        } catch (error) {
-                try {
-                        await rm(tempPath, { force: true });
-                } catch {
-                        // no-op cleanup failure
-                }
-                throw error;
-        }
+	const tempPath = `${destination}.${randomUUID()}.tmp`;
+	try {
+		await writeFile(tempPath, data, 'utf-8');
+		await rename(tempPath, destination);
+	} catch (error) {
+		try {
+			await rm(tempPath, { force: true });
+		} catch {
+			// no-op cleanup failure
+		}
+		throw error;
+	}
 }
 
 function computeFingerprint(metadata: AgentMetadata): string {
-        const normalize = (value: string | undefined) => value?.trim().toLowerCase() ?? '';
-        const hash = createHash('sha256');
-        hash.update(normalize(metadata.hostname));
-        hash.update('|');
-        hash.update(normalize(metadata.username));
-        hash.update('|');
-        hash.update(normalize(metadata.os));
-        hash.update('|');
-        hash.update(normalize(metadata.architecture));
-        hash.update('|');
-        hash.update(normalize(metadata.group));
-        return hash.digest('hex');
+	const normalize = (value: string | undefined) => value?.trim().toLowerCase() ?? '';
+	const hash = createHash('sha256');
+	hash.update(normalize(metadata.hostname));
+	hash.update('|');
+	hash.update(normalize(metadata.username));
+	hash.update('|');
+	hash.update(normalize(metadata.os));
+	hash.update('|');
+	hash.update(normalize(metadata.architecture));
+	hash.update('|');
+	hash.update(normalize(metadata.group));
+	return hash.digest('hex');
 }
 
 function parsePersistedDate(value: unknown, fallback: Date): Date {
-        if (typeof value === 'string') {
-                const parsed = new Date(value);
-                if (!Number.isNaN(parsed.getTime())) {
-                        return parsed;
-                }
-        }
-        return fallback;
+	if (typeof value === 'string') {
+		const parsed = new Date(value);
+		if (!Number.isNaN(parsed.getTime())) {
+			return parsed;
+		}
+	}
+	return fallback;
 }
 
 export class AgentRegistry {
-        private readonly storagePath: string;
-        private readonly agents = new Map<string, AgentRecord>();
-        private readonly fingerprints = new Map<string, string>();
-        private persistTimer: ReturnType<typeof setTimeout> | null = null;
-        private persistPromise: Promise<void> | null = null;
-        private needsPersist = false;
+	private readonly storagePath: string;
+	private readonly agents = new Map<string, AgentRecord>();
+	private readonly fingerprints = new Map<string, string>();
+	private persistTimer: ReturnType<typeof setTimeout> | null = null;
+	private persistPromise: Promise<void> | null = null;
+	private needsPersist = false;
 
-        constructor(options: AgentRegistryOptions = {}) {
-                this.storagePath = resolveStoragePath(options.storagePath);
-                this.loadFromDisk();
-        }
+	constructor(options: AgentRegistryOptions = {}) {
+		this.storagePath = resolveStoragePath(options.storagePath);
+		this.loadFromDisk();
+	}
 
-        private loadFromDisk(): void {
-                let source: string;
-                try {
-                        source = readFileSync(this.storagePath, 'utf-8');
-                } catch (error) {
-                        const err = error as NodeJS.ErrnoException;
-                        if (err.code !== 'ENOENT') {
-                                console.error('Failed to read agent registry from disk', err);
-                        }
-                        return;
-                }
+	private loadFromDisk(): void {
+		let source: string;
+		try {
+			source = readFileSync(this.storagePath, 'utf-8');
+		} catch (error) {
+			const err = error as NodeJS.ErrnoException;
+			if (err.code !== 'ENOENT') {
+				console.error('Failed to read agent registry from disk', err);
+			}
+			return;
+		}
 
-                if (!source || source.trim() === '') {
-                        return;
-                }
+		if (!source || source.trim() === '') {
+			return;
+		}
 
-                let parsed: unknown;
-                try {
-                        parsed = JSON.parse(source);
-                } catch (error) {
-                        console.error('Agent registry file is not valid JSON', error);
-                        return;
-                }
+		let parsed: unknown;
+		try {
+			parsed = JSON.parse(source);
+		} catch (error) {
+			console.error('Agent registry file is not valid JSON', error);
+			return;
+		}
 
-                const file = parsed as Partial<PersistedRegistryFile> | null;
-                if (!file || typeof file !== 'object' || !Array.isArray(file.agents)) {
-                        return;
-                }
+		const file = parsed as Partial<PersistedRegistryFile> | null;
+		if (!file || typeof file !== 'object' || !Array.isArray(file.agents)) {
+			return;
+		}
 
-                this.agents.clear();
-                this.fingerprints.clear();
+		this.agents.clear();
+		this.fingerprints.clear();
 
-                for (const entry of file.agents) {
-                        if (!entry || typeof entry !== 'object') {
-                                continue;
-                        }
+		for (const entry of file.agents) {
+			if (!entry || typeof entry !== 'object') {
+				continue;
+			}
 
-                        const id = typeof entry.id === 'string' && entry.id.trim() !== '' ? entry.id : null;
-                        const key = typeof entry.key === 'string' && entry.key.trim() !== '' ? entry.key : null;
-                        const metadata = entry.metadata ?? null;
-                        const status = entry.status;
-                        if (!id || !key || !metadata) {
-                                continue;
-                        }
-                        if (status !== 'online' && status !== 'offline' && status !== 'error') {
-                                continue;
-                        }
+			const id = typeof entry.id === 'string' && entry.id.trim() !== '' ? entry.id : null;
+			const key = typeof entry.key === 'string' && entry.key.trim() !== '' ? entry.key : null;
+			const metadata = entry.metadata ?? null;
+			const status = entry.status;
+			if (!id || !key || !metadata) {
+				continue;
+			}
+			if (status !== 'online' && status !== 'offline' && status !== 'error') {
+				continue;
+			}
 
-                        const connectedAt = parsePersistedDate(entry.connectedAt, new Date());
-                        let lastSeen = parsePersistedDate(entry.lastSeen, connectedAt);
-                        let normalizedStatus = status as AgentStatus;
-                        if (normalizedStatus === 'online') {
-                                normalizedStatus = 'offline';
-                                lastSeen = new Date();
-                        }
+			const connectedAt = parsePersistedDate(entry.connectedAt, new Date());
+			let lastSeen = parsePersistedDate(entry.lastSeen, connectedAt);
+			let normalizedStatus = status as AgentStatus;
+			if (normalizedStatus === 'online') {
+				normalizedStatus = 'offline';
+				lastSeen = new Date();
+			}
 
-                        const sharedNotes = new Map<string, SharedNoteRecord>();
-                        if (Array.isArray(entry.sharedNotes)) {
-                                for (const note of entry.sharedNotes) {
-                                        if (!note || typeof note !== 'object') {
-                                                continue;
-                                        }
-                                        if (typeof note.id !== 'string' || note.id.trim() === '') {
-                                                continue;
-                                        }
-                                        const updatedAt = parsePersistedDate(note.updatedAt, lastSeen);
-                                        sharedNotes.set(note.id, {
-                                                id: note.id,
-                                                ciphertext: note.ciphertext ?? '',
-                                                nonce: note.nonce ?? '',
-                                                digest: note.digest ?? '',
-                                                version: typeof note.version === 'number' ? note.version : 1,
-                                                updatedAt
-                                        });
-                                }
-                        }
+			const sharedNotes = new Map<string, SharedNoteRecord>();
+			if (Array.isArray(entry.sharedNotes)) {
+				for (const note of entry.sharedNotes) {
+					if (!note || typeof note !== 'object') {
+						continue;
+					}
+					if (typeof note.id !== 'string' || note.id.trim() === '') {
+						continue;
+					}
+					const updatedAt = parsePersistedDate(note.updatedAt, lastSeen);
+					sharedNotes.set(note.id, {
+						id: note.id,
+						ciphertext: note.ciphertext ?? '',
+						nonce: note.nonce ?? '',
+						digest: note.digest ?? '',
+						version: typeof note.version === 'number' ? note.version : 1,
+						updatedAt
+					});
+				}
+			}
 
-                        const pendingCommands = Array.isArray(entry.pendingCommands)
-                                ? entry.pendingCommands.map((command) => ({ ...command }))
-                                : [];
+			const pendingCommands = Array.isArray(entry.pendingCommands)
+				? entry.pendingCommands.map((command) => ({ ...command }))
+				: [];
 
-                        const recentResults = Array.isArray(entry.recentResults)
-                                ? entry.recentResults.map((result) => ({ ...result }))
-                                : [];
+			const recentResults = Array.isArray(entry.recentResults)
+				? entry.recentResults.map((result) => ({ ...result }))
+				: [];
 
-                        const normalizedMetadata: AgentMetadata = {
-                                ...(metadata as AgentMetadata),
-                                tags: Array.isArray((metadata as AgentMetadata).tags)
-                                        ? this.normalizeTags((metadata as AgentMetadata).tags!)
-                                        : (metadata as AgentMetadata).tags,
-                        };
+			const normalizedMetadata: AgentMetadata = {
+				...(metadata as AgentMetadata),
+				tags: Array.isArray((metadata as AgentMetadata).tags)
+					? this.normalizeTags((metadata as AgentMetadata).tags!)
+					: (metadata as AgentMetadata).tags
+			};
 
-                        const fingerprint = entry.fingerprint
-                                ? entry.fingerprint
-                                : computeFingerprint(normalizedMetadata);
+			const fingerprint = entry.fingerprint
+				? entry.fingerprint
+				: computeFingerprint(normalizedMetadata);
 
-                        const record: AgentRecord = {
-                                id,
-                                key,
-                                metadata: normalizedMetadata,
-                                status: normalizedStatus,
-                                connectedAt,
-                                lastSeen,
-                                metrics: entry.metrics ? { ...entry.metrics } : undefined,
-                                config: entry.config ? { ...entry.config } : { ...defaultAgentConfig },
-                                pendingCommands,
-                                recentResults,
-                                sharedNotes,
-                                fingerprint
-                        };
+			const record: AgentRecord = {
+				id,
+				key,
+				metadata: normalizedMetadata,
+				status: normalizedStatus,
+				connectedAt,
+				lastSeen,
+				metrics: entry.metrics ? { ...entry.metrics } : undefined,
+				config: entry.config ? { ...entry.config } : { ...defaultAgentConfig },
+				pendingCommands,
+				recentResults,
+				sharedNotes,
+				fingerprint
+			};
 
-                        this.agents.set(record.id, record);
-                        this.fingerprints.set(record.fingerprint, record.id);
-                }
-        }
+			this.agents.set(record.id, record);
+			this.fingerprints.set(record.fingerprint, record.id);
+		}
+	}
 
-        private schedulePersist(): void {
-                this.needsPersist = true;
-                if (this.persistPromise) {
-                        return;
-                }
-                if (this.persistTimer) {
-                        return;
-                }
-                this.persistTimer = setTimeout(() => {
-                        this.persistTimer = null;
-                        this.persistPromise = this.flushPersistLoop();
-                }, PERSIST_DEBOUNCE_MS);
-        }
+	private schedulePersist(): void {
+		this.needsPersist = true;
+		if (this.persistPromise) {
+			return;
+		}
+		if (this.persistTimer) {
+			return;
+		}
+		this.persistTimer = setTimeout(() => {
+			this.persistTimer = null;
+			this.persistPromise = this.flushPersistLoop();
+		}, PERSIST_DEBOUNCE_MS);
+	}
 
-        private async flushPersistLoop(): Promise<void> {
-                try {
-                        while (this.needsPersist) {
-                                this.needsPersist = false;
-                                try {
-                                        await this.persistToDisk();
-                                } catch (error) {
-                                        console.error('Failed to persist agent registry', error);
-                                }
-                        }
-                } finally {
-                        this.persistPromise = null;
-                }
-        }
+	private async flushPersistLoop(): Promise<void> {
+		try {
+			while (this.needsPersist) {
+				this.needsPersist = false;
+				try {
+					await this.persistToDisk();
+				} catch (error) {
+					console.error('Failed to persist agent registry', error);
+				}
+			}
+		} finally {
+			this.persistPromise = null;
+		}
+	}
 
-        private async persistToDisk(): Promise<void> {
-                const agents = Array.from(this.agents.values()).map<PersistedAgentRecord>((record) => ({
-                        id: record.id,
-                        key: record.key,
-                        metadata: record.metadata,
-                        status: record.status,
-                        connectedAt: record.connectedAt.toISOString(),
-                        lastSeen: record.lastSeen.toISOString(),
-                        metrics: record.metrics,
-                        config: record.config,
-                        pendingCommands: record.pendingCommands.map((command) => ({ ...command })),
-                        recentResults: record.recentResults.map((result) => ({ ...result })),
-                        sharedNotes: Array.from(record.sharedNotes.values()).map((note) => ({
-                                id: note.id,
-                                ciphertext: note.ciphertext,
-                                nonce: note.nonce,
-                                digest: note.digest,
-                                version: note.version,
-                                updatedAt: note.updatedAt.toISOString()
-                        })),
-                        fingerprint: record.fingerprint
-                }));
+	private async persistToDisk(): Promise<void> {
+		const agents = Array.from(this.agents.values()).map<PersistedAgentRecord>((record) => ({
+			id: record.id,
+			key: record.key,
+			metadata: record.metadata,
+			status: record.status,
+			connectedAt: record.connectedAt.toISOString(),
+			lastSeen: record.lastSeen.toISOString(),
+			metrics: record.metrics,
+			config: record.config,
+			pendingCommands: record.pendingCommands.map((command) => ({ ...command })),
+			recentResults: record.recentResults.map((result) => ({ ...result })),
+			sharedNotes: Array.from(record.sharedNotes.values()).map((note) => ({
+				id: note.id,
+				ciphertext: note.ciphertext,
+				nonce: note.nonce,
+				digest: note.digest,
+				version: note.version,
+				updatedAt: note.updatedAt.toISOString()
+			})),
+			fingerprint: record.fingerprint
+		}));
 
-                const payload: PersistedRegistryFile = {
-                        version: PERSIST_FILE_VERSION,
-                        agents
-                };
+		const payload: PersistedRegistryFile = {
+			version: PERSIST_FILE_VERSION,
+			agents
+		};
 
-                const data = JSON.stringify(payload, null, 2);
-                await ensureParentDirectory(this.storagePath);
-                await writeFileAtomic(this.storagePath, data);
-        }
+		const data = JSON.stringify(payload, null, 2);
+		await ensureParentDirectory(this.storagePath);
+		await writeFileAtomic(this.storagePath, data);
+	}
 
-        async flush(): Promise<void> {
-                if (this.persistTimer) {
-                        clearTimeout(this.persistTimer);
-                        this.persistTimer = null;
-                }
+	async flush(): Promise<void> {
+		if (this.persistTimer) {
+			clearTimeout(this.persistTimer);
+			this.persistTimer = null;
+		}
 
-                if (!this.persistPromise && this.needsPersist) {
-                        this.persistPromise = this.flushPersistLoop();
-                }
+		if (!this.persistPromise && this.needsPersist) {
+			this.persistPromise = this.flushPersistLoop();
+		}
 
-                if (this.persistPromise) {
-                        await this.persistPromise;
-                }
-        }
+		if (this.persistPromise) {
+			await this.persistPromise;
+		}
+	}
 
-        private toSnapshot(record: AgentRecord): AgentSnapshot {
-                return {
-                        id: record.id,
-                        metadata: record.metadata,
+	private toSnapshot(record: AgentRecord): AgentSnapshot {
+		return {
+			id: record.id,
+			metadata: record.metadata,
 			status: record.status,
 			connectedAt: record.connectedAt.toISOString(),
 			lastSeen: record.lastSeen.toISOString(),
@@ -419,27 +419,27 @@ export class AgentRegistry {
 		} satisfies AgentSnapshot;
 	}
 
-        private detachSession(
-                record: AgentRecord,
-                sessionId: symbol,
-                options: { close?: boolean; code?: number; reason?: string; markOffline?: boolean } = {}
-        ) {
-                const session = record.session;
-                if (!session || session.id !== sessionId) {
-                        return;
-                }
+	private detachSession(
+		record: AgentRecord,
+		sessionId: symbol,
+		options: { close?: boolean; code?: number; reason?: string; markOffline?: boolean } = {}
+	) {
+		const session = record.session;
+		if (!session || session.id !== sessionId) {
+			return;
+		}
 
-                record.session = undefined;
+		record.session = undefined;
 
-                if (options.markOffline !== false) {
-                        record.status = 'offline';
-                        record.lastSeen = new Date();
-                        this.schedulePersist();
-                }
+		if (options.markOffline !== false) {
+			record.status = 'offline';
+			record.lastSeen = new Date();
+			this.schedulePersist();
+		}
 
-                if (options.close === false) {
-                        return;
-                }
+		if (options.close === false) {
+			return;
+		}
 
 		try {
 			session.socket.close(options.code ?? 1000, options.reason);
@@ -470,100 +470,98 @@ export class AgentRegistry {
 		}
 	}
 
-        registerAgent(
-                payload: AgentRegistrationRequest,
-                options: { remoteAddress?: string } = {}
-        ): AgentRegistrationResponse {
-                validateToken(payload.token);
-                const now = new Date();
-                const normalizedTags = this.normalizeTags(payload.metadata.tags ?? []);
-                const incomingMetadata = ensureMetadata(
-                        { ...payload.metadata, tags: normalizedTags.length > 0 ? normalizedTags : undefined },
-                        options.remoteAddress
-                );
-                const fingerprint = computeFingerprint(incomingMetadata);
+	registerAgent(
+		payload: AgentRegistrationRequest,
+		options: { remoteAddress?: string } = {}
+	): AgentRegistrationResponse {
+		validateToken(payload.token);
+		const now = new Date();
+		const normalizedTags = this.normalizeTags(payload.metadata.tags ?? []);
+		const incomingMetadata = ensureMetadata(
+			{ ...payload.metadata, tags: normalizedTags.length > 0 ? normalizedTags : undefined },
+			options.remoteAddress
+		);
+		const fingerprint = computeFingerprint(incomingMetadata);
 
-                const existingId = this.fingerprints.get(fingerprint);
-                if (existingId) {
-                        const existingRecord = this.agents.get(existingId);
-                        if (existingRecord) {
-                                if (existingRecord.session) {
-                                        this.detachSession(existingRecord, existingRecord.session.id, {
-                                                code: 1012,
-                                                reason: 'Registration superseded active session',
-                                                markOffline: false
-                                        });
-                                }
+		const existingId = this.fingerprints.get(fingerprint);
+		if (existingId) {
+			const existingRecord = this.agents.get(existingId);
+			if (existingRecord) {
+				if (existingRecord.session) {
+					this.detachSession(existingRecord, existingRecord.session.id, {
+						code: 1012,
+						reason: 'Registration superseded active session',
+						markOffline: false
+					});
+				}
 
-                                const hasExplicitTags = Array.isArray(existingRecord.metadata.tags);
-                                const nextMetadata: AgentMetadata = ensureMetadata(
-                                        {
-                                                ...existingRecord.metadata,
-                                                ...incomingMetadata,
-                                                tags: hasExplicitTags
-                                                        ? existingRecord.metadata.tags
-                                                        : incomingMetadata.tags
-                                        },
-                                        options.remoteAddress
-                                );
+				const hasExplicitTags = Array.isArray(existingRecord.metadata.tags);
+				const nextMetadata: AgentMetadata = ensureMetadata(
+					{
+						...existingRecord.metadata,
+						...incomingMetadata,
+						tags: hasExplicitTags ? existingRecord.metadata.tags : incomingMetadata.tags
+					},
+					options.remoteAddress
+				);
 
-                                const previousFingerprint = existingRecord.fingerprint;
-                                existingRecord.metadata = nextMetadata;
-                                existingRecord.status = 'online';
-                                existingRecord.connectedAt = now;
-                                existingRecord.lastSeen = now;
-                                existingRecord.metrics = undefined;
-                                existingRecord.key = randomBytes(32).toString('hex');
-                                existingRecord.fingerprint = computeFingerprint(nextMetadata);
+				const previousFingerprint = existingRecord.fingerprint;
+				existingRecord.metadata = nextMetadata;
+				existingRecord.status = 'online';
+				existingRecord.connectedAt = now;
+				existingRecord.lastSeen = now;
+				existingRecord.metrics = undefined;
+				existingRecord.key = randomBytes(32).toString('hex');
+				existingRecord.fingerprint = computeFingerprint(nextMetadata);
 
-                                if (previousFingerprint !== existingRecord.fingerprint) {
-                                        this.fingerprints.delete(previousFingerprint);
-                                }
-                                this.fingerprints.set(existingRecord.fingerprint, existingRecord.id);
-                                this.agents.set(existingRecord.id, existingRecord);
-                                this.schedulePersist();
+				if (previousFingerprint !== existingRecord.fingerprint) {
+					this.fingerprints.delete(previousFingerprint);
+				}
+				this.fingerprints.set(existingRecord.fingerprint, existingRecord.id);
+				this.agents.set(existingRecord.id, existingRecord);
+				this.schedulePersist();
 
-                                return {
-                                        agentId: existingRecord.id,
-                                        agentKey: existingRecord.key,
-                                        config: existingRecord.config,
-                                        commands: [],
-                                        serverTime: now.toISOString()
-                                };
-                        }
+				return {
+					agentId: existingRecord.id,
+					agentKey: existingRecord.key,
+					config: existingRecord.config,
+					commands: [],
+					serverTime: now.toISOString()
+				};
+			}
 
-                        this.fingerprints.delete(fingerprint);
-                }
+			this.fingerprints.delete(fingerprint);
+		}
 
-                const id = randomUUID();
-                const key = randomBytes(32).toString('hex');
-                const record: AgentRecord = {
-                        id,
-                        key,
-                        metadata: incomingMetadata,
-                        status: 'online',
-                        connectedAt: now,
-                        lastSeen: now,
-                        metrics: undefined,
-                        config: { ...defaultAgentConfig },
-                        pendingCommands: [],
-                        recentResults: [],
-                        sharedNotes: new Map(),
-                        fingerprint
-                };
+		const id = randomUUID();
+		const key = randomBytes(32).toString('hex');
+		const record: AgentRecord = {
+			id,
+			key,
+			metadata: incomingMetadata,
+			status: 'online',
+			connectedAt: now,
+			lastSeen: now,
+			metrics: undefined,
+			config: { ...defaultAgentConfig },
+			pendingCommands: [],
+			recentResults: [],
+			sharedNotes: new Map(),
+			fingerprint
+		};
 
-                this.agents.set(id, record);
-                this.fingerprints.set(fingerprint, id);
-                this.schedulePersist();
+		this.agents.set(id, record);
+		this.fingerprints.set(fingerprint, id);
+		this.schedulePersist();
 
-                return {
-                        agentId: id,
-                        agentKey: key,
-                        config: record.config,
-                        commands: [],
-                        serverTime: now.toISOString()
-                };
-        }
+		return {
+			agentId: id,
+			agentKey: key,
+			config: record.config,
+			commands: [],
+			serverTime: now.toISOString()
+		};
+	}
 
 	attachSession(
 		id: string,
@@ -580,29 +578,29 @@ export class AgentRegistry {
 			throw new RegistryError('Invalid agent key', 401);
 		}
 
-                const sessionId = Symbol(`agent:${id}`);
+		const sessionId = Symbol(`agent:${id}`);
 
-                if (record.session) {
-                        this.detachSession(record, record.session.id, {
-                                code: 1012,
-                                reason: 'Session replaced',
-                                markOffline: false
-                        });
-                }
+		if (record.session) {
+			this.detachSession(record, record.session.id, {
+				code: 1012,
+				reason: 'Session replaced',
+				markOffline: false
+			});
+		}
 
 		record.lastSeen = new Date();
 		record.status = 'online';
 
-                const acceptingSocket = socket as unknown as {
-                        accept?: (options?: { protocol?: string }) => void;
-                };
-                if (typeof acceptingSocket.accept === 'function') {
-                        try {
-                                acceptingSocket.accept({ protocol: COMMAND_STREAM_SUBPROTOCOL });
-                        } catch {
-                                // Ignore accept failures; send will surface errors later.
-                        }
-                }
+		const acceptingSocket = socket as unknown as {
+			accept?: (options?: { protocol?: string }) => void;
+		};
+		if (typeof acceptingSocket.accept === 'function') {
+			try {
+				acceptingSocket.accept({ protocol: COMMAND_STREAM_SUBPROTOCOL });
+			} catch {
+				// Ignore accept failures; send will surface errors later.
+			}
+		}
 
 		const closeListener = () => {
 			this.detachSession(record, sessionId, { close: false });
@@ -623,20 +621,20 @@ export class AgentRegistry {
 			record.metadata = ensureMetadata(record.metadata, options.remoteAddress);
 		}
 
-                if (record.pendingCommands.length > 0) {
-                        const queued = record.pendingCommands;
-                        record.pendingCommands = [];
-                        for (let idx = 0; idx < queued.length; idx += 1) {
-                                const command = queued[idx];
-                                if (!this.deliverViaSession(record, command)) {
-                                        record.pendingCommands = queued.slice(idx);
-                                        break;
-                                }
-                        }
-                }
+		if (record.pendingCommands.length > 0) {
+			const queued = record.pendingCommands;
+			record.pendingCommands = [];
+			for (let idx = 0; idx < queued.length; idx += 1) {
+				const command = queued[idx];
+				if (!this.deliverViaSession(record, command)) {
+					record.pendingCommands = queued.slice(idx);
+					break;
+				}
+			}
+		}
 
-                this.schedulePersist();
-        }
+		this.schedulePersist();
+	}
 
 	syncAgent(
 		id: string,
@@ -662,19 +660,19 @@ export class AgentRegistry {
 		if (payload.metrics) {
 			record.metrics = payload.metrics;
 		}
-                if (payload.results && payload.results.length > 0) {
-                        record.recentResults = [...payload.results, ...record.recentResults].slice(
-                                0,
-                                MAX_RECENT_RESULTS
-                        );
-                }
+		if (payload.results && payload.results.length > 0) {
+			record.recentResults = [...payload.results, ...record.recentResults].slice(
+				0,
+				MAX_RECENT_RESULTS
+			);
+		}
 
-                const commands = record.pendingCommands;
-                record.pendingCommands = [];
+		const commands = record.pendingCommands;
+		record.pendingCommands = [];
 
-                this.schedulePersist();
+		this.schedulePersist();
 
-                return {
+		return {
 			agentId: id,
 			commands,
 			config: record.config,
@@ -682,11 +680,11 @@ export class AgentRegistry {
 		};
 	}
 
-        queueCommand(id: string, input: CommandInput): CommandQueueResponse {
-                const record = this.agents.get(id);
-                if (!record) {
-                        throw new RegistryError('Agent not found', 404);
-                }
+	queueCommand(id: string, input: CommandInput): CommandQueueResponse {
+		const record = this.agents.get(id);
+		if (!record) {
+			throw new RegistryError('Agent not found', 404);
+		}
 
 		const command: Command = {
 			id: randomUUID(),
@@ -695,51 +693,51 @@ export class AgentRegistry {
 			createdAt: new Date().toISOString()
 		};
 
-                const delivered = this.deliverViaSession(record, command);
-                if (!delivered) {
-                        record.pendingCommands.push(command);
-                        this.schedulePersist();
-                }
+		const delivered = this.deliverViaSession(record, command);
+		if (!delivered) {
+			record.pendingCommands.push(command);
+			this.schedulePersist();
+		}
 
-                const delivery: CommandDeliveryMode = delivered ? 'session' : 'queued';
-                return { command, delivery };
-        }
+		const delivery: CommandDeliveryMode = delivered ? 'session' : 'queued';
+		return { command, delivery };
+	}
 
-        sendRemoteDesktopInput(id: string, burst: RemoteDesktopInputBurst): boolean {
-                const record = this.agents.get(id);
-                if (!record) {
-                        throw new RegistryError('Agent not found', 404);
-                }
+	sendRemoteDesktopInput(id: string, burst: RemoteDesktopInputBurst): boolean {
+		const record = this.agents.get(id);
+		if (!record) {
+			throw new RegistryError('Agent not found', 404);
+		}
 
-                const session = record.session;
-                if (!session) {
-                        return false;
-                }
+		const session = record.session;
+		if (!session) {
+			return false;
+		}
 
-                const socket = session.socket;
-                if (!socket || (socket.readyState ?? 0) !== SOCKET_OPEN_STATE) {
-                        this.detachSession(record, session.id, { close: false });
-                        return false;
-                }
+		const socket = session.socket;
+		if (!socket || (socket.readyState ?? 0) !== SOCKET_OPEN_STATE) {
+			this.detachSession(record, session.id, { close: false });
+			return false;
+		}
 
-                const envelope: AgentRemoteDesktopInputEnvelope = {
-                        type: 'remote-desktop-input',
-                        input: {
-                                sessionId: burst.sessionId,
-                                events: burst.events,
-                                sequence: burst.sequence
-                        }
-                };
+		const envelope: AgentRemoteDesktopInputEnvelope = {
+			type: 'remote-desktop-input',
+			input: {
+				sessionId: burst.sessionId,
+				events: burst.events,
+				sequence: burst.sequence
+			}
+		};
 
-                try {
-                        socket.send(JSON.stringify(envelope));
-                        return true;
-                } catch (err) {
-                        this.detachSession(record, session.id, { close: false });
-                        console.error('Failed to transmit remote desktop input burst', err);
-                        return false;
-                }
-        }
+		try {
+			socket.send(JSON.stringify(envelope));
+			return true;
+		} catch (err) {
+			this.detachSession(record, session.id, { close: false });
+			console.error('Failed to transmit remote desktop input burst', err);
+			return false;
+		}
+	}
 
 	disconnectAgent(id: string): AgentSnapshot {
 		const record = this.agents.get(id);
@@ -757,15 +755,15 @@ export class AgentRegistry {
 			createdAt: new Date().toISOString()
 		};
 
-                record.pendingCommands = [];
-                if (!this.deliverViaSession(record, command)) {
-                        record.pendingCommands.push(command);
-                }
+		record.pendingCommands = [];
+		if (!this.deliverViaSession(record, command)) {
+			record.pendingCommands.push(command);
+		}
 
-                this.schedulePersist();
+		this.schedulePersist();
 
-                return this.toSnapshot(record);
-        }
+		return this.toSnapshot(record);
+	}
 
 	private normalizeTags(tags: string[]): string[] {
 		const seen = new Set<string>();
@@ -813,21 +811,21 @@ export class AgentRegistry {
 		record.lastSeen = now;
 
 		const payload: AgentControlCommandPayload = { action: 'reconnect' };
-                const command: Command = {
-                        id: randomUUID(),
-                        name: 'agent-control',
-                        payload,
-                        createdAt: now.toISOString()
-                };
+		const command: Command = {
+			id: randomUUID(),
+			name: 'agent-control',
+			payload,
+			createdAt: now.toISOString()
+		};
 
-                if (!this.deliverViaSession(record, command)) {
-                        record.pendingCommands.unshift(command);
-                }
+		if (!this.deliverViaSession(record, command)) {
+			record.pendingCommands.unshift(command);
+		}
 
-                this.schedulePersist();
+		this.schedulePersist();
 
-                return this.toSnapshot(record);
-        }
+		return this.toSnapshot(record);
+	}
 
 	updateAgentTags(id: string, tags: string[]): AgentSnapshot {
 		const record = this.agents.get(id);
@@ -835,15 +833,15 @@ export class AgentRegistry {
 			throw new RegistryError('Agent not found', 404);
 		}
 
-                record.metadata = {
-                        ...record.metadata,
-                        tags: this.normalizeTags(Array.isArray(tags) ? tags : [])
-                };
+		record.metadata = {
+			...record.metadata,
+			tags: this.normalizeTags(Array.isArray(tags) ? tags : [])
+		};
 
-                this.schedulePersist();
+		this.schedulePersist();
 
-                return this.toSnapshot(record);
-        }
+		return this.toSnapshot(record);
+	}
 
 	listAgents(): AgentSnapshot[] {
 		return Array.from(this.agents.values()).map((record) => this.toSnapshot(record));
@@ -886,49 +884,49 @@ export class AgentRegistry {
 			throw new RegistryError('Invalid agent key', 401);
 		}
 
-                const now = new Date();
-                let changed = false;
-                for (const envelope of payload) {
-                        if (!envelope?.id) {
-                                continue;
-                        }
-                        const incomingUpdated = new Date(envelope.updatedAt ?? now.toISOString());
-                        const existing = record.sharedNotes.get(envelope.id);
+		const now = new Date();
+		let changed = false;
+		for (const envelope of payload) {
+			if (!envelope?.id) {
+				continue;
+			}
+			const incomingUpdated = new Date(envelope.updatedAt ?? now.toISOString());
+			const existing = record.sharedNotes.get(envelope.id);
 
-                        if (!existing) {
-                                record.sharedNotes.set(envelope.id, {
-                                        id: envelope.id,
-                                        ciphertext: envelope.ciphertext,
-                                        nonce: envelope.nonce,
-                                        digest: envelope.digest,
-                                        version: envelope.version,
-                                        updatedAt: incomingUpdated
-                                });
-                                changed = true;
-                                continue;
-                        }
+			if (!existing) {
+				record.sharedNotes.set(envelope.id, {
+					id: envelope.id,
+					ciphertext: envelope.ciphertext,
+					nonce: envelope.nonce,
+					digest: envelope.digest,
+					version: envelope.version,
+					updatedAt: incomingUpdated
+				});
+				changed = true;
+				continue;
+			}
 
-                        const shouldReplace =
-                                incomingUpdated.getTime() > existing.updatedAt.getTime() ||
-                                envelope.version > existing.version;
+			const shouldReplace =
+				incomingUpdated.getTime() > existing.updatedAt.getTime() ||
+				envelope.version > existing.version;
 
-                        if (shouldReplace) {
-                                existing.ciphertext = envelope.ciphertext;
-                                existing.nonce = envelope.nonce;
-                                existing.digest = envelope.digest;
-                                existing.version = envelope.version;
-                                existing.updatedAt = incomingUpdated;
-                                changed = true;
-                        }
-                }
+			if (shouldReplace) {
+				existing.ciphertext = envelope.ciphertext;
+				existing.nonce = envelope.nonce;
+				existing.digest = envelope.digest;
+				existing.version = envelope.version;
+				existing.updatedAt = incomingUpdated;
+				changed = true;
+			}
+		}
 
-                if (changed) {
-                        this.schedulePersist();
-                }
+		if (changed) {
+			this.schedulePersist();
+		}
 
-                return Array.from(record.sharedNotes.values()).map(
-                        (note) =>
-                                ({
+		return Array.from(record.sharedNotes.values()).map(
+			(note) =>
+				({
 					id: note.id,
 					visibility: 'shared',
 					ciphertext: note.ciphertext,

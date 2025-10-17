@@ -2,33 +2,33 @@
 	import { cn } from '$lib/utils.js';
 	import { Badge } from '$lib/components/ui/badge/index.js';
 	import { Button } from '$lib/components/ui/button/index.js';
-import {
-	Card,
-	CardContent,
-	CardDescription,
-	CardHeader,
-	CardTitle
-} from '$lib/components/ui/card/index.js';
-import { Popover, PopoverContent, PopoverTrigger } from '$lib/components/ui/popover/index.js';
-import {
-	Select,
-	SelectContent,
-	SelectItem,
-	SelectTrigger
-} from '$lib/components/ui/select/index.js';
+	import {
+		Card,
+		CardContent,
+		CardDescription,
+		CardHeader,
+		CardTitle
+	} from '$lib/components/ui/card/index.js';
+	import { Popover, PopoverContent, PopoverTrigger } from '$lib/components/ui/popover/index.js';
+	import {
+		Select,
+		SelectContent,
+		SelectItem,
+		SelectTrigger
+	} from '$lib/components/ui/select/index.js';
 	import ClientPresenceMap from '$lib/components/dashboard/client-presence-map.svelte';
 	import { countryCodeToFlag } from '$lib/utils/location';
 	import { derived, writable } from 'svelte/store';
 	import {
-	Activity,
-	ArrowDownRight,
-	ArrowUpRight,
-	Gauge,
-	Earth,
-	ChevronDown,
-	UserPlus,
-	Users
-} from '@lucide/svelte';
+		Activity,
+		ArrowDownRight,
+		ArrowUpRight,
+		Gauge,
+		Earth,
+		ChevronDown,
+		UserPlus,
+		Users
+	} from '@lucide/svelte';
 	import type {
 		DashboardClient,
 		DashboardCountryStat,
@@ -223,10 +223,10 @@ import {
 		return code ? countryCodeToFlag(code) : '🌐';
 	}
 
-const connectedCaption = `${data.totals.connected}`;
+	const connectedCaption = `${data.totals.connected}`;
 </script>
 
-<div class="flex h-full flex-1 min-h-0 flex-col gap-6 overflow-hidden">
+<div class="flex h-full min-h-0 flex-1 flex-col gap-6 overflow-hidden">
 	<section class="grid flex-none gap-4 md:grid-cols-2 xl:grid-cols-4">
 		<Card class="border-border/60">
 			<CardHeader class="flex flex-col gap-3">
@@ -390,14 +390,16 @@ const connectedCaption = `${data.totals.connected}`;
 		</Card>
 	</section>
 
-	<section class="grid h-full flex-1 min-h-0 gap-6 overflow-hidden auto-rows-[minmax(0,1fr)] lg:grid-cols-7">
+	<section
+		class="grid h-full min-h-0 flex-1 auto-rows-[minmax(0,1fr)] gap-6 overflow-hidden lg:grid-cols-7"
+	>
 		<Card class="flex h-[32rem] flex-col border-border/60 lg:col-span-5">
 			<CardContent class="relative flex min-h-0 flex-1 flex-col gap-4 overflow-hidden">
-				<div class="pointer-events-none absolute right-4 top-4 z-10">
+				<div class="pointer-events-none absolute top-4 right-4 z-10">
 					<Popover>
 						<PopoverTrigger
 							type="button"
-							class="pointer-events-auto flex h-9 w-9 items-center justify-center rounded-full border border-border/60 bg-background/95 text-muted-foreground shadow-sm transition hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
+							class="pointer-events-auto flex h-9 w-9 items-center justify-center rounded-full border border-border/60 bg-background/95 text-muted-foreground shadow-sm transition hover:text-foreground focus-visible:ring-2 focus-visible:ring-primary/60 focus-visible:outline-none"
 							aria-label="Open operations view menu"
 						>
 							<ChevronDown class="h-4 w-4" />
@@ -426,11 +428,11 @@ const connectedCaption = `${data.totals.connected}`;
 					</Popover>
 				</div>
 				{#if $activeView === 'map'}
-					<div class="flex-1 min-h-0 overflow-hidden">
+					<div class="min-h-0 flex-1 overflow-hidden">
 						<ClientPresenceMap clients={$filteredClients} highlightCountry={$selectedCountry} />
 					</div>
 				{:else}
-										<div class="flex-1 space-y-3 overflow-y-auto pr-1 min-h-0">
+					<div class="min-h-0 flex-1 space-y-3 overflow-y-auto pr-1">
 						{#if $filteredLogs.length === 0}
 							<div
 								class="rounded-lg border border-dashed border-border/60 p-6 text-center text-sm text-muted-foreground"
@@ -484,7 +486,7 @@ const connectedCaption = `${data.totals.connected}`;
 		</Card>
 		<Card class="flex h-[32rem] flex-col border-border/60 lg:col-span-2">
 			<CardContent class="flex-1 overflow-hidden p-0">
-				<div class="flex-1 h-full overflow-y-auto">
+				<div class="h-full flex-1 overflow-y-auto">
 					<div class="divide-y divide-border/60">
 						{#each countryStats as country (country.countryCode)}
 							{@const countryCode = country.countryCode}
@@ -496,9 +498,7 @@ const connectedCaption = `${data.totals.connected}`;
 								type="button"
 								class={cn(
 									'flex w-full items-center justify-between gap-3 px-6 py-3 text-left transition-colors',
-									$selectedCountry === country.countryCode
-										? 'bg-primary/10'
-										: 'hover:bg-primary/5'
+									$selectedCountry === country.countryCode ? 'bg-primary/10' : 'hover:bg-primary/5'
 								)}
 								onclick={() => toggleCountry(country.countryCode)}
 							>
@@ -525,7 +525,9 @@ const connectedCaption = `${data.totals.connected}`;
 											: 'border-border/60 text-muted-foreground'
 									)}
 								>
-									<p class="text-xs text-muted-foreground">{percentageFormatter.format(country.percentage)}%</p>
+									<p class="text-xs text-muted-foreground">
+										{percentageFormatter.format(country.percentage)}%
+									</p>
 								</span>
 							</button>
 						{/each}

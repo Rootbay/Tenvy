@@ -238,33 +238,33 @@
 			return;
 		}
 
-                if (status === 'running') {
-                        toast('Starting build…', {
-                                id: BUILD_STATUS_TOAST_ID,
-                                description: `Generating ${effectiveOutputFilename}`,
-                                position: 'bottom-right',
-                                duration: Infinity,
-                                dismissable: false
-                        });
-                } else if (status === 'success') {
-                        const parts: string[] = [];
-                        if (downloadUrl) {
-                                parts.push('Download is ready.');
+		if (status === 'running') {
+			toast('Starting build…', {
+				id: BUILD_STATUS_TOAST_ID,
+				description: `Generating ${effectiveOutputFilename}`,
+				position: 'bottom-right',
+				duration: Infinity,
+				dismissable: false
+			});
+		} else if (status === 'success') {
+			const parts: string[] = [];
+			if (downloadUrl) {
+				parts.push('Download is ready.');
 			}
 			if (outputPath) {
 				parts.push(`Saved to ${outputPath}.`);
 			}
-                        const url = downloadUrl;
-                        const action = url
-                                ? {
-                                          label: 'Download',
-                                          onClick: () => {
-                                                  if (typeof window !== 'undefined') {
-                                                          window.open(url, '_blank', 'noopener');
-                                                  }
-                                          }
-                                  }
-                                : undefined;
+			const url = downloadUrl;
+			const action = url
+				? {
+						label: 'Download',
+						onClick: () => {
+							if (typeof window !== 'undefined') {
+								window.open(url, '_blank', 'noopener');
+							}
+						}
+					}
+				: undefined;
 			toast.success('Build completed', {
 				id: BUILD_STATUS_TOAST_ID,
 				description: parts.length > 0 ? parts.join(' ') : 'Agent binary is ready to deploy.',
@@ -339,7 +339,7 @@
 			description: secret,
 			position: 'bottom-right',
 			duration: Infinity,
-                        dismissable: true,
+			dismissable: true,
 			action: {
 				label: 'Copy',
 				onClick: async () => {

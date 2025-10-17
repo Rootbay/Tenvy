@@ -40,15 +40,15 @@ export const POST: RequestHandler = async ({ params, request }) => {
 		return json({ accepted: false, reason: 'filtered' });
 	}
 
-        try {
-                const result = remoteDesktopManager.dispatchInput(id, session.sessionId, sanitized);
-                return json({
-                        accepted: true,
-                        count: sanitized.length,
-                        delivered: result.delivered,
-                        sequence: result.sequence ?? undefined
-                });
-        } catch (err) {
-                throw error(500, 'Failed to dispatch remote desktop input command');
-        }
+	try {
+		const result = remoteDesktopManager.dispatchInput(id, session.sessionId, sanitized);
+		return json({
+			accepted: true,
+			count: sanitized.length,
+			delivered: result.delivered,
+			sequence: result.sequence ?? undefined
+		});
+	} catch (err) {
+		throw error(500, 'Failed to dispatch remote desktop input command');
+	}
 };

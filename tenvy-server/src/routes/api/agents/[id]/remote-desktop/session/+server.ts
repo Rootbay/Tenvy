@@ -26,7 +26,7 @@ function normalizeSettings(input: Record<string, unknown>): RemoteDesktopSetting
 	if (typeof input.keyboard === 'boolean') {
 		output.keyboard = input.keyboard;
 	}
-        return output;
+	return output;
 }
 
 export const GET: RequestHandler = ({ params }) => {

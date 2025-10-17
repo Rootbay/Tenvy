@@ -30,9 +30,9 @@ const ALLOWED_STATES: readonly TcpConnectionState[] = [
 	'TIME_WAIT',
 	'LAST_ACK',
 	'CLOSING',
-        'BOUND',
-        'CLOSED',
-        'UNKNOWN'
+	'BOUND',
+	'CLOSED',
+	'UNKNOWN'
 ];
 
 function normalizeFilter(value: unknown): string | undefined {

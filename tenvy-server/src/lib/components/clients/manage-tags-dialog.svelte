@@ -1,39 +1,39 @@
 <script lang="ts">
-import { createEventDispatcher } from 'svelte';
-import {
-	Dialog as DialogRoot,
-	DialogContent,
-	DialogDescription,
-	DialogFooter,
-	DialogHeader,
-	DialogTitle
-} from '$lib/components/ui/dialog/index.js';
-import { Button } from '$lib/components/ui/button/index.js';
-import { Input } from '$lib/components/ui/input/index.js';
-import { Badge } from '$lib/components/ui/badge/index.js';
-import { Alert, AlertDescription } from '$lib/components/ui/alert/index.js';
-import X from '@lucide/svelte/icons/x';
-import type { AgentSnapshot } from '../../../../../shared/types/agent';
+	import { createEventDispatcher } from 'svelte';
+	import {
+		Dialog as DialogRoot,
+		DialogContent,
+		DialogDescription,
+		DialogFooter,
+		DialogHeader,
+		DialogTitle
+	} from '$lib/components/ui/dialog/index.js';
+	import { Button } from '$lib/components/ui/button/index.js';
+	import { Input } from '$lib/components/ui/input/index.js';
+	import { Badge } from '$lib/components/ui/badge/index.js';
+	import { Alert, AlertDescription } from '$lib/components/ui/alert/index.js';
+	import X from '@lucide/svelte/icons/x';
+	import type { AgentSnapshot } from '../../../../../shared/types/agent';
 
-const MAX_TAGS = 16;
-const MAX_TAG_LENGTH = 32;
-const TAG_PATTERN = /^[\p{L}\p{N}_\-\s]+$/u;
+	const MAX_TAGS = 16;
+	const MAX_TAG_LENGTH = 32;
+	const TAG_PATTERN = /^[\p{L}\p{N}_\-\s]+$/u;
 
-let {
-	open = false,
-	agent = null,
-	availableTags = [],
-	pending = false,
-	error = null
-} = $props<{
-	open?: boolean;
-	agent?: AgentSnapshot | null;
-	availableTags?: string[];
-	pending?: boolean;
-	error?: string | null;
-}>();
+	let {
+		open = false,
+		agent = null,
+		availableTags = [],
+		pending = false,
+		error = null
+	} = $props<{
+		open?: boolean;
+		agent?: AgentSnapshot | null;
+		availableTags?: string[];
+		pending?: boolean;
+		error?: string | null;
+	}>();
 
-const dispatch = createEventDispatcher<{
+	const dispatch = createEventDispatcher<{
 		close: void;
 		submit: { tags: string[] };
 	}>();
@@ -102,7 +102,9 @@ const dispatch = createEventDispatcher<{
 			return;
 		}
 
-		const duplicate = draftTags.some((existing) => existing.toLowerCase() === normalized.toLowerCase());
+		const duplicate = draftTags.some(
+			(existing) => existing.toLowerCase() === normalized.toLowerCase()
+		);
 		if (duplicate) {
 			inputError = 'Tag already added.';
 			return;
@@ -164,7 +166,7 @@ const dispatch = createEventDispatcher<{
 							<span>{tag}</span>
 							<button
 								type="button"
-								class="inline-flex h-4 w-4 items-center justify-center rounded-full text-muted-foreground transition hover:bg-muted hover:text-foreground cursor-pointer"
+								class="inline-flex h-4 w-4 cursor-pointer items-center justify-center rounded-full text-muted-foreground transition hover:bg-muted hover:text-foreground"
 								onclick={() => removeTag(tag)}
 								aria-label={`Remove ${tag}`}
 								disabled={pending}
@@ -175,7 +177,9 @@ const dispatch = createEventDispatcher<{
 					{/each}
 				</div>
 			{:else}
-				<p class="text-sm text-muted-foreground">No tags assigned yet. Add one below to get started.</p>
+				<p class="text-sm text-muted-foreground">
+					No tags assigned yet. Add one below to get started.
+				</p>
 			{/if}
 
 			<div class="space-y-2">
@@ -189,9 +193,7 @@ const dispatch = createEventDispatcher<{
 							disabled={pending}
 							autocomplete="off"
 						/>
-						<Button type="button" onclick={() => addTag()} disabled={pending}>
-							Add
-						</Button>
+						<Button type="button" onclick={() => addTag()} disabled={pending}>Add</Button>
 					</div>
 				</label>
 				{#if inputError}
@@ -201,7 +203,7 @@ const dispatch = createEventDispatcher<{
 
 			{#if filteredSuggestions.length > 0}
 				<div class="space-y-2">
-					<p class="text-xs uppercase tracking-wide text-muted-foreground">Suggestions</p>
+					<p class="text-xs tracking-wide text-muted-foreground uppercase">Suggestions</p>
 					<div class="flex flex-wrap gap-2">
 						{#each filteredSuggestions as suggestion (suggestion)}
 							<Button
@@ -226,9 +228,7 @@ const dispatch = createEventDispatcher<{
 		</div>
 
 		<DialogFooter class="mt-4 gap-2">
-			<Button type="button" variant="ghost" onclick={closeDialog} disabled={pending}>
-				Cancel
-			</Button>
+			<Button type="button" variant="ghost" onclick={closeDialog} disabled={pending}>Cancel</Button>
 			<Button type="button" onclick={handleSubmit} disabled={pending}>
 				{pending ? 'Saving…' : 'Save tags'}
 			</Button>

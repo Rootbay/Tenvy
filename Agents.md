@@ -1,8 +1,5 @@
 ---
 context_for: tenvy-server / tenvy-client / shared
-formatting: bun format
-linting: bun lint
-checking: bun check
 ---
 
 # Agents Specification
