@@ -13,46 +13,49 @@
 		type ChartConfig
 	} from '$lib/components/ui/chart/index.js';
 	import { AreaChart, BarChart, LineChart } from 'layerchart';
+	import type { PageData } from './$types';
+	import type {
+		ActivityFlaggedSession,
+		ActivitySummaryMetric,
+		ActivitySummaryTone
+	} from '$lib/data/activity';
 
-	type SummaryMetric = {
-		label: string;
-		value: string;
-		delta: string;
-		tone: 'positive' | 'warning' | 'neutral';
-	};
+	let { data } = $props<{ data: PageData }>();
 
-	const summaryMetrics: SummaryMetric[] = [
-		{
-			label: 'Live beacons',
-			value: '24',
-			delta: '+4 vs last hour',
-			tone: 'positive'
-		},
-		{
-			label: 'Tasks dispatched',
-			value: '138',
-			delta: '32 queued downstream',
-			tone: 'neutral'
-		},
-		{
-			label: 'Escalations',
-			value: '7 open',
-			delta: '2 awaiting analyst review',
-			tone: 'warning'
-		},
-		{
-			label: 'New clients today',
-			value: '11',
-			delta: '86% provisioned via vouchers',
-			tone: 'neutral'
-		}
-	];
+	const summaryMetrics: ActivitySummaryMetric[] = data.summary;
 
-	const summaryToneClasses: Record<SummaryMetric['tone'], string> = {
+	const summaryToneClasses: Record<ActivitySummaryTone, string> = {
 		positive: 'text-emerald-500',
 		warning: 'text-amber-500',
 		neutral: 'text-muted-foreground'
 	};
+
+	const flaggedStatusMeta: Record<
+		ActivityFlaggedSession['status'],
+		{ label: string; badgeClass: string }
+	> = {
+		open: {
+			label: 'Open escalation',
+			badgeClass: 'bg-amber-500/10 border-amber-500/40 text-amber-500'
+		},
+		review: {
+			label: 'Needs review',
+			badgeClass: 'bg-sky-500/10 border-sky-500/40 text-sky-500'
+		},
+		suppressed: {
+			label: 'Suppressed',
+			badgeClass: 'bg-muted/60 border-border/60 text-muted-foreground'
+		}
+	};
+
+	const timeFormatter = new Intl.DateTimeFormat(undefined, {
+		hour: '2-digit',
+		minute: '2-digit'
+	});
+
+	const numberFormatter = new Intl.NumberFormat(undefined, {
+		maximumFractionDigits: 0
+	});
 
 	type ActivityPoint = {
 		timestamp: Date;
@@ -61,25 +64,14 @@
 		suppressed: number;
 	};
 
-	const timeFormatter = new Intl.DateTimeFormat('en-US', {
-		hour: '2-digit',
-		minute: '2-digit'
-	});
+	type TimelineEntry = PageData['timeline'][number];
 
-	const numberFormatter = new Intl.NumberFormat('en-US', {
-		maximumFractionDigits: 0
-	});
-
-	const activityTimeline: ActivityPoint[] = [
-		{ timestamp: new Date('2024-12-01T08:00:00Z'), active: 9, idle: 4, suppressed: 1 },
-		{ timestamp: new Date('2024-12-01T09:00:00Z'), active: 11, idle: 5, suppressed: 2 },
-		{ timestamp: new Date('2024-12-01T10:00:00Z'), active: 14, idle: 4, suppressed: 2 },
-		{ timestamp: new Date('2024-12-01T11:00:00Z'), active: 18, idle: 6, suppressed: 3 },
-		{ timestamp: new Date('2024-12-01T12:00:00Z'), active: 22, idle: 7, suppressed: 3 },
-		{ timestamp: new Date('2024-12-01T13:00:00Z'), active: 19, idle: 6, suppressed: 3 },
-		{ timestamp: new Date('2024-12-01T14:00:00Z'), active: 17, idle: 6, suppressed: 2 },
-		{ timestamp: new Date('2024-12-01T15:00:00Z'), active: 21, idle: 5, suppressed: 2 }
-	];
+	const activityTimeline: ActivityPoint[] = data.timeline.map(
+		(point: TimelineEntry): ActivityPoint => ({
+			...point,
+			timestamp: new Date(point.timestamp)
+		})
+	);
 
 	const activityChartConfig = {
 		active: {
@@ -126,13 +118,9 @@
 		}
 	];
 
-	const moduleActivity = [
-		{ module: 'Reconnaissance', executed: 42, queued: 8 },
-		{ module: 'Credential access', executed: 31, queued: 6 },
-		{ module: 'Persistence', executed: 26, queued: 5 },
-		{ module: 'Collection', executed: 18, queued: 7 },
-		{ module: 'Exfiltration', executed: 11, queued: 6 }
-	];
+	type ModuleActivityEntry = PageData['moduleActivity'][number];
+
+	const moduleActivity: ModuleActivityEntry[] = data.moduleActivity;
 
 	const moduleChartConfig = {
 		executed: {
@@ -155,13 +143,13 @@
 		{
 			key: 'executed',
 			label: moduleChartConfig.executed.label,
-			value: (entry: (typeof moduleActivity)[number]) => entry.executed,
+			value: (entry: ModuleActivityEntry) => entry.executed,
 			color: 'var(--color-executed)'
 		},
 		{
 			key: 'queued',
 			label: moduleChartConfig.queued.label,
-			value: (entry: (typeof moduleActivity)[number]) => entry.queued,
+			value: (entry: ModuleActivityEntry) => entry.queued,
 			color: 'var(--color-queued)'
 		}
 	];
@@ -172,16 +160,14 @@
 		p95: number;
 	};
 
-	const latencyTrend: LatencyPoint[] = [
-		{ timestamp: new Date('2024-12-01T08:00:00Z'), p50: 148, p95: 392 },
-		{ timestamp: new Date('2024-12-01T09:00:00Z'), p50: 162, p95: 418 },
-		{ timestamp: new Date('2024-12-01T10:00:00Z'), p50: 171, p95: 441 },
-		{ timestamp: new Date('2024-12-01T11:00:00Z'), p50: 186, p95: 467 },
-		{ timestamp: new Date('2024-12-01T12:00:00Z'), p50: 178, p95: 452 },
-		{ timestamp: new Date('2024-12-01T13:00:00Z'), p50: 169, p95: 423 },
-		{ timestamp: new Date('2024-12-01T14:00:00Z'), p50: 162, p95: 398 },
-		{ timestamp: new Date('2024-12-01T15:00:00Z'), p50: 158, p95: 376 }
-	];
+	type LatencyEntry = PageData['latency']['points'][number];
+
+	const latencyTrend: LatencyPoint[] = data.latency.points.map(
+		(entry: LatencyEntry): LatencyPoint => ({
+			...entry,
+			timestamp: new Date(entry.timestamp)
+		})
+	);
 
 	const latencyChartConfig = {
 		p50: {
@@ -215,32 +201,7 @@
 		}
 	];
 
-	const flaggedSessions = [
-		{
-			client: 'vela-239',
-			reason: 'Command flood throttled by safeguard',
-			region: 'AMS • 54.210.90.12',
-			interactions: 47
-		},
-		{
-			client: 'lyra-082',
-			reason: 'Credential cache extracted',
-			region: 'FRA • 185.54.32.77',
-			interactions: 29
-		},
-		{
-			client: 'solace-441',
-			reason: 'Multiple privilege escalations',
-			region: 'SFO • 34.90.221.14',
-			interactions: 22
-		},
-		{
-			client: 'nadir-116',
-			reason: 'Dormant beacon rehydrated',
-			region: 'SIN • 103.6.46.220',
-			interactions: 18
-		}
-	] as const;
+	const flaggedSessions: ActivityFlaggedSession[] = data.flaggedSessions;
 </script>
 
 <section class="space-y-6">
@@ -299,7 +260,9 @@
 						Monitors round-trip times captured from controller to clients.
 					</CardDescription>
 				</div>
-				<Badge variant="secondary" class="font-mono text-[0.65rem]">Last 8 intervals</Badge>
+				<Badge variant="secondary" class="font-mono text-[0.65rem]">
+					{data.latency.windowLabel}
+				</Badge>
 			</CardHeader>
 			<CardContent>
 				<ChartContainer config={latencyChartConfig} class="w-full">
@@ -373,9 +336,17 @@
 								<p class="text-sm text-foreground">{session.reason}</p>
 								<p class="text-xs text-muted-foreground">{session.region}</p>
 							</div>
-							<Badge variant="outline" class="font-mono text-xs">
-								{numberFormatter.format(session.interactions)} ops
-							</Badge>
+							<div class="flex flex-col items-end gap-2 text-right">
+								<Badge variant="outline" class="font-mono text-xs">
+									{numberFormatter.format(session.interactions)} ops
+								</Badge>
+								<Badge
+									variant="outline"
+									class={`text-[0.65rem] ${flaggedStatusMeta[session.status].badgeClass}`}
+								>
+									{flaggedStatusMeta[session.status].label}
+								</Badge>
+							</div>
 						</div>
 					</div>
 				{/each}
