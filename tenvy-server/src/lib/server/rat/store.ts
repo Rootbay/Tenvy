@@ -190,13 +190,97 @@ function computeFingerprint(metadata: AgentMetadata): string {
 }
 
 function parsePersistedDate(value: unknown, fallback: Date): Date {
-	if (typeof value === 'string') {
-		const parsed = new Date(value);
-		if (!Number.isNaN(parsed.getTime())) {
-			return parsed;
-		}
-	}
-	return fallback;
+        if (typeof value === 'string') {
+                const parsed = new Date(value);
+                if (!Number.isNaN(parsed.getTime())) {
+                        return parsed;
+                }
+        }
+        return fallback;
+}
+
+function parseNumeric(value: unknown): number | null {
+        if (typeof value === 'number') {
+                return Number.isFinite(value) ? value : null;
+        }
+        if (typeof value === 'string' && value.trim() !== '') {
+                const parsed = Number(value);
+                return Number.isFinite(parsed) ? parsed : null;
+        }
+        return null;
+}
+
+function normalizeConfig(config?: Partial<AgentConfig> | null): AgentConfig {
+        const normalized: AgentConfig = {
+                ...defaultAgentConfig
+        };
+
+        if (!config) {
+                return normalized;
+        }
+
+        const pollInterval = parseNumeric(config.pollIntervalMs);
+        if (pollInterval !== null && pollInterval > 0) {
+                normalized.pollIntervalMs = Math.max(1, Math.round(pollInterval));
+        }
+
+        const maxBackoff = parseNumeric(config.maxBackoffMs);
+        if (maxBackoff !== null && maxBackoff > 0) {
+                normalized.maxBackoffMs = Math.max(
+                        normalized.pollIntervalMs,
+                        Math.round(maxBackoff)
+                );
+        }
+
+        const jitter = parseNumeric(config.jitterRatio);
+        if (jitter !== null && jitter >= 0 && jitter <= 1) {
+                normalized.jitterRatio = jitter;
+        }
+
+        return normalized;
+}
+
+function cloneMetadata(metadata: AgentMetadata): AgentMetadata {
+        const clone: AgentMetadata = { ...metadata };
+        if (Array.isArray(metadata.tags)) {
+                clone.tags = [...metadata.tags];
+        }
+        if (metadata.location) {
+                clone.location = { ...metadata.location };
+        }
+        return clone;
+}
+
+function cloneMetrics(metrics: AgentMetrics | undefined): AgentMetrics | undefined {
+        return metrics ? { ...metrics } : undefined;
+}
+
+function mergeRecentResults(
+        existing: CommandResult[],
+        incoming: CommandResult[]
+): CommandResult[] {
+        if (incoming.length === 0) {
+                return existing;
+        }
+
+        const merged: CommandResult[] = [];
+        const seen = new Set<string>();
+
+        for (const result of [...incoming, ...existing]) {
+                if (!result?.commandId) {
+                        continue;
+                }
+                if (seen.has(result.commandId)) {
+                        continue;
+                }
+                seen.add(result.commandId);
+                merged.push({ ...result });
+                if (merged.length >= MAX_RECENT_RESULTS) {
+                        break;
+                }
+        }
+
+        return merged;
 }
 
 export class AgentRegistry {
@@ -260,13 +344,15 @@ export class AgentRegistry {
 				continue;
 			}
 
-			const connectedAt = parsePersistedDate(entry.connectedAt, new Date());
-			let lastSeen = parsePersistedDate(entry.lastSeen, connectedAt);
-			let normalizedStatus = status as AgentStatus;
-			if (normalizedStatus === 'online') {
-				normalizedStatus = 'offline';
-				lastSeen = new Date();
-			}
+                        const connectedAt = parsePersistedDate(entry.connectedAt, new Date());
+                        let lastSeen = parsePersistedDate(entry.lastSeen, connectedAt);
+                        let normalizedStatus = status as AgentStatus;
+                        if (normalizedStatus === 'online') {
+                                normalizedStatus = 'offline';
+                                if (lastSeen.getTime() < connectedAt.getTime()) {
+                                        lastSeen = connectedAt;
+                                }
+                        }
 
 			const sharedNotes = new Map<string, SharedNoteRecord>();
 			if (Array.isArray(entry.sharedNotes)) {
@@ -297,12 +383,12 @@ export class AgentRegistry {
 				? entry.recentResults.map((result) => ({ ...result }))
 				: [];
 
-			const normalizedMetadata: AgentMetadata = {
-				...(metadata as AgentMetadata),
-				tags: Array.isArray((metadata as AgentMetadata).tags)
-					? this.normalizeTags((metadata as AgentMetadata).tags!)
-					: (metadata as AgentMetadata).tags
-			};
+                        const normalizedMetadata: AgentMetadata = {
+                                ...(metadata as AgentMetadata),
+                                tags: Array.isArray((metadata as AgentMetadata).tags)
+                                        ? this.normalizeTags((metadata as AgentMetadata).tags!)
+                                        : (metadata as AgentMetadata).tags
+                        };
 
 			const fingerprint = entry.fingerprint
 				? entry.fingerprint
@@ -315,8 +401,8 @@ export class AgentRegistry {
 				status: normalizedStatus,
 				connectedAt,
 				lastSeen,
-				metrics: entry.metrics ? { ...entry.metrics } : undefined,
-				config: entry.config ? { ...entry.config } : { ...defaultAgentConfig },
+                                metrics: entry.metrics ? { ...entry.metrics } : undefined,
+                                config: normalizeConfig(entry.config),
 				pendingCommands,
 				recentResults,
 				sharedNotes,
@@ -358,27 +444,27 @@ export class AgentRegistry {
 	}
 
 	private async persistToDisk(): Promise<void> {
-		const agents = Array.from(this.agents.values()).map<PersistedAgentRecord>((record) => ({
-			id: record.id,
-			key: record.key,
-			metadata: record.metadata,
-			status: record.status,
-			connectedAt: record.connectedAt.toISOString(),
-			lastSeen: record.lastSeen.toISOString(),
-			metrics: record.metrics,
-			config: record.config,
-			pendingCommands: record.pendingCommands.map((command) => ({ ...command })),
-			recentResults: record.recentResults.map((result) => ({ ...result })),
-			sharedNotes: Array.from(record.sharedNotes.values()).map((note) => ({
-				id: note.id,
-				ciphertext: note.ciphertext,
-				nonce: note.nonce,
-				digest: note.digest,
-				version: note.version,
-				updatedAt: note.updatedAt.toISOString()
-			})),
-			fingerprint: record.fingerprint
-		}));
+                const agents = Array.from(this.agents.values()).map<PersistedAgentRecord>((record) => ({
+                        id: record.id,
+                        key: record.key,
+                        metadata: cloneMetadata(record.metadata),
+                        status: record.status,
+                        connectedAt: record.connectedAt.toISOString(),
+                        lastSeen: record.lastSeen.toISOString(),
+                        metrics: cloneMetrics(record.metrics),
+                        config: { ...record.config },
+                        pendingCommands: record.pendingCommands.map((command) => ({ ...command })),
+                        recentResults: record.recentResults.map((result) => ({ ...result })),
+                        sharedNotes: Array.from(record.sharedNotes.values()).map((note) => ({
+                                id: note.id,
+                                ciphertext: note.ciphertext,
+                                nonce: note.nonce,
+                                digest: note.digest,
+                                version: note.version,
+                                updatedAt: note.updatedAt.toISOString()
+                        })),
+                        fingerprint: record.fingerprint
+                }));
 
 		const payload: PersistedRegistryFile = {
 			version: PERSIST_FILE_VERSION,
@@ -405,19 +491,19 @@ export class AgentRegistry {
 		}
 	}
 
-	private toSnapshot(record: AgentRecord): AgentSnapshot {
-		return {
-			id: record.id,
-			metadata: record.metadata,
-			status: record.status,
-			connectedAt: record.connectedAt.toISOString(),
-			lastSeen: record.lastSeen.toISOString(),
-			metrics: record.metrics,
-			pendingCommands: record.pendingCommands.length,
-			recentResults: record.recentResults,
-			liveSession: Boolean(record.session)
-		} satisfies AgentSnapshot;
-	}
+        private toSnapshot(record: AgentRecord): AgentSnapshot {
+                return {
+                        id: record.id,
+                        metadata: cloneMetadata(record.metadata),
+                        status: record.status,
+                        connectedAt: record.connectedAt.toISOString(),
+                        lastSeen: record.lastSeen.toISOString(),
+                        metrics: cloneMetrics(record.metrics),
+                        pendingCommands: record.pendingCommands.length,
+                        recentResults: record.recentResults.map((result) => ({ ...result })),
+                        liveSession: Boolean(record.session)
+                } satisfies AgentSnapshot;
+        }
 
 	private detachSession(
 		record: AgentRecord,
@@ -507,12 +593,13 @@ export class AgentRegistry {
 
 				const previousFingerprint = existingRecord.fingerprint;
 				existingRecord.metadata = nextMetadata;
-				existingRecord.status = 'online';
-				existingRecord.connectedAt = now;
-				existingRecord.lastSeen = now;
-				existingRecord.metrics = undefined;
-				existingRecord.key = randomBytes(32).toString('hex');
-				existingRecord.fingerprint = computeFingerprint(nextMetadata);
+                                existingRecord.status = 'online';
+                                existingRecord.connectedAt = now;
+                                existingRecord.lastSeen = now;
+                                existingRecord.metrics = undefined;
+                                existingRecord.key = randomBytes(32).toString('hex');
+                                existingRecord.config = normalizeConfig(existingRecord.config);
+                                existingRecord.fingerprint = computeFingerprint(nextMetadata);
 
 				if (previousFingerprint !== existingRecord.fingerprint) {
 					this.fingerprints.delete(previousFingerprint);
@@ -521,13 +608,13 @@ export class AgentRegistry {
 				this.agents.set(existingRecord.id, existingRecord);
 				this.schedulePersist();
 
-				return {
-					agentId: existingRecord.id,
-					agentKey: existingRecord.key,
-					config: existingRecord.config,
-					commands: [],
-					serverTime: now.toISOString()
-				};
+                                return {
+                                        agentId: existingRecord.id,
+                                        agentKey: existingRecord.key,
+                                        config: { ...existingRecord.config },
+                                        commands: [],
+                                        serverTime: now.toISOString()
+                                };
 			}
 
 			this.fingerprints.delete(fingerprint);
@@ -535,32 +622,32 @@ export class AgentRegistry {
 
 		const id = randomUUID();
 		const key = randomBytes(32).toString('hex');
-		const record: AgentRecord = {
-			id,
-			key,
-			metadata: incomingMetadata,
-			status: 'online',
-			connectedAt: now,
-			lastSeen: now,
-			metrics: undefined,
-			config: { ...defaultAgentConfig },
-			pendingCommands: [],
-			recentResults: [],
-			sharedNotes: new Map(),
-			fingerprint
-		};
+                const record: AgentRecord = {
+                        id,
+                        key,
+                        metadata: incomingMetadata,
+                        status: 'online',
+                        connectedAt: now,
+                        lastSeen: now,
+                        metrics: undefined,
+                        config: normalizeConfig(null),
+                        pendingCommands: [],
+                        recentResults: [],
+                        sharedNotes: new Map(),
+                        fingerprint
+                };
 
 		this.agents.set(id, record);
 		this.fingerprints.set(fingerprint, id);
 		this.schedulePersist();
 
-		return {
-			agentId: id,
-			agentKey: key,
-			config: record.config,
-			commands: [],
-			serverTime: now.toISOString()
-		};
+                return {
+                        agentId: id,
+                        agentKey: key,
+                        config: { ...record.config },
+                        commands: [],
+                        serverTime: now.toISOString()
+                };
 	}
 
 	attachSession(
@@ -657,28 +744,28 @@ export class AgentRegistry {
 		if (options.remoteAddress) {
 			record.metadata = ensureMetadata(record.metadata, options.remoteAddress);
 		}
-		if (payload.metrics) {
-			record.metrics = payload.metrics;
-		}
-		if (payload.results && payload.results.length > 0) {
-			record.recentResults = [...payload.results, ...record.recentResults].slice(
-				0,
-				MAX_RECENT_RESULTS
-			);
-		}
+                if (payload.metrics) {
+                        record.metrics = { ...payload.metrics };
+                }
+                if (payload.results && payload.results.length > 0) {
+                        record.recentResults = mergeRecentResults(
+                                record.recentResults,
+                                payload.results
+                        );
+                }
 
-		const commands = record.pendingCommands;
-		record.pendingCommands = [];
+                const commands = record.pendingCommands.map((command) => ({ ...command }));
+                record.pendingCommands = [];
 
-		this.schedulePersist();
+                this.schedulePersist();
 
-		return {
-			agentId: id,
-			commands,
-			config: record.config,
-			serverTime: new Date().toISOString()
-		};
-	}
+                return {
+                        agentId: id,
+                        commands,
+                        config: { ...record.config },
+                        serverTime: new Date().toISOString()
+                };
+        }
 
 	queueCommand(id: string, input: CommandInput): CommandQueueResponse {
 		const record = this.agents.get(id);
