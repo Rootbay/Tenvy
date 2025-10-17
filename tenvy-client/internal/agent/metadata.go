@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"context"
 	"io"
 	"net"
 	"net/http"
@@ -8,12 +9,26 @@ import (
 	"os/user"
 	"runtime"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/rootbay/tenvy-client/internal/protocol"
 )
 
+const (
+	publicIPRequestTimeout = 3 * time.Second
+	publicIPCacheTTL       = 30 * time.Minute
+	publicIPRetryInterval  = 1 * time.Minute
+	publicIPLookupEndpoint = "https://api.ipify.org?format=text"
+)
+
+var publicIPCache = newPublicIPResolver()
+
 func CollectMetadata(buildVersion string) protocol.AgentMetadata {
+	return CollectMetadataWithClient(buildVersion, nil)
+}
+
+func CollectMetadataWithClient(buildVersion string, client *http.Client) protocol.AgentMetadata {
 	hostname, _ := os.Hostname()
 	currentUser, err := user.Current()
 	username := resolveUsername(currentUser, err)
@@ -26,7 +41,7 @@ func CollectMetadata(buildVersion string) protocol.AgentMetadata {
 		OS:              runtime.GOOS,
 		Architecture:    runtime.GOARCH,
 		IPAddress:       detectPrimaryIP(),
-		PublicIPAddress: detectPublicIP(),
+		PublicIPAddress: detectPublicIP(client),
 		Tags:            tags,
 		Version:         buildVersion,
 	}
@@ -130,17 +145,84 @@ func parseTags(value string) []string {
 	return tags
 }
 
-func detectPublicIP() string {
-	client := &http.Client{
-		Timeout: 3 * time.Second,
+func fallback(value, fallbackValue string) string {
+	if strings.TrimSpace(value) == "" {
+		return fallbackValue
 	}
-	resp, err := client.Get("https://api.ipify.org?format=text")
+	return value
+}
+
+type publicIPResolver struct {
+	mu         sync.Mutex
+	value      string
+	expiresAt  time.Time
+	nextLookup time.Time
+}
+
+func newPublicIPResolver() *publicIPResolver {
+	return &publicIPResolver{}
+}
+
+func (r *publicIPResolver) Resolve(client *http.Client) string {
+	if r == nil {
+		return ""
+	}
+
+	now := time.Now()
+
+	r.mu.Lock()
+	if r.value != "" && now.Before(r.expiresAt) {
+		value := r.value
+		r.mu.Unlock()
+		return value
+	}
+	if now.Before(r.nextLookup) {
+		r.mu.Unlock()
+		return ""
+	}
+	r.nextLookup = now.Add(publicIPRetryInterval)
+	r.mu.Unlock()
+
+	ip := fetchPublicIP(client)
+	if ip == "" {
+		return ""
+	}
+
+	r.mu.Lock()
+	r.value = ip
+	r.expiresAt = time.Now().Add(publicIPCacheTTL)
+	r.nextLookup = r.expiresAt
+	r.mu.Unlock()
+	return ip
+}
+
+func detectPublicIP(client *http.Client) string {
+	return publicIPCache.Resolve(client)
+}
+
+func fetchPublicIP(client *http.Client) string {
+	var httpClient *http.Client
+	if client != nil {
+		httpClient = client
+	} else {
+		httpClient = &http.Client{}
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), publicIPRequestTimeout)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, publicIPLookupEndpoint, nil)
+	if err != nil {
+		return ""
+	}
+
+	resp, err := httpClient.Do(req)
 	if err != nil {
 		return ""
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
 		return ""
 	}
 
@@ -154,11 +236,4 @@ func detectPublicIP() string {
 		return ""
 	}
 	return ip
-}
-
-func fallback(value, fallbackValue string) string {
-	if strings.TrimSpace(value) == "" {
-		return fallbackValue
-	}
-	return value
 }

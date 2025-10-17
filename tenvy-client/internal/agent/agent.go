@@ -12,24 +12,26 @@ import (
 )
 
 type Agent struct {
-	id             string
-	key            string
-	baseURL        string
-	client         *http.Client
-	config         protocol.AgentConfig
-	logger         *log.Logger
-	resultMu       sync.Mutex
-	pendingResults []protocol.CommandResult
-	startTime      time.Time
-	metadata       protocol.AgentMetadata
-	sharedSecret   string
-	preferences    BuildPreferences
-	notes          *notes.Manager
-	buildVersion   string
-	timing         TimingOverride
-	modules        *moduleRegistry
-	commands       *commandRouter
-	connectionFlag atomic.Uint32
+	id                      string
+	key                     string
+	baseURL                 string
+	client                  *http.Client
+	config                  protocol.AgentConfig
+	logger                  *log.Logger
+	resultMu                sync.Mutex
+	pendingResults          []protocol.CommandResult
+	startTime               time.Time
+	metadata                protocol.AgentMetadata
+	sharedSecret            string
+	preferences             BuildPreferences
+	notes                   *notes.Manager
+	buildVersion            string
+	timing                  TimingOverride
+	modules                 *moduleRegistry
+	commands                *commandRouter
+	connectionFlag          atomic.Uint32
+	remoteDesktopInputOnce  sync.Once
+	remoteDesktopInputQueue chan remoteDesktopInputTask
 }
 
 func (a *Agent) AgentID() string {

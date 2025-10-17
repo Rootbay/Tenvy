@@ -14,7 +14,16 @@ import (
 	"nhooyr.io/websocket"
 )
 
-const commandStreamDialTimeout = 15 * time.Second
+const (
+	commandStreamDialTimeout    = 15 * time.Second
+	remoteDesktopInputQueueSize = 32
+)
+
+type remoteDesktopInputTask struct {
+	ctx    context.Context
+	module *remoteDesktopModule
+	burst  protocol.RemoteDesktopInputBurst
+}
 
 func (a *Agent) commandStreamURL() (string, error) {
 	if a == nil {
@@ -199,11 +208,44 @@ func (a *Agent) handleRemoteDesktopInput(ctx context.Context, burst protocol.Rem
 		return
 	}
 
-	go func() {
-		if err := module.HandleInputBurst(ctx, burst); err != nil {
-			if a.logger != nil {
+	queue := a.ensureRemoteDesktopInputWorker()
+	if queue == nil {
+		return
+	}
+
+	task := remoteDesktopInputTask{ctx: ctx, module: module, burst: burst}
+
+	select {
+	case queue <- task:
+	case <-ctx.Done():
+		if a.logger != nil && !errors.Is(ctx.Err(), context.Canceled) {
+			a.logger.Printf("remote desktop input dropped: %v", ctx.Err())
+		}
+	}
+}
+
+func (a *Agent) ensureRemoteDesktopInputWorker() chan remoteDesktopInputTask {
+	if a == nil {
+		return nil
+	}
+
+	a.remoteDesktopInputOnce.Do(func() {
+		a.remoteDesktopInputQueue = make(chan remoteDesktopInputTask, remoteDesktopInputQueueSize)
+		go a.remoteDesktopInputWorker()
+	})
+
+	return a.remoteDesktopInputQueue
+}
+
+func (a *Agent) remoteDesktopInputWorker() {
+	for task := range a.remoteDesktopInputQueue {
+		if task.module == nil {
+			continue
+		}
+		if err := task.module.HandleInputBurst(task.ctx, task.burst); err != nil {
+			if a.logger != nil && !errors.Is(err, context.Canceled) {
 				a.logger.Printf("remote desktop input error: %v", err)
 			}
 		}
-	}()
+	}
 }
