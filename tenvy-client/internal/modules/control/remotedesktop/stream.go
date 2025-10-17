@@ -782,6 +782,7 @@ func (c *remoteDesktopSessionController) handleVideoFrame(
 
 	state.resetClipBuffer()
 	state.clipKeyPending = false
+	c.commitVideoFrameSuccess(session, len(snapshot.monitorsPayload) > 0)
 	return nextInterval, timestamp
 }
 
@@ -1129,6 +1130,22 @@ func (c *remoteDesktopSessionController) prepareImageFrameSend(
 		metrics.FrameLossPercent = math.Round(clampFloat(c.session.frameDropEMA, 0, 1)*1000) / 10
 	}
 	return c.session.FrameInterval, true
+}
+
+func (c *remoteDesktopSessionController) commitVideoFrameSuccess(session *RemoteDesktopSession, monitorsSynced bool) {
+	if session == nil || !monitorsSynced {
+		return
+	}
+
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if c.session == nil || c.session.ID != session.ID {
+		return
+	}
+
+	c.session.monitorsDirty = false
+	session.monitorsDirty = false
 }
 
 func (c *remoteDesktopSessionController) commitImageFrameSuccess(
@@ -2035,6 +2052,7 @@ func clampMonitorIndex(monitors []remoteMonitor, index int) int {
 func computeMetrics(
 	targetInterval, frameDuration, captureDuration, encodeDuration, processing time.Duration,
 	bytesSent int,
+	_ ...int,
 ) *RemoteDesktopFrameMetrics {
 	if targetInterval <= 0 {
 		targetInterval = 100 * time.Millisecond
