@@ -197,8 +197,9 @@ func (c *Controller) start(ctx context.Context, payload protocol.AppVncCommandPa
 		return err
 	}
 
+	expandedExecutable := expandExecutablePath(executable)
 	env := mergeEnvironment(plan)
-	cmd := exec.CommandContext(ctx, executable) // #nosec G204 - path originates from static descriptor
+	cmd := exec.CommandContext(ctx, expandedExecutable) // #nosec G204 - path originates from static descriptor
 	cmd.Dir = workspace
 	if len(env) > 0 {
 		cmd.Env = env
@@ -206,7 +207,7 @@ func (c *Controller) start(ctx context.Context, payload protocol.AppVncCommandPa
 
 	if err := cmd.Start(); err != nil {
 		cleanup()
-		return fmt.Errorf("launch %s: %w", executable, err)
+		return fmt.Errorf("launch %s: %w", expandedExecutable, err)
 	}
 
 	state := &sessionState{
@@ -220,9 +221,46 @@ func (c *Controller) start(ctx context.Context, payload protocol.AppVncCommandPa
 		lastBeat:    time.Now(),
 	}
 	c.session = state
-	c.logf("app-vnc: session %s started (%s)", sessionID, executable)
+	c.logf("app-vnc: session %s started (%s)", sessionID, expandedExecutable)
 	go c.awaitProcess(cmd, workspace)
 	return nil
+}
+
+func expandExecutablePath(path string) string {
+	if path == "" {
+		return ""
+	}
+
+	expanded := os.ExpandEnv(path)
+	if strings.IndexByte(expanded, '%') == -1 {
+		return expanded
+	}
+
+	var builder strings.Builder
+	builder.Grow(len(expanded))
+	for i := 0; i < len(expanded); {
+		start := strings.IndexByte(expanded[i:], '%')
+		if start == -1 {
+			builder.WriteString(expanded[i:])
+			break
+		}
+		start += i
+		end := strings.IndexByte(expanded[start+1:], '%')
+		if end == -1 {
+			builder.WriteString(expanded[i:])
+			break
+		}
+		end += start + 1
+		name := expanded[start+1 : end]
+		builder.WriteString(expanded[i:start])
+		if value, ok := os.LookupEnv(name); ok {
+			builder.WriteString(value)
+		} else {
+			builder.WriteString(expanded[start : end+1])
+		}
+		i = end + 1
+	}
+	return builder.String()
 }
 
 func (c *Controller) stop(sessionID string) error {
