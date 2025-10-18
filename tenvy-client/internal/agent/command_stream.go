@@ -196,6 +196,9 @@ func (a *Agent) handleRemoteDesktopInput(ctx context.Context, burst protocol.Rem
 	if a == nil || len(burst.Events) == 0 {
 		return
 	}
+	if a.remoteDesktopInputStopped.Load() {
+		return
+	}
 	if a.modules == nil {
 		return
 	}
@@ -213,9 +216,16 @@ func (a *Agent) handleRemoteDesktopInput(ctx context.Context, burst protocol.Rem
 		return
 	}
 
+	stop := a.remoteDesktopInputStopSignal()
+	if stop == nil {
+		return
+	}
+
 	task := remoteDesktopInputTask{ctx: ctx, module: module, burst: burst}
 
 	select {
+	case <-stop:
+		return
 	case queue <- task:
 	case <-ctx.Done():
 		if a.logger != nil && !errors.Is(ctx.Err(), context.Canceled) {
@@ -229,23 +239,71 @@ func (a *Agent) ensureRemoteDesktopInputWorker() chan remoteDesktopInputTask {
 		return nil
 	}
 
+	if a.remoteDesktopInputStopped.Load() {
+		return nil
+	}
+
 	a.remoteDesktopInputOnce.Do(func() {
 		a.remoteDesktopInputQueue = make(chan remoteDesktopInputTask, remoteDesktopInputQueueSize)
-		go a.remoteDesktopInputWorker()
+		stop := a.remoteDesktopInputStopSignal()
+		go a.remoteDesktopInputWorker(a.remoteDesktopInputQueue, stop)
 	})
+
+	if a.remoteDesktopInputStopped.Load() {
+		return nil
+	}
 
 	return a.remoteDesktopInputQueue
 }
 
-func (a *Agent) remoteDesktopInputWorker() {
-	for task := range a.remoteDesktopInputQueue {
-		if task.module == nil {
-			continue
-		}
-		if err := task.module.HandleInputBurst(task.ctx, task.burst); err != nil {
-			if a.logger != nil && !errors.Is(err, context.Canceled) {
-				a.logger.Printf("remote desktop input error: %v", err)
+func (a *Agent) remoteDesktopInputStopSignal() chan struct{} {
+	if a == nil {
+		return nil
+	}
+
+	a.remoteDesktopInputSignalOnce.Do(func() {
+		a.remoteDesktopInputStopCh = make(chan struct{})
+	})
+
+	return a.remoteDesktopInputStopCh
+}
+
+func (a *Agent) remoteDesktopInputWorker(queue <-chan remoteDesktopInputTask, stop <-chan struct{}) {
+	if queue == nil {
+		return
+	}
+
+	for {
+		select {
+		case <-stop:
+			return
+		case task, ok := <-queue:
+			if !ok {
+				return
+			}
+			if task.module == nil {
+				continue
+			}
+			if err := task.module.HandleInputBurst(task.ctx, task.burst); err != nil {
+				if a.logger != nil && !errors.Is(err, context.Canceled) {
+					a.logger.Printf("remote desktop input error: %v", err)
+				}
 			}
 		}
+	}
+}
+
+func (a *Agent) stopRemoteDesktopInputWorker() {
+	if a == nil {
+		return
+	}
+
+	if !a.remoteDesktopInputStopped.CompareAndSwap(false, true) {
+		return
+	}
+
+	stop := a.remoteDesktopInputStopSignal()
+	if stop != nil {
+		close(stop)
 	}
 }

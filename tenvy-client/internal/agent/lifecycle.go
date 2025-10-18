@@ -327,6 +327,7 @@ func (a *Agent) userAgent() string {
 }
 
 func (a *Agent) shutdown(ctx context.Context) {
+	a.stopRemoteDesktopInputWorker()
 	if a.modules != nil {
 		a.modules.Shutdown(ctx)
 	}

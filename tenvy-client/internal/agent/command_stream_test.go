@@ -230,3 +230,76 @@ func TestCommandStreamRequestsReconnectOnUnauthorized(t *testing.T) {
 		}
 	}
 }
+
+func TestStopRemoteDesktopInputWorkerSignalsShutdown(t *testing.T) {
+	agent := &Agent{
+		logger:  log.New(io.Discard, "", 0),
+		modules: &moduleRegistry{remote: &remoteDesktopModule{}},
+	}
+
+	queue := agent.ensureRemoteDesktopInputWorker()
+	if queue == nil {
+		t.Fatal("expected remote desktop input queue")
+	}
+
+	agent.stopRemoteDesktopInputWorker()
+	agent.stopRemoteDesktopInputWorker()
+
+	if !agent.remoteDesktopInputStopped.Load() {
+		t.Fatal("expected remote desktop input worker to be marked stopped")
+	}
+
+	select {
+	case <-agent.remoteDesktopInputStopCh:
+	case <-time.After(time.Second):
+		t.Fatal("remote desktop input stop signal not closed")
+	}
+}
+
+func TestHandleRemoteDesktopInputAfterStopReturnsImmediately(t *testing.T) {
+	agent := &Agent{
+		logger:  log.New(io.Discard, "", 0),
+		modules: &moduleRegistry{remote: &remoteDesktopModule{}},
+	}
+
+	if agent.ensureRemoteDesktopInputWorker() == nil {
+		t.Fatal("expected remote desktop input queue")
+	}
+
+	agent.stopRemoteDesktopInputWorker()
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		agent.handleRemoteDesktopInput(context.Background(), protocol.RemoteDesktopInputBurst{
+			Events: []protocol.RemoteDesktopInputEvent{{Type: "mouse"}},
+		})
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("handleRemoteDesktopInput did not return after stop")
+	}
+}
+
+func TestStopRemoteDesktopInputWorkerBeforeStart(t *testing.T) {
+	agent := &Agent{
+		logger:  log.New(io.Discard, "", 0),
+		modules: &moduleRegistry{remote: &remoteDesktopModule{}},
+	}
+
+	agent.stopRemoteDesktopInputWorker()
+
+	if !agent.remoteDesktopInputStopped.Load() {
+		t.Fatal("expected remote desktop input worker to be marked stopped")
+	}
+
+	if queue := agent.ensureRemoteDesktopInputWorker(); queue != nil {
+		t.Fatal("expected ensureRemoteDesktopInputWorker to return nil after stop")
+	}
+
+	if agent.remoteDesktopInputStopCh == nil {
+		t.Fatal("expected stop signal to be initialized")
+	}
+}
