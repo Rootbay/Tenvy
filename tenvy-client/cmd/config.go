@@ -27,7 +27,7 @@ var (
 )
 
 func loadRuntimeOptions(logger *log.Logger) (agent.RuntimeOptions, error) {
-	serverURL := strings.TrimRight(getEnv("TENVY_SERVER_URL", defaultServerURL()), "/")
+	serverURL := strings.TrimRight(defaultServerURL(), "/")
 	if serverURL == "" {
 		return agent.RuntimeOptions{}, errors.New("server url must be provided")
 	}
@@ -127,13 +127,6 @@ func parsePositiveDurationSeconds(raw string) time.Duration {
 		return 0
 	}
 	return time.Duration(value) * time.Second
-}
-
-func getEnv(key, fallbackValue string) string {
-	if value := strings.TrimSpace(os.Getenv(key)); value != "" {
-		return value
-	}
-	return fallbackValue
 }
 
 func fallback(value, fallbackValue string) string {
