@@ -4,6 +4,7 @@ import type {
   RemoteDesktopCommandPayload,
   RemoteDesktopInputBurst,
 } from "./remote-desktop";
+import type { AppVncCommandPayload, AppVncInputBurst } from "./app-vnc";
 import type { AudioControlCommandPayload } from "./audio";
 import type { ClipboardCommandPayload } from "./clipboard";
 import type { RecoveryCommandPayload } from "./recovery";
@@ -16,6 +17,7 @@ export type CommandName =
   | "ping"
   | "shell"
   | "remote-desktop"
+  | "app-vnc"
   | "system-info"
   | "open-url"
   | "audio-control"
@@ -66,6 +68,7 @@ export type CommandPayload =
   | PingCommandPayload
   | ShellCommandPayload
   | RemoteDesktopCommandPayload
+  | AppVncCommandPayload
   | SystemInfoCommandPayload
   | OpenUrlCommandPayload
   | AudioControlCommandPayload
@@ -130,6 +133,12 @@ export interface AgentRemoteDesktopInputEnvelope {
   input: RemoteDesktopInputBurst;
 }
 
+export interface AgentAppVncInputEnvelope {
+  type: "app-vnc-input";
+  input: AppVncInputBurst;
+}
+
 export type AgentEnvelope =
   | AgentCommandEnvelope
-  | AgentRemoteDesktopInputEnvelope;
+  | AgentRemoteDesktopInputEnvelope
+  | AgentAppVncInputEnvelope;
