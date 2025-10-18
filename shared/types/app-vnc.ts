@@ -2,6 +2,19 @@ export type AppVncQuality = "lossless" | "balanced" | "bandwidth";
 
 export type AppVncPlatform = "windows" | "linux" | "macos";
 
+export interface AppVncVirtualizationHints {
+  profileSeeds?: Partial<Record<AppVncPlatform, string>>;
+  dataRoots?: Partial<Record<AppVncPlatform, string>>;
+  environment?: Partial<Record<AppVncPlatform, Record<string, string>>>;
+}
+
+export interface AppVncVirtualizationPlan {
+  platform?: AppVncPlatform;
+  profileSeed?: string;
+  dataRoot?: string;
+  environment?: Record<string, string>;
+}
+
 export interface AppVncApplicationDescriptor {
   id: string;
   name: string;
@@ -10,6 +23,7 @@ export interface AppVncApplicationDescriptor {
   platforms: AppVncPlatform[];
   windowTitleHint?: string;
   executable?: Partial<Record<AppVncPlatform, string>>;
+  virtualization?: AppVncVirtualizationHints;
 }
 
 export interface AppVncSessionMetadata {
@@ -121,6 +135,8 @@ export interface AppVncCommandPayload {
   sessionId?: string;
   settings?: AppVncSessionSettingsPatch;
   events?: AppVncInputEvent[];
+  application?: AppVncApplicationDescriptor;
+  virtualization?: AppVncVirtualizationPlan;
 }
 
 export interface AppVncSessionResponse {
