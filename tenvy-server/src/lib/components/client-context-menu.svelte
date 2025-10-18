@@ -198,8 +198,8 @@
 
 <ContextMenuContent class="w-64">
 	<ContextMenuGroup>
-		<ContextMenuItem onSelect={() => openTool('system-info')}>System Info</ContextMenuItem>
-		<ContextMenuItem onSelect={() => openTool('notes')}>Notes</ContextMenuItem>
+		<ContextMenuItem on:select={() => openTool('system-info')}>System Info</ContextMenuItem>
+		<ContextMenuItem on:select={() => openTool('notes')}>Notes</ContextMenuItem>
 	</ContextMenuGroup>
 
 	<ContextMenuSeparator />
@@ -208,19 +208,19 @@
 		<ContextMenuSub>
 			<ContextMenuSubTrigger>Control</ContextMenuSubTrigger>
 			<ContextMenuSubContent class="w-48">
-				<ContextMenuItem onSelect={() => openTool('app-vnc')}>App VNC</ContextMenuItem>
-				<ContextMenuItem onSelect={() => openTool('remote-desktop')}>Remote Desktop</ContextMenuItem>
-				<ContextMenuItem onSelect={() => openTool('webcam-control')}>Webcam Control</ContextMenuItem>
-				<ContextMenuItem onSelect={() => openTool('audio-control')}>Audio Control</ContextMenuItem>
+				<ContextMenuItem on:select={() => openTool('app-vnc')}>App VNC</ContextMenuItem>
+				<ContextMenuItem on:select={() => openTool('remote-desktop')}>Remote Desktop</ContextMenuItem>
+				<ContextMenuItem on:select={() => openTool('webcam-control')}>Webcam Control</ContextMenuItem>
+				<ContextMenuItem on:select={() => openTool('audio-control')}>Audio Control</ContextMenuItem>
 				<ContextMenuSub>
 					<ContextMenuSubTrigger>Keylogger</ContextMenuSubTrigger>
 					<ContextMenuSubContent class="w-48">
-						<ContextMenuItem onSelect={() => openTool('keylogger-online')}>Online</ContextMenuItem>
-						<ContextMenuItem onSelect={() => openTool('keylogger-offline')}>Offline</ContextMenuItem>
-						<ContextMenuItem onSelect={() => openTool('keylogger-advanced-online')}>Advanced Online</ContextMenuItem>
+						<ContextMenuItem on:select={() => openTool('keylogger-online')}>Online</ContextMenuItem>
+						<ContextMenuItem on:select={() => openTool('keylogger-offline')}>Offline</ContextMenuItem>
+						<ContextMenuItem on:select={() => openTool('keylogger-advanced-online')}>Advanced Online</ContextMenuItem>
 					</ContextMenuSubContent>
 				</ContextMenuSub>
-				<ContextMenuItem onSelect={() => openTool('cmd')}>CMD</ContextMenuItem>
+				<ContextMenuItem on:select={() => openTool('cmd')}>CMD</ContextMenuItem>
 			</ContextMenuSubContent>
 		</ContextMenuSub>
 	</ContextMenuGroup>
@@ -229,12 +229,12 @@
 		<ContextMenuSub>
 			<ContextMenuSubTrigger>Management</ContextMenuSubTrigger>
 			<ContextMenuSubContent class="w-48">
-				<ContextMenuItem onSelect={() => openTool('file-manager')}>File Manager</ContextMenuItem>
-				<ContextMenuItem onSelect={() => openTool('task-manager')}>Task Manager</ContextMenuItem>
-				<ContextMenuItem onSelect={() => openTool('registry-manager')}>Registry Manager</ContextMenuItem>
-				<ContextMenuItem onSelect={() => openTool('startup-manager')}>Startup Manager</ContextMenuItem>
-				<ContextMenuItem onSelect={() => openTool('clipboard-manager')}>Clipboard Manager</ContextMenuItem>
-				<ContextMenuItem onSelect={() => openTool('tcp-connections')}>TCP Connections</ContextMenuItem>
+				<ContextMenuItem on:select={() => openTool('file-manager')}>File Manager</ContextMenuItem>
+				<ContextMenuItem on:select={() => openTool('task-manager')}>Task Manager</ContextMenuItem>
+				<ContextMenuItem on:select={() => openTool('registry-manager')}>Registry Manager</ContextMenuItem>
+				<ContextMenuItem on:select={() => openTool('startup-manager')}>Startup Manager</ContextMenuItem>
+				<ContextMenuItem on:select={() => openTool('clipboard-manager')}>Clipboard Manager</ContextMenuItem>
+				<ContextMenuItem on:select={() => openTool('tcp-connections')}>TCP Connections</ContextMenuItem>
 			</ContextMenuSubContent>
 		</ContextMenuSub>
 	</ContextMenuGroup>
@@ -242,8 +242,8 @@
 	<ContextMenuSeparator />
 
 	<ContextMenuGroup>
-		<ContextMenuItem onSelect={() => openTool('recovery')}>Recovery</ContextMenuItem>
-		<ContextMenuItem onSelect={() => openTool('options')}>Options</ContextMenuItem>
+		<ContextMenuItem on:select={() => openTool('recovery')}>Recovery</ContextMenuItem>
+		<ContextMenuItem on:select={() => openTool('options')}>Options</ContextMenuItem>
 	</ContextMenuGroup>
 
 	<ContextMenuSeparator />
@@ -252,12 +252,12 @@
 		<ContextMenuSub>
 			<ContextMenuSubTrigger>Miscellaneous</ContextMenuSubTrigger>
 			<ContextMenuSubContent class="w-48">
-				<ContextMenuItem onSelect={() => openTool('open-url')}>Open URL</ContextMenuItem>
-				<ContextMenuItem onSelect={() => openTool('message-box')}>Message Box</ContextMenuItem>
-				<ContextMenuItem onSelect={() => openTool('client-chat')}>Client Chat</ContextMenuItem>
-				<ContextMenuItem onSelect={() => openTool('report-window')}>Report Window</ContextMenuItem>
-				<ContextMenuItem onSelect={() => openTool('ip-geolocation')}>IP Geolocation</ContextMenuItem>
-				<ContextMenuItem onSelect={() => openTool('environment-variables')}>Environment Variables</ContextMenuItem>
+				<ContextMenuItem on:select={() => openTool('open-url')}>Open URL</ContextMenuItem>
+				<ContextMenuItem on:select={() => openTool('message-box')}>Message Box</ContextMenuItem>
+				<ContextMenuItem on:select={() => openTool('client-chat')}>Client Chat</ContextMenuItem>
+				<ContextMenuItem on:select={() => openTool('report-window')}>Report Window</ContextMenuItem>
+				<ContextMenuItem on:select={() => openTool('ip-geolocation')}>IP Geolocation</ContextMenuItem>
+				<ContextMenuItem on:select={() => openTool('environment-variables')}>Environment Variables</ContextMenuItem>
 			</ContextMenuSubContent>
 		</ContextMenuSub>
 	</ContextMenuGroup>
@@ -266,8 +266,8 @@
 		<ContextMenuSub>
 			<ContextMenuSubTrigger>System Controls</ContextMenuSubTrigger>
 			<ContextMenuSubContent class="w-48">
-				<ContextMenuItem onSelect={() => openTool('reconnect')}>Reconnect</ContextMenuItem>
-				<ContextMenuItem onSelect={() => openTool('disconnect')}>Disconnect</ContextMenuItem>
+				<ContextMenuItem on:select={() => openTool('reconnect')}>Reconnect</ContextMenuItem>
+				<ContextMenuItem on:select={() => openTool('disconnect')}>Disconnect</ContextMenuItem>
 			</ContextMenuSubContent>
 		</ContextMenuSub>
 	</ContextMenuGroup>
@@ -276,10 +276,10 @@
 		<ContextMenuSub>
 			<ContextMenuSubTrigger>Power</ContextMenuSubTrigger>
 			<ContextMenuSubContent class="w-48">
-				<ContextMenuItem onSelect={() => openTool('shutdown')}>Shutdown</ContextMenuItem>
-				<ContextMenuItem onSelect={() => openTool('restart')}>Restart</ContextMenuItem>
-				<ContextMenuItem onSelect={() => openTool('sleep')}>Sleep</ContextMenuItem>
-				<ContextMenuItem onSelect={() => openTool('logoff')}>Logoff</ContextMenuItem>
+				<ContextMenuItem on:select={() => openTool('shutdown')}>Shutdown</ContextMenuItem>
+				<ContextMenuItem on:select={() => openTool('restart')}>Restart</ContextMenuItem>
+				<ContextMenuItem on:select={() => openTool('sleep')}>Sleep</ContextMenuItem>
+				<ContextMenuItem on:select={() => openTool('logoff')}>Logoff</ContextMenuItem>
 			</ContextMenuSubContent>
 		</ContextMenuSub>
 	</ContextMenuGroup>

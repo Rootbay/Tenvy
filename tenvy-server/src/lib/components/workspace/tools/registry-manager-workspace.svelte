@@ -1042,7 +1042,7 @@
 			<ContextMenuTrigger child={TreePane} />
 			<ContextMenuContent class="w-56">
 				<ContextMenuItem
-					onSelect={() => {
+					on:select={() => {
 						keyCreateParent = selectedKey?.path ?? '';
 						keyCreateName = '';
 						keyCreateError = null;
@@ -1052,7 +1052,7 @@
 				</ContextMenuItem>
 				<ContextMenuItem
 					disabled={!selectedKey}
-					onSelect={() => {
+					on:select={() => {
 						if (!selectedKey) {
 							return;
 						}
@@ -1064,7 +1064,7 @@
 				<ContextMenuSeparator />
 				<ContextMenuItem
 					disabled={!selectedKey}
-					onSelect={() => {
+					on:select={() => {
 						if (!selectedKey) {
 							return;
 						}
@@ -1077,7 +1077,7 @@
 				<ContextMenuItem
 					class="text-destructive focus:text-destructive"
 					disabled={!selectedKey}
-					onSelect={async () => {
+					on:select={async () => {
 						if (!selectedKey) {
 							return;
 						}
@@ -1096,7 +1096,7 @@
 				<ContextMenuContent class="w-52">
 					<ContextMenuItem
 						disabled={!selectedKey}
-						onSelect={() => {
+						on:select={() => {
 							if (!selectedKey) {
 								return;
 							}
@@ -1105,14 +1105,14 @@
 					>
 						<ListPlus class="mr-2 h-4 w-4" /> New value
 					</ContextMenuItem>
-					<ContextMenuItem disabled={!selectedKey} onSelect={upsertValue}>
+					<ContextMenuItem disabled={!selectedKey} on:select={upsertValue}>
 						<Save class="mr-2 h-4 w-4" /> Save value
 					</ContextMenuItem>
 					<ContextMenuSeparator />
 					<ContextMenuItem
 						class="text-destructive focus:text-destructive"
 						disabled={!selectedValue}
-						onSelect={deleteSelectedValue}
+						on:select={deleteSelectedValue}
 					>
 						<Trash2 class="mr-2 h-4 w-4" /> Delete value
 					</ContextMenuItem>

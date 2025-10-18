@@ -95,7 +95,7 @@
 	const perPageOptions = [10, 25, 50];
 
 	let toolDialog = $state<{ agentId: string; toolId: DialogToolId } | null>(null);
-	let toolDialogAgent = $state<AgentSnapshot | null>(null);
+	let toolDialogAgent = $state<AgentSnapshot | null | undefined>(undefined);
 	let toolDialogClient = $state<Client | null>(null);
 
 	type PageAlertVariant = 'default' | 'destructive';
@@ -109,7 +109,7 @@
 	let connectionAlert = $state<PageAlert | null>(null);
 
 	$effect(() => {
-		if (toolDialog && !toolDialogAgent) {
+		if (toolDialog && toolDialogAgent === null) {
 			toolDialog = null;
 		}
 	});
@@ -117,7 +117,8 @@
 	$effect(() => {
 		const agentId = toolDialog?.agentId ?? null;
 		const agents = $clientsTable.agents;
-		const agent = agentId ? (agents.find((item) => item.id === agentId) ?? null) : null;
+		const agent =
+			agentId !== null ? (agents.find((item) => item.id === agentId) ?? null) : undefined;
 		toolDialogAgent = agent;
 		toolDialogClient = agent ? mapAgentToClient(agent) : null;
 	});
