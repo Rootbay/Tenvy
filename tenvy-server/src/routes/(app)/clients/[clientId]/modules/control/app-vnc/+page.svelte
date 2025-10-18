@@ -1,0 +1,773 @@
+<script lang="ts">
+	import { browser } from '$app/environment';
+	import { onDestroy } from 'svelte';
+	import { Button } from '$lib/components/ui/button/index.js';
+	import {
+		Card,
+		CardContent,
+		CardDescription,
+		CardHeader,
+		CardTitle
+	} from '$lib/components/ui/card/index.js';
+	import { Input } from '$lib/components/ui/input/index.js';
+	import { Label } from '$lib/components/ui/label/index.js';
+	import { Switch } from '$lib/components/ui/switch/index.js';
+        import {
+                Select,
+                SelectContent,
+                SelectItem,
+                SelectTrigger
+        } from '$lib/components/ui/select/index.js';
+        import type { Client } from '$lib/data/clients';
+        import type {
+                AppVncApplicationDescriptor,
+                AppVncPlatform,
+                AppVncSessionSettings,
+                AppVncSessionState
+        } from '$lib/types/app-vnc';
+
+	type RawAppVncInputEvent = Record<string, unknown>;
+
+	const IMAGE_PREFIX: Record<'png' | 'jpeg', string> = {
+		png: 'data:image/png;base64,',
+		jpeg: 'data:image/jpeg;base64,'
+	};
+
+	const qualityOptions: { value: AppVncSessionSettings['quality']; label: string }[] = [
+		{ value: 'lossless', label: 'Lossless' },
+		{ value: 'balanced', label: 'Balanced' },
+		{ value: 'bandwidth', label: 'Bandwidth saver' }
+	];
+
+        let { data } = $props<{
+                data: {
+                        session: AppVncSessionState | null;
+                        client: Client;
+                        applications: AppVncApplicationDescriptor[];
+                };
+        }>();
+
+        const client = $derived(data.client);
+        const applications = $derived(data.applications);
+        let session = $state<AppVncSessionState | null>(data.session ?? null);
+	let quality = $state<AppVncSessionSettings['quality']>(session?.settings.quality ?? 'balanced');
+	let monitor = $state(session?.settings.monitor ?? 'Primary');
+	let captureCursor = $state(session?.settings.captureCursor ?? true);
+	let clipboardSync = $state(session?.settings.clipboardSync ?? false);
+	let blockLocalInput = $state(session?.settings.blockLocalInput ?? false);
+	let heartbeatInterval = $state<number | string>(session?.settings.heartbeatInterval ?? 30);
+	let appId = $state(session?.settings.appId ?? '');
+	let windowTitle = $state(session?.settings.windowTitle ?? '');
+	let frameUrl = $state<string | null>(null);
+	let frameWidth = $state<number | null>(null);
+	let frameHeight = $state<number | null>(null);
+	let lastHeartbeat = $state<string | null>(null);
+	let isStarting = $state(false);
+	let isStopping = $state(false);
+	let isUpdating = $state(false);
+	let errorMessage = $state<string | null>(null);
+	let infoMessage = $state<string | null>(null);
+	let eventSource: EventSource | null = null;
+	let streamSessionId: string | null = null;
+	let viewportEl: HTMLDivElement | null = null;
+	let pointerActive = false;
+        let activePointerId: number | null = null;
+        let flushHandle: number | null = null;
+        const pendingEvents: RawAppVncInputEvent[] = [];
+        const platformLabels: Record<AppVncPlatform, string> = {
+                windows: 'Windows',
+                linux: 'Linux',
+                macos: 'macOS'
+        };
+        const normalizedAppId = $derived(() => appId.trim());
+        const selectedApp = $derived<AppVncApplicationDescriptor | null>(() => {
+                const trimmed = normalizedAppId;
+                return applications.find((app) => app.id === trimmed) ?? null;
+        });
+        const appSelectionLabel = $derived(() => {
+                if (selectedApp) {
+                        return selectedApp.name;
+                }
+                return normalizedAppId ? `Custom · ${normalizedAppId}` : 'Manual selection';
+        });
+
+        function formatPlatforms(platforms?: AppVncApplicationDescriptor['platforms']): string {
+                if (!platforms || platforms.length === 0) {
+                        return '';
+                }
+                return platforms.map((platform) => platformLabels[platform] ?? platform).join(', ');
+        }
+
+        function handleAppSelection(value: string) {
+                appId = value.trim();
+        }
+
+	function resolveHeartbeatInterval(): number {
+		const value = heartbeatInterval;
+		if (typeof value === 'number') {
+			return value;
+		}
+		const parsed = Number.parseInt(value, 10);
+		if (Number.isFinite(parsed)) {
+			return parsed;
+		}
+		return 30;
+	}
+
+	function resetStatusMessages() {
+		errorMessage = null;
+		infoMessage = null;
+	}
+
+	function enqueueEvent(event: RawAppVncInputEvent) {
+		pendingEvents.push(event);
+		if (!browser) {
+			return;
+		}
+		if (flushHandle !== null) {
+			return;
+		}
+		flushHandle = requestAnimationFrame(() => {
+			flushHandle = null;
+			void flushEvents();
+		});
+	}
+
+	async function flushEvents() {
+		if (!browser) {
+			pendingEvents.length = 0;
+			return;
+		}
+		if (!client || !session || !session.active || pendingEvents.length === 0) {
+			pendingEvents.length = 0;
+			return;
+		}
+		const events = pendingEvents.splice(0, pendingEvents.length);
+		try {
+			await fetch(`/api/agents/${client.id}/app-vnc/input`, {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ sessionId: session.sessionId, events }),
+				keepalive: true
+			});
+		} catch (err) {
+			console.warn('Failed to deliver app VNC input events', err);
+		}
+	}
+
+	function disconnectStream() {
+		if (eventSource) {
+			eventSource.close();
+			eventSource = null;
+		}
+		streamSessionId = null;
+		pendingEvents.length = 0;
+	}
+
+	function connectStream(id?: string | null) {
+		if (!browser || !client) {
+			return;
+		}
+		const targetId = id ?? null;
+		if (eventSource && streamSessionId === targetId) {
+			return;
+		}
+		if (eventSource) {
+			eventSource.close();
+			eventSource = null;
+		}
+		const base = new URL(`/api/agents/${client.id}/app-vnc/stream`, window.location.origin);
+		if (targetId) {
+			base.searchParams.set('sessionId', targetId);
+		}
+
+		const source = new EventSource(base.toString());
+		streamSessionId = targetId;
+		eventSource = source;
+
+		source.addEventListener('session', (evt) => {
+			try {
+				const payload = JSON.parse((evt as MessageEvent).data ?? '{}') as {
+					session?: AppVncSessionState | null;
+				};
+				session = payload.session ?? null;
+				if (!session?.active) {
+					frameUrl = null;
+					frameWidth = null;
+					frameHeight = null;
+				}
+			} catch (err) {
+				console.warn('Failed to parse app VNC session payload', err);
+			}
+		});
+
+		source.addEventListener('frame', (evt) => {
+			try {
+				const payload = JSON.parse((evt as MessageEvent).data ?? '{}') as {
+					frame?: {
+						image?: string;
+						encoding?: 'png' | 'jpeg';
+						width?: number;
+						height?: number;
+					};
+				};
+				const frame = payload.frame;
+				if (frame && frame.image && frame.encoding && IMAGE_PREFIX[frame.encoding]) {
+					frameUrl = `${IMAGE_PREFIX[frame.encoding]}${frame.image}`;
+					frameWidth = frame.width ?? null;
+					frameHeight = frame.height ?? null;
+				}
+			} catch (err) {
+				console.warn('Failed to parse app VNC frame payload', err);
+			}
+		});
+
+		source.addEventListener('heartbeat', (evt) => {
+			try {
+				const payload = JSON.parse((evt as MessageEvent).data ?? '{}') as {
+					timestamp?: string;
+				};
+				lastHeartbeat = payload.timestamp ?? new Date().toISOString();
+			} catch {
+				lastHeartbeat = new Date().toISOString();
+			}
+		});
+
+		source.addEventListener('end', () => {
+			infoMessage = 'Session closed';
+			frameUrl = null;
+			frameWidth = null;
+			frameHeight = null;
+		});
+
+		source.onerror = (err) => {
+			console.warn('App VNC event source error', err);
+		};
+	}
+
+        async function startSession() {
+                if (!client || isStarting) {
+                        return;
+                }
+                resetStatusMessages();
+                isStarting = true;
+                try {
+                        const heartbeat = resolveHeartbeatInterval();
+                        heartbeatInterval = heartbeat;
+                        const trimmedAppId = normalizedAppId;
+                        const trimmedWindowTitle = windowTitle.trim();
+                        const response = await fetch(`/api/agents/${client.id}/app-vnc/session`, {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({
+                                        monitor,
+                                        quality,
+                                        captureCursor,
+                                        clipboardSync,
+                                        blockLocalInput,
+                                        heartbeatInterval: heartbeat,
+                                        appId: trimmedAppId,
+                                        windowTitle: trimmedWindowTitle
+                                })
+                        });
+			if (!response.ok) {
+				const message = await response.text();
+				errorMessage = message || 'Failed to start session';
+				return;
+			}
+			const payload = (await response.json()) as { session?: AppVncSessionState | null };
+			session = payload.session ?? null;
+			if (session?.active) {
+				infoMessage = 'Session started';
+				connectStream(session.sessionId);
+			}
+		} catch (err) {
+			console.error('Failed to start app VNC session', err);
+			errorMessage = 'Failed to start session';
+		} finally {
+			isStarting = false;
+		}
+	}
+
+        async function updateSessionSettings() {
+                if (!client || !session || !session.active || isUpdating) {
+                        return;
+                }
+                resetStatusMessages();
+                isUpdating = true;
+                try {
+                        const heartbeat = resolveHeartbeatInterval();
+                        heartbeatInterval = heartbeat;
+                        const trimmedAppId = normalizedAppId;
+                        const trimmedWindowTitle = windowTitle.trim();
+                        const response = await fetch(`/api/agents/${client.id}/app-vnc/session`, {
+                                method: 'PATCH',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({
+                                        sessionId: session.sessionId,
+                                        monitor,
+                                        quality,
+                                        captureCursor,
+                                        clipboardSync,
+                                        blockLocalInput,
+                                        heartbeatInterval: heartbeat,
+                                        appId: trimmedAppId,
+                                        windowTitle: trimmedWindowTitle
+                                })
+                        });
+			if (!response.ok) {
+				const message = await response.text();
+				errorMessage = message || 'Failed to update session';
+				return;
+			}
+			const payload = (await response.json()) as { session?: AppVncSessionState | null };
+			session = payload.session ?? null;
+			if (session?.active) {
+				infoMessage = 'Session updated';
+			}
+		} catch (err) {
+			console.error('Failed to update app VNC session', err);
+			errorMessage = 'Failed to update session';
+		} finally {
+			isUpdating = false;
+		}
+	}
+
+	async function stopSession() {
+		if (!client || !session || !session.active || isStopping) {
+			return;
+		}
+		resetStatusMessages();
+		isStopping = true;
+		try {
+			const response = await fetch(`/api/agents/${client.id}/app-vnc/session`, {
+				method: 'DELETE',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ sessionId: session.sessionId })
+			});
+			if (!response.ok) {
+				const message = await response.text();
+				errorMessage = message || 'Failed to stop session';
+				return;
+			}
+			const payload = (await response.json()) as { session?: AppVncSessionState | null };
+			session = payload.session ?? null;
+			frameUrl = null;
+			frameWidth = null;
+			frameHeight = null;
+			pendingEvents.length = 0;
+			infoMessage = 'Session stopped';
+		} catch (err) {
+			console.error('Failed to stop app VNC session', err);
+			errorMessage = 'Failed to stop session';
+		} finally {
+			isStopping = false;
+		}
+	}
+
+	function pointerPosition(event: PointerEvent) {
+		const element = viewportEl;
+		if (!element) {
+			return null;
+		}
+		const rect = element.getBoundingClientRect();
+		if (rect.width <= 0 || rect.height <= 0) {
+			return null;
+		}
+		const x = (event.clientX - rect.left) / rect.width;
+		const y = (event.clientY - rect.top) / rect.height;
+		return {
+			x: Math.min(Math.max(x, 0), 1),
+			y: Math.min(Math.max(y, 0), 1)
+		};
+	}
+
+	function handlePointerMove(event: PointerEvent) {
+		if (!session?.active || !pointerActive) {
+			return;
+		}
+		const position = pointerPosition(event);
+		if (!position) {
+			return;
+		}
+		enqueueEvent({
+			type: 'pointer-move',
+			capturedAt: Date.now(),
+			x: position.x,
+			y: position.y,
+			normalized: true
+		});
+	}
+
+	function handlePointerDown(event: PointerEvent) {
+		if (!session?.active) {
+			return;
+		}
+		viewportEl?.focus();
+		pointerActive = true;
+		activePointerId = event.pointerId;
+		try {
+			event.currentTarget?.setPointerCapture?.(event.pointerId);
+		} catch {
+			// ignore capture failures
+		}
+		const position = pointerPosition(event);
+		if (position) {
+			enqueueEvent({
+				type: 'pointer-move',
+				capturedAt: Date.now(),
+				x: position.x,
+				y: position.y,
+				normalized: true
+			});
+		}
+		enqueueEvent({
+			type: 'pointer-button',
+			capturedAt: Date.now(),
+			button: event.button === 2 ? 'right' : event.button === 1 ? 'middle' : 'left',
+			pressed: true
+		});
+	}
+
+	function handlePointerUp(event: PointerEvent) {
+		if (pointerActive && activePointerId === event.pointerId) {
+			enqueueEvent({
+				type: 'pointer-button',
+				capturedAt: Date.now(),
+				button: event.button === 2 ? 'right' : event.button === 1 ? 'middle' : 'left',
+				pressed: false
+			});
+			pointerActive = false;
+			activePointerId = null;
+			try {
+				event.currentTarget?.releasePointerCapture?.(event.pointerId);
+			} catch {
+				// ignore release failure
+			}
+		}
+	}
+
+	function handlePointerCancel(event: PointerEvent) {
+		if (!pointerActive) {
+			return;
+		}
+		pointerActive = false;
+		activePointerId = null;
+		try {
+			event.currentTarget?.releasePointerCapture?.(event.pointerId);
+		} catch {
+			// ignore
+		}
+	}
+
+	function handleWheel(event: WheelEvent) {
+		if (!session?.active) {
+			return;
+		}
+		event.preventDefault();
+		enqueueEvent({
+			type: 'pointer-scroll',
+			capturedAt: Date.now(),
+			deltaX: event.deltaX,
+			deltaY: event.deltaY,
+			deltaMode: event.deltaMode
+		});
+	}
+
+	function handleKey(event: KeyboardEvent, pressed: boolean) {
+		if (!session?.active) {
+			return;
+		}
+		event.preventDefault();
+		enqueueEvent({
+			type: 'key',
+			capturedAt: Date.now(),
+			pressed,
+			key: event.key,
+			code: event.code,
+			keyCode: event.keyCode,
+			repeat: event.repeat,
+			altKey: event.altKey,
+			ctrlKey: event.ctrlKey,
+			shiftKey: event.shiftKey,
+			metaKey: event.metaKey
+		});
+	}
+
+	$effect(() => {
+		const current = session;
+		if (current && current.active) {
+			quality = current.settings.quality;
+                        monitor = current.settings.monitor;
+                        captureCursor = current.settings.captureCursor;
+                        clipboardSync = current.settings.clipboardSync;
+                        blockLocalInput = current.settings.blockLocalInput;
+                        heartbeatInterval = current.settings.heartbeatInterval;
+                        appId = current.settings.appId?.trim() ?? '';
+                        windowTitle = current.settings.windowTitle?.trim() ?? '';
+                }
+        });
+
+	$effect(() => {
+		if (!browser) {
+			return;
+		}
+		const current = session;
+		if (current && current.active) {
+			connectStream(current.sessionId);
+		} else {
+			disconnectStream();
+		}
+	});
+
+	onDestroy(() => {
+		disconnectStream();
+		if (flushHandle !== null) {
+			cancelAnimationFrame(flushHandle);
+			flushHandle = null;
+		}
+		pendingEvents.length = 0;
+	});
+</script>
+
+<div class="space-y-6">
+	<Card>
+		<CardHeader>
+			<CardTitle class="text-base">Session parameters</CardTitle>
+			<CardDescription>
+				Configure the isolated App VNC environment and manage lifecycle actions.
+			</CardDescription>
+		</CardHeader>
+		<CardContent class="space-y-6">
+                        <div class="grid gap-4 md:grid-cols-2">
+                                <div class="grid gap-4">
+                                        <div class="grid gap-2">
+                                                <Label for="avnc-application">Application profile</Label>
+                                                <Select
+                                                        type="single"
+                                                        value={selectedApp ? selectedApp.id : ''}
+                                                        onValueChange={handleAppSelection}
+                                                >
+                                                        <SelectTrigger id="avnc-application" class="w-full">
+                                                                <span class="truncate">{appSelectionLabel}</span>
+                                                        </SelectTrigger>
+                                                        <SelectContent>
+                                                                <SelectItem value="">
+                                                                        <span class="flex flex-col gap-0.5">
+                                                                                <span class="font-medium">Manual selection</span>
+                                                                                <span class="text-xs text-muted-foreground"
+                                                                                        >Provide a custom identifier below</span
+                                                                                >
+                                                                        </span>
+                                                                </SelectItem>
+                                                                {#each applications as application (application.id)}
+                                                                        <SelectItem value={application.id}>
+                                                                                <span class="flex flex-col gap-0.5">
+                                                                                        <span class="font-medium">{application.name}</span>
+                                                                                        <span class="text-xs text-muted-foreground"
+                                                                                                >{application.summary}</span
+                                                                                        >
+                                                                                </span>
+                                                                        </SelectItem>
+                                                                {/each}
+                                                        </SelectContent>
+                                                </Select>
+                                                {#if selectedApp}
+                                                        <p class="text-xs text-muted-foreground">
+                                                                {selectedApp.summary}
+                                                                {#if selectedApp.platforms?.length}
+                                                                        · Supports {formatPlatforms(selectedApp.platforms)}
+                                                                {/if}
+                                                                {#if selectedApp.windowTitleHint}
+                                                                        · Window title hint: “{selectedApp.windowTitleHint}”
+                                                                {/if}
+                                                        </p>
+                                                {:else if normalizedAppId}
+                                                        <p class="text-xs text-muted-foreground">
+                                                                Custom profile targeting “{normalizedAppId}”. Ensure the agent recognises this
+                                                                identifier.
+                                                        </p>
+                                                {:else}
+                                                        <p class="text-xs text-muted-foreground">
+                                                                Choose one of {applications.length} built-in profiles or stay in manual mode to specify your
+                                                                own target.
+                                                        </p>
+                                                {/if}
+                                        </div>
+                                        <div class="grid gap-2">
+                                                <Label for="avnc-app-id">Custom app identifier</Label>
+                                                <Input
+                                                        id="avnc-app-id"
+                                                        placeholder="Override or provide your own identifier"
+                                                        bind:value={appId}
+                                                />
+                                                <p class="text-xs text-muted-foreground">
+                                                        Applied value is forwarded directly to the agent; leave blank to rely on the selected profile.
+                                                </p>
+                                        </div>
+                                </div>
+                                <div class="grid gap-2">
+                                        <Label for="avnc-quality">Encoding profile</Label>
+                                        <Select
+                                                type="single"
+                                                value={quality}
+                                                onValueChange={(value) => (quality = value as typeof quality)}
+                                        >
+                                                <SelectTrigger id="avnc-quality" class="w-full">
+                                                        <span class="truncate"
+                                                                >{qualityOptions.find((q) => q.value === quality)?.label ?? quality}</span
+                                                        >
+                                                </SelectTrigger>
+                                                <SelectContent>
+                                                        {#each qualityOptions as option}
+                                                                <SelectItem value={option.value}>{option.label}</SelectItem>
+                                                        {/each}
+                                                </SelectContent>
+                                        </Select>
+                                </div>
+                        </div>
+
+                        <div class="grid gap-4 md:grid-cols-2">
+                                <div class="grid gap-2">
+                                        <Label for="avnc-monitor">Surface label</Label>
+                                        <Input id="avnc-monitor" placeholder="Hidden surface label" bind:value={monitor} />
+                                        <p class="text-xs text-muted-foreground">
+                                                Provide a stable identifier for the virtualised application surface.
+                                        </p>
+                                </div>
+                                <div class="grid gap-2">
+                                        <Label for="avnc-window-title">Window title hint</Label>
+                                        <Input
+                                                id="avnc-window-title"
+                                                placeholder="Optional window title"
+                                                bind:value={windowTitle}
+                                        />
+                                        <p class="text-xs text-muted-foreground">
+                                                Provide optional hints for the agent's window matcher
+                                                {#if selectedApp?.windowTitleHint}
+                                                        — suggested: “{selectedApp.windowTitleHint}”.
+                                                {/if}
+                                        </p>
+                                </div>
+                        </div>
+
+			<div class="grid gap-4 md:grid-cols-3">
+				<label
+					class="flex items-center justify-between gap-3 rounded-lg border border-border/60 bg-muted/30 p-3"
+				>
+					<div>
+						<p class="text-sm font-medium text-foreground">Mirror cursor</p>
+						<p class="text-xs text-muted-foreground">Display remote cursor state</p>
+					</div>
+					<Switch bind:checked={captureCursor} />
+				</label>
+				<label
+					class="flex items-center justify-between gap-3 rounded-lg border border-border/60 bg-muted/30 p-3"
+				>
+					<div>
+						<p class="text-sm font-medium text-foreground">Clipboard tunnel</p>
+						<p class="text-xs text-muted-foreground">Enable clipboard mirroring</p>
+					</div>
+					<Switch bind:checked={clipboardSync} />
+				</label>
+				<label
+					class="flex items-center justify-between gap-3 rounded-lg border border-border/60 bg-muted/30 p-3"
+				>
+					<div>
+						<p class="text-sm font-medium text-foreground">Lock local input</p>
+						<p class="text-xs text-muted-foreground">Block physical keyboard and mouse locally</p>
+					</div>
+					<Switch bind:checked={blockLocalInput} />
+				</label>
+			</div>
+
+			<div class="grid gap-2 md:w-1/3">
+				<Label for="avnc-heartbeat">Heartbeat interval (seconds)</Label>
+				<Input id="avnc-heartbeat" type="number" min={10} step={5} bind:value={heartbeatInterval} />
+				<p class="text-xs text-muted-foreground">
+					Controls how often the agent renews the isolated session lease.
+				</p>
+			</div>
+
+			<div class="flex flex-wrap gap-3">
+				{#if session?.active}
+					<Button type="button" onclick={updateSessionSettings} disabled={isUpdating}
+						>{isUpdating ? 'Updating…' : 'Update session'}</Button
+					>
+					<Button type="button" variant="outline" onclick={stopSession} disabled={isStopping}
+						>{isStopping ? 'Stopping…' : 'Stop session'}</Button
+					>
+				{:else}
+					<Button type="button" onclick={startSession} disabled={isStarting}
+						>{isStarting ? 'Starting…' : 'Start session'}</Button
+					>
+				{/if}
+			</div>
+
+			{#if errorMessage}
+				<p class="text-sm text-destructive">{errorMessage}</p>
+			{/if}
+			{#if infoMessage}
+				<p class="text-sm text-emerald-500">{infoMessage}</p>
+			{/if}
+		</CardContent>
+	</Card>
+
+	<Card>
+		<CardHeader>
+			<CardTitle class="text-base">Live application surface</CardTitle>
+			<CardDescription>
+				A headless, single-window workspace rendered via the covert VNC transport.
+			</CardDescription>
+		</CardHeader>
+		<CardContent class="space-y-4">
+			<div
+				class="relative flex h-[420px] w-full items-center justify-center overflow-hidden rounded-lg border bg-black"
+				tabindex="0"
+				bind:this={viewportEl}
+				on:pointerdown={handlePointerDown}
+				on:pointermove={handlePointerMove}
+				on:pointerup={handlePointerUp}
+				on:pointercancel={handlePointerCancel}
+				on:wheel={handleWheel}
+				on:keydown={(event) => handleKey(event, true)}
+				on:keyup={(event) => handleKey(event, false)}
+			>
+				{#if frameUrl}
+					<img
+						src={frameUrl}
+						alt="App VNC frame"
+						class="max-h-full max-w-full select-none"
+						draggable={false}
+					/>
+				{:else}
+					<p class="text-sm text-muted-foreground">No frame data available yet.</p>
+				{/if}
+			</div>
+			<div class="grid gap-2 text-xs text-muted-foreground sm:grid-cols-2">
+				<div>
+					<span class="font-medium text-foreground">Session</span>
+					<span class="ml-2">{session?.active ? 'Active' : 'Idle'}</span>
+				</div>
+				<div>
+					<span class="font-medium text-foreground">Frame size</span>
+					<span class="ml-2">
+						{#if frameWidth && frameHeight}
+							{frameWidth}×{frameHeight}
+						{:else}
+							—
+						{/if}
+					</span>
+				</div>
+				<div>
+					<span class="font-medium text-foreground">Last heartbeat</span>
+					<span class="ml-2">{lastHeartbeat ?? '—'}</span>
+				</div>
+				<div>
+					<span class="font-medium text-foreground">Session ID</span>
+					<span class="ml-2 truncate">{session?.sessionId ?? '—'}</span>
+				</div>
+			</div>
+		</CardContent>
+	</Card>
+</div>

@@ -21,6 +21,7 @@ import type {
 	AgentSyncResponse,
 	AgentCommandEnvelope,
 	AgentRemoteDesktopInputEnvelope,
+	AgentAppVncInputEnvelope,
 	Command,
 	CommandDeliveryMode,
 	CommandInput,
@@ -28,6 +29,7 @@ import type {
 	CommandResult
 } from '../../../../../shared/types/messages';
 import type { RemoteDesktopInputBurst } from '../../../../../shared/types/remote-desktop';
+import type { AppVncInputBurst } from '../../../../../shared/types/app-vnc';
 
 const MAX_TAGS = 16;
 const MAX_TAG_LENGTH = 32;
@@ -865,6 +867,42 @@ export class AgentRegistry {
 		} catch (err) {
 			this.detachSession(record, session.id, { close: false });
 			console.error('Failed to transmit remote desktop input burst', err);
+			return false;
+		}
+	}
+
+	sendAppVncInput(id: string, burst: AppVncInputBurst): boolean {
+		const record = this.agents.get(id);
+		if (!record) {
+			throw new RegistryError('Agent not found', 404);
+		}
+
+		const session = record.session;
+		if (!session) {
+			return false;
+		}
+
+		const socket = session.socket;
+		if (!socket || (socket.readyState ?? 0) !== SOCKET_OPEN_STATE) {
+			this.detachSession(record, session.id, { close: false });
+			return false;
+		}
+
+		const envelope: AgentAppVncInputEnvelope = {
+			type: 'app-vnc-input',
+			input: {
+				sessionId: burst.sessionId,
+				events: burst.events,
+				sequence: burst.sequence
+			}
+		};
+
+		try {
+			socket.send(JSON.stringify(envelope));
+			return true;
+		} catch (err) {
+			this.detachSession(record, session.id, { close: false });
+			console.error('Failed to transmit app VNC input burst', err);
 			return false;
 		}
 	}
