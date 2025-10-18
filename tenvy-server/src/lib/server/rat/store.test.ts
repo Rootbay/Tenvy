@@ -140,17 +140,20 @@ describe('AgentRegistry persistence hygiene', () => {
 			results: [...duplicateResults, ...extraResults]
 		});
 
-		registry.updateAgentTags(registration.agentId, ['primary']);
+                registry.updateAgentTags(registration.agentId, ['primary']);
 
-		const snapshot = registry.getAgent(registration.agentId);
-		expect(snapshot.recentResults).toHaveLength(MAX_RECENT_RESULTS);
-		const uniqueIds = new Set(snapshot.recentResults.map((result) => result.commandId));
-		expect(uniqueIds.size).toBe(snapshot.recentResults.length);
+                const snapshot = registry.getAgent(registration.agentId);
+                expect(snapshot.recentResults).toHaveLength(MAX_RECENT_RESULTS);
+                const uniqueIds = new Set(snapshot.recentResults.map((result) => result.commandId));
+                expect(uniqueIds.size).toBe(snapshot.recentResults.length);
+                const completedAt = snapshot.recentResults.map((result) => Date.parse(result.completedAt));
+                const sortedCompletedAt = [...completedAt].sort((a, b) => b - a);
+                expect(completedAt).toEqual(sortedCompletedAt);
 
-		snapshot.metadata.hostname = 'mutated-host';
-		snapshot.metadata.tags?.push('mutated');
-		if (snapshot.recentResults.length > 0) {
-			snapshot.recentResults[0]!.commandId = 'mutated';
+                snapshot.metadata.hostname = 'mutated-host';
+                snapshot.metadata.tags?.push('mutated');
+                if (snapshot.recentResults.length > 0) {
+                        snapshot.recentResults[0]!.commandId = 'mutated';
 		}
 
 		const nextSnapshot = registry.getAgent(registration.agentId);

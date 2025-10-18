@@ -257,29 +257,57 @@ function cloneMetrics(metrics: AgentMetrics | undefined): AgentMetrics | undefin
 	return metrics ? { ...metrics } : undefined;
 }
 
+function parseCompletedAt(result: CommandResult | undefined): number {
+        if (!result) {
+                return 0;
+        }
+        if (typeof result.completedAt === 'string') {
+                const parsed = Date.parse(result.completedAt);
+                if (Number.isFinite(parsed)) {
+                        return parsed;
+                }
+        }
+        return 0;
+}
+
 function mergeRecentResults(existing: CommandResult[], incoming: CommandResult[]): CommandResult[] {
-	if (incoming.length === 0) {
-		return existing;
-	}
+        if (existing.length === 0 && incoming.length === 0) {
+                return [];
+        }
 
-	const merged: CommandResult[] = [];
-	const seen = new Set<string>();
+        const merged = new Map<string, { result: CommandResult; timestamp: number }>();
 
-	for (const result of [...incoming, ...existing]) {
-		if (!result?.commandId) {
-			continue;
-		}
-		if (seen.has(result.commandId)) {
-			continue;
-		}
-		seen.add(result.commandId);
-		merged.push({ ...result });
-		if (merged.length >= MAX_RECENT_RESULTS) {
-			break;
-		}
-	}
+        const upsert = (candidate: CommandResult | null | undefined) => {
+                if (!candidate?.commandId) {
+                        return;
+                }
+                const timestamp = parseCompletedAt(candidate);
+                const current = merged.get(candidate.commandId);
+                if (!current || timestamp >= current.timestamp) {
+                        merged.set(candidate.commandId, {
+                                result: { ...candidate },
+                                timestamp
+                        });
+                }
+        };
 
-	return merged;
+        for (const result of existing) {
+                upsert(result);
+        }
+
+        for (const result of incoming) {
+                upsert(result);
+        }
+
+        return Array.from(merged.values())
+                .sort((a, b) => {
+                        if (b.timestamp !== a.timestamp) {
+                                return b.timestamp - a.timestamp;
+                        }
+                        return b.result.commandId.localeCompare(a.result.commandId);
+                })
+                .slice(0, MAX_RECENT_RESULTS)
+                .map((entry) => entry.result);
 }
 
 export class AgentRegistry {
