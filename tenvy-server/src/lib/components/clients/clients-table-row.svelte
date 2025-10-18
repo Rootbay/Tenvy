@@ -36,8 +36,6 @@
 		openManageTags,
 		onTagClick,
 		copyAgentId,
-		openPingDialog,
-		openShellDialog,
 		getAgentLocation,
 		getAgentTags,
 		formatPing,
@@ -47,8 +45,6 @@
 		openSection: (section: SectionKey, agent: AgentSnapshot) => void;
 		openManageTags: (agent: AgentSnapshot) => void;
 		copyAgentId: (agentId: string) => void;
-		openPingDialog: (agentId: string) => void;
-		openShellDialog: (agentId: string) => void;
 		onTagClick: (tag: string) => void;
 		getAgentLocation: (agent: AgentSnapshot) => { label: string; flag: string };
 		getAgentTags: (agent: AgentSnapshot) => string[];
@@ -419,8 +415,6 @@
 		<ContextMenuItem onSelect={() => openSection('systemInfo', agent)}>System Info</ContextMenuItem>
 		<ContextMenuItem onSelect={() => openSection('notes', agent)}>Notes</ContextMenuItem>
 		<ContextMenuItem onSelect={() => openManageTags(agent)}>Manage Tags</ContextMenuItem>
-		<ContextMenuItem onSelect={() => openPingDialog(agent.id)}>Ping Agent</ContextMenuItem>
-		<ContextMenuItem onSelect={() => openShellDialog(agent.id)}>Run Shell Command</ContextMenuItem>
 
 		<ContextMenuSeparator />
 
@@ -428,27 +422,15 @@
 			<ContextMenuSubTrigger>Control</ContextMenuSubTrigger>
 			<ContextMenuSubContent class="w-48">
 				<ContextMenuItem onSelect={() => openSection('appVnc', agent)}>App VNC</ContextMenuItem>
-				<ContextMenuItem onSelect={() => openSection('remoteDesktop', agent)}>
-					Remote Desktop
-				</ContextMenuItem>
-				<ContextMenuItem onSelect={() => openSection('webcamControl', agent)}>
-					Webcam Control
-				</ContextMenuItem>
-				<ContextMenuItem onSelect={() => openSection('audioControl', agent)}>
-					Audio Control
-				</ContextMenuItem>
+				<ContextMenuItem onSelect={() => openSection('remoteDesktop', agent)}>Remote Desktop</ContextMenuItem>
+				<ContextMenuItem onSelect={() => openSection('webcamControl', agent)}>Webcam Control</ContextMenuItem>
+				<ContextMenuItem onSelect={() => openSection('audioControl', agent)}>Audio Control</ContextMenuItem>
 				<ContextMenuSub>
 					<ContextMenuSubTrigger>Keylogger</ContextMenuSubTrigger>
 					<ContextMenuSubContent class="w-48">
-						<ContextMenuItem onSelect={() => openSection('keyloggerOnline', agent)}>
-							Online
-						</ContextMenuItem>
-						<ContextMenuItem onSelect={() => openSection('keyloggerOffline', agent)}>
-							Offline
-						</ContextMenuItem>
-						<ContextMenuItem onSelect={() => openSection('keyloggerAdvanced', agent)}>
-							Advanced Online
-						</ContextMenuItem>
+						<ContextMenuItem onSelect={() => openSection('keyloggerOnline', agent)}>Online</ContextMenuItem>
+						<ContextMenuItem onSelect={() => openSection('keyloggerOffline', agent)}>Offline</ContextMenuItem>
+						<ContextMenuItem onSelect={() => openSection('keyloggerAdvanced', agent)}>Advanced Online</ContextMenuItem>
 					</ContextMenuSubContent>
 				</ContextMenuSub>
 				<ContextMenuItem onSelect={() => openSection('cmd', agent)}>CMD</ContextMenuItem>
@@ -460,24 +442,12 @@
 		<ContextMenuSub>
 			<ContextMenuSubTrigger>Management</ContextMenuSubTrigger>
 			<ContextMenuSubContent class="w-48">
-				<ContextMenuItem onSelect={() => openSection('fileManager', agent)}>
-					File Manager
-				</ContextMenuItem>
-				<ContextMenuItem onSelect={() => openSection('taskManager', agent)}>
-					Task Manager
-				</ContextMenuItem>
-				<ContextMenuItem onSelect={() => openSection('registryManager', agent)}>
-					Registry Manager
-				</ContextMenuItem>
-				<ContextMenuItem onSelect={() => openSection('startupManager', agent)}>
-					Startup Manager
-				</ContextMenuItem>
-				<ContextMenuItem onSelect={() => openSection('clipboardManager', agent)}>
-					Clipboard Manager
-				</ContextMenuItem>
-				<ContextMenuItem onSelect={() => openSection('tcpConnections', agent)}>
-					TCP Connections
-				</ContextMenuItem>
+				<ContextMenuItem onSelect={() => openSection('fileManager', agent)}>File Manager</ContextMenuItem>
+				<ContextMenuItem onSelect={() => openSection('taskManager', agent)}>Task Manager</ContextMenuItem>
+				<ContextMenuItem onSelect={() => openSection('registryManager', agent)}>Registry Manager</ContextMenuItem>
+				<ContextMenuItem onSelect={() => openSection('startupManager', agent)}>Startup Manager</ContextMenuItem>
+				<ContextMenuItem onSelect={() => openSection('clipboardManager', agent)}>Clipboard Manager</ContextMenuItem>
+				<ContextMenuItem onSelect={() => openSection('tcpConnections', agent)}>TCP Connections</ContextMenuItem>
 			</ContextMenuSubContent>
 		</ContextMenuSub>
 
@@ -492,21 +462,11 @@
 			<ContextMenuSubTrigger>Miscellaneous</ContextMenuSubTrigger>
 			<ContextMenuSubContent class="w-48">
 				<ContextMenuItem onSelect={() => openSection('openUrl', agent)}>Open URL</ContextMenuItem>
-				<ContextMenuItem onSelect={() => openSection('messageBox', agent)}>
-					Message Box
-				</ContextMenuItem>
-				<ContextMenuItem onSelect={() => openSection('clientChat', agent)}>
-					Client Chat
-				</ContextMenuItem>
-				<ContextMenuItem onSelect={() => openSection('reportWindow', agent)}>
-					Report Window
-				</ContextMenuItem>
-				<ContextMenuItem onSelect={() => openSection('ipGeolocation', agent)}>
-					IP Geolocation
-				</ContextMenuItem>
-				<ContextMenuItem onSelect={() => openSection('environmentVariables', agent)}>
-					Environment Variables
-				</ContextMenuItem>
+				<ContextMenuItem onSelect={() => openSection('messageBox', agent)}>Message Box</ContextMenuItem>
+				<ContextMenuItem onSelect={() => openSection('clientChat', agent)}>Client Chat</ContextMenuItem>
+				<ContextMenuItem onSelect={() => openSection('reportWindow', agent)}>Report Window</ContextMenuItem>
+				<ContextMenuItem onSelect={() => openSection('ipGeolocation', agent)}>IP Geolocation</ContextMenuItem>
+				<ContextMenuItem onSelect={() => openSection('environmentVariables', agent)}>Environment Variables</ContextMenuItem>
 			</ContextMenuSubContent>
 		</ContextMenuSub>
 
@@ -515,12 +475,8 @@
 		<ContextMenuSub>
 			<ContextMenuSubTrigger>System Controls</ContextMenuSubTrigger>
 			<ContextMenuSubContent class="w-48">
-				<ContextMenuItem onSelect={() => openSection('reconnect', agent)}>
-					Reconnect
-				</ContextMenuItem>
-				<ContextMenuItem onSelect={() => openSection('disconnect', agent)}>
-					Disconnect
-				</ContextMenuItem>
+				<ContextMenuItem onSelect={() => openSection('reconnect', agent)}>Reconnect</ContextMenuItem>
+				<ContextMenuItem onSelect={() => openSection('disconnect', agent)}>Disconnect</ContextMenuItem>
 			</ContextMenuSubContent>
 		</ContextMenuSub>
 

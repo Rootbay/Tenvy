@@ -31,8 +31,6 @@
 	import ClientsTableRow from '$lib/components/clients/clients-table-row.svelte';
 	import ManageTagsDialog from '$lib/components/clients/manage-tags-dialog.svelte';
 	import DeployAgentDialog from '$lib/components/clients/deploy-agent-dialog.svelte';
-	import PingAgentDialog from '$lib/components/clients/ping-agent-dialog.svelte';
-	import ShellCommandDialog from '$lib/components/clients/shell-command-dialog.svelte';
 	import { sectionToolMap, type SectionKey } from '$lib/client-sections';
 	import { createClientsTableStore } from '$lib/stores/clients-table';
 	import {
@@ -124,37 +122,17 @@
 		toolDialogClient = agent ? mapAgentToClient(agent) : null;
 	});
 
-	let pingMessages = $state<Record<string, string>>({});
-	let shellCommands = $state<Record<string, string>>({});
-	let shellTimeouts = $state<Record<string, number | undefined>>({});
 	let commandErrors = $state<Record<string, string | null>>({});
 	let commandSuccess = $state<Record<string, string | null>>({});
 	let commandPending = $state<Record<string, boolean>>({});
 	const controllerPingEndpoint = '/api/ping';
 	const controllerPingIntervalMs = 15_000;
 	let controllerPingLatency = $state<number | null>(null);
-
-	let pingDialogAgentId = $state<string | null>(null);
-	let shellDialogAgentId = $state<string | null>(null);
-	let pingAgent = $state<AgentSnapshot | null>(null);
-	let shellAgent = $state<AgentSnapshot | null>(null);
 	let deployDialogOpen = $state(false);
 	let tagsDialogAgentId = $state<string | null>(null);
 	let tagsAgent = $state<AgentSnapshot | null>(null);
 	let tagsDialogPending = $state(false);
 	let tagsDialogError = $state<string | null>(null);
-
-	$effect(() => {
-		const agentId = pingDialogAgentId;
-		const agents = $clientsTable.agents;
-		pingAgent = agentId ? (agents.find((agent) => agent.id === agentId) ?? null) : null;
-	});
-
-	$effect(() => {
-		const agentId = shellDialogAgentId;
-		const agents = $clientsTable.agents;
-		shellAgent = agentId ? (agents.find((agent) => agent.id === agentId) ?? null) : null;
-	});
 
 	$effect(() => {
 		const agentId = tagsDialogAgentId;
@@ -560,61 +538,6 @@
 		}
 	}
 
-	async function sendPing(agentId: string): Promise<boolean> {
-		const key = `ping:${agentId}`;
-		const message = pingMessages[agentId]?.trim();
-		const success = await queueCommand(
-			agentId,
-			{
-				name: 'ping',
-				payload: message ? { message } : {}
-			},
-			key,
-			{
-				session: 'Ping delivered',
-				queued: 'Ping queued'
-			}
-		);
-		if (success) {
-			pingMessages = updateRecord(pingMessages, agentId, '');
-		}
-		return success;
-	}
-
-	async function sendShell(agentId: string): Promise<boolean> {
-		const key = `shell:${agentId}`;
-		const command = shellCommands[agentId]?.trim();
-		if (!command) {
-			commandErrors = updateRecord(commandErrors, key, 'Command is required');
-			return false;
-		}
-
-		const timeout = shellTimeouts[agentId];
-		const payload: { command: string; timeoutSeconds?: number } = { command };
-		if (timeout && timeout > 0) {
-			payload.timeoutSeconds = timeout;
-		}
-
-		const success = await queueCommand(
-			agentId,
-			{
-				name: 'shell',
-				payload
-			},
-			key,
-			{
-				session: 'Shell command delivered',
-				queued: 'Shell command queued'
-			}
-		);
-
-		if (success) {
-			shellCommands = updateRecord(shellCommands, agentId, '');
-		}
-
-		return success;
-	}
-
 	function sendCommandError(agent: AgentSnapshot, action: string) {
 		const agentLabel = agent.metadata.hostname?.trim() || agent.id;
 		showConnectionAlert({
@@ -635,69 +558,6 @@
 
 	async function reconnectAgent(agent: AgentSnapshot) {
 		await requestConnectionAction(agent, 'reconnect');
-	}
-
-	function openPingDialog(agentId: string) {
-		const agent = findAgentById(agentId);
-		if (!agent) {
-			return;
-		}
-
-		if (!hasActiveConnection(agent)) {
-			const agentLabel = agent.metadata.hostname?.trim() || agent.id;
-			showConnectionAlert({
-				title: 'Connection unavailable',
-				description: `${agentLabel} is not currently connected. Re-establish the session to queue a ping.`,
-				variant: 'destructive'
-			});
-			return;
-		}
-
-		pingDialogAgentId = agentId;
-		commandErrors = updateRecord(commandErrors, `ping:${agentId}`, null);
-		commandSuccess = updateRecord(commandSuccess, `ping:${agentId}`, null);
-	}
-
-	function openShellDialog(agentId: string) {
-		const agent = findAgentById(agentId);
-		if (!agent) {
-			return;
-		}
-
-		if (!hasActiveConnection(agent)) {
-			sendCommandError(agent, 'run shell commands');
-			return;
-		}
-
-		shellDialogAgentId = agentId;
-		commandErrors = updateRecord(commandErrors, `shell:${agentId}`, null);
-		commandSuccess = updateRecord(commandSuccess, `shell:${agentId}`, null);
-	}
-
-	function closePingDialog() {
-		pingDialogAgentId = null;
-	}
-
-	function closeShellDialog() {
-		shellDialogAgentId = null;
-	}
-
-	async function handlePingSubmit() {
-		const agent = findAgentById(pingDialogAgentId);
-		if (!agent) return;
-		const success = await sendPing(agent.id);
-		if (success) {
-			closePingDialog();
-		}
-	}
-
-	async function handleShellSubmit() {
-		const agent = findAgentById(shellDialogAgentId);
-		if (!agent) return;
-		const success = await sendShell(agent.id);
-		if (success) {
-			closeShellDialog();
-		}
 	}
 
 	function setCopyFeedback(feedback: CopyFeedback) {
@@ -1140,8 +1000,6 @@
 										{getAgentTags}
 										{getAgentLocation}
 										openManageTags={openManageTagsDialog}
-										{openPingDialog}
-										{openShellDialog}
 										onTagClick={handleTagFilter}
 										{openSection}
 										{copyAgentId}
@@ -1226,37 +1084,6 @@
 	{/if}
 
 	<DeployAgentDialog open={deployDialogOpen} on:close={() => (deployDialogOpen = false)} />
-
-	{#if pingAgent}
-		<PingAgentDialog
-			agent={pingAgent}
-			message={pingMessages[pingAgent!.id] ?? ''}
-			error={getError(`ping:${pingAgent!.id}`)}
-			success={getSuccess(`ping:${pingAgent!.id}`)}
-			pending={isPending(`ping:${pingAgent!.id}`)}
-			on:close={closePingDialog}
-			on:submit={handlePingSubmit}
-			on:messageChange={(event) =>
-				(pingMessages = updateRecord(pingMessages, pingAgent!.id, event.detail))}
-		/>
-	{/if}
-
-	{#if shellAgent}
-		<ShellCommandDialog
-			agent={shellAgent}
-			command={shellCommands[shellAgent!.id] ?? ''}
-			timeout={shellTimeouts[shellAgent!.id]}
-			error={getError(`shell:${shellAgent!.id}`)}
-			success={getSuccess(`shell:${shellAgent!.id}`)}
-			pending={isPending(`shell:${shellAgent!.id}`)}
-			on:close={closeShellDialog}
-			on:submit={handleShellSubmit}
-			on:commandChange={(event) =>
-				(shellCommands = updateRecord(shellCommands, shellAgent!.id, event.detail))}
-			on:timeoutChange={(event) =>
-				(shellTimeouts = updateRecord(shellTimeouts, shellAgent!.id, event.detail))}
-		/>
-	{/if}
 
 	<ManageTagsDialog
 		open={Boolean(tagsDialogAgentId && tagsAgent)}
