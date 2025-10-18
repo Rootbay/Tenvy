@@ -11,6 +11,16 @@ const applications: readonly AppVncApplicationDescriptor[] = [
                 executable: {
                         windows: 'C:\\Program Files\\Chromium\\Application\\chrome.exe',
                         linux: '/usr/bin/chromium-browser'
+                },
+                virtualization: {
+                        profileSeeds: {
+                                windows: 'C:\\ProgramData\\Tenvy\\appvnc\\chromium-profile',
+                                linux: '/opt/tenvy/appvnc/chromium-profile'
+                        },
+                        dataRoots: {
+                                windows: 'C:\\ProgramData\\Tenvy\\appvnc\\chromium-data',
+                                linux: '/opt/tenvy/appvnc/chromium-data'
+                        }
                 }
         },
         {
@@ -23,6 +33,16 @@ const applications: readonly AppVncApplicationDescriptor[] = [
                 executable: {
                         windows: 'C:\\Program Files\\Mozilla Firefox\\firefox.exe',
                         linux: '/usr/bin/firefox'
+                },
+                virtualization: {
+                        profileSeeds: {
+                                windows: 'C:\\ProgramData\\Tenvy\\appvnc\\firefox-profile',
+                                linux: '/opt/tenvy/appvnc/firefox-profile'
+                        },
+                        dataRoots: {
+                                windows: 'C:\\ProgramData\\Tenvy\\appvnc\\firefox-data',
+                                linux: '/opt/tenvy/appvnc/firefox-data'
+                        }
                 }
         },
         {
@@ -34,6 +54,20 @@ const applications: readonly AppVncApplicationDescriptor[] = [
                 windowTitleHint: 'Discord',
                 executable: {
                         windows: 'C:\\Users\\%USERNAME%\\AppData\\Local\\Discord\\Update.exe'
+                },
+                virtualization: {
+                        profileSeeds: {
+                                windows: 'C:\\ProgramData\\Tenvy\\appvnc\\discord-profile'
+                        },
+                        dataRoots: {
+                                windows: 'C:\\ProgramData\\Tenvy\\appvnc\\discord-data'
+                        },
+                        environment: {
+                                windows: {
+                                        NODE_ENV: 'production',
+                                        DISCORD_SKIP_HOST_UPDATE: '1'
+                                }
+                        }
                 }
         },
         {
@@ -46,6 +80,16 @@ const applications: readonly AppVncApplicationDescriptor[] = [
                 executable: {
                         windows: 'C:\\Users\\%USERNAME%\\AppData\\Roaming\\Telegram Desktop\\Telegram.exe',
                         linux: '/usr/bin/telegram-desktop'
+                },
+                virtualization: {
+                        profileSeeds: {
+                                windows: 'C:\\ProgramData\\Tenvy\\appvnc\\telegram-profile',
+                                linux: '/opt/tenvy/appvnc/telegram-profile'
+                        },
+                        dataRoots: {
+                                windows: 'C:\\ProgramData\\Tenvy\\appvnc\\telegram-data',
+                                linux: '/opt/tenvy/appvnc/telegram-data'
+                        }
                 }
         }
 ] as const;
@@ -54,7 +98,24 @@ function cloneApplication(app: AppVncApplicationDescriptor): AppVncApplicationDe
         return {
                 ...app,
                 platforms: [...app.platforms],
-                executable: app.executable ? { ...app.executable } : undefined
+                executable: app.executable ? { ...app.executable } : undefined,
+                virtualization: app.virtualization
+                        ? {
+                                  profileSeeds: app.virtualization.profileSeeds
+                                          ? { ...app.virtualization.profileSeeds }
+                                          : undefined,
+                                  dataRoots: app.virtualization.dataRoots
+                                          ? { ...app.virtualization.dataRoots }
+                                          : undefined,
+                                  environment: app.virtualization.environment
+                                          ? Object.fromEntries(
+                                                      Object.entries(app.virtualization.environment).map(
+                                                              ([platform, values]) => [platform, { ...values }]
+                                                      )
+                                              )
+                                          : undefined
+                          }
+                        : undefined
         };
 }
 

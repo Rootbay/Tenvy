@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import {
+        type AppVncApplicationDescriptor,
         type AppVncCommandPayload,
         type AppVncCursorState,
         type AppVncFramePacket,
@@ -8,8 +9,11 @@ import {
         type AppVncSessionMetadata,
         type AppVncSessionSettings,
         type AppVncSessionSettingsPatch,
-        type AppVncSessionState
+        type AppVncSessionState,
+        type AppVncVirtualizationHints,
+        type AppVncVirtualizationPlan
 } from '$lib/types/app-vnc';
+import { findAppVncApplication } from '$lib/data/app-vnc-apps';
 import { registry, RegistryError } from './store';
 
 const encoder = new TextEncoder();
@@ -20,12 +24,12 @@ const MAX_FRAME_HEIGHT = 4_096;
 const MAX_BASE64_SIZE = 8 * 1024 * 1024; // 8 MiB
 
 const defaultSettings: AppVncSessionSettings = Object.freeze({
-	monitor: 'Primary',
-	quality: 'balanced',
-	captureCursor: true,
-	clipboardSync: false,
-	blockLocalInput: false,
-	heartbeatInterval: 30
+        monitor: 'Primary',
+        quality: 'balanced',
+        captureCursor: true,
+        clipboardSync: false,
+        blockLocalInput: false,
+        heartbeatInterval: 30
 });
 
 const qualities = new Set<AppVncSessionSettings['quality']>(['lossless', 'balanced', 'bandwidth']);
@@ -458,3 +462,80 @@ export class AppVncManager {
 export const appVncManager = new AppVncManager();
 
 export { listAppVncApplications } from '$lib/data/app-vnc-apps';
+
+function inferPlatform(os: string | undefined): AppVncVirtualizationPlan['platform'] {
+        if (!os) {
+                return undefined;
+        }
+        const normalized = os.trim().toLowerCase();
+        if (normalized.includes('windows')) {
+                return 'windows';
+        }
+        if (normalized.includes('linux')) {
+                return 'linux';
+        }
+        if (normalized.includes('mac') || normalized.includes('darwin') || normalized.includes('os x')) {
+                return 'macos';
+        }
+        return undefined;
+}
+
+function resolveVirtualizationPlan(
+        platform: AppVncVirtualizationPlan['platform'],
+        hints: AppVncVirtualizationHints | undefined
+): AppVncVirtualizationPlan | undefined {
+        if (!platform || !hints) {
+                return undefined;
+        }
+        const plan: AppVncVirtualizationPlan = { platform };
+        if (hints.profileSeeds?.[platform]) {
+                plan.profileSeed = hints.profileSeeds[platform];
+        }
+        if (hints.dataRoots?.[platform]) {
+                plan.dataRoot = hints.dataRoots[platform];
+        }
+        if (hints.environment?.[platform]) {
+                plan.environment = { ...hints.environment[platform] };
+        }
+        if (plan.profileSeed || plan.dataRoot || plan.environment) {
+                return plan;
+        }
+        return undefined;
+}
+
+export function resolveAppVncStartContext(
+        agentId: string,
+        settings: AppVncSessionSettings
+): {
+        application?: AppVncApplicationDescriptor;
+        virtualization?: AppVncVirtualizationPlan;
+} {
+        const trimmedAppId = typeof settings.appId === 'string' ? settings.appId.trim() : '';
+        if (!trimmedAppId) {
+                return {};
+        }
+
+        const descriptor = findAppVncApplication(trimmedAppId);
+        if (!descriptor) {
+                return {};
+        }
+
+        let platform: AppVncVirtualizationPlan['platform'];
+        try {
+                const agent = registry.getAgent(agentId);
+                platform = inferPlatform(agent.metadata?.os);
+        } catch (err) {
+                if (err instanceof RegistryError) {
+                        platform = undefined;
+                } else {
+                        throw err;
+                }
+        }
+
+        const virtualization = resolveVirtualizationPlan(platform, descriptor.virtualization);
+
+        return {
+                application: descriptor,
+                virtualization
+        };
+}

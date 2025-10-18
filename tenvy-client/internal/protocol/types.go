@@ -82,6 +82,115 @@ type RemoteDesktopInputBurst struct {
 	Events    []RemoteDesktopInputEvent `json:"events"`
 }
 
+type AppVncQuality string
+
+const (
+	AppVncQualityLossless  AppVncQuality = "lossless"
+	AppVncQualityBalanced  AppVncQuality = "balanced"
+	AppVncQualityBandwidth AppVncQuality = "bandwidth"
+)
+
+type AppVncPlatform string
+
+const (
+	AppVncPlatformWindows AppVncPlatform = "windows"
+	AppVncPlatformLinux   AppVncPlatform = "linux"
+	AppVncPlatformMacOS   AppVncPlatform = "macos"
+)
+
+type AppVncSessionSettings struct {
+	Monitor           string        `json:"monitor"`
+	Quality           AppVncQuality `json:"quality"`
+	CaptureCursor     bool          `json:"captureCursor"`
+	ClipboardSync     bool          `json:"clipboardSync"`
+	BlockLocalInput   bool          `json:"blockLocalInput"`
+	HeartbeatInterval int           `json:"heartbeatInterval"`
+	AppID             string        `json:"appId,omitempty"`
+	WindowTitle       string        `json:"windowTitle,omitempty"`
+}
+
+type AppVncSessionSettingsPatch struct {
+	Monitor           *string        `json:"monitor,omitempty"`
+	Quality           *AppVncQuality `json:"quality,omitempty"`
+	CaptureCursor     *bool          `json:"captureCursor,omitempty"`
+	ClipboardSync     *bool          `json:"clipboardSync,omitempty"`
+	BlockLocalInput   *bool          `json:"blockLocalInput,omitempty"`
+	HeartbeatInterval *int           `json:"heartbeatInterval,omitempty"`
+	AppID             *string        `json:"appId,omitempty"`
+	WindowTitle       *string        `json:"windowTitle,omitempty"`
+}
+
+type AppVncVirtualizationHints struct {
+	ProfileSeeds map[AppVncPlatform]string            `json:"profileSeeds,omitempty"`
+	DataRoots    map[AppVncPlatform]string            `json:"dataRoots,omitempty"`
+	Environment  map[AppVncPlatform]map[string]string `json:"environment,omitempty"`
+}
+
+type AppVncVirtualizationPlan struct {
+	Platform    AppVncPlatform    `json:"platform,omitempty"`
+	ProfileSeed string            `json:"profileSeed,omitempty"`
+	DataRoot    string            `json:"dataRoot,omitempty"`
+	Environment map[string]string `json:"environment,omitempty"`
+}
+
+type AppVncApplicationDescriptor struct {
+	ID              string                     `json:"id"`
+	Name            string                     `json:"name"`
+	Summary         string                     `json:"summary"`
+	Category        string                     `json:"category"`
+	Platforms       []AppVncPlatform           `json:"platforms"`
+	WindowTitleHint string                     `json:"windowTitleHint,omitempty"`
+	Executable      map[AppVncPlatform]string  `json:"executable,omitempty"`
+	Virtualization  *AppVncVirtualizationHints `json:"virtualization,omitempty"`
+}
+
+type AppVncPointerButton string
+
+const (
+	AppVncPointerButtonLeft   AppVncPointerButton = "left"
+	AppVncPointerButtonMiddle AppVncPointerButton = "middle"
+	AppVncPointerButtonRight  AppVncPointerButton = "right"
+)
+
+type AppVncInputEventType string
+
+const (
+	AppVncInputPointerMove   AppVncInputEventType = "pointer-move"
+	AppVncInputPointerButton AppVncInputEventType = "pointer-button"
+	AppVncInputPointerScroll AppVncInputEventType = "pointer-scroll"
+	AppVncInputKey           AppVncInputEventType = "key"
+)
+
+type AppVncInputEvent struct {
+	Type       AppVncInputEventType `json:"type"`
+	CapturedAt int64                `json:"capturedAt"`
+	X          float64              `json:"x,omitempty"`
+	Y          float64              `json:"y,omitempty"`
+	Normalized bool                 `json:"normalized,omitempty"`
+	Button     AppVncPointerButton  `json:"button,omitempty"`
+	Pressed    bool                 `json:"pressed,omitempty"`
+	DeltaX     float64              `json:"deltaX,omitempty"`
+	DeltaY     float64              `json:"deltaY,omitempty"`
+	DeltaMode  int                  `json:"deltaMode,omitempty"`
+	Key        string               `json:"key,omitempty"`
+	Code       string               `json:"code,omitempty"`
+	KeyCode    int                  `json:"keyCode,omitempty"`
+	Repeat     bool                 `json:"repeat,omitempty"`
+	AltKey     bool                 `json:"altKey,omitempty"`
+	CtrlKey    bool                 `json:"ctrlKey,omitempty"`
+	ShiftKey   bool                 `json:"shiftKey,omitempty"`
+	MetaKey    bool                 `json:"metaKey,omitempty"`
+}
+
+type AppVncCommandPayload struct {
+	Action         string                       `json:"action"`
+	SessionID      string                       `json:"sessionId,omitempty"`
+	Settings       *AppVncSessionSettingsPatch  `json:"settings,omitempty"`
+	Events         []AppVncInputEvent           `json:"events,omitempty"`
+	Application    *AppVncApplicationDescriptor `json:"application,omitempty"`
+	Virtualization *AppVncVirtualizationPlan    `json:"virtualization,omitempty"`
+}
+
 type AgentMetadata struct {
 	Hostname        string   `json:"hostname"`
 	Username        string   `json:"username"`

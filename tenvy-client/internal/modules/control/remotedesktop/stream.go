@@ -22,6 +22,8 @@ import (
 	"github.com/cespare/xxhash/v2"
 	"github.com/kbinani/screenshot"
 	xdraw "golang.org/x/image/draw"
+
+	"github.com/rootbay/tenvy-client/internal/modules/control/screen"
 )
 
 type remoteTileHasher struct {
@@ -1306,7 +1308,7 @@ func captureMonitorFrame(monitor remoteMonitor, width, height int) ([]byte, erro
 		return nil, errors.New("invalid frame dimensions")
 	}
 
-	img, err := safeCaptureRect(monitor.bounds)
+	img, err := screen.SafeCaptureRect(monitor.bounds)
 	if err != nil {
 		return nil, err
 	}
@@ -1373,39 +1375,6 @@ func releaseFrameBuffer(buf []byte) {
 	frameBufferPool.Put(buf[:0])
 }
 
-func safeCaptureRect(bounds image.Rectangle) (img *image.RGBA, err error) {
-	defer func() {
-		if r := recover(); r != nil {
-			err = fmt.Errorf("capture panic: %v", r)
-			img = nil
-		}
-	}()
-
-	img, err = screenshot.CaptureRect(bounds)
-	return img, err
-}
-
-func encodePNG(width, height int, data []byte) (string, error) {
-	if len(data) == 0 || width <= 0 || height <= 0 {
-		return "", errors.New("invalid frame data")
-	}
-
-	img := &image.RGBA{
-		Pix:    data,
-		Stride: width * 4,
-		Rect:   image.Rect(0, 0, width, height),
-	}
-	bufPtr := imageBufferPool.Get().(*bytes.Buffer)
-	bufPtr.Reset()
-	defer imageBufferPool.Put(bufPtr)
-
-	if err := pngEncoder.Encode(bufPtr, img); err != nil {
-		return "", err
-	}
-	encoded := base64.StdEncoding.EncodeToString(bufPtr.Bytes())
-	return encoded, nil
-}
-
 func encodeJPEG(width, height, quality int, data []byte) (string, error) {
 	if len(data) == 0 || width <= 0 || height <= 0 {
 		return "", errors.New("invalid frame data")
@@ -1443,7 +1412,7 @@ func encodeKeyFrame(width, height, quality int, data []byte) (string, string, er
 		}
 	}
 
-	encoded, err := encodePNG(width, height, data)
+	encoded, err := screen.EncodeRGBAAsPNG(width, height, data)
 	if err != nil {
 		return "", remoteEncodingPNG, err
 	}

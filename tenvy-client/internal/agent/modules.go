@@ -6,10 +6,13 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
 
+	appvnc "github.com/rootbay/tenvy-client/internal/modules/control/appvnc"
 	audioctrl "github.com/rootbay/tenvy-client/internal/modules/control/audio"
 	remotedesktop "github.com/rootbay/tenvy-client/internal/modules/control/remotedesktop"
 	clipboard "github.com/rootbay/tenvy-client/internal/modules/management/clipboard"
@@ -67,6 +70,7 @@ type moduleRegistry struct {
 
 func newDefaultModuleRegistry() *moduleRegistry {
 	registry := newModuleRegistry()
+	registry.register(&appVncModule{})
 	registry.register(&remoteDesktopModule{})
 	registry.register(&audioModule{})
 	registry.register(&clipboardModule{})
@@ -167,6 +171,64 @@ func (r *moduleRegistry) remoteDesktopModule() *remoteDesktopModule {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	return r.remote
+}
+
+type appVncModule struct {
+	controller *appvnc.Controller
+}
+
+func (m *appVncModule) Metadata() ModuleMetadata {
+	return ModuleMetadata{
+		ID:          "app-vnc",
+		Title:       "Application VNC",
+		Description: "Launches curated applications inside a disposable workspace and streams them through VNC.",
+		Commands:    []string{"app-vnc"},
+		Capabilities: []ModuleCapability{
+			{
+				Name:        "app-vnc.launch",
+				Description: "Clone per-application profiles and start virtualized sessions.",
+			},
+		},
+	}
+}
+
+func (m *appVncModule) ensureController() *appvnc.Controller {
+	if m.controller == nil {
+		m.controller = appvnc.NewController()
+	}
+	return m.controller
+}
+
+func (m *appVncModule) Update(runtime moduleRuntime) error {
+	controller := m.ensureController()
+	root := filepath.Join(os.TempDir(), "tenvy-appvnc")
+	if err := os.MkdirAll(root, 0o755); err != nil {
+		return fmt.Errorf("prepare app-vnc workspace root: %w", err)
+	}
+	controller.Update(appvnc.Config{
+		Logger:        runtime.Logger,
+		WorkspaceRoot: root,
+	})
+	return nil
+}
+
+func (m *appVncModule) HandleCommand(ctx context.Context, cmd protocol.Command) protocol.CommandResult {
+	controller := m.ensureController()
+	if controller == nil {
+		return protocol.CommandResult{
+			CommandID:   cmd.ID,
+			Success:     false,
+			Error:       "app-vnc controller unavailable",
+			CompletedAt: time.Now().UTC().Format(time.RFC3339Nano),
+		}
+	}
+	return controller.HandleCommand(ctx, cmd)
+}
+
+func (m *appVncModule) Shutdown(ctx context.Context) {
+	if m.controller != nil {
+		m.controller.Shutdown(ctx)
+	}
 }
 
 func (a *Agent) moduleRuntime() moduleRuntime {
