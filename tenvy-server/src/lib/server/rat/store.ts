@@ -40,6 +40,7 @@ export const MAX_PENDING_COMMANDS = 200;
 const PENDING_COMMAND_DROP_WARN_INTERVAL_MS = 30_000;
 const PERSIST_DEBOUNCE_MS = 2_000;
 const PERSIST_FILE_VERSION = 2;
+const SESSION_TOKEN_TTL_MS = 60_000;
 
 const DEFAULT_STORAGE_PATH = process.env.TENVY_AGENT_REGISTRY_PATH
 	? path.resolve(process.env.TENVY_AGENT_REGISTRY_PATH)
@@ -97,14 +98,19 @@ class RegistryError extends Error {
 }
 
 interface AgentSessionRecord {
-	id: symbol;
-	socket: WebSocket;
+        id: symbol;
+        socket: WebSocket;
+}
+
+interface SessionTokenRecord {
+        hash: string;
+        expiresAt: number;
 }
 
 interface AgentRecord {
-	id: string;
-	keyHash: string;
-	metadata: AgentMetadata;
+        id: string;
+        keyHash: string;
+        metadata: AgentMetadata;
 	status: AgentStatus;
 	connectedAt: Date;
 	lastSeen: Date;
@@ -195,9 +201,15 @@ function computeFingerprint(metadata: AgentMetadata): string {
 }
 
 function hashAgentKey(rawKey: string): string {
-	const hash = createHash('sha256');
-	hash.update(rawKey, 'utf-8');
-	return hash.digest('hex');
+        const hash = createHash('sha256');
+        hash.update(rawKey, 'utf-8');
+        return hash.digest('hex');
+}
+
+function hashSessionToken(rawToken: string): string {
+        const hash = createHash('sha256');
+        hash.update(rawToken, 'utf-8');
+        return hash.digest('hex');
 }
 
 function timingSafeEqualHex(expected: string, candidate: string): boolean {
@@ -215,8 +227,13 @@ function timingSafeEqualHex(expected: string, candidate: string): boolean {
 }
 
 function generateAgentKey(): { token: string; hash: string } {
-	const token = randomBytes(32).toString('hex');
-	return { token, hash: hashAgentKey(token) };
+        const token = randomBytes(32).toString('hex');
+        return { token, hash: hashAgentKey(token) };
+}
+
+function generateSessionToken(): { token: string; hash: string; expiresAt: number } {
+        const token = randomBytes(32).toString('hex');
+        return { token, hash: hashSessionToken(token), expiresAt: Date.now() + SESSION_TOKEN_TTL_MS };
 }
 
 function parsePersistedDate(value: unknown, fallback: Date): Date {
@@ -336,26 +353,51 @@ function mergeRecentResults(existing: CommandResult[], incoming: CommandResult[]
 }
 
 export class AgentRegistry {
-	private readonly storagePath: string;
-	private readonly agents = new Map<string, AgentRecord>();
-	private readonly fingerprints = new Map<string, string>();
-	private persistTimer: ReturnType<typeof setTimeout> | null = null;
-	private persistPromise: Promise<void> | null = null;
-	private needsPersist = false;
+        private readonly storagePath: string;
+        private readonly agents = new Map<string, AgentRecord>();
+        private readonly fingerprints = new Map<string, string>();
+        private readonly sessionTokens = new Map<string, SessionTokenRecord>();
+        private persistTimer: ReturnType<typeof setTimeout> | null = null;
+        private persistPromise: Promise<void> | null = null;
+        private needsPersist = false;
 
 	constructor(options: AgentRegistryOptions = {}) {
 		this.storagePath = resolveStoragePath(options.storagePath);
 		this.loadFromDisk();
 	}
 
-	private verifyAgentKey(record: AgentRecord, key: string | undefined): boolean {
-		if (!key) {
-			return false;
-		}
+        private verifyAgentKey(record: AgentRecord, key: string | undefined): boolean {
+                if (!key) {
+                        return false;
+                }
 
-		const incomingHash = hashAgentKey(key);
-		return timingSafeEqualHex(record.keyHash, incomingHash);
-	}
+                const incomingHash = hashAgentKey(key);
+                return timingSafeEqualHex(record.keyHash, incomingHash);
+        }
+
+        private consumeSessionToken(record: AgentRecord, token: string | undefined): void {
+                if (!token) {
+                        throw new RegistryError('Missing session token', 401);
+                }
+
+                const stored = this.sessionTokens.get(record.id);
+                if (!stored) {
+                        throw new RegistryError('Invalid session token', 401);
+                }
+
+                if (Date.now() >= stored.expiresAt) {
+                        this.sessionTokens.delete(record.id);
+                        throw new RegistryError('Session token expired', 401);
+                }
+
+                const incomingHash = hashSessionToken(token);
+                if (!timingSafeEqualHex(stored.hash, incomingHash)) {
+                        this.sessionTokens.delete(record.id);
+                        throw new RegistryError('Invalid session token', 401);
+                }
+
+                this.sessionTokens.delete(record.id);
+        }
 
 	private loadFromDisk(): void {
 		let source: string;
@@ -735,10 +777,11 @@ export class AgentRegistry {
 				existingRecord.connectedAt = now;
 				existingRecord.lastSeen = now;
 				existingRecord.metrics = undefined;
-				const nextKey = generateAgentKey();
-				existingRecord.keyHash = nextKey.hash;
-				existingRecord.config = normalizeConfig(existingRecord.config);
-				existingRecord.fingerprint = computeFingerprint(nextMetadata);
+                                const nextKey = generateAgentKey();
+                                existingRecord.keyHash = nextKey.hash;
+                                existingRecord.config = normalizeConfig(existingRecord.config);
+                                existingRecord.fingerprint = computeFingerprint(nextMetadata);
+                                this.sessionTokens.delete(existingRecord.id);
 
 				if (previousFingerprint !== existingRecord.fingerprint) {
 					this.fingerprints.delete(previousFingerprint);
@@ -776,33 +819,51 @@ export class AgentRegistry {
 			fingerprint
 		};
 
-		this.agents.set(id, record);
-		this.fingerprints.set(fingerprint, id);
-		this.schedulePersist();
+                this.agents.set(id, record);
+                this.fingerprints.set(fingerprint, id);
+                this.sessionTokens.delete(id);
+                this.schedulePersist();
 
-		return {
-			agentId: id,
-			agentKey: nextKey.token,
-			config: { ...record.config },
-			commands: [],
-			serverTime: now.toISOString()
-		};
-	}
+                return {
+                        agentId: id,
+                        agentKey: nextKey.token,
+                        config: { ...record.config },
+                        commands: [],
+                        serverTime: now.toISOString()
+                };
+        }
 
-	attachSession(
-		id: string,
-		key: string | undefined,
-		socket: WebSocket,
-		options: { remoteAddress?: string } = {}
-	): void {
-		const record = this.agents.get(id);
-		if (!record) {
-			throw new RegistryError('Agent not found', 404);
-		}
+        issueSessionToken(id: string, key: string | undefined): { token: string; expiresAt: string } {
+                const record = this.agents.get(id);
+                if (!record) {
+                        throw new RegistryError('Agent not found', 404);
+                }
 
-		if (!this.verifyAgentKey(record, key)) {
-			throw new RegistryError('Invalid agent key', 401);
-		}
+                if (!this.verifyAgentKey(record, key)) {
+                        throw new RegistryError('Invalid agent key', 401);
+                }
+
+                const generated = generateSessionToken();
+                this.sessionTokens.set(id, { hash: generated.hash, expiresAt: generated.expiresAt });
+
+                return {
+                        token: generated.token,
+                        expiresAt: new Date(generated.expiresAt).toISOString()
+                };
+        }
+
+        attachSession(
+                id: string,
+                token: string | undefined,
+                socket: WebSocket,
+                options: { remoteAddress?: string } = {}
+        ): void {
+                const record = this.agents.get(id);
+                if (!record) {
+                        throw new RegistryError('Agent not found', 404);
+                }
+
+                this.consumeSessionToken(record, token);
 
 		const sessionId = Symbol(`agent:${id}`);
 

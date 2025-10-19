@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"log"
 	"net/http"
@@ -46,11 +47,41 @@ func TestCommandStreamDeliversImmediately(t *testing.T) {
 	var connMu sync.Mutex
 	var sessionConn *websocket.Conn
 	sessionReady := make(chan struct{})
+	var sessionOnce sync.Once
+
+	var tokenMu sync.Mutex
+	var issuedToken string
 
 	mux := http.NewServeMux()
-	mux.HandleFunc("/api/agents/agent-1/session", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/api/agents/agent-1/session-token", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "method", http.StatusMethodNotAllowed)
+			return
+		}
 		if got := r.Header.Get("Authorization"); got != "Bearer key-1" {
 			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
+		token := fmt.Sprintf("session-%d", time.Now().UnixNano())
+		tokenMu.Lock()
+		issuedToken = token
+		tokenMu.Unlock()
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(sessionTokenResponse{
+			Token:     token,
+			ExpiresAt: time.Now().Add(30 * time.Second).UTC().Format(time.RFC3339Nano),
+		})
+	})
+	mux.HandleFunc("/api/agents/agent-1/session", func(w http.ResponseWriter, r *http.Request) {
+		tokenMu.Lock()
+		token := issuedToken
+		tokenMu.Unlock()
+		if got := r.Header.Get(sessionTokenHeader); got != token {
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
+		if r.Header.Get("Authorization") != "" {
+			http.Error(w, "authorization header unexpected", http.StatusUnauthorized)
 			return
 		}
 		if r.Header.Get("Sec-WebSocket-Protocol") != protocol.CommandStreamSubprotocol {
@@ -65,7 +96,9 @@ func TestCommandStreamDeliversImmediately(t *testing.T) {
 		connMu.Lock()
 		sessionConn = c
 		connMu.Unlock()
-		close(sessionReady)
+		sessionOnce.Do(func() {
+			close(sessionReady)
+		})
 	})
 	mux.HandleFunc("/api/agents/agent-1/sync", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -77,7 +110,7 @@ func TestCommandStreamDeliversImmediately(t *testing.T) {
 		})
 	})
 
-	srv := httptest.NewServer(mux)
+	srv := httptest.NewTLSServer(mux)
 	defer srv.Close()
 
 	agent := makeTestAgent(srv.URL, srv.Client(), router)
@@ -140,6 +173,17 @@ func TestCommandStreamFallsBackToSync(t *testing.T) {
 	}
 
 	mux := http.NewServeMux()
+	mux.HandleFunc("/api/agents/agent-1/session-token", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "method", http.StatusMethodNotAllowed)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(sessionTokenResponse{
+			Token:     "fallback-token",
+			ExpiresAt: time.Now().Add(30 * time.Second).UTC().Format(time.RFC3339Nano),
+		})
+	})
 	mux.HandleFunc("/api/agents/agent-1/session", func(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 	})
@@ -168,7 +212,7 @@ func TestCommandStreamFallsBackToSync(t *testing.T) {
 		json.NewEncoder(w).Encode(resp)
 	})
 
-	srv := httptest.NewServer(mux)
+	srv := httptest.NewTLSServer(mux)
 	defer srv.Close()
 
 	agent := makeTestAgent(srv.URL, srv.Client(), router)
@@ -196,6 +240,17 @@ func TestCommandStreamRequestsReconnectOnUnauthorized(t *testing.T) {
 
 	router := newCommandRouter()
 	mux := http.NewServeMux()
+	mux.HandleFunc("/api/agents/agent-1/session-token", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "method", http.StatusMethodNotAllowed)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(sessionTokenResponse{
+			Token:     "unauthorized-token",
+			ExpiresAt: time.Now().Add(30 * time.Second).UTC().Format(time.RFC3339Nano),
+		})
+	})
 	mux.HandleFunc("/api/agents/agent-1/session", func(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "unauthorized", http.StatusUnauthorized)
 	})
@@ -208,7 +263,7 @@ func TestCommandStreamRequestsReconnectOnUnauthorized(t *testing.T) {
 		})
 	})
 
-	srv := httptest.NewServer(mux)
+	srv := httptest.NewTLSServer(mux)
 	defer srv.Close()
 
 	agent := makeTestAgent(srv.URL, srv.Client(), router)

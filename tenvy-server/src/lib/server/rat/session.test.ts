@@ -77,13 +77,17 @@ describe('AgentRegistry live sessions', () => {
 		rmSync(tempDir, { recursive: true, force: true });
 	});
 
-	function attach(socket: MockSocket) {
-		registry.attachSession(
-			registration.agentId,
-			registration.agentKey,
-			socket as unknown as WebSocket
-		);
-	}
+        function attach(socket: MockSocket) {
+                const { token } = registry.issueSessionToken(
+                        registration.agentId,
+                        registration.agentKey
+                );
+                registry.attachSession(
+                        registration.agentId,
+                        token,
+                        socket as unknown as WebSocket
+                );
+        }
 
 	it('delivers new commands through an active session', () => {
 		const socket = new MockSocket();
@@ -132,18 +136,38 @@ describe('AgentRegistry live sessions', () => {
 		expect(registry.peekCommands(registration.agentId)).toHaveLength(0);
 	});
 
-	it('falls back to queuing when the session closes', () => {
-		const socket = new MockSocket();
-		attach(socket);
-		socket.close();
+        it('falls back to queuing when the session closes', () => {
+                const socket = new MockSocket();
+                attach(socket);
+                socket.close();
 
-		const response = registry.queueCommand(registration.agentId, {
+                const response = registry.queueCommand(registration.agentId, {
 			name: 'ping',
 			payload: {}
 		});
 
-		expect(response.delivery).toBe('queued');
-		const snapshot = registry.getAgent(registration.agentId);
-		expect(snapshot.liveSession).toBe(false);
-	});
+                expect(response.delivery).toBe('queued');
+                const snapshot = registry.getAgent(registration.agentId);
+                expect(snapshot.liveSession).toBe(false);
+        });
+
+        it('rejects reused session tokens', () => {
+                const first = new MockSocket();
+                const issued = registry.issueSessionToken(registration.agentId, registration.agentKey);
+                registry.attachSession(
+                        registration.agentId,
+                        issued.token,
+                        first as unknown as WebSocket
+                );
+                first.close();
+
+                const second = new MockSocket();
+                expect(() =>
+                        registry.attachSession(
+                                registration.agentId,
+                                issued.token,
+                                second as unknown as WebSocket
+                        )
+                ).toThrowError('Invalid session token');
+        });
 });

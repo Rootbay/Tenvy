@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"strings"
@@ -17,12 +18,47 @@ import (
 const (
 	commandStreamDialTimeout    = 15 * time.Second
 	remoteDesktopInputQueueSize = 32
+	sessionTokenHeader          = "X-Agent-Session-Token"
 )
 
 type remoteDesktopInputTask struct {
 	ctx    context.Context
 	module *remoteDesktopModule
 	burst  protocol.RemoteDesktopInputBurst
+}
+
+type sessionTokenResponse struct {
+	Token     string `json:"token"`
+	ExpiresAt string `json:"expiresAt"`
+}
+
+func (a *Agent) sessionTokenURL() (string, error) {
+	if a == nil {
+		return "", errors.New("agent not initialized")
+	}
+	base := strings.TrimSpace(a.baseURL)
+	if base == "" {
+		return "", errors.New("missing base url")
+	}
+	if strings.TrimSpace(a.id) == "" {
+		return "", errors.New("missing agent identifier")
+	}
+
+	joined, err := url.JoinPath(base, "api", "agents", url.PathEscape(a.id), "session-token")
+	if err != nil {
+		return "", err
+	}
+
+	parsed, err := url.Parse(joined)
+	if err != nil {
+		return "", err
+	}
+
+	if strings.ToLower(parsed.Scheme) != "https" {
+		return "", fmt.Errorf("unsupported session token scheme: %s", parsed.Scheme)
+	}
+
+	return parsed.String(), nil
 }
 
 func (a *Agent) commandStreamURL() (string, error) {
@@ -48,17 +84,87 @@ func (a *Agent) commandStreamURL() (string, error) {
 	}
 
 	switch strings.ToLower(parsed.Scheme) {
-	case "http":
-		parsed.Scheme = "ws"
 	case "https":
 		parsed.Scheme = "wss"
-	case "ws", "wss":
-		// already websocket
+	case "wss":
+		// already secure websocket
 	default:
 		return "", fmt.Errorf("unsupported command stream scheme: %s", parsed.Scheme)
 	}
 
 	return parsed.String(), nil
+}
+
+func (a *Agent) fetchSessionToken(ctx context.Context) (string, error) {
+	if a == nil {
+		return "", errors.New("agent not initialized")
+	}
+
+	endpoint, err := a.sessionTokenURL()
+	if err != nil {
+		return "", err
+	}
+
+	trimmedKey := strings.TrimSpace(a.key)
+	if trimmedKey == "" {
+		return "", errors.New("missing agent key")
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, nil)
+	if err != nil {
+		return "", err
+	}
+
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("User-Agent", a.userAgent())
+	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", trimmedKey))
+
+	client := a.client
+	if client == nil {
+		client = http.DefaultClient
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode >= http.StatusBadRequest {
+		limited := io.LimitReader(resp.Body, 1024)
+		body, _ := io.ReadAll(limited)
+		message := strings.TrimSpace(string(body))
+		if resp.StatusCode == http.StatusUnauthorized {
+			if message == "" {
+				return "", protocol.ErrUnauthorized
+			}
+			return "", fmt.Errorf("%w: %s", protocol.ErrUnauthorized, message)
+		}
+		if message == "" {
+			message = fmt.Sprintf("status %d", resp.StatusCode)
+		}
+		return "", fmt.Errorf("session token request failed: %s", message)
+	}
+
+	var payload sessionTokenResponse
+	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+		return "", err
+	}
+
+	token := strings.TrimSpace(payload.Token)
+	if token == "" {
+		return "", errors.New("session token missing in response")
+	}
+
+	if payload.ExpiresAt != "" {
+		if _, err := time.Parse(time.RFC3339Nano, payload.ExpiresAt); err != nil {
+			if a.logger != nil {
+				a.logger.Printf("invalid session token expiry: %v", err)
+			}
+		}
+	}
+
+	return token, nil
 }
 
 func (a *Agent) runCommandStream(ctx context.Context) {
@@ -81,18 +187,38 @@ func (a *Agent) runCommandStream(ctx context.Context) {
 			return
 		}
 
-		headers := http.Header{}
-		headers.Set("User-Agent", a.userAgent())
-		if trimmed := strings.TrimSpace(a.key); trimmed != "" {
-			headers.Set("Authorization", fmt.Sprintf("Bearer %s", trimmed))
+		token, err := a.fetchSessionToken(ctx)
+		if err != nil {
+			if ctx.Err() != nil {
+				return
+			}
+			if errors.Is(err, protocol.ErrUnauthorized) {
+				a.requestReconnect()
+			}
+			if a.logger != nil && !errors.Is(err, context.Canceled) {
+				a.logger.Printf("session token request failed: %v", err)
+			}
+			if err := sleepContext(ctx, backoff); err != nil {
+				return
+			}
+			backoff = minDuration(backoff*2, a.maxBackoff())
+			continue
 		}
 
+		headers := http.Header{}
+		headers.Set("User-Agent", a.userAgent())
+		headers.Set(sessionTokenHeader, token)
+
 		dialCtx, cancel := context.WithTimeout(ctx, commandStreamDialTimeout)
-		conn, resp, err := websocket.Dial(dialCtx, streamURL, &websocket.DialOptions{
+		dialOptions := &websocket.DialOptions{
 			HTTPHeader:      headers,
 			Subprotocols:    []string{protocol.CommandStreamSubprotocol},
 			CompressionMode: websocket.CompressionDisabled,
-		})
+		}
+		if a.client != nil {
+			dialOptions.HTTPClient = a.client
+		}
+		conn, resp, err := websocket.Dial(dialCtx, streamURL, dialOptions)
 		cancel()
 		if err != nil {
 			if resp != nil {

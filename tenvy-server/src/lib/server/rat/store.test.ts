@@ -230,12 +230,12 @@ describe('AgentRegistry persistence hygiene', () => {
 		}
 	});
 
-	it('requires hashed agent keys for attach and sync flows', async () => {
-		const storagePath = path.join(tempDir, 'attach.json');
-		const registry = new AgentRegistry({ storagePath });
-		const registration = registry.registerAgent({ metadata: baseMetadata });
+        it('requires hashed agent keys for sync flows and validated session tokens', async () => {
+                const storagePath = path.join(tempDir, 'attach.json');
+                const registry = new AgentRegistry({ storagePath });
+                const registration = registry.registerAgent({ metadata: baseMetadata });
 
-		const makeSocket = () =>
+                const makeSocket = () =>
 			({
 				readyState: 1,
 				addEventListener: vi.fn(),
@@ -243,16 +243,27 @@ describe('AgentRegistry persistence hygiene', () => {
 				close: vi.fn()
 			}) as unknown as WebSocket;
 
-		const socket = makeSocket();
-		registry.attachSession(registration.agentId, registration.agentKey, socket);
+                const socket = makeSocket();
+                const { token: initialToken } = registry.issueSessionToken(
+                        registration.agentId,
+                        registration.agentKey
+                );
+                registry.attachSession(registration.agentId, initialToken, socket);
 
-		expect(() =>
-			registry.attachSession(registration.agentId, 'invalid-key', makeSocket())
-		).toThrowError('Invalid agent key');
+                expect(() =>
+                        registry.attachSession(registration.agentId, 'invalid-token', makeSocket())
+                ).toThrowError('Invalid session token');
 
-		expect(() => registry.authorizeAgent(registration.agentId, 'invalid-key')).toThrowError(
-			'Invalid agent key'
-		);
+                const { token: freshToken } = registry.issueSessionToken(
+                        registration.agentId,
+                        registration.agentKey
+                );
+
+                registry.attachSession(registration.agentId, freshToken, makeSocket());
+
+                expect(() => registry.authorizeAgent(registration.agentId, 'invalid-key')).toThrowError(
+                        'Invalid agent key'
+                );
 
 		expect(() =>
 			registry.syncAgent(registration.agentId, 'invalid-key', {
