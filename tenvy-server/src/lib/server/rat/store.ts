@@ -1,9 +1,15 @@
 import { createHash, randomBytes, randomUUID, timingSafeEqual } from 'crypto';
-import { readFileSync } from 'fs';
-import { mkdir, rename, rm, writeFile } from 'fs/promises';
-import path from 'path';
+import { eq, inArray } from 'drizzle-orm';
+import { db } from '$lib/server/db';
+import {
+        agent as agentTable,
+        agentNote as agentNoteTable,
+        agentCommand as agentCommandTable,
+        agentResult as agentResultTable
+} from '$lib/server/db/schema';
 import { defaultAgentConfig, type AgentConfig } from '../../../../../shared/types/config';
 import type { NoteEnvelope } from '../../../../../shared/types/notes';
+import type { AgentRegistryEvent } from '../../../../../shared/types/registry-events';
 import { COMMAND_STREAM_SUBPROTOCOL } from '../../../../../shared/constants/protocol';
 import type {
 	AgentMetadata,
@@ -39,45 +45,7 @@ const MAX_RECENT_RESULTS = 25;
 export const MAX_PENDING_COMMANDS = 200;
 const PENDING_COMMAND_DROP_WARN_INTERVAL_MS = 30_000;
 const PERSIST_DEBOUNCE_MS = 2_000;
-const PERSIST_FILE_VERSION = 2;
 const SESSION_TOKEN_TTL_MS = 60_000;
-
-const DEFAULT_STORAGE_PATH = process.env.TENVY_AGENT_REGISTRY_PATH
-	? path.resolve(process.env.TENVY_AGENT_REGISTRY_PATH)
-	: path.join(process.cwd(), 'var', 'registry', 'clients.json');
-
-interface PersistedSharedNoteRecord {
-	id: string;
-	ciphertext: string;
-	nonce: string;
-	digest: string;
-	version: number;
-	updatedAt: string;
-}
-
-interface PersistedAgentRecord {
-	id: string;
-	keyHash: string;
-	metadata: AgentMetadata;
-	status: AgentStatus;
-	connectedAt: string;
-	lastSeen: string;
-	metrics?: AgentMetrics;
-	config: AgentConfig;
-	pendingCommands: Command[];
-	recentResults: CommandResult[];
-	sharedNotes: PersistedSharedNoteRecord[];
-	fingerprint: string;
-}
-
-interface PersistedRegistryFile {
-	version: number;
-	agents: PersistedAgentRecord[];
-}
-
-interface AgentRegistryOptions {
-	storagePath?: string;
-}
 
 const SOCKET_OPEN_STATE = (() => {
 	const globalSocket = (globalThis as { WebSocket?: { OPEN?: number } }).WebSocket;
@@ -125,13 +93,15 @@ interface AgentRecord {
 }
 
 interface SharedNoteRecord {
-	id: string;
-	ciphertext: string;
-	nonce: string;
-	digest: string;
-	version: number;
-	updatedAt: Date;
+        id: string;
+        ciphertext: string;
+        nonce: string;
+        digest: string;
+        version: number;
+        updatedAt: Date;
 }
+
+type AgentRegistrySubscriber = (event: AgentRegistryEvent) => void;
 
 function ensureMetadata(metadata: AgentMetadata, remoteAddress?: string): AgentMetadata {
 	if (!remoteAddress) {
@@ -155,33 +125,6 @@ function validateToken(requestToken: string | undefined) {
 	const expected = process.env.TENVY_SHARED_SECRET;
 	if (expected && expected !== requestToken) {
 		throw new RegistryError('Invalid registration token', 401);
-	}
-}
-
-function resolveStoragePath(storagePath?: string): string {
-	if (storagePath && storagePath.trim() !== '') {
-		return path.resolve(storagePath);
-	}
-	return DEFAULT_STORAGE_PATH;
-}
-
-async function ensureParentDirectory(filePath: string): Promise<void> {
-	const directory = path.dirname(filePath);
-	await mkdir(directory, { recursive: true });
-}
-
-async function writeFileAtomic(destination: string, data: string): Promise<void> {
-	const tempPath = `${destination}.${randomUUID()}.tmp`;
-	try {
-		await writeFile(tempPath, data, 'utf-8');
-		await rename(tempPath, destination);
-	} catch (error) {
-		try {
-			await rm(tempPath, { force: true });
-		} catch {
-			// no-op cleanup failure
-		}
-		throw error;
 	}
 }
 
@@ -353,18 +296,70 @@ function mergeRecentResults(existing: CommandResult[], incoming: CommandResult[]
 }
 
 export class AgentRegistry {
-        private readonly storagePath: string;
         private readonly agents = new Map<string, AgentRecord>();
         private readonly fingerprints = new Map<string, string>();
         private readonly sessionTokens = new Map<string, SessionTokenRecord>();
+        private readonly subscribers = new Set<AgentRegistrySubscriber>();
         private persistTimer: ReturnType<typeof setTimeout> | null = null;
         private persistPromise: Promise<void> | null = null;
         private needsPersist = false;
 
-	constructor(options: AgentRegistryOptions = {}) {
-		this.storagePath = resolveStoragePath(options.storagePath);
-		this.loadFromDisk();
-	}
+        constructor() {
+                this.loadFromDatabase();
+        }
+
+        subscribe(listener: AgentRegistrySubscriber): () => void {
+                this.subscribers.add(listener);
+                return () => {
+                        this.subscribers.delete(listener);
+                };
+        }
+
+        private broadcast(event: AgentRegistryEvent): void {
+                for (const listener of this.subscribers) {
+                        try {
+                                listener(event);
+                        } catch (error) {
+                                console.error('Agent registry subscriber failed', error);
+                        }
+                }
+        }
+
+        private notifyAgentUpdate(record: AgentRecord): void {
+                this.broadcast({ type: 'agent', agent: this.toSnapshot(record) });
+        }
+
+        private serializeSharedNotes(record: AgentRecord): NoteEnvelope[] {
+                return Array.from(record.sharedNotes.values()).map(
+                        (note) =>
+                                ({
+                                        id: note.id,
+                                        visibility: 'shared',
+                                        ciphertext: note.ciphertext,
+                                        nonce: note.nonce,
+                                        digest: note.digest,
+                                        version: note.version,
+                                        updatedAt: note.updatedAt.toISOString()
+                                }) satisfies NoteEnvelope
+                );
+        }
+
+        private notifyNotes(record: AgentRecord): void {
+                this.broadcast({ type: 'notes', agentId: record.id, notes: this.serializeSharedNotes(record) });
+        }
+
+        private notifyCommand(
+                record: AgentRecord,
+                command: Command,
+                delivery: CommandDeliveryMode
+        ): void {
+                this.broadcast({
+                        type: 'command',
+                        agentId: record.id,
+                        delivery,
+                        command: { ...command }
+                });
+        }
 
         private verifyAgentKey(record: AgentRecord, key: string | undefined): boolean {
                 if (!key) {
@@ -399,159 +394,164 @@ export class AgentRegistry {
                 this.sessionTokens.delete(record.id);
         }
 
-	private loadFromDisk(): void {
-		let source: string;
-		try {
-			source = readFileSync(this.storagePath, 'utf-8');
-		} catch (error) {
-			const err = error as NodeJS.ErrnoException;
-			if (err.code !== 'ENOENT') {
-				console.error('Failed to read agent registry from disk', err);
-			}
-			return;
-		}
+        private loadFromDatabase(): void {
+                let agentRows: Array<typeof agentTable.$inferSelect> = [];
+                try {
+                        agentRows = db.select().from(agentTable).all();
+                } catch (error) {
+                        console.error('Failed to read agent registry from database', error);
+                        return;
+                }
 
-		if (!source || source.trim() === '') {
-			return;
-		}
+                let noteRows: Array<typeof agentNoteTable.$inferSelect> = [];
+                let commandRows: Array<typeof agentCommandTable.$inferSelect> = [];
+                let resultRows: Array<typeof agentResultTable.$inferSelect> = [];
 
-		let parsed: unknown;
-		try {
-			parsed = JSON.parse(source);
-		} catch (error) {
-			console.error('Agent registry file is not valid JSON', error);
-			return;
-		}
+                try {
+                        noteRows = db.select().from(agentNoteTable).all();
+                } catch (error) {
+                        console.error('Failed to read agent notes from database', error);
+                }
 
-		const file = parsed as Partial<PersistedRegistryFile & { agents: unknown[] }> | null;
-		if (!file || typeof file !== 'object' || !Array.isArray(file.agents)) {
-			return;
-		}
+                try {
+                        commandRows = db
+                                .select()
+                                .from(agentCommandTable)
+                                .orderBy(agentCommandTable.createdAt)
+                                .all();
+                } catch (error) {
+                        console.error('Failed to read agent commands from database', error);
+                }
 
-		this.agents.clear();
-		this.fingerprints.clear();
+                try {
+                        resultRows = db
+                                .select()
+                                .from(agentResultTable)
+                                .orderBy(agentResultTable.completedAt)
+                                .all();
+                } catch (error) {
+                        console.error('Failed to read agent results from database', error);
+                }
 
-		const fileVersion = typeof file.version === 'number' ? file.version : 0;
-		let upgradedLegacyKey = false;
+                this.agents.clear();
+                this.fingerprints.clear();
 
-		for (const entry of file.agents) {
-			if (!entry || typeof entry !== 'object') {
-				continue;
-			}
+                const notesByAgent = new Map<string, Map<string, SharedNoteRecord>>();
+                for (const row of noteRows) {
+                        const updatedAt = row.updatedAt instanceof Date ? row.updatedAt : new Date(row.updatedAt ?? Date.now());
+                        if (!notesByAgent.has(row.agentId)) {
+                                notesByAgent.set(row.agentId, new Map());
+                        }
+                        notesByAgent.get(row.agentId)!.set(row.noteId, {
+                                id: row.noteId,
+                                ciphertext: row.ciphertext,
+                                nonce: row.nonce,
+                                digest: row.digest,
+                                version: row.version ?? 1,
+                                updatedAt
+                        });
+                }
 
-			const id = typeof entry.id === 'string' && entry.id.trim() !== '' ? entry.id : null;
-			const persistedKeyHash =
-				typeof (entry as { keyHash?: unknown }).keyHash === 'string'
-					? ((entry as { keyHash?: string }).keyHash?.trim() ?? '')
-					: '';
-			const legacyKey =
-				typeof (entry as { key?: unknown }).key === 'string'
-					? ((entry as { key?: string }).key?.trim() ?? '')
-					: '';
-			let keyHash: string | null = null;
+                const commandsByAgent = new Map<string, Command[]>();
+                for (const row of commandRows) {
+                        let payload: Command['payload'];
+                        try {
+                                payload = row.payload ? (JSON.parse(row.payload) as Command['payload']) : ({} as Command['payload']);
+                        } catch {
+                                payload = {} as Command['payload'];
+                        }
+                        if (!commandsByAgent.has(row.agentId)) {
+                                commandsByAgent.set(row.agentId, []);
+                        }
+                        commandsByAgent.get(row.agentId)!.push({
+                                id: row.id,
+                                name: row.name as Command['name'],
+                                payload,
+                                createdAt: (row.createdAt instanceof Date
+                                        ? row.createdAt
+                                        : new Date(row.createdAt ?? Date.now())
+                                ).toISOString()
+                        });
+                }
 
-			if (persistedKeyHash) {
-				keyHash = persistedKeyHash;
-			} else if (fileVersion > 0 && fileVersion < 2 && legacyKey) {
-				keyHash = hashAgentKey(legacyKey);
-				upgradedLegacyKey = true;
-			} else if (legacyKey) {
-				// Treat missing version as legacy plaintext.
-				keyHash = hashAgentKey(legacyKey);
-				upgradedLegacyKey = true;
-			}
+                const resultsByAgent = new Map<string, CommandResult[]>();
+                for (const row of resultRows) {
+                        if (!resultsByAgent.has(row.agentId)) {
+                                resultsByAgent.set(row.agentId, []);
+                        }
+                        resultsByAgent.get(row.agentId)!.push({
+                                commandId: row.commandId,
+                                success: Boolean(row.success),
+                                output: row.output ?? undefined,
+                                error: row.error ?? undefined,
+                                completedAt: (row.completedAt instanceof Date
+                                        ? row.completedAt
+                                        : new Date(row.completedAt ?? Date.now())
+                                ).toISOString()
+                        });
+                }
 
-			const metadata = entry.metadata ?? null;
-			const status = entry.status;
-			if (!id || !keyHash || !metadata) {
-				continue;
-			}
-			if (!/^[0-9a-f]{64}$/i.test(keyHash)) {
-				continue;
-			}
-			if (status !== 'online' && status !== 'offline' && status !== 'error') {
-				continue;
-			}
+                for (const row of agentRows) {
+                        let metadata: AgentMetadata | null = null;
+                        let config: AgentConfig | null = null;
+                        let metrics: AgentMetrics | undefined;
 
-			const connectedAt = parsePersistedDate(entry.connectedAt, new Date());
-			let lastSeen = parsePersistedDate(entry.lastSeen, connectedAt);
-			let normalizedStatus = status as AgentStatus;
-			if (normalizedStatus === 'online') {
-				normalizedStatus = 'offline';
-				if (lastSeen.getTime() < connectedAt.getTime()) {
-					lastSeen = connectedAt;
-				}
-			}
+                        try {
+                                metadata = JSON.parse(row.metadata) as AgentMetadata;
+                        } catch {
+                                metadata = null;
+                        }
 
-			const sharedNotes = new Map<string, SharedNoteRecord>();
-			if (Array.isArray(entry.sharedNotes)) {
-				for (const note of entry.sharedNotes) {
-					if (!note || typeof note !== 'object') {
-						continue;
-					}
-					if (typeof note.id !== 'string' || note.id.trim() === '') {
-						continue;
-					}
-					const updatedAt = parsePersistedDate(note.updatedAt, lastSeen);
-					sharedNotes.set(note.id, {
-						id: note.id,
-						ciphertext: note.ciphertext ?? '',
-						nonce: note.nonce ?? '',
-						digest: note.digest ?? '',
-						version: typeof note.version === 'number' ? note.version : 1,
-						updatedAt
-					});
-				}
-			}
+                        if (!metadata) {
+                                continue;
+                        }
 
-			let pendingCommands = Array.isArray(entry.pendingCommands)
-				? entry.pendingCommands.map((command) => ({ ...command }))
-				: [];
-			if (pendingCommands.length > MAX_PENDING_COMMANDS) {
-				console.warn(
-					`Pending command snapshot for agent ${id} exceeded capacity (${pendingCommands.length}); trimming to latest ${MAX_PENDING_COMMANDS}.`
-				);
-				pendingCommands = pendingCommands.slice(-MAX_PENDING_COMMANDS);
-			}
+                        try {
+                                config = JSON.parse(row.config) as AgentConfig;
+                        } catch {
+                                config = null;
+                        }
 
-			const recentResults = Array.isArray(entry.recentResults)
-				? entry.recentResults.map((result) => ({ ...result }))
-				: [];
+                        if (row.metrics) {
+                                try {
+                                        metrics = JSON.parse(row.metrics) as AgentMetrics;
+                                } catch {
+                                        metrics = undefined;
+                                }
+                        }
 
-			const normalizedMetadata: AgentMetadata = {
-				...(metadata as AgentMetadata),
-				tags: Array.isArray((metadata as AgentMetadata).tags)
-					? this.normalizeTags((metadata as AgentMetadata).tags!)
-					: (metadata as AgentMetadata).tags
-			};
+                        const normalizedMetadata: AgentMetadata = {
+                                ...metadata,
+                                tags: Array.isArray(metadata.tags)
+                                        ? this.normalizeTags(metadata.tags.filter((tag): tag is string => typeof tag === 'string'))
+                                        : metadata.tags
+                        };
 
-			const fingerprint = entry.fingerprint
-				? entry.fingerprint
-				: computeFingerprint(normalizedMetadata);
+                        const connectedAt = row.connectedAt instanceof Date ? row.connectedAt : new Date(row.connectedAt ?? Date.now());
+                        const lastSeen = row.lastSeen instanceof Date ? row.lastSeen : new Date(row.lastSeen ?? connectedAt);
+                        const sharedNotes = notesByAgent.get(row.id) ?? new Map<string, SharedNoteRecord>();
+                        const pendingCommands = commandsByAgent.get(row.id) ?? [];
+                        const recentResults = mergeRecentResults([], resultsByAgent.get(row.id) ?? []);
 
-			const record: AgentRecord = {
-				id,
-				keyHash,
-				metadata: normalizedMetadata,
-				status: normalizedStatus,
-				connectedAt,
-				lastSeen,
-				metrics: entry.metrics ? { ...entry.metrics } : undefined,
-				config: normalizeConfig(entry.config),
-				pendingCommands,
-				recentResults,
-				sharedNotes,
-				fingerprint
-			};
+                        const record: AgentRecord = {
+                                id: row.id,
+                                keyHash: row.keyHash,
+                                metadata: normalizedMetadata,
+                                status: row.status as AgentStatus,
+                                connectedAt,
+                                lastSeen,
+                                metrics,
+                                config: normalizeConfig(config),
+                                pendingCommands,
+                                recentResults,
+                                sharedNotes,
+                                fingerprint: row.fingerprint
+                        };
 
-			this.agents.set(record.id, record);
-			this.fingerprints.set(record.fingerprint, record.id);
-		}
-
-		if (upgradedLegacyKey) {
-			this.schedulePersist();
-		}
-	}
+                        this.agents.set(record.id, record);
+                        this.fingerprints.set(record.fingerprint, record.id);
+                }
+        }
 
 	private schedulePersist(): void {
 		this.needsPersist = true;
@@ -571,8 +571,8 @@ export class AgentRegistry {
 		try {
 			while (this.needsPersist) {
 				this.needsPersist = false;
-				try {
-					await this.persistToDisk();
+                                try {
+                                        await this.persistToDatabase();
 				} catch (error) {
 					console.error('Failed to persist agent registry', error);
 				}
@@ -582,38 +582,110 @@ export class AgentRegistry {
 		}
 	}
 
-	private async persistToDisk(): Promise<void> {
-		const agents = Array.from(this.agents.values()).map<PersistedAgentRecord>((record) => ({
-			id: record.id,
-			keyHash: record.keyHash,
-			metadata: cloneMetadata(record.metadata),
-			status: record.status,
-			connectedAt: record.connectedAt.toISOString(),
-			lastSeen: record.lastSeen.toISOString(),
-			metrics: cloneMetrics(record.metrics),
-			config: { ...record.config },
-			pendingCommands: record.pendingCommands.map((command) => ({ ...command })),
-			recentResults: record.recentResults.map((result) => ({ ...result })),
-			sharedNotes: Array.from(record.sharedNotes.values()).map((note) => ({
-				id: note.id,
-				ciphertext: note.ciphertext,
-				nonce: note.nonce,
-				digest: note.digest,
-				version: note.version,
-				updatedAt: note.updatedAt.toISOString()
-			})),
-			fingerprint: record.fingerprint
-		}));
+        private async persistToDatabase(): Promise<void> {
+                const agents = Array.from(this.agents.values());
+                const now = new Date();
+                const agentIds = agents.map((agent) => agent.id);
 
-		const payload: PersistedRegistryFile = {
-			version: PERSIST_FILE_VERSION,
-			agents
-		};
+                if (agentIds.length === 0) {
+                        await db.delete(agentNoteTable);
+                        await db.delete(agentCommandTable);
+                        await db.delete(agentResultTable);
+                        await db.delete(agentTable);
+                        return;
+                }
 
-		const data = JSON.stringify(payload);
-		await ensureParentDirectory(this.storagePath);
-		await writeFileAtomic(this.storagePath, data);
-	}
+                const existing = await db
+                        .select({ id: agentTable.id })
+                        .from(agentTable)
+                        .where(inArray(agentTable.id, agentIds));
+                const existingIds = new Set(existing.map((row) => row.id));
+
+                for (const record of agents) {
+                        const payload = {
+                                id: record.id,
+                                keyHash: record.keyHash,
+                                metadata: JSON.stringify(record.metadata),
+                                status: record.status,
+                                connectedAt: record.connectedAt,
+                                lastSeen: record.lastSeen,
+                                metrics: record.metrics ? JSON.stringify(record.metrics) : null,
+                                config: JSON.stringify(record.config),
+                                fingerprint: record.fingerprint,
+                                createdAt: record.connectedAt,
+                                updatedAt: now
+                        };
+
+                        if (existingIds.has(record.id)) {
+                                await db
+                                        .update(agentTable)
+                                        .set({
+                                                keyHash: payload.keyHash,
+                                                metadata: payload.metadata,
+                                                status: payload.status,
+                                                connectedAt: payload.connectedAt,
+                                                lastSeen: payload.lastSeen,
+                                                metrics: payload.metrics,
+                                                config: payload.config,
+                                                fingerprint: payload.fingerprint,
+                                                updatedAt: payload.updatedAt
+                                        })
+                                        .where(eq(agentTable.id, record.id));
+                        } else {
+                                await db.insert(agentTable).values(payload);
+                                existingIds.add(record.id);
+                        }
+
+                        await db
+                                .delete(agentNoteTable)
+                                .where(eq(agentNoteTable.agentId, record.id));
+                        const notes = Array.from(record.sharedNotes.values());
+                        if (notes.length > 0) {
+                                await db.insert(agentNoteTable).values(
+                                        notes.map((note) => ({
+                                                agentId: record.id,
+                                                noteId: note.id,
+                                                ciphertext: note.ciphertext,
+                                                nonce: note.nonce,
+                                                digest: note.digest,
+                                                version: note.version,
+                                                updatedAt: note.updatedAt
+                                        }))
+                                );
+                        }
+
+                        await db
+                                .delete(agentCommandTable)
+                                .where(eq(agentCommandTable.agentId, record.id));
+                        if (record.pendingCommands.length > 0) {
+                                await db.insert(agentCommandTable).values(
+                                        record.pendingCommands.map((command) => ({
+                                                id: command.id,
+                                                agentId: record.id,
+                                                name: command.name,
+                                                payload: JSON.stringify(command.payload ?? {}),
+                                                createdAt: new Date(command.createdAt)
+                                        }))
+                                );
+                        }
+
+                        await db
+                                .delete(agentResultTable)
+                                .where(eq(agentResultTable.agentId, record.id));
+                        if (record.recentResults.length > 0) {
+                                await db.insert(agentResultTable).values(
+                                        record.recentResults.map((result) => ({
+                                                agentId: record.id,
+                                                commandId: result.commandId,
+                                                success: result.success,
+                                                output: result.output,
+                                                error: result.error,
+                                                completedAt: new Date(result.completedAt)
+                                        }))
+                                );
+                        }
+                }
+        }
 
 	async flush(): Promise<void> {
 		if (this.persistTimer) {
@@ -656,11 +728,12 @@ export class AgentRegistry {
 
 		record.session = undefined;
 
-		if (options.markOffline !== false) {
-			record.status = 'offline';
-			record.lastSeen = new Date();
-			this.schedulePersist();
-		}
+                if (options.markOffline !== false) {
+                        record.status = 'offline';
+                        record.lastSeen = new Date();
+                        this.schedulePersist();
+                        this.notifyAgentUpdate(record);
+                }
 
 		if (options.close === false) {
 			return;
@@ -783,17 +856,18 @@ export class AgentRegistry {
                                 existingRecord.fingerprint = computeFingerprint(nextMetadata);
                                 this.sessionTokens.delete(existingRecord.id);
 
-				if (previousFingerprint !== existingRecord.fingerprint) {
-					this.fingerprints.delete(previousFingerprint);
-				}
-				this.fingerprints.set(existingRecord.fingerprint, existingRecord.id);
-				this.agents.set(existingRecord.id, existingRecord);
-				this.schedulePersist();
+                                if (previousFingerprint !== existingRecord.fingerprint) {
+                                        this.fingerprints.delete(previousFingerprint);
+                                }
+                                this.fingerprints.set(existingRecord.fingerprint, existingRecord.id);
+                                this.agents.set(existingRecord.id, existingRecord);
+                                this.schedulePersist();
+                                this.notifyAgentUpdate(existingRecord);
 
-				return {
-					agentId: existingRecord.id,
-					agentKey: nextKey.token,
-					config: { ...existingRecord.config },
+                                return {
+                                        agentId: existingRecord.id,
+                                        agentKey: nextKey.token,
+                                        config: { ...existingRecord.config },
 					commands: [],
 					serverTime: now.toISOString()
 				};
@@ -823,6 +897,7 @@ export class AgentRegistry {
                 this.fingerprints.set(fingerprint, id);
                 this.sessionTokens.delete(id);
                 this.schedulePersist();
+                this.notifyAgentUpdate(record);
 
                 return {
                         agentId: id,
@@ -908,21 +983,22 @@ export class AgentRegistry {
 			record.metadata = ensureMetadata(record.metadata, options.remoteAddress);
 		}
 
-		if (record.pendingCommands.length > 0) {
-			const queued = record.pendingCommands;
-			record.pendingCommands = [];
-			for (let idx = 0; idx < queued.length; idx += 1) {
-				const command = queued[idx];
-				if (!this.deliverViaSession(record, command)) {
-					record.pendingCommands = queued.slice(idx);
-					this.clampPendingCommands(record, 'front');
-					break;
-				}
-			}
-		}
+                if (record.pendingCommands.length > 0) {
+                        const queued = record.pendingCommands;
+                        record.pendingCommands = [];
+                        for (let idx = 0; idx < queued.length; idx += 1) {
+                                const command = queued[idx];
+                                if (!this.deliverViaSession(record, command)) {
+                                        record.pendingCommands = queued.slice(idx);
+                                        this.clampPendingCommands(record, 'front');
+                                        break;
+                                }
+                        }
+                }
 
-		this.schedulePersist();
-	}
+                this.schedulePersist();
+                this.notifyAgentUpdate(record);
+        }
 
 	syncAgent(
 		id: string,
@@ -978,16 +1054,19 @@ export class AgentRegistry {
 			createdAt: new Date().toISOString()
 		};
 
-		const delivered = this.deliverViaSession(record, command);
-		if (!delivered) {
-			record.pendingCommands.push(command);
-			this.clampPendingCommands(record, 'front');
-			this.schedulePersist();
-		}
+                const delivered = this.deliverViaSession(record, command);
+                if (!delivered) {
+                        record.pendingCommands.push(command);
+                        this.clampPendingCommands(record, 'front');
+                }
 
-		const delivery: CommandDeliveryMode = delivered ? 'session' : 'queued';
-		return { command, delivery };
-	}
+                this.schedulePersist();
+
+                const delivery: CommandDeliveryMode = delivered ? 'session' : 'queued';
+                this.notifyCommand(record, command, delivery);
+                this.notifyAgentUpdate(record);
+                return { command, delivery };
+        }
 
 	sendRemoteDesktopInput(id: string, burst: RemoteDesktopInputBurst): boolean {
 		const record = this.agents.get(id);
@@ -1070,23 +1149,26 @@ export class AgentRegistry {
 		record.status = 'offline';
 		record.lastSeen = new Date();
 		const payload: AgentControlCommandPayload = { action: 'disconnect' };
-		const command: Command = {
-			id: randomUUID(),
-			name: 'agent-control',
-			payload,
-			createdAt: new Date().toISOString()
-		};
+                const command: Command = {
+                        id: randomUUID(),
+                        name: 'agent-control',
+                        payload,
+                        createdAt: new Date().toISOString()
+                };
 
-		record.pendingCommands = [];
-		if (!this.deliverViaSession(record, command)) {
-			record.pendingCommands.push(command);
-			this.clampPendingCommands(record, 'front');
-		}
+                record.pendingCommands = [];
+                let delivery: CommandDeliveryMode = 'session';
+                if (!this.deliverViaSession(record, command)) {
+                        record.pendingCommands.push(command);
+                        this.clampPendingCommands(record, 'front');
+                        delivery = 'queued';
+                }
 
-		this.schedulePersist();
-
-		return this.toSnapshot(record);
-	}
+                this.schedulePersist();
+                this.notifyCommand(record, command, delivery);
+                this.notifyAgentUpdate(record);
+                return this.toSnapshot(record);
+        }
 
 	private normalizeTags(tags: string[]): string[] {
 		const seen = new Set<string>();
@@ -1134,38 +1216,41 @@ export class AgentRegistry {
 		record.lastSeen = now;
 
 		const payload: AgentControlCommandPayload = { action: 'reconnect' };
-		const command: Command = {
-			id: randomUUID(),
-			name: 'agent-control',
-			payload,
-			createdAt: now.toISOString()
-		};
+                const command: Command = {
+                        id: randomUUID(),
+                        name: 'agent-control',
+                        payload,
+                        createdAt: now.toISOString()
+                };
 
-		if (!this.deliverViaSession(record, command)) {
-			record.pendingCommands.unshift(command);
-			this.clampPendingCommands(record, 'back');
-		}
+                let delivery: CommandDeliveryMode = 'session';
+                if (!this.deliverViaSession(record, command)) {
+                        record.pendingCommands.unshift(command);
+                        this.clampPendingCommands(record, 'back');
+                        delivery = 'queued';
+                }
 
-		this.schedulePersist();
+                this.schedulePersist();
+                this.notifyCommand(record, command, delivery);
+                this.notifyAgentUpdate(record);
+                return this.toSnapshot(record);
+        }
 
-		return this.toSnapshot(record);
-	}
-
-	updateAgentTags(id: string, tags: string[]): AgentSnapshot {
-		const record = this.agents.get(id);
+        updateAgentTags(id: string, tags: string[]): AgentSnapshot {
+                const record = this.agents.get(id);
 		if (!record) {
 			throw new RegistryError('Agent not found', 404);
 		}
 
-		record.metadata = {
-			...record.metadata,
-			tags: this.normalizeTags(Array.isArray(tags) ? tags : [])
-		};
+                record.metadata = {
+                        ...record.metadata,
+                        tags: this.normalizeTags(Array.isArray(tags) ? tags : [])
+                };
 
-		this.schedulePersist();
-
-		return this.toSnapshot(record);
-	}
+                this.schedulePersist();
+                this.notifyAgentUpdate(record);
+                return this.toSnapshot(record);
+        }
 
 	listAgents(): AgentSnapshot[] {
 		return Array.from(this.agents.values()).map((record) => this.toSnapshot(record));
@@ -1242,26 +1327,17 @@ export class AgentRegistry {
 				existing.updatedAt = incomingUpdated;
 				changed = true;
 			}
-		}
+                }
 
-		if (changed) {
-			this.schedulePersist();
-		}
+                if (changed) {
+                        this.schedulePersist();
+                        this.notifyNotes(record);
+                }
 
-		return Array.from(record.sharedNotes.values()).map(
-			(note) =>
-				({
-					id: note.id,
-					visibility: 'shared',
-					ciphertext: note.ciphertext,
-					nonce: note.nonce,
-					digest: note.digest,
-					version: note.version,
-					updatedAt: note.updatedAt.toISOString()
-				}) satisfies NoteEnvelope
-		);
-	}
+                return this.serializeSharedNotes(record);
+        }
 }
 
 export const registry = new AgentRegistry();
 export { RegistryError };
+export type { AgentRegistryEvent } from '../../../../../shared/types/registry-events';

@@ -81,6 +81,54 @@ CREATE TABLE IF NOT EXISTS plugin (
         created_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now')),
         updated_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now'))
 );
+
+CREATE TABLE IF NOT EXISTS agent (
+        id TEXT PRIMARY KEY NOT NULL,
+        key_hash TEXT NOT NULL,
+        metadata TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'offline',
+        connected_at INTEGER NOT NULL,
+        last_seen INTEGER NOT NULL,
+        metrics TEXT,
+        config TEXT NOT NULL,
+        fingerprint TEXT NOT NULL,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL
+);
+CREATE UNIQUE INDEX IF NOT EXISTS agent_fingerprint_idx ON agent (fingerprint);
+
+CREATE TABLE IF NOT EXISTS agent_note (
+        agent_id TEXT NOT NULL,
+        note_id TEXT NOT NULL,
+        ciphertext TEXT NOT NULL,
+        nonce TEXT NOT NULL,
+        digest TEXT NOT NULL,
+        version INTEGER NOT NULL DEFAULT 1,
+        updated_at INTEGER NOT NULL,
+        PRIMARY KEY (agent_id, note_id),
+        FOREIGN KEY (agent_id) REFERENCES agent(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS agent_command (
+        id TEXT PRIMARY KEY NOT NULL,
+        agent_id TEXT NOT NULL,
+        name TEXT NOT NULL,
+        payload TEXT NOT NULL,
+        created_at INTEGER NOT NULL,
+        FOREIGN KEY (agent_id) REFERENCES agent(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS agent_result (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        agent_id TEXT NOT NULL,
+        command_id TEXT NOT NULL,
+        success INTEGER NOT NULL DEFAULT 1,
+        output TEXT,
+        error TEXT,
+        completed_at INTEGER NOT NULL,
+        FOREIGN KEY (agent_id) REFERENCES agent(id) ON DELETE CASCADE
+);
+CREATE UNIQUE INDEX IF NOT EXISTS agent_result_command_idx ON agent_result (agent_id, command_id);
 COMMIT;`
 );
 

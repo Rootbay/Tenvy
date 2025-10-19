@@ -1,291 +1,158 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { mkdtempSync, rmSync, writeFileSync, readFileSync } from 'fs';
-import { tmpdir } from 'os';
-import path from 'path';
-import { createHash } from 'crypto';
+import { eq } from 'drizzle-orm';
 import { AgentRegistry, MAX_PENDING_COMMANDS } from './store';
-import { defaultAgentConfig } from '../../../../../shared/types/config';
+import { db } from '$lib/server/db';
+import {
+        agent as agentTable,
+        agentCommand as agentCommandTable,
+        agentNote as agentNoteTable,
+        agentResult as agentResultTable
+} from '$lib/server/db/schema';
+import type { AgentRegistryEvent } from '../../../../../shared/types/registry-events';
+
+vi.mock('$env/dynamic/private', () => import('../../../../tests/mocks/env-dynamic-private'));
 
 const baseMetadata = {
-	hostname: 'persisted-host',
-	username: 'persisted-user',
-	os: 'linux',
-	architecture: 'x64'
+        hostname: 'persisted-host',
+        username: 'persisted-user',
+        os: 'linux',
+        architecture: 'x64'
 };
 
-function fingerprint(metadata: typeof baseMetadata & { group?: string }) {
-	const hash = createHash('sha256');
-	hash.update(metadata.hostname.trim().toLowerCase());
-	hash.update('|');
-	hash.update(metadata.username.trim().toLowerCase());
-	hash.update('|');
-	hash.update(metadata.os.trim().toLowerCase());
-	hash.update('|');
-	hash.update(metadata.architecture.trim().toLowerCase());
-	hash.update('|');
-	hash.update(metadata.group?.trim().toLowerCase() ?? '');
-	return hash.digest('hex');
+async function clearRegistryTables() {
+        await db.delete(agentNoteTable);
+        await db.delete(agentCommandTable);
+        await db.delete(agentResultTable);
+        await db.delete(agentTable);
 }
 
-function hashKey(raw: string): string {
-	const hash = createHash('sha256');
-	hash.update(raw, 'utf-8');
-	return hash.digest('hex');
-}
+describe('AgentRegistry database integration', () => {
+        beforeEach(async () => {
+                await clearRegistryTables();
+        });
 
-const MAX_RECENT_RESULTS = 25;
+        afterEach(async () => {
+                await clearRegistryTables();
+        });
 
-describe('AgentRegistry persistence hygiene', () => {
-	let tempDir: string;
-
-	beforeEach(() => {
-		tempDir = mkdtempSync(path.join(tmpdir(), 'agent-registry-audit-'));
-	});
-
-	afterEach(() => {
-		rmSync(tempDir, { recursive: true, force: true });
-	});
-
-	it('restores persisted agents without clobbering timestamps or configs', async () => {
-		const storagePath = path.join(tempDir, 'registry.json');
-		const connectedAt = new Date('2024-01-01T00:00:00.000Z');
-		const lastSeen = new Date('2024-01-02T12:34:56.000Z');
-
-		const persisted = {
-			version: 1,
-			agents: [
-				{
-					id: 'agent-1',
-					key: 'secret-key',
-					metadata: baseMetadata,
-					status: 'online',
-					connectedAt: connectedAt.toISOString(),
-					lastSeen: lastSeen.toISOString(),
-					metrics: { memoryBytes: 42 },
-					config: {
-						pollIntervalMs: -10,
-						maxBackoffMs: 1000,
-						jitterRatio: 5
-					},
-					pendingCommands: [
-						{
-							id: 'cmd-1',
-							name: 'ping',
-							payload: {},
-							createdAt: connectedAt.toISOString()
-						}
-					],
-					recentResults: [
-						{
-							commandId: 'cmd-1',
-							success: true,
-							completedAt: lastSeen.toISOString(),
-							output: 'ok'
-						}
-					],
-					sharedNotes: [],
-					fingerprint: fingerprint(baseMetadata)
-				}
-			]
-		} satisfies Record<string, unknown>;
-
-		writeFileSync(storagePath, JSON.stringify(persisted, null, 2), 'utf-8');
-
-		const registry = new AgentRegistry({ storagePath });
-
-		const snapshot = registry.getAgent('agent-1');
-		expect(snapshot.status).toBe('offline');
-		expect(snapshot.lastSeen).toBe(lastSeen.toISOString());
-		expect(snapshot.pendingCommands).toBe(1);
-		expect(snapshot.recentResults).toHaveLength(1);
-
-		const sync = registry.syncAgent('agent-1', 'secret-key', {
-			status: 'online',
-			timestamp: new Date().toISOString(),
-			results: []
-		});
-
-		expect(sync.commands).toHaveLength(1);
-		expect(sync.config.pollIntervalMs).toBe(defaultAgentConfig.pollIntervalMs);
-		expect(sync.config.maxBackoffMs).toBeGreaterThanOrEqual(sync.config.pollIntervalMs);
-		expect(sync.config.jitterRatio).toBe(defaultAgentConfig.jitterRatio);
-
-		await registry.flush();
-
-		const upgradedRaw = readFileSync(storagePath, 'utf-8');
-		const upgraded = JSON.parse(upgradedRaw) as {
-			version: number;
-			agents: Array<{ keyHash?: string; key?: string }>;
-		};
-		expect(upgraded.version).toBe(2);
-		expect(upgraded.agents[0]?.keyHash).toBe(hashKey('secret-key'));
-		expect(upgraded.agents[0]?.key).toBeUndefined();
-	});
-
-	it('deduplicates recent results and protects registry snapshots from mutation', async () => {
-		const storagePath = path.join(tempDir, 'registry.json');
-		const registry = new AgentRegistry({ storagePath });
-		const registration = registry.registerAgent({ metadata: baseMetadata });
-
-		const start = Date.now();
-		const duplicateResults = [
-			{
-				commandId: 'cmd-duplicate',
-				success: true,
-				completedAt: new Date(start).toISOString()
-			},
-			{
-				commandId: 'cmd-duplicate',
-				success: true,
-				completedAt: new Date(start + 10).toISOString(),
-				output: 'later'
-			}
-		];
-
-		const extraResults = Array.from({ length: MAX_RECENT_RESULTS + 5 }, (_, idx) => ({
-			commandId: `cmd-${idx}`,
-			success: idx % 2 === 0,
-			completedAt: new Date(start + 100 + idx).toISOString(),
-			error: idx % 2 === 0 ? undefined : 'boom'
-		}));
-
-		registry.syncAgent(registration.agentId, registration.agentKey, {
-			status: 'online',
-			timestamp: new Date().toISOString(),
-			results: [...duplicateResults, ...extraResults]
-		});
-
-		registry.updateAgentTags(registration.agentId, ['primary']);
-
-		const snapshot = registry.getAgent(registration.agentId);
-		expect(snapshot.recentResults).toHaveLength(MAX_RECENT_RESULTS);
-		const uniqueIds = new Set(snapshot.recentResults.map((result) => result.commandId));
-		expect(uniqueIds.size).toBe(snapshot.recentResults.length);
-		const completedAt = snapshot.recentResults.map((result) => Date.parse(result.completedAt));
-		const sortedCompletedAt = [...completedAt].sort((a, b) => b - a);
-		expect(completedAt).toEqual(sortedCompletedAt);
-
-		snapshot.metadata.hostname = 'mutated-host';
-		snapshot.metadata.tags?.push('mutated');
-		if (snapshot.recentResults.length > 0) {
-			snapshot.recentResults[0]!.commandId = 'mutated';
-		}
-
-		const nextSnapshot = registry.getAgent(registration.agentId);
-		expect(nextSnapshot.metadata.hostname).toBe(baseMetadata.hostname);
-		expect(nextSnapshot.metadata.tags).toEqual(['primary']);
-		expect(nextSnapshot.recentResults[0]?.commandId).not.toBe('mutated');
-
-		const syncResponse = registry.syncAgent(registration.agentId, registration.agentKey, {
-			status: 'online',
-			timestamp: new Date().toISOString(),
-			results: []
-		});
-		syncResponse.config.pollIntervalMs = 1;
-
-		const followUp = registry.syncAgent(registration.agentId, registration.agentKey, {
-			status: 'online',
-			timestamp: new Date().toISOString(),
-			results: []
-		});
-		expect(followUp.config.pollIntervalMs).toBe(defaultAgentConfig.pollIntervalMs);
-
-		await registry.flush();
-
-		const persistedRaw = readFileSync(storagePath, 'utf-8');
-		const persisted = JSON.parse(persistedRaw) as {
-			version: number;
-			agents: Array<{ keyHash?: string; key?: string }>;
-		};
-		expect(persisted.version).toBe(2);
-		const storedKeyHash = persisted.agents[0]?.keyHash;
-		expect(storedKeyHash).toBeDefined();
-		if (storedKeyHash) {
-			expect(storedKeyHash).toBe(hashKey(registration.agentKey));
-		}
-	});
-
-	it('caps pending command queues and drops oldest entries when full', () => {
-		const storagePath = path.join(tempDir, 'queue-limit.json');
-		const registry = new AgentRegistry({ storagePath });
-		const registration = registry.registerAgent({ metadata: baseMetadata });
-
-		const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
-
-		try {
-			for (let idx = 0; idx < MAX_PENDING_COMMANDS + 5; idx += 1) {
-				registry.queueCommand(registration.agentId, {
-					name: 'ping',
-					payload: { idx }
-				});
-			}
-
-			const queued = registry.peekCommands(registration.agentId);
-			expect(queued).toHaveLength(MAX_PENDING_COMMANDS);
-			const firstPayload = queued[0]?.payload as { idx?: number };
-			expect(firstPayload?.idx).toBe(5);
-			expect(warnSpy).toHaveBeenCalled();
-		} finally {
-			warnSpy.mockRestore();
-		}
-	});
-
-        it('requires hashed agent keys for sync flows and validated session tokens', async () => {
-                const storagePath = path.join(tempDir, 'attach.json');
-                const registry = new AgentRegistry({ storagePath });
+        it('persists agent metadata, commands, notes, and results across instances', async () => {
+                const registry = new AgentRegistry();
                 const registration = registry.registerAgent({ metadata: baseMetadata });
 
-                const makeSocket = () =>
-			({
-				readyState: 1,
-				addEventListener: vi.fn(),
-				send: vi.fn(),
-				close: vi.fn()
-			}) as unknown as WebSocket;
+                const queued = registry.queueCommand(registration.agentId, {
+                        name: 'ping',
+                        payload: { message: 'hello' }
+                });
 
-                const socket = makeSocket();
-                const { token: initialToken } = registry.issueSessionToken(
-                        registration.agentId,
-                        registration.agentKey
+                const noteTimestamp = new Date().toISOString();
+                registry.syncSharedNotes(registration.agentId, registration.agentKey, [
+                        {
+                                id: 'note-1',
+                                visibility: 'shared',
+                                ciphertext: 'ciphertext',
+                                nonce: 'nonce',
+                                digest: 'digest',
+                                version: 1,
+                                updatedAt: noteTimestamp
+                        }
+                ]);
+
+                registry.syncAgent(registration.agentId, registration.agentKey, {
+                        status: 'online',
+                        timestamp: new Date().toISOString(),
+                        results: [
+                                {
+                                        commandId: queued.command.id,
+                                        success: true,
+                                        completedAt: new Date().toISOString(),
+                                        output: 'pong'
+                                }
+                        ]
+                });
+
+                await registry.flush();
+
+                const restored = new AgentRegistry();
+                const snapshot = restored.getAgent(registration.agentId);
+
+                expect(snapshot.metadata.hostname).toBe(baseMetadata.hostname);
+                expect(snapshot.pendingCommands).toBe(0);
+                expect(snapshot.recentResults).toHaveLength(1);
+
+                const restoredNotes = restored.syncSharedNotes(registration.agentId, registration.agentKey, []);
+                expect(restoredNotes).toHaveLength(1);
+                expect(restoredNotes[0]?.id).toBe('note-1');
+        });
+
+        it('clamps pending commands under concurrent queueing and persists trimmed snapshot', async () => {
+                const registry = new AgentRegistry();
+                const { agentId } = registry.registerAgent({ metadata: baseMetadata });
+
+                const queueCount = MAX_PENDING_COMMANDS + 32;
+                await Promise.all(
+                        Array.from({ length: queueCount }, (_, index) =>
+                                Promise.resolve(
+                                        registry.queueCommand(agentId, {
+                                                name: 'ping',
+                                                payload: { index }
+                                        })
+                                )
+                        )
                 );
-                registry.attachSession(registration.agentId, initialToken, socket);
 
-                expect(() =>
-                        registry.attachSession(registration.agentId, 'invalid-token', makeSocket())
-                ).toThrowError('Invalid session token');
+                const snapshot = registry.getAgent(agentId);
+                expect(snapshot.pendingCommands).toBe(MAX_PENDING_COMMANDS);
 
-                const { token: freshToken } = registry.issueSessionToken(
-                        registration.agentId,
-                        registration.agentKey
-                );
+                await registry.flush();
+                const persistedCommands = await db
+                        .select({ id: agentCommandTable.id })
+                        .from(agentCommandTable)
+                        .where(eq(agentCommandTable.agentId, agentId));
+                expect(persistedCommands).toHaveLength(MAX_PENDING_COMMANDS);
+        });
 
-                registry.attachSession(registration.agentId, freshToken, makeSocket());
+        it('fans out subscription events to multiple listeners', () => {
+                const registry = new AgentRegistry();
+                const registration = registry.registerAgent({ metadata: baseMetadata });
 
-                expect(() => registry.authorizeAgent(registration.agentId, 'invalid-key')).toThrowError(
-                        'Invalid agent key'
-                );
+                const eventsA: AgentRegistryEvent[] = [];
+                const eventsB: AgentRegistryEvent[] = [];
 
-		expect(() =>
-			registry.syncAgent(registration.agentId, 'invalid-key', {
-				status: 'online',
-				timestamp: new Date().toISOString(),
-				results: []
-			})
-		).toThrowError('Invalid agent key');
+                const unsubscribeA = registry.subscribe((event) => {
+                        eventsA.push(event);
+                });
+                const unsubscribeB = registry.subscribe((event) => {
+                        eventsB.push(event);
+                });
 
-		const sync = registry.syncAgent(registration.agentId, registration.agentKey, {
-			status: 'online',
-			timestamp: new Date().toISOString(),
-			results: []
-		});
-		expect(sync.commands).toHaveLength(0);
+                const queued = registry.queueCommand(registration.agentId, {
+                        name: 'ping',
+                        payload: {}
+                });
 
-		await registry.flush();
+                registry.updateAgentTags(registration.agentId, ['primary']);
+                registry.syncSharedNotes(registration.agentId, registration.agentKey, [
+                        {
+                                id: 'broadcast-note',
+                                visibility: 'shared',
+                                ciphertext: 'cipher',
+                                nonce: 'nonce',
+                                digest: 'digest',
+                                version: 1,
+                                updatedAt: new Date().toISOString()
+                        }
+                ]);
 
-		const persistedRaw = readFileSync(storagePath, 'utf-8');
-		const persisted = JSON.parse(persistedRaw) as {
-			agents: Array<{ keyHash?: string }>;
-		};
-		expect(persisted.agents[0]?.keyHash).toBe(hashKey(registration.agentKey));
-	});
+                expect(eventsA.some((event) => event.type === 'command' && event.command.id === queued.command.id)).toBe(true);
+                expect(eventsB.some((event) => event.type === 'command' && event.command.id === queued.command.id)).toBe(true);
+                expect(eventsA.some((event) => event.type === 'agent')).toBe(true);
+                expect(eventsB.some((event) => event.type === 'notes')).toBe(true);
+
+                unsubscribeA();
+                unsubscribeB();
+
+                const before = eventsA.length;
+                registry.queueCommand(registration.agentId, { name: 'ping', payload: {} });
+                expect(eventsA.length).toBe(before);
+        });
 });

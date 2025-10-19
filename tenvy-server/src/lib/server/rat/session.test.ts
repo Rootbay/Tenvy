@@ -1,10 +1,23 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { mkdtempSync, rmSync } from 'fs';
-import { tmpdir } from 'os';
-import path from 'path';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AgentRegistry } from './store';
 import type { AgentRegistrationResponse } from '../../../../../shared/types/auth';
 import type { CommandQueueResponse } from '../../../../../shared/types/messages';
+import { db } from '$lib/server/db';
+import {
+        agent as agentTable,
+        agentCommand as agentCommandTable,
+        agentNote as agentNoteTable,
+        agentResult as agentResultTable
+} from '$lib/server/db/schema';
+
+vi.mock('$env/dynamic/private', () => import('../../../../tests/mocks/env-dynamic-private'));
+
+async function clearRegistryTables() {
+        await db.delete(agentNoteTable);
+        await db.delete(agentCommandTable);
+        await db.delete(agentResultTable);
+        await db.delete(agentTable);
+}
 
 const baseMetadata = {
 	hostname: 'test-host',
@@ -61,21 +74,19 @@ class MockSocket {
 }
 
 describe('AgentRegistry live sessions', () => {
-	let registry: AgentRegistry;
-	let registration: AgentRegistrationResponse;
-	let tempDir: string;
+        let registry: AgentRegistry;
+        let registration: AgentRegistrationResponse;
 
-	beforeEach(() => {
-		tempDir = mkdtempSync(path.join(tmpdir(), 'agent-registry-test-'));
-		const storagePath = path.join(tempDir, 'registry.json');
-		registry = new AgentRegistry({ storagePath });
-		registration = registry.registerAgent({ metadata: baseMetadata });
-	});
+        beforeEach(async () => {
+                await clearRegistryTables();
+                registry = new AgentRegistry();
+                registration = registry.registerAgent({ metadata: baseMetadata });
+        });
 
-	afterEach(async () => {
-		await registry.flush();
-		rmSync(tempDir, { recursive: true, force: true });
-	});
+        afterEach(async () => {
+                await registry.flush();
+                await clearRegistryTables();
+        });
 
         function attach(socket: MockSocket) {
                 const { token } = registry.issueSessionToken(
