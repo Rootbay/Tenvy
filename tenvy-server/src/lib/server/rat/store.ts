@@ -258,56 +258,56 @@ function cloneMetrics(metrics: AgentMetrics | undefined): AgentMetrics | undefin
 }
 
 function parseCompletedAt(result: CommandResult | undefined): number {
-        if (!result) {
-                return 0;
-        }
-        if (typeof result.completedAt === 'string') {
-                const parsed = Date.parse(result.completedAt);
-                if (Number.isFinite(parsed)) {
-                        return parsed;
-                }
-        }
-        return 0;
+	if (!result) {
+		return 0;
+	}
+	if (typeof result.completedAt === 'string') {
+		const parsed = Date.parse(result.completedAt);
+		if (Number.isFinite(parsed)) {
+			return parsed;
+		}
+	}
+	return 0;
 }
 
 function mergeRecentResults(existing: CommandResult[], incoming: CommandResult[]): CommandResult[] {
-        if (existing.length === 0 && incoming.length === 0) {
-                return [];
-        }
+	if (existing.length === 0 && incoming.length === 0) {
+		return [];
+	}
 
-        const merged = new Map<string, { result: CommandResult; timestamp: number }>();
+	const merged = new Map<string, { result: CommandResult; timestamp: number }>();
 
-        const upsert = (candidate: CommandResult | null | undefined) => {
-                if (!candidate?.commandId) {
-                        return;
-                }
-                const timestamp = parseCompletedAt(candidate);
-                const current = merged.get(candidate.commandId);
-                if (!current || timestamp >= current.timestamp) {
-                        merged.set(candidate.commandId, {
-                                result: { ...candidate },
-                                timestamp
-                        });
-                }
-        };
+	const upsert = (candidate: CommandResult | null | undefined) => {
+		if (!candidate?.commandId) {
+			return;
+		}
+		const timestamp = parseCompletedAt(candidate);
+		const current = merged.get(candidate.commandId);
+		if (!current || timestamp >= current.timestamp) {
+			merged.set(candidate.commandId, {
+				result: { ...candidate },
+				timestamp
+			});
+		}
+	};
 
-        for (const result of existing) {
-                upsert(result);
-        }
+	for (const result of existing) {
+		upsert(result);
+	}
 
-        for (const result of incoming) {
-                upsert(result);
-        }
+	for (const result of incoming) {
+		upsert(result);
+	}
 
-        return Array.from(merged.values())
-                .sort((a, b) => {
-                        if (b.timestamp !== a.timestamp) {
-                                return b.timestamp - a.timestamp;
-                        }
-                        return b.result.commandId.localeCompare(a.result.commandId);
-                })
-                .slice(0, MAX_RECENT_RESULTS)
-                .map((entry) => entry.result);
+	return Array.from(merged.values())
+		.sort((a, b) => {
+			if (b.timestamp !== a.timestamp) {
+				return b.timestamp - a.timestamp;
+			}
+			return b.result.commandId.localeCompare(a.result.commandId);
+		})
+		.slice(0, MAX_RECENT_RESULTS)
+		.map((entry) => entry.result);
 }
 
 export class AgentRegistry {

@@ -1,17 +1,17 @@
 import { randomUUID } from 'node:crypto';
 import {
-        type AppVncApplicationDescriptor,
-        type AppVncCommandPayload,
-        type AppVncCursorState,
-        type AppVncFramePacket,
-        type AppVncInputEvent,
-        type AppVncInputBurst,
-        type AppVncSessionMetadata,
-        type AppVncSessionSettings,
-        type AppVncSessionSettingsPatch,
-        type AppVncSessionState,
-        type AppVncVirtualizationHints,
-        type AppVncVirtualizationPlan
+	type AppVncApplicationDescriptor,
+	type AppVncCommandPayload,
+	type AppVncCursorState,
+	type AppVncFramePacket,
+	type AppVncInputEvent,
+	type AppVncInputBurst,
+	type AppVncSessionMetadata,
+	type AppVncSessionSettings,
+	type AppVncSessionSettingsPatch,
+	type AppVncSessionState,
+	type AppVncVirtualizationHints,
+	type AppVncVirtualizationPlan
 } from '$lib/types/app-vnc';
 import { findAppVncApplication } from '$lib/data/app-vnc-apps';
 import { registry, RegistryError } from './store';
@@ -24,12 +24,12 @@ const MAX_FRAME_HEIGHT = 4_096;
 const MAX_BASE64_SIZE = 8 * 1024 * 1024; // 8 MiB
 
 const defaultSettings: AppVncSessionSettings = Object.freeze({
-        monitor: 'Primary',
-        quality: 'balanced',
-        captureCursor: true,
-        clipboardSync: false,
-        blockLocalInput: false,
-        heartbeatInterval: 30
+	monitor: 'Primary',
+	quality: 'balanced',
+	captureCursor: true,
+	clipboardSync: false,
+	blockLocalInput: false,
+	heartbeatInterval: 30
 });
 
 const qualities = new Set<AppVncSessionSettings['quality']>(['lossless', 'balanced', 'bandwidth']);
@@ -79,10 +79,10 @@ function resolveSettings(patch?: AppVncSessionSettingsPatch): AppVncSessionSetti
 }
 
 function applySettings(target: AppVncSessionSettings, updates: AppVncSessionSettingsPatch) {
-        if (updates.monitor && typeof updates.monitor === 'string') {
-                target.monitor = updates.monitor;
-        }
-        if (updates.quality) {
+	if (updates.monitor && typeof updates.monitor === 'string') {
+		target.monitor = updates.monitor;
+	}
+	if (updates.quality) {
 		if (!qualities.has(updates.quality)) {
 			throw new AppVncError('Invalid quality preset', 400);
 		}
@@ -103,27 +103,27 @@ function applySettings(target: AppVncSessionSettings, updates: AppVncSessionSett
 			throw new AppVncError('Heartbeat interval must be at least 10 seconds', 400);
 		}
 		target.heartbeatInterval = value;
-        }
-        if (typeof updates.appId === 'string') {
-                const trimmed = updates.appId.trim();
-                if (trimmed.length === 0) {
-                        if ('appId' in target) {
-                                delete target.appId;
-                        }
-                } else {
-                        target.appId = trimmed;
-                }
-        }
-        if (typeof updates.windowTitle === 'string') {
-                const trimmed = updates.windowTitle.trim();
-                if (trimmed.length === 0) {
-                        if ('windowTitle' in target) {
-                                delete target.windowTitle;
-                        }
-                } else {
-                        target.windowTitle = trimmed;
-                }
-        }
+	}
+	if (typeof updates.appId === 'string') {
+		const trimmed = updates.appId.trim();
+		if (trimmed.length === 0) {
+			if ('appId' in target) {
+				delete target.appId;
+			}
+		} else {
+			target.appId = trimmed;
+		}
+	}
+	if (typeof updates.windowTitle === 'string') {
+		const trimmed = updates.windowTitle.trim();
+		if (trimmed.length === 0) {
+			if ('windowTitle' in target) {
+				delete target.windowTitle;
+			}
+		} else {
+			target.windowTitle = trimmed;
+		}
+	}
 }
 
 function cloneFrame(frame: AppVncFramePacket): AppVncFramePacket {
@@ -464,78 +464,78 @@ export const appVncManager = new AppVncManager();
 export { listAppVncApplications } from '$lib/data/app-vnc-apps';
 
 function inferPlatform(os: string | undefined): AppVncVirtualizationPlan['platform'] {
-        if (!os) {
-                return undefined;
-        }
-        const normalized = os.trim().toLowerCase();
-        if (normalized.includes('windows')) {
-                return 'windows';
-        }
-        if (normalized.includes('linux')) {
-                return 'linux';
-        }
-        if (normalized.includes('mac') || normalized.includes('darwin') || normalized.includes('os x')) {
-                return 'macos';
-        }
-        return undefined;
+	if (!os) {
+		return undefined;
+	}
+	const normalized = os.trim().toLowerCase();
+	if (normalized.includes('windows')) {
+		return 'windows';
+	}
+	if (normalized.includes('linux')) {
+		return 'linux';
+	}
+	if (normalized.includes('mac') || normalized.includes('darwin') || normalized.includes('os x')) {
+		return 'macos';
+	}
+	return undefined;
 }
 
 function resolveVirtualizationPlan(
-        platform: AppVncVirtualizationPlan['platform'],
-        hints: AppVncVirtualizationHints | undefined
+	platform: AppVncVirtualizationPlan['platform'],
+	hints: AppVncVirtualizationHints | undefined
 ): AppVncVirtualizationPlan | undefined {
-        if (!platform || !hints) {
-                return undefined;
-        }
-        const plan: AppVncVirtualizationPlan = { platform };
-        if (hints.profileSeeds?.[platform]) {
-                plan.profileSeed = hints.profileSeeds[platform];
-        }
-        if (hints.dataRoots?.[platform]) {
-                plan.dataRoot = hints.dataRoots[platform];
-        }
-        if (hints.environment?.[platform]) {
-                plan.environment = { ...hints.environment[platform] };
-        }
-        if (plan.profileSeed || plan.dataRoot || plan.environment) {
-                return plan;
-        }
-        return undefined;
+	if (!platform || !hints) {
+		return undefined;
+	}
+	const plan: AppVncVirtualizationPlan = { platform };
+	if (hints.profileSeeds?.[platform]) {
+		plan.profileSeed = hints.profileSeeds[platform];
+	}
+	if (hints.dataRoots?.[platform]) {
+		plan.dataRoot = hints.dataRoots[platform];
+	}
+	if (hints.environment?.[platform]) {
+		plan.environment = { ...hints.environment[platform] };
+	}
+	if (plan.profileSeed || plan.dataRoot || plan.environment) {
+		return plan;
+	}
+	return undefined;
 }
 
 export function resolveAppVncStartContext(
-        agentId: string,
-        settings: AppVncSessionSettings
+	agentId: string,
+	settings: AppVncSessionSettings
 ): {
-        application?: AppVncApplicationDescriptor;
-        virtualization?: AppVncVirtualizationPlan;
+	application?: AppVncApplicationDescriptor;
+	virtualization?: AppVncVirtualizationPlan;
 } {
-        const trimmedAppId = typeof settings.appId === 'string' ? settings.appId.trim() : '';
-        if (!trimmedAppId) {
-                return {};
-        }
+	const trimmedAppId = typeof settings.appId === 'string' ? settings.appId.trim() : '';
+	if (!trimmedAppId) {
+		return {};
+	}
 
-        const descriptor = findAppVncApplication(trimmedAppId);
-        if (!descriptor) {
-                return {};
-        }
+	const descriptor = findAppVncApplication(trimmedAppId);
+	if (!descriptor) {
+		return {};
+	}
 
-        let platform: AppVncVirtualizationPlan['platform'];
-        try {
-                const agent = registry.getAgent(agentId);
-                platform = inferPlatform(agent.metadata?.os);
-        } catch (err) {
-                if (err instanceof RegistryError) {
-                        platform = undefined;
-                } else {
-                        throw err;
-                }
-        }
+	let platform: AppVncVirtualizationPlan['platform'];
+	try {
+		const agent = registry.getAgent(agentId);
+		platform = inferPlatform(agent.metadata?.os);
+	} catch (err) {
+		if (err instanceof RegistryError) {
+			platform = undefined;
+		} else {
+			throw err;
+		}
+	}
 
-        const virtualization = resolveVirtualizationPlan(platform, descriptor.virtualization);
+	const virtualization = resolveVirtualizationPlan(platform, descriptor.virtualization);
 
-        return {
-                application: descriptor,
-                virtualization
-        };
+	return {
+		application: descriptor,
+		virtualization
+	};
 }

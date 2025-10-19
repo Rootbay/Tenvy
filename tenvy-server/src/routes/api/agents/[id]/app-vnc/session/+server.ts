@@ -77,17 +77,17 @@ export const POST: RequestHandler = async ({ params, request }) => {
 		const settings = normalizeSettings(body);
 		const session = appVncManager.createSession(id, settings);
 
-                try {
-                        const { application, virtualization } = resolveAppVncStartContext(id, session.settings);
-                        const payload: AppVncCommandPayload = {
-                                action: 'start',
-                                sessionId: session.sessionId,
-                                settings: session.settings,
-                                application,
-                                virtualization
-                        };
-                        registry.queueCommand(id, { name: 'app-vnc', payload });
-                } catch (err) {
+		try {
+			const { application, virtualization } = resolveAppVncStartContext(id, session.settings);
+			const payload: AppVncCommandPayload = {
+				action: 'start',
+				sessionId: session.sessionId,
+				settings: session.settings,
+				application,
+				virtualization
+			};
+			registry.queueCommand(id, { name: 'app-vnc', payload });
+		} catch (err) {
 			appVncManager.closeSession(id);
 			if (err instanceof RegistryError) {
 				throw error(err.status, err.message);

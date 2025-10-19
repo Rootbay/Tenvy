@@ -412,7 +412,8 @@
 <ContextMenu>
 	<ContextMenuTrigger child={TriggerChild} />
 	<ContextMenuContent class="w-56">
-		<ContextMenuItem on:select={() => openSection('systemInfo', agent)}>System Info</ContextMenuItem>
+		<ContextMenuItem on:select={() => openSection('systemInfo', agent)}>System Info</ContextMenuItem
+		>
 		<ContextMenuItem on:select={() => openSection('notes', agent)}>Notes</ContextMenuItem>
 		<ContextMenuItem on:select={() => openManageTags(agent)}>Manage Tags</ContextMenuItem>
 
@@ -422,15 +423,27 @@
 			<ContextMenuSubTrigger>Control</ContextMenuSubTrigger>
 			<ContextMenuSubContent class="w-48">
 				<ContextMenuItem on:select={() => openSection('appVnc', agent)}>App VNC</ContextMenuItem>
-				<ContextMenuItem on:select={() => openSection('remoteDesktop', agent)}>Remote Desktop</ContextMenuItem>
-				<ContextMenuItem on:select={() => openSection('webcamControl', agent)}>Webcam Control</ContextMenuItem>
-				<ContextMenuItem on:select={() => openSection('audioControl', agent)}>Audio Control</ContextMenuItem>
+				<ContextMenuItem on:select={() => openSection('remoteDesktop', agent)}
+					>Remote Desktop</ContextMenuItem
+				>
+				<ContextMenuItem on:select={() => openSection('webcamControl', agent)}
+					>Webcam Control</ContextMenuItem
+				>
+				<ContextMenuItem on:select={() => openSection('audioControl', agent)}
+					>Audio Control</ContextMenuItem
+				>
 				<ContextMenuSub>
 					<ContextMenuSubTrigger>Keylogger</ContextMenuSubTrigger>
 					<ContextMenuSubContent class="w-48">
-						<ContextMenuItem on:select={() => openSection('keyloggerOnline', agent)}>Online</ContextMenuItem>
-						<ContextMenuItem on:select={() => openSection('keyloggerOffline', agent)}>Offline</ContextMenuItem>
-						<ContextMenuItem on:select={() => openSection('keyloggerAdvanced', agent)}>Advanced Online</ContextMenuItem>
+						<ContextMenuItem on:select={() => openSection('keyloggerOnline', agent)}
+							>Online</ContextMenuItem
+						>
+						<ContextMenuItem on:select={() => openSection('keyloggerOffline', agent)}
+							>Offline</ContextMenuItem
+						>
+						<ContextMenuItem on:select={() => openSection('keyloggerAdvanced', agent)}
+							>Advanced Online</ContextMenuItem
+						>
 					</ContextMenuSubContent>
 				</ContextMenuSub>
 				<ContextMenuItem on:select={() => openSection('cmd', agent)}>CMD</ContextMenuItem>
@@ -442,12 +455,24 @@
 		<ContextMenuSub>
 			<ContextMenuSubTrigger>Management</ContextMenuSubTrigger>
 			<ContextMenuSubContent class="w-48">
-				<ContextMenuItem on:select={() => openSection('fileManager', agent)}>File Manager</ContextMenuItem>
-				<ContextMenuItem on:select={() => openSection('taskManager', agent)}>Task Manager</ContextMenuItem>
-				<ContextMenuItem on:select={() => openSection('registryManager', agent)}>Registry Manager</ContextMenuItem>
-				<ContextMenuItem on:select={() => openSection('startupManager', agent)}>Startup Manager</ContextMenuItem>
-				<ContextMenuItem on:select={() => openSection('clipboardManager', agent)}>Clipboard Manager</ContextMenuItem>
-				<ContextMenuItem on:select={() => openSection('tcpConnections', agent)}>TCP Connections</ContextMenuItem>
+				<ContextMenuItem on:select={() => openSection('fileManager', agent)}
+					>File Manager</ContextMenuItem
+				>
+				<ContextMenuItem on:select={() => openSection('taskManager', agent)}
+					>Task Manager</ContextMenuItem
+				>
+				<ContextMenuItem on:select={() => openSection('registryManager', agent)}
+					>Registry Manager</ContextMenuItem
+				>
+				<ContextMenuItem on:select={() => openSection('startupManager', agent)}
+					>Startup Manager</ContextMenuItem
+				>
+				<ContextMenuItem on:select={() => openSection('clipboardManager', agent)}
+					>Clipboard Manager</ContextMenuItem
+				>
+				<ContextMenuItem on:select={() => openSection('tcpConnections', agent)}
+					>TCP Connections</ContextMenuItem
+				>
 			</ContextMenuSubContent>
 		</ContextMenuSub>
 
@@ -462,11 +487,21 @@
 			<ContextMenuSubTrigger>Miscellaneous</ContextMenuSubTrigger>
 			<ContextMenuSubContent class="w-48">
 				<ContextMenuItem on:select={() => openSection('openUrl', agent)}>Open URL</ContextMenuItem>
-				<ContextMenuItem on:select={() => openSection('messageBox', agent)}>Message Box</ContextMenuItem>
-				<ContextMenuItem on:select={() => openSection('clientChat', agent)}>Client Chat</ContextMenuItem>
-				<ContextMenuItem on:select={() => openSection('reportWindow', agent)}>Report Window</ContextMenuItem>
-				<ContextMenuItem on:select={() => openSection('ipGeolocation', agent)}>IP Geolocation</ContextMenuItem>
-				<ContextMenuItem on:select={() => openSection('environmentVariables', agent)}>Environment Variables</ContextMenuItem>
+				<ContextMenuItem on:select={() => openSection('messageBox', agent)}
+					>Message Box</ContextMenuItem
+				>
+				<ContextMenuItem on:select={() => openSection('clientChat', agent)}
+					>Client Chat</ContextMenuItem
+				>
+				<ContextMenuItem on:select={() => openSection('reportWindow', agent)}
+					>Report Window</ContextMenuItem
+				>
+				<ContextMenuItem on:select={() => openSection('ipGeolocation', agent)}
+					>IP Geolocation</ContextMenuItem
+				>
+				<ContextMenuItem on:select={() => openSection('environmentVariables', agent)}
+					>Environment Variables</ContextMenuItem
+				>
 			</ContextMenuSubContent>
 		</ContextMenuSub>
 
@@ -475,8 +510,12 @@
 		<ContextMenuSub>
 			<ContextMenuSubTrigger>System Controls</ContextMenuSubTrigger>
 			<ContextMenuSubContent class="w-48">
-				<ContextMenuItem on:select={() => openSection('reconnect', agent)}>Reconnect</ContextMenuItem>
-				<ContextMenuItem on:select={() => openSection('disconnect', agent)}>Disconnect</ContextMenuItem>
+				<ContextMenuItem on:select={() => openSection('reconnect', agent)}
+					>Reconnect</ContextMenuItem
+				>
+				<ContextMenuItem on:select={() => openSection('disconnect', agent)}
+					>Disconnect</ContextMenuItem
+				>
 			</ContextMenuSubContent>
 		</ContextMenuSub>
 

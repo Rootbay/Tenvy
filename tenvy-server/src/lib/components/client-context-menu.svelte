@@ -209,15 +209,23 @@
 			<ContextMenuSubTrigger>Control</ContextMenuSubTrigger>
 			<ContextMenuSubContent class="w-48">
 				<ContextMenuItem on:select={() => openTool('app-vnc')}>App VNC</ContextMenuItem>
-				<ContextMenuItem on:select={() => openTool('remote-desktop')}>Remote Desktop</ContextMenuItem>
-				<ContextMenuItem on:select={() => openTool('webcam-control')}>Webcam Control</ContextMenuItem>
+				<ContextMenuItem on:select={() => openTool('remote-desktop')}
+					>Remote Desktop</ContextMenuItem
+				>
+				<ContextMenuItem on:select={() => openTool('webcam-control')}
+					>Webcam Control</ContextMenuItem
+				>
 				<ContextMenuItem on:select={() => openTool('audio-control')}>Audio Control</ContextMenuItem>
 				<ContextMenuSub>
 					<ContextMenuSubTrigger>Keylogger</ContextMenuSubTrigger>
 					<ContextMenuSubContent class="w-48">
 						<ContextMenuItem on:select={() => openTool('keylogger-online')}>Online</ContextMenuItem>
-						<ContextMenuItem on:select={() => openTool('keylogger-offline')}>Offline</ContextMenuItem>
-						<ContextMenuItem on:select={() => openTool('keylogger-advanced-online')}>Advanced Online</ContextMenuItem>
+						<ContextMenuItem on:select={() => openTool('keylogger-offline')}
+							>Offline</ContextMenuItem
+						>
+						<ContextMenuItem on:select={() => openTool('keylogger-advanced-online')}
+							>Advanced Online</ContextMenuItem
+						>
 					</ContextMenuSubContent>
 				</ContextMenuSub>
 				<ContextMenuItem on:select={() => openTool('cmd')}>CMD</ContextMenuItem>
@@ -231,10 +239,18 @@
 			<ContextMenuSubContent class="w-48">
 				<ContextMenuItem on:select={() => openTool('file-manager')}>File Manager</ContextMenuItem>
 				<ContextMenuItem on:select={() => openTool('task-manager')}>Task Manager</ContextMenuItem>
-				<ContextMenuItem on:select={() => openTool('registry-manager')}>Registry Manager</ContextMenuItem>
-				<ContextMenuItem on:select={() => openTool('startup-manager')}>Startup Manager</ContextMenuItem>
-				<ContextMenuItem on:select={() => openTool('clipboard-manager')}>Clipboard Manager</ContextMenuItem>
-				<ContextMenuItem on:select={() => openTool('tcp-connections')}>TCP Connections</ContextMenuItem>
+				<ContextMenuItem on:select={() => openTool('registry-manager')}
+					>Registry Manager</ContextMenuItem
+				>
+				<ContextMenuItem on:select={() => openTool('startup-manager')}
+					>Startup Manager</ContextMenuItem
+				>
+				<ContextMenuItem on:select={() => openTool('clipboard-manager')}
+					>Clipboard Manager</ContextMenuItem
+				>
+				<ContextMenuItem on:select={() => openTool('tcp-connections')}
+					>TCP Connections</ContextMenuItem
+				>
 			</ContextMenuSubContent>
 		</ContextMenuSub>
 	</ContextMenuGroup>
@@ -256,8 +272,12 @@
 				<ContextMenuItem on:select={() => openTool('message-box')}>Message Box</ContextMenuItem>
 				<ContextMenuItem on:select={() => openTool('client-chat')}>Client Chat</ContextMenuItem>
 				<ContextMenuItem on:select={() => openTool('report-window')}>Report Window</ContextMenuItem>
-				<ContextMenuItem on:select={() => openTool('ip-geolocation')}>IP Geolocation</ContextMenuItem>
-				<ContextMenuItem on:select={() => openTool('environment-variables')}>Environment Variables</ContextMenuItem>
+				<ContextMenuItem on:select={() => openTool('ip-geolocation')}
+					>IP Geolocation</ContextMenuItem
+				>
+				<ContextMenuItem on:select={() => openTool('environment-variables')}
+					>Environment Variables</ContextMenuItem
+				>
 			</ContextMenuSubContent>
 		</ContextMenuSub>
 	</ContextMenuGroup>

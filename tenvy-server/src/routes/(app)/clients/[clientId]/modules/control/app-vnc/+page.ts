@@ -4,8 +4,8 @@ import { listAppVncApplications } from '$lib/server/rat/app-vnc';
 
 export const load = (async ({ fetch, params }) => {
 	const id = params.clientId;
-        let session: AppVncSessionState | null = null;
-        let applications: AppVncApplicationDescriptor[] = listAppVncApplications();
+	let session: AppVncSessionState | null = null;
+	let applications: AppVncApplicationDescriptor[] = listAppVncApplications();
 
 	try {
 		const response = await fetch(`/api/agents/${id}/app-vnc/session`);
@@ -17,5 +17,5 @@ export const load = (async ({ fetch, params }) => {
 		session = null;
 	}
 
-        return { session, applications };
+	return { session, applications };
 }) satisfies PageLoad;

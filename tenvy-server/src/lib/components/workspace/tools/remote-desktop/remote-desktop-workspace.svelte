@@ -2,28 +2,28 @@
 	import { browser } from '$app/environment';
 	import { onMount } from 'svelte';
 	import { SvelteMap, SvelteSet } from 'svelte/reactivity';
-        import { Card, CardContent, CardFooter } from '$lib/components/ui/card/index.js';
-        import { Button } from '$lib/components/ui/button/index.js';
-        import {
-                Select,
-                SelectContent,
-                SelectItem,
-                SelectTrigger
-        } from '$lib/components/ui/select/index.js';
-        import { Switch } from '$lib/components/ui/switch/index.js';
-        import { Label } from '$lib/components/ui/label/index.js';
-        import type { Client } from '$lib/data/clients';
-        import type {
-                RemoteDesktopFramePacket,
-                RemoteDesktopInputEvent,
-                RemoteDesktopMonitor,
-                RemoteDesktopMouseButton,
-                RemoteDesktopSessionState,
-                RemoteDesktopSettings,
-                RemoteDesktopSettingsPatch
-        } from '$lib/types/remote-desktop';
-        import SessionMetricsGrid from './SessionMetricsGrid.svelte';
-        import { createInputChannel } from './input-channel';
+	import { Card, CardContent, CardFooter } from '$lib/components/ui/card/index.js';
+	import { Button } from '$lib/components/ui/button/index.js';
+	import {
+		Select,
+		SelectContent,
+		SelectItem,
+		SelectTrigger
+	} from '$lib/components/ui/select/index.js';
+	import { Switch } from '$lib/components/ui/switch/index.js';
+	import { Label } from '$lib/components/ui/label/index.js';
+	import type { Client } from '$lib/data/clients';
+	import type {
+		RemoteDesktopFramePacket,
+		RemoteDesktopInputEvent,
+		RemoteDesktopMonitor,
+		RemoteDesktopMouseButton,
+		RemoteDesktopSessionState,
+		RemoteDesktopSettings,
+		RemoteDesktopSettingsPatch
+	} from '$lib/types/remote-desktop';
+	import SessionMetricsGrid from './SessionMetricsGrid.svelte';
+	import { createInputChannel } from './input-channel';
 
 	const fallbackMonitors = [
 		{ id: 0, label: 'Primary', width: 1280, height: 720 }
@@ -43,12 +43,12 @@
 		jpeg: 'data:image/jpeg;base64,'
 	} as const;
 
-        let { client, initialSession = null } = $props<{
-                client: Client;
-                initialSession?: RemoteDesktopSessionState | null;
-        }>();
+	let { client, initialSession = null } = $props<{
+		client: Client;
+		initialSession?: RemoteDesktopSessionState | null;
+	}>();
 
-        let session = $state<RemoteDesktopSessionState | null>(initialSession ?? null);
+	let session = $state<RemoteDesktopSessionState | null>(initialSession ?? null);
 	let quality = $state<RemoteDesktopSettings['quality']>('auto');
 	let encoder = $state<RemoteDesktopSettings['encoder']>('auto');
 	let mode = $state<RemoteDesktopSettings['mode']>('video');
@@ -146,32 +146,36 @@
 		return found ? found.label : value;
 	};
 
-        const monitorLabel = (id: number) => {
-                const list = monitors;
-                const found = list.find((item: RemoteDesktopMonitor) => item.id === id);
-                if (!found) {
-                        return `Monitor ${id + 1}`;
-                }
-                return `${found.label} · ${found.width}×${found.height}`;
-        };
+	const monitorLabel = (id: number) => {
+		const list = monitors;
+		const found = list.find((item: RemoteDesktopMonitor) => item.id === id);
+		if (!found) {
+			return `Monitor ${id + 1}`;
+		}
+		return `${found.label} · ${found.width}×${found.height}`;
+	};
 
-        async function refreshSession() {
-                if (!browser || !client) {
-                        return;
-                }
-                try {
-                        const response = await fetch(`/api/agents/${client.id}/remote-desktop/session`);
-                        if (!response.ok) {
-                                return;
-                        }
-                        const payload = (await response.json()) as {
-                                session?: RemoteDesktopSessionState | null;
-                        };
-                        session = payload.session ?? null;
-                } catch (err) {
-                        console.warn('Failed to refresh remote desktop session state', err);
-                }
-        }
+	async function refreshSession() {
+		if (!browser || !client) {
+			return session;
+		}
+		try {
+			const response = await fetch(`/api/agents/${client.id}/remote-desktop/session`);
+			if (!response.ok) {
+				return session;
+			}
+			const payload = (await response.json()) as {
+				session?: RemoteDesktopSessionState | null;
+			};
+			session = payload.session ?? null;
+			const nextSession = payload.session ?? null;
+			session = nextSession;
+			return nextSession;
+		} catch (err) {
+			console.warn('Failed to refresh remote desktop session state', err);
+			return session;
+		}
+	}
 
 	const clamp = (value: number, min: number, max: number) => {
 		if (Number.isNaN(value)) return min;
@@ -988,30 +992,30 @@
 		connectStream(sessionId);
 	});
 
-        onMount(() => {
-                if (!browser) {
-                        return () => {
-                                disconnectStream();
-                        };
-                }
+	onMount(() => {
+		if (!browser) {
+			return () => {
+				disconnectStream();
+			};
+		}
 
-                let destroyed = false;
+		let destroyed = false;
 
-                const initialize = async () => {
-                        await refreshSession();
-                        if (destroyed) {
-                                return;
-                        }
-                        if (sessionActive && sessionId) {
-                                connectStream(sessionId);
-                        } else {
-                                maybeStartSession();
-                        }
-                };
+		const initialize = async () => {
+			const currentSession = await refreshSession();
+			if (destroyed) {
+				return;
+			}
+			if (currentSession?.active && currentSession.sessionId) {
+				connectStream(currentSession.sessionId);
+			} else {
+				maybeStartSession();
+			}
+		};
 
-                void initialize();
+		void initialize();
 
-                const handleVisibilityChange = () => {
+		const handleVisibilityChange = () => {
 			if (document.visibilityState === 'visible') {
 				maybeStartSession();
 			} else {
@@ -1027,11 +1031,11 @@
 		window.addEventListener('pagehide', handlePageHide);
 		window.addEventListener('beforeunload', handlePageHide);
 
-                return () => {
-                        destroyed = true;
-                        document.removeEventListener('visibilitychange', handleVisibilityChange);
-                        window.removeEventListener('pagehide', handlePageHide);
-                        window.removeEventListener('beforeunload', handlePageHide);
+		return () => {
+			destroyed = true;
+			document.removeEventListener('visibilitychange', handleVisibilityChange);
+			window.removeEventListener('pagehide', handlePageHide);
+			window.removeEventListener('beforeunload', handlePageHide);
 			maybeStopSession({ keepalive: true });
 			disconnectStream();
 		};
