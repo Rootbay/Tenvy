@@ -1,4 +1,10 @@
-import { sqliteTable, integer, text, uniqueIndex } from 'drizzle-orm/sqlite-core';
+import {
+        sqliteTable,
+        integer,
+        text,
+        uniqueIndex,
+        primaryKey
+} from 'drizzle-orm/sqlite-core';
 
 const timestamp = (
 	name: string,
@@ -76,8 +82,8 @@ export const recoveryCode = sqliteTable('recovery_code', {
 });
 
 export const plugin = sqliteTable('plugin', {
-	id: text('id').primaryKey(),
-	status: text('status').notNull().default('active'),
+        id: text('id').primaryKey(),
+        status: text('status').notNull().default('active'),
 	enabled: integer('enabled', { mode: 'boolean' }).notNull().default(true),
 	autoUpdate: integer('auto_update', { mode: 'boolean' }).notNull().default(false),
 	installations: integer('installations').notNull().default(0),
@@ -91,8 +97,77 @@ export const plugin = sqliteTable('plugin', {
 	lastDeployedAt: timestamp('last_deployed_at', { optional: true }),
 	lastCheckedAt: timestamp('last_checked_at', { optional: true }),
 	createdAt: timestamp('created_at', { defaultNow: true }),
-	updatedAt: timestamp('updated_at', { defaultNow: true })
+        updatedAt: timestamp('updated_at', { defaultNow: true })
 });
+
+export const agent = sqliteTable(
+        'agent',
+        {
+                id: text('id').primaryKey(),
+                keyHash: text('key_hash').notNull(),
+                metadata: text('metadata').notNull(),
+                status: text('status').notNull().default('offline'),
+                connectedAt: timestamp('connected_at', { defaultNow: true }),
+                lastSeen: timestamp('last_seen', { defaultNow: true }),
+                metrics: text('metrics'),
+                config: text('config').notNull(),
+                fingerprint: text('fingerprint').notNull(),
+                createdAt: timestamp('created_at', { defaultNow: true }),
+                updatedAt: timestamp('updated_at', { defaultNow: true })
+        },
+        (table) => ({
+                fingerprintIdx: uniqueIndex('agent_fingerprint_idx').on(table.fingerprint)
+        })
+);
+
+export const agentNote = sqliteTable(
+        'agent_note',
+        {
+                agentId: text('agent_id')
+                        .notNull()
+                        .references(() => agent.id, { onDelete: 'cascade' }),
+                noteId: text('note_id').notNull(),
+                ciphertext: text('ciphertext').notNull(),
+                nonce: text('nonce').notNull(),
+                digest: text('digest').notNull(),
+                version: integer('version').notNull().default(1),
+                updatedAt: timestamp('updated_at', { defaultNow: true })
+        },
+        (table) => ({
+                pk: primaryKey({ columns: [table.agentId, table.noteId] })
+        })
+);
+
+export const agentCommand = sqliteTable('agent_command', {
+        id: text('id').primaryKey(),
+        agentId: text('agent_id')
+                .notNull()
+                .references(() => agent.id, { onDelete: 'cascade' }),
+        name: text('name').notNull(),
+        payload: text('payload').notNull(),
+        createdAt: timestamp('created_at', { defaultNow: true })
+});
+
+export const agentResult = sqliteTable(
+        'agent_result',
+        {
+                id: integer('id').primaryKey({ autoIncrement: true }),
+                agentId: text('agent_id')
+                        .notNull()
+                        .references(() => agent.id, { onDelete: 'cascade' }),
+                commandId: text('command_id').notNull(),
+                success: integer('success', { mode: 'boolean' }).notNull().default(true),
+                output: text('output'),
+                error: text('error'),
+                completedAt: timestamp('completed_at', { defaultNow: true })
+        },
+        (table) => ({
+                uniqueCommand: uniqueIndex('agent_result_command_idx').on(
+                        table.agentId,
+                        table.commandId
+                )
+        })
+);
 
 export type Session = typeof session.$inferSelect;
 
@@ -104,3 +179,7 @@ export type Passkey = typeof passkey.$inferSelect;
 
 export type RecoveryCode = typeof recoveryCode.$inferSelect;
 export type Plugin = typeof plugin.$inferSelect;
+export type Agent = typeof agent.$inferSelect;
+export type AgentNote = typeof agentNote.$inferSelect;
+export type AgentCommand = typeof agentCommand.$inferSelect;
+export type AgentResult = typeof agentResult.$inferSelect;
