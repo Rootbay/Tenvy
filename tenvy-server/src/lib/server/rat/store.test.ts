@@ -1,10 +1,10 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { mkdtempSync, rmSync, writeFileSync, readFileSync } from 'fs';
-import { tmpdir } from 'os';
-import path from 'path';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { createHash } from 'crypto';
-import { AgentRegistry, MAX_PENDING_COMMANDS } from './store';
+import { AgentRegistry, MAX_PENDING_COMMANDS, type RegistryBroadcast } from './store';
 import { defaultAgentConfig } from '../../../../../shared/types/config';
+import type { AgentSnapshot } from '../../../../../shared/types/agent';
+import { db } from '$lib/server/db';
+import * as table from '$lib/server/db/schema';
 
 const baseMetadata = {
 	hostname: 'persisted-host',
@@ -35,63 +35,68 @@ function hashKey(raw: string): string {
 
 const MAX_RECENT_RESULTS = 25;
 
+async function resetRegistryTables() {
+	await db.delete(table.agentNote).run();
+	await db.delete(table.agentCommand).run();
+	await db.delete(table.agentResult).run();
+	await db.delete(table.agent).run();
+}
+
 describe('AgentRegistry persistence hygiene', () => {
-	let tempDir: string;
-
-	beforeEach(() => {
-		tempDir = mkdtempSync(path.join(tmpdir(), 'agent-registry-audit-'));
-	});
-
-	afterEach(() => {
-		rmSync(tempDir, { recursive: true, force: true });
+	beforeEach(async () => {
+		await resetRegistryTables();
 	});
 
 	it('restores persisted agents without clobbering timestamps or configs', async () => {
-		const storagePath = path.join(tempDir, 'registry.json');
 		const connectedAt = new Date('2024-01-01T00:00:00.000Z');
 		const lastSeen = new Date('2024-01-02T12:34:56.000Z');
 
-		const persisted = {
-			version: 1,
-			agents: [
-				{
-					id: 'agent-1',
-					key: 'secret-key',
-					metadata: baseMetadata,
-					status: 'online',
-					connectedAt: connectedAt.toISOString(),
-					lastSeen: lastSeen.toISOString(),
-					metrics: { memoryBytes: 42 },
-					config: {
-						pollIntervalMs: -10,
-						maxBackoffMs: 1000,
-						jitterRatio: 5
-					},
-					pendingCommands: [
-						{
-							id: 'cmd-1',
-							name: 'ping',
-							payload: {},
-							createdAt: connectedAt.toISOString()
-						}
-					],
-					recentResults: [
-						{
-							commandId: 'cmd-1',
-							success: true,
-							completedAt: lastSeen.toISOString(),
-							output: 'ok'
-						}
-					],
-					sharedNotes: [],
-					fingerprint: fingerprint(baseMetadata)
-				}
-			]
-		} satisfies Record<string, unknown>;
+		await db
+			.insert(table.agent)
+			.values({
+				id: 'agent-1',
+				keyHash: hashKey('secret-key'),
+				metadata: JSON.stringify(baseMetadata),
+				status: 'online',
+				connectedAt,
+				lastSeen,
+				metrics: JSON.stringify({ memoryBytes: 42 }),
+				config: JSON.stringify({
+					pollIntervalMs: -10,
+					maxBackoffMs: 1000,
+					jitterRatio: 5
+				}),
+				fingerprint: fingerprint(baseMetadata),
+				createdAt: connectedAt,
+				updatedAt: connectedAt
+			})
+			.run();
 
-		writeFileSync(storagePath, JSON.stringify(persisted, null, 2), 'utf-8');
+		await db
+			.insert(table.agentCommand)
+			.values({
+				id: 'cmd-1',
+				agentId: 'agent-1',
+				name: 'ping',
+				payload: JSON.stringify({}),
+				createdAt: connectedAt
+			})
+			.run();
 
-		const registry = new AgentRegistry({ storagePath });
+		await db
+			.insert(table.agentResult)
+                        .values({
+                                agentId: 'agent-1',
+                                commandId: 'cmd-1',
+                                success: true,
+				output: 'ok',
+				error: null,
+				completedAt: lastSeen,
+				createdAt: lastSeen
+			})
+			.run();
+
+		const registry = new AgentRegistry();
 
 		const snapshot = registry.getAgent('agent-1');
 		expect(snapshot.status).toBe('offline');
@@ -112,19 +117,15 @@ describe('AgentRegistry persistence hygiene', () => {
 
 		await registry.flush();
 
-		const upgradedRaw = readFileSync(storagePath, 'utf-8');
-		const upgraded = JSON.parse(upgradedRaw) as {
-			version: number;
-			agents: Array<{ keyHash?: string; key?: string }>;
-		};
-		expect(upgraded.version).toBe(2);
-		expect(upgraded.agents[0]?.keyHash).toBe(hashKey('secret-key'));
-		expect(upgraded.agents[0]?.key).toBeUndefined();
+		const persistedAgents = db.select().from(table.agent).all();
+		expect(persistedAgents).toHaveLength(1);
+		expect(persistedAgents[0]?.keyHash).toBe(hashKey('secret-key'));
+		const persistedCommands = db.select().from(table.agentCommand).all();
+		expect(persistedCommands).toHaveLength(0);
 	});
 
 	it('deduplicates recent results and protects registry snapshots from mutation', async () => {
-		const storagePath = path.join(tempDir, 'registry.json');
-		const registry = new AgentRegistry({ storagePath });
+		const registry = new AgentRegistry();
 		const registration = registry.registerAgent({ metadata: baseMetadata });
 
 		const start = Date.now();
@@ -192,22 +193,13 @@ describe('AgentRegistry persistence hygiene', () => {
 
 		await registry.flush();
 
-		const persistedRaw = readFileSync(storagePath, 'utf-8');
-		const persisted = JSON.parse(persistedRaw) as {
-			version: number;
-			agents: Array<{ keyHash?: string; key?: string }>;
-		};
-		expect(persisted.version).toBe(2);
-		const storedKeyHash = persisted.agents[0]?.keyHash;
-		expect(storedKeyHash).toBeDefined();
-		if (storedKeyHash) {
-			expect(storedKeyHash).toBe(hashKey(registration.agentKey));
-		}
+		const persistedAgents = db.select().from(table.agent).all();
+		expect(persistedAgents).toHaveLength(1);
+		expect(persistedAgents[0]?.keyHash).toBe(hashKey(registration.agentKey));
 	});
 
 	it('caps pending command queues and drops oldest entries when full', () => {
-		const storagePath = path.join(tempDir, 'queue-limit.json');
-		const registry = new AgentRegistry({ storagePath });
+		const registry = new AgentRegistry();
 		const registration = registry.registerAgent({ metadata: baseMetadata });
 
 		const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
@@ -231,8 +223,7 @@ describe('AgentRegistry persistence hygiene', () => {
 	});
 
 	it('requires hashed agent keys for attach and sync flows', async () => {
-		const storagePath = path.join(tempDir, 'attach.json');
-		const registry = new AgentRegistry({ storagePath });
+		const registry = new AgentRegistry();
 		const registration = registry.registerAgent({ metadata: baseMetadata });
 
 		const makeSocket = () =>
@@ -271,10 +262,123 @@ describe('AgentRegistry persistence hygiene', () => {
 
 		await registry.flush();
 
-		const persistedRaw = readFileSync(storagePath, 'utf-8');
-		const persisted = JSON.parse(persistedRaw) as {
-			agents: Array<{ keyHash?: string }>;
-		};
-		expect(persisted.agents[0]?.keyHash).toBe(hashKey(registration.agentKey));
+		const persistedAgents = db.select().from(table.agent).all();
+		expect(persistedAgents[0]?.keyHash).toBe(hashKey(registration.agentKey));
+	});
+
+	it('broadcasts registry and activity events to subscribers', () => {
+		const registry = new AgentRegistry();
+		const events: RegistryBroadcast[] = [];
+		const unsubscribe = registry.subscribe((event) => {
+			events.push(event);
+		});
+
+		try {
+			const registration = registry.registerAgent({ metadata: baseMetadata });
+			expect(events.at(-1)).toMatchObject({ type: 'agents:snapshot' });
+
+			events.length = 0;
+			const command = registry.queueCommand(registration.agentId, { name: 'ping', payload: {} });
+			expect(events.some((event) => event.type === 'agent:command-queued')).toBe(true);
+			expect(events.some((event) => event.type === 'agents:snapshot')).toBe(true);
+
+			events.length = 0;
+			registry.syncSharedNotes(registration.agentId, registration.agentKey, [
+				{
+					id: 'note-1',
+					visibility: 'shared',
+					ciphertext: 'cipher',
+					nonce: 'nonce',
+					digest: 'digest',
+					version: 1,
+					updatedAt: new Date().toISOString()
+				}
+			]);
+			expect(events).toContainEqual(
+				expect.objectContaining({ type: 'agent:notes', agentId: registration.agentId })
+			);
+
+			events.length = 0;
+			registry.syncAgent(registration.agentId, registration.agentKey, {
+				status: 'online',
+				timestamp: new Date().toISOString(),
+				results: [
+					{
+						commandId: command.command.id,
+						success: true,
+						completedAt: new Date().toISOString()
+					}
+				]
+			});
+
+			expect(events.some((event) => event.type === 'agent:command-results')).toBe(true);
+			expect(events.some((event) => event.type === 'agents:snapshot')).toBe(true);
+		} finally {
+			unsubscribe();
+		}
+	});
+
+	it('persists interleaved mutations without losing state', async () => {
+		const registry = new AgentRegistry();
+		const registration = registry.registerAgent({ metadata: baseMetadata });
+
+		let queuedCommandId: string | null = null;
+
+		await Promise.all([
+			new Promise<void>((resolve) => {
+				setTimeout(() => {
+					const result = registry.queueCommand(registration.agentId, { name: 'ping', payload: {} });
+					queuedCommandId = result.command.id;
+					resolve();
+				}, 0);
+			}),
+			new Promise<void>((resolve) => {
+				setTimeout(() => {
+					registry.updateAgentTags(registration.agentId, ['team']);
+					resolve();
+				}, 5);
+			}),
+			new Promise<void>((resolve) => {
+				setTimeout(() => {
+					registry.syncAgent(registration.agentId, registration.agentKey, {
+						status: 'online',
+						timestamp: new Date().toISOString(),
+						results: queuedCommandId
+							? [
+									{
+										commandId: queuedCommandId,
+										success: true,
+										completedAt: new Date().toISOString()
+									}
+								]
+							: []
+					});
+					resolve();
+				}, 10);
+			})
+		]);
+
+		expect(queuedCommandId).not.toBeNull();
+
+		await registry.flush();
+
+		const snapshot = registry.getAgent(registration.agentId);
+		expect(snapshot.metadata.tags).toEqual(['team']);
+		expect(snapshot.status).toBe('online');
+		expect(snapshot.pendingCommands).toBe(0);
+		if (queuedCommandId) {
+			expect(snapshot.recentResults[0]?.commandId).toBe(queuedCommandId);
+		}
+
+		const persistedAgents = db.select().from(table.agent).all();
+		expect(persistedAgents).toHaveLength(1);
+		const persisted = persistedAgents[0];
+		expect(persisted?.status).toBe('online');
+		if (persisted?.metadata) {
+			const storedMetadata = JSON.parse(persisted.metadata as string) as AgentSnapshot['metadata'];
+			expect(storedMetadata.tags).toEqual(['team']);
+		}
+		const queuedCommands = db.select().from(table.agentCommand).all();
+		expect(queuedCommands).toHaveLength(0);
 	});
 });

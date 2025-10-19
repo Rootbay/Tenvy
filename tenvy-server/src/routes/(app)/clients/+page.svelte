@@ -92,6 +92,11 @@
 		clientsTable.setAgents(data.agents ?? []);
 	});
 
+	if (browser) {
+		const disconnectEvents = clientsTable.connectToEvents();
+		onDestroy(disconnectEvents);
+	}
+
 	const perPageOptions = [10, 25, 50];
 
 	let toolDialog = $state<{ agentId: string; toolId: DialogToolId } | null>(null);

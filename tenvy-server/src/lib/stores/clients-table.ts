@@ -151,6 +151,61 @@ function dedupeAgents(agents: AgentSnapshot[]): AgentSnapshot[] {
 	return result;
 }
 
+function canonicalize(value: unknown): unknown {
+	if (Array.isArray(value)) {
+		return value.map(canonicalize);
+	}
+	if (value && typeof value === 'object') {
+		const entries = Object.entries(value as Record<string, unknown>).sort(([a], [b]) =>
+			a.localeCompare(b)
+		);
+		const normalized: Record<string, unknown> = {};
+		for (const [key, entryValue] of entries) {
+			normalized[key] = canonicalize(entryValue);
+		}
+		return normalized;
+	}
+	return value;
+}
+
+function agentsEqual(a: AgentSnapshot, b: AgentSnapshot): boolean {
+	if (a === b) {
+		return true;
+	}
+	if (a.id !== b.id) {
+		return false;
+	}
+	return JSON.stringify(canonicalize(a)) === JSON.stringify(canonicalize(b));
+}
+
+function cloneAgent(agent: AgentSnapshot): AgentSnapshot {
+	if (typeof globalThis.structuredClone === 'function') {
+		return globalThis.structuredClone(agent);
+	}
+	return JSON.parse(JSON.stringify(agent)) as AgentSnapshot;
+}
+
+function mergeSnapshots(
+	current: AgentSnapshot[],
+	incoming: AgentSnapshot[]
+): { merged: AgentSnapshot[]; changed: boolean } {
+	const currentById = new Map(current.map((agent) => [agent.id, agent]));
+	const merged: AgentSnapshot[] = [];
+	let changed = current.length !== incoming.length;
+
+	for (const agent of incoming) {
+		const existing = currentById.get(agent.id);
+		if (existing && agentsEqual(existing, agent)) {
+			merged.push(existing);
+		} else {
+			merged.push(cloneAgent(agent));
+			changed = true;
+		}
+	}
+
+	return { merged, changed };
+}
+
 export type ClientsTableStore = ReturnType<typeof createClientsTableStore>;
 
 export function createClientsTableStore(initialAgents: AgentSnapshot[]): {
@@ -166,6 +221,7 @@ export function createClientsTableStore(initialAgents: AgentSnapshot[]): {
 	goToPage: (page: number) => void;
 	nextPage: () => void;
 	previousPage: () => void;
+	connectToEvents: (url?: string) => () => void;
 } {
 	const agents = writable(dedupeAgents(initialAgents ?? []));
 	const searchQuery = writable('');
@@ -173,6 +229,14 @@ export function createClientsTableStore(initialAgents: AgentSnapshot[]): {
 	const tagFilter = writable<TagFilter>('all');
 	const perPage = writable(10);
 	const currentPage = writable(1);
+
+	const applySnapshot = (snapshot: AgentSnapshot[]) => {
+		const normalized = dedupeAgents(snapshot ?? []);
+		agents.update((current) => {
+			const { merged, changed } = mergeSnapshots(current, normalized);
+			return changed ? merged : current;
+		});
+	};
 
 	derived([searchQuery, statusFilter, tagFilter, perPage], () => {
 		currentPage.set(1);
@@ -224,7 +288,7 @@ export function createClientsTableStore(initialAgents: AgentSnapshot[]): {
 
 	return {
 		subscribe: state.subscribe,
-		setAgents: (nextAgents) => agents.set(dedupeAgents(nextAgents ?? [])),
+		setAgents: (nextAgents) => applySnapshot(nextAgents ?? []),
 		setSearchQuery: (value) => searchQuery.set(value),
 		setStatusFilter: (value) => statusFilter.set(value),
 		setTagFilter: (value) => tagFilter.set(value),
@@ -237,6 +301,40 @@ export function createClientsTableStore(initialAgents: AgentSnapshot[]): {
 		previousPage: () => {
 			const { currentPage: page } = get(state);
 			currentPage.set(Math.max(1, page - 1));
+		},
+		connectToEvents: (url = '/api/agents/events') => {
+			if (typeof window === 'undefined') {
+				return () => {};
+			}
+
+			let source: EventSource | null = new EventSource(url);
+
+			const handleSnapshot = (event: MessageEvent) => {
+				try {
+					const payload = JSON.parse(event.data as string) as {
+						agents?: AgentSnapshot[];
+					};
+					if (Array.isArray(payload.agents)) {
+						applySnapshot(payload.agents);
+					}
+				} catch (error) {
+					console.error('Failed to process agent snapshot event', error);
+				}
+			};
+
+			source.addEventListener('agents:snapshot', handleSnapshot as EventListener);
+			source.onerror = (error) => {
+				console.warn('Agent event stream encountered an error', error);
+			};
+
+			return () => {
+				if (!source) {
+					return;
+				}
+				source.removeEventListener('agents:snapshot', handleSnapshot as EventListener);
+				source.close();
+				source = null;
+			};
 		}
 	};
 }

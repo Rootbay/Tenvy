@@ -81,6 +81,53 @@ CREATE TABLE IF NOT EXISTS plugin (
         created_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now')),
         updated_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now'))
 );
+
+CREATE TABLE IF NOT EXISTS agent (
+        id TEXT PRIMARY KEY NOT NULL,
+        key_hash TEXT NOT NULL,
+        metadata TEXT NOT NULL,
+        status TEXT NOT NULL,
+        connected_at INTEGER NOT NULL,
+        last_seen INTEGER NOT NULL,
+        metrics TEXT,
+        config TEXT NOT NULL,
+        fingerprint TEXT NOT NULL,
+        created_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now')),
+        updated_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now'))
+);
+CREATE UNIQUE INDEX IF NOT EXISTS agent_fingerprint_idx ON agent (fingerprint);
+
+CREATE TABLE IF NOT EXISTS agent_note (
+        id TEXT PRIMARY KEY NOT NULL,
+        agent_id TEXT NOT NULL,
+        ciphertext TEXT NOT NULL,
+        nonce TEXT NOT NULL,
+        digest TEXT NOT NULL,
+        version INTEGER NOT NULL DEFAULT 1,
+        updated_at INTEGER NOT NULL,
+        FOREIGN KEY (agent_id) REFERENCES agent(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS agent_command (
+        id TEXT PRIMARY KEY NOT NULL,
+        agent_id TEXT NOT NULL,
+        name TEXT NOT NULL,
+        payload TEXT NOT NULL,
+        created_at INTEGER NOT NULL,
+        FOREIGN KEY (agent_id) REFERENCES agent(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS agent_result (
+        agent_id TEXT NOT NULL,
+        command_id TEXT NOT NULL,
+        success INTEGER NOT NULL,
+        output TEXT,
+        error TEXT,
+        completed_at INTEGER NOT NULL,
+        created_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now')),
+        PRIMARY KEY (agent_id, command_id),
+        FOREIGN KEY (agent_id) REFERENCES agent(id) ON DELETE CASCADE
+);
 COMMIT;`
 );
 
@@ -95,3 +142,4 @@ const ensureColumn = (table: string, column: string, ddl: string) => {
 ensureColumn('passkey', 'last_used_at', 'last_used_at INTEGER');
 
 export const db = drizzle(client, { schema });
+export type DatabaseClient = typeof db;

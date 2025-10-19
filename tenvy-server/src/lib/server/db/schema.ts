@@ -1,4 +1,4 @@
-import { sqliteTable, integer, text, uniqueIndex } from 'drizzle-orm/sqlite-core';
+import { sqliteTable, integer, text, uniqueIndex, primaryKey } from 'drizzle-orm/sqlite-core';
 
 const timestamp = (
 	name: string,
@@ -104,3 +104,68 @@ export type Passkey = typeof passkey.$inferSelect;
 
 export type RecoveryCode = typeof recoveryCode.$inferSelect;
 export type Plugin = typeof plugin.$inferSelect;
+
+export const agent = sqliteTable(
+	'agent',
+	{
+		id: text('id').primaryKey(),
+		keyHash: text('key_hash').notNull(),
+		metadata: text('metadata', { mode: 'json' }).notNull(),
+		status: text('status').notNull(),
+		connectedAt: timestamp('connected_at', { defaultNow: true }),
+		lastSeen: timestamp('last_seen', { defaultNow: true }),
+		metrics: text('metrics', { mode: 'json' }),
+		config: text('config', { mode: 'json' }).notNull(),
+		fingerprint: text('fingerprint').notNull(),
+		createdAt: timestamp('created_at', { defaultNow: true }),
+		updatedAt: timestamp('updated_at', { defaultNow: true })
+	},
+	(table) => ({
+		fingerprintIdx: uniqueIndex('agent_fingerprint_idx').on(table.fingerprint)
+	})
+);
+
+export const agentNote = sqliteTable('agent_note', {
+	id: text('id').primaryKey(),
+	agentId: text('agent_id')
+		.notNull()
+		.references(() => agent.id, { onDelete: 'cascade' }),
+	ciphertext: text('ciphertext').notNull(),
+	nonce: text('nonce').notNull(),
+	digest: text('digest').notNull(),
+	version: integer('version').notNull().default(1),
+	updatedAt: timestamp('updated_at', { defaultNow: true })
+});
+
+export const agentCommand = sqliteTable('agent_command', {
+	id: text('id').primaryKey(),
+	agentId: text('agent_id')
+		.notNull()
+		.references(() => agent.id, { onDelete: 'cascade' }),
+	name: text('name').notNull(),
+	payload: text('payload', { mode: 'json' }).notNull(),
+	createdAt: timestamp('created_at', { defaultNow: true })
+});
+
+export const agentResult = sqliteTable(
+       'agent_result',
+       {
+               agentId: text('agent_id')
+                       .notNull()
+                       .references(() => agent.id, { onDelete: 'cascade' }),
+               commandId: text('command_id').notNull(),
+               success: integer('success', { mode: 'boolean' }).notNull(),
+               output: text('output'),
+               error: text('error'),
+               completedAt: timestamp('completed_at', { defaultNow: true }),
+               createdAt: timestamp('created_at', { defaultNow: true })
+       },
+       (table) => ({
+               pk: primaryKey(table.agentId, table.commandId)
+       })
+);
+
+export type Agent = typeof agent.$inferSelect;
+export type AgentNote = typeof agentNote.$inferSelect;
+export type AgentCommand = typeof agentCommand.$inferSelect;
+export type AgentResult = typeof agentResult.$inferSelect;
