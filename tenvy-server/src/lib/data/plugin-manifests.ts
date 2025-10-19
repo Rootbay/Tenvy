@@ -1,7 +1,6 @@
 import { env } from '$env/dynamic/private';
 import { readdir, readFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import type { PluginManifest } from '../../../../shared/types/plugin-manifest.js';
 import { validatePluginManifest } from '../../../../shared/types/plugin-manifest.js';
 
@@ -10,8 +9,7 @@ export interface LoadedPluginManifest {
 	manifest: PluginManifest;
 }
 
-const moduleDirectory = fileURLToPath(new URL('.', import.meta.url));
-const defaultManifestDirectory = resolve(moduleDirectory, '../../../resources/plugin-manifests');
+const defaultManifestDirectory = resolve(process.cwd(), 'resources/plugin-manifests');
 
 const isJsonFile = (entryName: string): boolean => entryName.toLowerCase().endsWith('.json');
 

@@ -78,8 +78,8 @@ CREATE TABLE IF NOT EXISTS plugin (
         last_auto_sync_at INTEGER,
         last_deployed_at INTEGER,
         last_checked_at INTEGER,
-        created_at INTEGER NOT NULL,
-        updated_at INTEGER NOT NULL
+        created_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now')),
+        updated_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now'))
 );
 COMMIT;`
 );
