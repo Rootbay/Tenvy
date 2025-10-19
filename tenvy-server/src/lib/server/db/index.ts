@@ -25,6 +25,7 @@ CREATE TABLE IF NOT EXISTS user (
         id TEXT PRIMARY KEY NOT NULL,
         created_at INTEGER NOT NULL,
         voucher_id TEXT NOT NULL,
+        role TEXT NOT NULL DEFAULT 'operator',
         passkey_registered INTEGER NOT NULL DEFAULT 0,
         current_challenge TEXT,
         challenge_type TEXT,
@@ -129,6 +130,21 @@ CREATE TABLE IF NOT EXISTS agent_result (
         FOREIGN KEY (agent_id) REFERENCES agent(id) ON DELETE CASCADE
 );
 CREATE UNIQUE INDEX IF NOT EXISTS agent_result_command_idx ON agent_result (agent_id, command_id);
+
+CREATE TABLE IF NOT EXISTS audit_event (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        command_id TEXT NOT NULL,
+        agent_id TEXT NOT NULL,
+        operator_id TEXT,
+        command_name TEXT NOT NULL,
+        payload_hash TEXT NOT NULL,
+        queued_at INTEGER NOT NULL,
+        executed_at INTEGER,
+        result TEXT,
+        FOREIGN KEY (operator_id) REFERENCES user(id) ON DELETE SET NULL
+);
+CREATE UNIQUE INDEX IF NOT EXISTS audit_event_command_idx ON audit_event (command_id);
+CREATE INDEX IF NOT EXISTS audit_event_agent_idx ON audit_event (agent_id);
 COMMIT;`
 );
 
@@ -141,5 +157,6 @@ const ensureColumn = (table: string, column: string, ddl: string) => {
 };
 
 ensureColumn('passkey', 'last_used_at', 'last_used_at INTEGER');
+ensureColumn('user', 'role', "role TEXT NOT NULL DEFAULT 'operator'");
 
 export const db = drizzle(client, { schema });

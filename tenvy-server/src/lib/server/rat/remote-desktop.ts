@@ -1,19 +1,19 @@
 import { randomUUID } from 'crypto';
 import type {
-        RemoteDesktopEncoder,
-        RemoteDesktopFrameMetrics,
-        RemoteDesktopFramePacket,
-        RemoteDesktopInputBurst,
-        RemoteDesktopInputEvent,
-        RemoteDesktopMonitor,
-        RemoteDesktopSessionNegotiationRequest,
-        RemoteDesktopSessionNegotiationResponse,
-        RemoteDesktopSessionState,
-        RemoteDesktopSettings,
-        RemoteDesktopSettingsPatch,
-        RemoteDesktopTransport,
-        RemoteDesktopTransportCapability,
-        RemoteDesktopWebRTCICEServer
+	RemoteDesktopEncoder,
+	RemoteDesktopFrameMetrics,
+	RemoteDesktopFramePacket,
+	RemoteDesktopInputBurst,
+	RemoteDesktopInputEvent,
+	RemoteDesktopMonitor,
+	RemoteDesktopSessionNegotiationRequest,
+	RemoteDesktopSessionNegotiationResponse,
+	RemoteDesktopSessionState,
+	RemoteDesktopSettings,
+	RemoteDesktopSettingsPatch,
+	RemoteDesktopTransport,
+	RemoteDesktopTransportCapability,
+	RemoteDesktopWebRTCICEServer
 } from '$lib/types/remote-desktop';
 import { registry } from './store';
 
@@ -37,7 +37,7 @@ const defaultSettings: RemoteDesktopSettings = Object.freeze({
 });
 
 const defaultMonitors: readonly RemoteDesktopMonitor[] = Object.freeze([
-        { id: 0, label: 'Primary', width: 1280, height: 720 }
+	{ id: 0, label: 'Primary', width: 1280, height: 720 }
 ]);
 
 const qualities = new Set<RemoteDesktopSettings['quality']>(['auto', 'high', 'medium', 'low']);
@@ -49,123 +49,123 @@ const preferredCodecs: RemoteDesktopEncoder[] = ['hevc', 'avc', 'jpeg'];
 const configuredIceServers = parseConfiguredIceServers();
 
 function parseConfiguredIceServers(): RemoteDesktopWebRTCICEServer[] {
-        const raw = process.env.TENVY_REMOTE_DESKTOP_ICE_SERVERS;
-        if (!raw) {
-                return [];
-        }
+	const raw = process.env.TENVY_REMOTE_DESKTOP_ICE_SERVERS;
+	if (!raw) {
+		return [];
+	}
 
-        try {
-                const parsed = JSON.parse(raw) as RemoteDesktopWebRTCICEServer[];
-                const normalized = normalizeIceServers(parsed);
-                if (normalized.length === 0) {
-                        return [];
-                }
-                return Object.freeze(cloneIceServers(normalized));
-        } catch (err) {
-                console.warn('Failed to parse remote desktop ICE server configuration', err);
-                return [];
-        }
+	try {
+		const parsed = JSON.parse(raw) as RemoteDesktopWebRTCICEServer[];
+		const normalized = normalizeIceServers(parsed);
+		if (normalized.length === 0) {
+			return [];
+		}
+		return Object.freeze(cloneIceServers(normalized));
+	} catch (err) {
+		console.warn('Failed to parse remote desktop ICE server configuration', err);
+		return [];
+	}
 }
 
 function normalizeIceServers(
-        servers?: RemoteDesktopWebRTCICEServer[] | null
+	servers?: RemoteDesktopWebRTCICEServer[] | null
 ): RemoteDesktopWebRTCICEServer[] {
-        if (!servers || servers.length === 0) {
-                return [];
-        }
+	if (!servers || servers.length === 0) {
+		return [];
+	}
 
-        const normalized: RemoteDesktopWebRTCICEServer[] = [];
-        for (const server of servers) {
-                if (!server) continue;
+	const normalized: RemoteDesktopWebRTCICEServer[] = [];
+	for (const server of servers) {
+		if (!server) continue;
 
-                const urls = Array.isArray(server.urls)
-                        ? server.urls
-                        : typeof (server as { urls?: unknown }).urls === 'string'
-                          ? [(server as { urls: string }).urls]
-                          : [];
+		const urls = Array.isArray(server.urls)
+			? server.urls
+			: typeof (server as { urls?: unknown }).urls === 'string'
+				? [(server as { urls: string }).urls]
+				: [];
 
-                const cleaned = urls
-                        .map((url) => (typeof url === 'string' ? url.trim() : ''))
-                        .filter((url) => url.length > 0);
+		const cleaned = urls
+			.map((url) => (typeof url === 'string' ? url.trim() : ''))
+			.filter((url) => url.length > 0);
 
-                if (cleaned.length === 0) {
-                        continue;
-                }
+		if (cleaned.length === 0) {
+			continue;
+		}
 
-                const entry: RemoteDesktopWebRTCICEServer = { urls: cleaned };
+		const entry: RemoteDesktopWebRTCICEServer = { urls: cleaned };
 
-                if (typeof server.username === 'string' && server.username.trim() !== '') {
-                        entry.username = server.username.trim();
-                }
-                if (typeof server.credential === 'string' && server.credential.trim() !== '') {
-                        entry.credential = server.credential.trim();
-                }
+		if (typeof server.username === 'string' && server.username.trim() !== '') {
+			entry.username = server.username.trim();
+		}
+		if (typeof server.credential === 'string' && server.credential.trim() !== '') {
+			entry.credential = server.credential.trim();
+		}
 
-                const credentialType =
-                        typeof server.credentialType === 'string'
-                                ? server.credentialType.trim().toLowerCase()
-                                : undefined;
-                if (credentialType === 'oauth') {
-                        entry.credentialType = 'oauth';
-                } else if (credentialType === 'password' || entry.credential) {
-                        if (entry.credential) {
-                                entry.credentialType = 'password';
-                        }
-                }
+		const credentialType =
+			typeof server.credentialType === 'string'
+				? server.credentialType.trim().toLowerCase()
+				: undefined;
+		if (credentialType === 'oauth') {
+			entry.credentialType = 'oauth';
+		} else if (credentialType === 'password' || entry.credential) {
+			if (entry.credential) {
+				entry.credentialType = 'password';
+			}
+		}
 
-                normalized.push(entry);
-        }
+		normalized.push(entry);
+	}
 
-        return normalized;
+	return normalized;
 }
 
 function cloneIceServer(server: RemoteDesktopWebRTCICEServer): RemoteDesktopWebRTCICEServer {
-        const cloned: RemoteDesktopWebRTCICEServer = { urls: [...server.urls] };
-        if (server.username) {
-                        cloned.username = server.username;
-        }
-        if (server.credential) {
-                        cloned.credential = server.credential;
-        }
-        if (server.credentialType) {
-                        cloned.credentialType = server.credentialType;
-        }
-        return cloned;
+	const cloned: RemoteDesktopWebRTCICEServer = { urls: [...server.urls] };
+	if (server.username) {
+		cloned.username = server.username;
+	}
+	if (server.credential) {
+		cloned.credential = server.credential;
+	}
+	if (server.credentialType) {
+		cloned.credentialType = server.credentialType;
+	}
+	return cloned;
 }
 
 function cloneIceServers(servers: RemoteDesktopWebRTCICEServer[]): RemoteDesktopWebRTCICEServer[] {
-        return servers.map((server) => cloneIceServer(server));
+	return servers.map((server) => cloneIceServer(server));
 }
 
 function resolveIceServers(
-        requested?: RemoteDesktopWebRTCICEServer[] | null
+	requested?: RemoteDesktopWebRTCICEServer[] | null
 ): RemoteDesktopWebRTCICEServer[] {
-        const normalized = normalizeIceServers(requested);
-        if (normalized.length > 0) {
-                return cloneIceServers(normalized);
-        }
-        return cloneIceServers(configuredIceServers);
+	const normalized = normalizeIceServers(requested);
+	if (normalized.length > 0) {
+		return cloneIceServers(normalized);
+	}
+	return cloneIceServers(configuredIceServers);
 }
 
 function toRtcIceServers(servers: RemoteDesktopWebRTCICEServer[]): RTCIceServer[] {
-        return servers.map((server) => {
-                const entry: RTCIceServer = { urls: [...server.urls] };
-                if (server.username) {
-                        entry.username = server.username;
-                }
-                if (server.credential) {
-                        entry.credential = server.credential;
-                }
-                const type = server.credentialType?.toLowerCase();
-                if (type === 'oauth') {
-                        entry.credentialType = 'oauth';
-                } else if (type === 'password' || (!type && server.credential)) {
-                        if (entry.credential) {
-                                entry.credentialType = 'password';
-                        }
-                }
-                return entry;
-        });
+	return servers.map((server) => {
+		const entry: RTCIceServer = { urls: [...server.urls] };
+		if (server.username) {
+			entry.username = server.username;
+		}
+		if (server.credential) {
+			entry.credential = server.credential;
+		}
+		const type = server.credentialType?.toLowerCase();
+		if (type === 'oauth') {
+			entry.credentialType = 'oauth';
+		} else if (type === 'password' || (!type && server.credential)) {
+			if (entry.credential) {
+				entry.credentialType = 'password';
+			}
+		}
+		return entry;
+	});
 }
 
 class RemoteDesktopError extends Error {
@@ -699,13 +699,13 @@ export class RemoteDesktopManager {
 			throw new RemoteDesktopError('No supported transports offered', 400);
 		}
 
-                let selectedTransport: RemoteDesktopTransport = 'http';
-                let selectedCodec: RemoteDesktopEncoder | null = null;
-                let intraRefresh = false;
-                let answer: string | undefined;
-                let reason: string | undefined;
-                let handle: RemoteDesktopTransportHandle | null = null;
-                let negotiationIceServers: RemoteDesktopWebRTCICEServer[] = [];
+		let selectedTransport: RemoteDesktopTransport = 'http';
+		let selectedCodec: RemoteDesktopEncoder | null = null;
+		let intraRefresh = false;
+		let answer: string | undefined;
+		let reason: string | undefined;
+		let handle: RemoteDesktopTransportHandle | null = null;
+		let negotiationIceServers: RemoteDesktopWebRTCICEServer[] = [];
 
 		const webrtcCapability = capabilities.find(
 			(cap) => cap.transport === 'webrtc' && request.webrtc?.offer
@@ -715,14 +715,14 @@ export class RemoteDesktopManager {
 			if (codec) {
 				try {
 					const enableIntra = supportsIntraRefresh(webrtcCapability, request.intraRefresh);
-                                        const result = await this.establishWebRTCTransport(agentId, record, request.webrtc!);
-                                        handle = result.handle;
-                                        answer = result.answer;
-                                        negotiationIceServers = result.iceServers;
-                                        selectedTransport = 'webrtc';
-                                        selectedCodec = codec;
-                                        intraRefresh = enableIntra;
-                                } catch (err) {
+					const result = await this.establishWebRTCTransport(agentId, record, request.webrtc!);
+					handle = result.handle;
+					answer = result.answer;
+					negotiationIceServers = result.iceServers;
+					selectedTransport = 'webrtc';
+					selectedCodec = codec;
+					intraRefresh = enableIntra;
+				} catch (err) {
 					reason = err instanceof Error ? err.message : 'Failed to establish WebRTC transport';
 				}
 			} else {
@@ -755,14 +755,15 @@ export class RemoteDesktopManager {
 			codec: selectedCodec ?? undefined,
 			intraRefresh
 		};
-                if (answer) {
-                        const responseIce = negotiationIceServers.length > 0 ? cloneIceServers(negotiationIceServers) : undefined;
-                        response.webrtc = {
-                                answer,
-                                dataChannel: request.webrtc?.dataChannel,
-                                iceServers: responseIce
-                        };
-                }
+		if (answer) {
+			const responseIce =
+				negotiationIceServers.length > 0 ? cloneIceServers(negotiationIceServers) : undefined;
+			response.webrtc = {
+				answer,
+				dataChannel: request.webrtc?.dataChannel,
+				iceServers: responseIce
+			};
+		}
 		if (reason && selectedTransport !== 'webrtc') {
 			response.reason = reason;
 		}
@@ -1039,17 +1040,21 @@ export class RemoteDesktopManager {
 		return next;
 	}
 
-        private async establishWebRTCTransport(
-                agentId: string,
-                record: RemoteDesktopSessionRecord,
-                params: NonNullable<RemoteDesktopSessionNegotiationRequest['webrtc']>
-        ): Promise<{ handle: RemoteDesktopTransportHandle; answer: string; iceServers: RemoteDesktopWebRTCICEServer[] }> {
-                const { RTCPeerConnection } = (await import('@koush/wrtc')) as typeof import('@koush/wrtc');
-                const iceServers = resolveIceServers(params.iceServers);
-                const configuration = { iceServers: toRtcIceServers(iceServers) };
-                const pc: RTCPeerConnection = new RTCPeerConnection(configuration);
-                let channel: RTCDataChannel | null = null;
-                let handle: RemoteDesktopTransportHandle | null = null;
+	private async establishWebRTCTransport(
+		agentId: string,
+		record: RemoteDesktopSessionRecord,
+		params: NonNullable<RemoteDesktopSessionNegotiationRequest['webrtc']>
+	): Promise<{
+		handle: RemoteDesktopTransportHandle;
+		answer: string;
+		iceServers: RemoteDesktopWebRTCICEServer[];
+	}> {
+		const { RTCPeerConnection } = (await import('@koush/wrtc')) as typeof import('@koush/wrtc');
+		const iceServers = resolveIceServers(params.iceServers);
+		const configuration = { iceServers: toRtcIceServers(iceServers) };
+		const pc: RTCPeerConnection = new RTCPeerConnection(configuration);
+		let channel: RTCDataChannel | null = null;
+		let handle: RemoteDesktopTransportHandle | null = null;
 
 		const offerSdp = decodeBase64(params.offer ?? '');
 		if (!offerSdp) {
@@ -1115,8 +1120,8 @@ export class RemoteDesktopManager {
 
 		handle = transportHandle;
 
-                return { handle: transportHandle, answer: encodeBase64(local.sdp), iceServers };
-        }
+		return { handle: transportHandle, answer: encodeBase64(local.sdp), iceServers };
+	}
 
 	private handleWebRTCFrame(agentId: string, sessionId: string, data: unknown) {
 		try {

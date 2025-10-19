@@ -67,9 +67,7 @@
 						<p class="text-xs text-red-500">{fileIconError}</p>
 					{/if}
 
-					<p class="text-xs text-muted-foreground">
-						Optional. Accepted format: .ico (max 512KB).
-					</p>
+					<p class="text-xs text-muted-foreground">Optional. Accepted format: .ico (max 512KB).</p>
 				</div>
 			</div>
 

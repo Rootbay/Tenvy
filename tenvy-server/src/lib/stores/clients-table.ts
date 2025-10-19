@@ -139,28 +139,28 @@ export function buildPaginationItems(
 
 // Remove duplicates while keeping the latest snapshot for each agent id.
 function dedupeAgents(agents: AgentSnapshot[]): AgentSnapshot[] {
-        const seen = new Set<string>();
-        const result: AgentSnapshot[] = [];
-        for (let index = agents.length - 1; index >= 0; index -= 1) {
-                const agent = agents[index];
-                if (seen.has(agent.id)) {
-                        continue;
-                }
-                seen.add(agent.id);
-                result.unshift(agent);
-        }
-        return result;
+	const seen = new Set<string>();
+	const result: AgentSnapshot[] = [];
+	for (let index = agents.length - 1; index >= 0; index -= 1) {
+		const agent = agents[index];
+		if (seen.has(agent.id)) {
+			continue;
+		}
+		seen.add(agent.id);
+		result.unshift(agent);
+	}
+	return result;
 }
 
 function upsertAgent(list: AgentSnapshot[], next: AgentSnapshot): AgentSnapshot[] {
-        const clone = [...list];
-        const index = clone.findIndex((agent) => agent.id === next.id);
-        if (index === -1) {
-                clone.push(next);
-        } else {
-                clone[index] = next;
-        }
-        return clone;
+	const clone = [...list];
+	const index = clone.findIndex((agent) => agent.id === next.id);
+	if (index === -1) {
+		clone.push(next);
+	} else {
+		clone[index] = next;
+	}
+	return clone;
 }
 
 export type ClientsTableStore = ReturnType<typeof createClientsTableStore>;
@@ -192,10 +192,10 @@ export function createClientsTableStore(initialAgents: AgentSnapshot[]): {
 		// no-op subscription to keep the derived store active
 	});
 
-        const state = derived(
-                [agents, searchQuery, statusFilter, tagFilter, perPage, currentPage],
-                ([$agents, $searchQuery, $statusFilter, $tagFilter, $perPage, $currentPage]) => {
-                        const availableTags = computeAvailableTags($agents);
+	const state = derived(
+		[agents, searchQuery, statusFilter, tagFilter, perPage, currentPage],
+		([$agents, $searchQuery, $statusFilter, $tagFilter, $perPage, $currentPage]) => {
+			const availableTags = computeAvailableTags($agents);
 			const filteredAgents = filterAgents($agents, $searchQuery, $statusFilter, $tagFilter);
 
 			const totalPages =
@@ -217,11 +217,11 @@ export function createClientsTableStore(initialAgents: AgentSnapshot[]): {
 			const pageRange = computePageRange(filteredAgents.length, paginatedAgents.length, startIndex);
 			const paginationItems = buildPaginationItems(totalPages, safeCurrentPage);
 
-                        return {
-                                agents: $agents,
-                                searchQuery: $searchQuery,
-                                statusFilter: $statusFilter,
-                                tagFilter: $tagFilter,
+			return {
+				agents: $agents,
+				searchQuery: $searchQuery,
+				statusFilter: $statusFilter,
+				tagFilter: $tagFilter,
 				perPage: Math.max(1, $perPage),
 				currentPage: safeCurrentPage,
 				availableTags,
@@ -230,105 +230,105 @@ export function createClientsTableStore(initialAgents: AgentSnapshot[]): {
 				pageRange,
 				totalPages,
 				paginationItems
-                        } satisfies ClientsTableState;
-                }
-        );
+			} satisfies ClientsTableState;
+		}
+	);
 
-        let subscribers = 0;
-        let source: EventSource | null = null;
-        let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+	let subscribers = 0;
+	let source: EventSource | null = null;
+	let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 
-        const applyRegistryEvent = (event: AgentRegistryEvent) => {
-                if (!event || typeof event !== 'object') {
-                        return;
-                }
+	const applyRegistryEvent = (event: AgentRegistryEvent) => {
+		if (!event || typeof event !== 'object') {
+			return;
+		}
 
-                if (event.type === 'agents') {
-                        agents.set(dedupeAgents(event.agents ?? []));
-                        return;
-                }
+		if (event.type === 'agents') {
+			agents.set(dedupeAgents(event.agents ?? []));
+			return;
+		}
 
-                if (event.type === 'agent') {
-                        agents.update((current) => dedupeAgents(upsertAgent(current, event.agent)));
-                }
-        };
+		if (event.type === 'agent') {
+			agents.update((current) => dedupeAgents(upsertAgent(current, event.agent)));
+		}
+	};
 
-        const stopStream = () => {
-                if (reconnectTimer) {
-                        clearTimeout(reconnectTimer);
-                        reconnectTimer = null;
-                }
-                if (source) {
-                        source.onmessage = null;
-                        source.onerror = null;
-                        source.close();
-                        source = null;
-                }
-        };
+	const stopStream = () => {
+		if (reconnectTimer) {
+			clearTimeout(reconnectTimer);
+			reconnectTimer = null;
+		}
+		if (source) {
+			source.onmessage = null;
+			source.onerror = null;
+			source.close();
+			source = null;
+		}
+	};
 
-        const scheduleReconnect = () => {
-                if (reconnectTimer || subscribers === 0) {
-                        return;
-                }
-                reconnectTimer = setTimeout(() => {
-                        reconnectTimer = null;
-                        startStream();
-                }, 5_000);
-        };
+	const scheduleReconnect = () => {
+		if (reconnectTimer || subscribers === 0) {
+			return;
+		}
+		reconnectTimer = setTimeout(() => {
+			reconnectTimer = null;
+			startStream();
+		}, 5_000);
+	};
 
-        const startStream = () => {
-                if (typeof window === 'undefined' || source) {
-                        return;
-                }
+	const startStream = () => {
+		if (typeof window === 'undefined' || source) {
+			return;
+		}
 
-                stopStream();
+		stopStream();
 
-                try {
-                        source = new EventSource('/api/agents/stream');
-                } catch (error) {
-                        console.error('Failed to open agent registry stream', error);
-                        scheduleReconnect();
-                        return;
-                }
+		try {
+			source = new EventSource('/api/agents/stream');
+		} catch (error) {
+			console.error('Failed to open agent registry stream', error);
+			scheduleReconnect();
+			return;
+		}
 
-                source.onmessage = (event) => {
-                        if (!event.data) {
-                                return;
-                        }
-                        try {
-                                const parsed = JSON.parse(event.data) as AgentRegistryEvent;
-                                applyRegistryEvent(parsed);
-                        } catch (error) {
-                                console.error('Failed to parse agent registry event', error);
-                        }
-                };
+		source.onmessage = (event) => {
+			if (!event.data) {
+				return;
+			}
+			try {
+				const parsed = JSON.parse(event.data) as AgentRegistryEvent;
+				applyRegistryEvent(parsed);
+			} catch (error) {
+				console.error('Failed to parse agent registry event', error);
+			}
+		};
 
-                source.onerror = () => {
-                        stopStream();
-                        scheduleReconnect();
-                };
-        };
+		source.onerror = () => {
+			stopStream();
+			scheduleReconnect();
+		};
+	};
 
-        return {
-                subscribe: (run, invalidate) => {
-                        const unsubscribe = state.subscribe(run, invalidate);
-                        subscribers += 1;
-                        if (subscribers === 1) {
-                                startStream();
-                        }
-                        return () => {
-                                unsubscribe();
-                                subscribers = Math.max(0, subscribers - 1);
-                                if (subscribers === 0) {
-                                        stopStream();
-                                }
-                        };
-                },
-                setAgents: (nextAgents) => agents.set(dedupeAgents(nextAgents ?? [])),
-                setSearchQuery: (value) => searchQuery.set(value),
-                setStatusFilter: (value) => statusFilter.set(value),
-                setTagFilter: (value) => tagFilter.set(value),
-                setPerPage: (value) => perPage.set(Math.max(1, value)),
+	return {
+		subscribe: (run, invalidate) => {
+			const unsubscribe = state.subscribe(run, invalidate);
+			subscribers += 1;
+			if (subscribers === 1) {
+				startStream();
+			}
+			return () => {
+				unsubscribe();
+				subscribers = Math.max(0, subscribers - 1);
+				if (subscribers === 0) {
+					stopStream();
+				}
+			};
+		},
+		setAgents: (nextAgents) => agents.set(dedupeAgents(nextAgents ?? [])),
+		setSearchQuery: (value) => searchQuery.set(value),
+		setStatusFilter: (value) => statusFilter.set(value),
+		setTagFilter: (value) => tagFilter.set(value),
+		setPerPage: (value) => perPage.set(Math.max(1, value)),
 		goToPage: (page) => currentPage.set(Math.max(1, Math.trunc(page))),
 		nextPage: () => {
 			const { currentPage: page, totalPages } = get(state);

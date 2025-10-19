@@ -126,7 +126,8 @@ export const actions: Actions = {
 					.values({
 						id: userId,
 						voucherId: voucher.id,
-						createdAt: now
+						createdAt: now,
+						role: 'operator'
 					})
 					.run();
 
@@ -150,6 +151,7 @@ export const actions: Actions = {
 
 		const sanitizedUser = {
 			id: userId,
+			role: 'operator' as const,
 			passkeyRegistered: false,
 			voucherId: voucherRecord.id,
 			voucherActive: true,

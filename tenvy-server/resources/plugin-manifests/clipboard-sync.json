@@ -1,38 +1,38 @@
 {
-  "id": "clipboard-sync",
-  "name": "Clipboard Sync",
-  "version": "1.4.2",
-  "description": "Synchronize clipboard activity across operator sessions with encryption at rest.",
-  "entry": "clipboard-sync.dll",
-  "author": "Tenvy Labs",
-  "categories": ["collection"],
-  "capabilities": [
-    {
-      "name": "clipboard.capture",
-      "module": "clipboard",
-      "description": "Capture remote clipboard history and relay updates in real time."
-    },
-    {
-      "name": "clipboard.push",
-      "module": "clipboard",
-      "description": "Inject clipboard payloads into the remote workstation."
-    }
-  ],
-  "requirements": {
-    "minAgentVersion": "1.2.0",
-    "platforms": ["windows", "darwin"],
-    "requiredModules": ["clipboard"]
-  },
-  "distribution": {
-    "defaultMode": "automatic",
-    "autoUpdate": true,
-    "signature": {
-      "type": "sha256",
-      "hash": "d8b8a0fb9c8f8e3a72d88e3f7a8c6d1f1fbb83c9f6c2ddacb12e3b45f1a8bbef"
-    }
-  },
-  "package": {
-    "artifact": "clipboard-sync-1.4.2.dll",
-    "sizeBytes": 18743296
-  }
+	"id": "clipboard-sync",
+	"name": "Clipboard Sync",
+	"version": "1.4.2",
+	"description": "Synchronize clipboard activity across operator sessions with encryption at rest.",
+	"entry": "clipboard-sync.dll",
+	"author": "Tenvy Labs",
+	"categories": ["collection"],
+	"capabilities": [
+		{
+			"name": "clipboard.capture",
+			"module": "clipboard",
+			"description": "Capture remote clipboard history and relay updates in real time."
+		},
+		{
+			"name": "clipboard.push",
+			"module": "clipboard",
+			"description": "Inject clipboard payloads into the remote workstation."
+		}
+	],
+	"requirements": {
+		"minAgentVersion": "1.2.0",
+		"platforms": ["windows", "darwin"],
+		"requiredModules": ["clipboard"]
+	},
+	"distribution": {
+		"defaultMode": "automatic",
+		"autoUpdate": true,
+		"signature": {
+			"type": "sha256",
+			"hash": "d8b8a0fb9c8f8e3a72d88e3f7a8c6d1f1fbb83c9f6c2ddacb12e3b45f1a8bbef"
+		}
+	},
+	"package": {
+		"artifact": "clipboard-sync-1.4.2.dll",
+		"sizeBytes": 18743296
+	}
 }

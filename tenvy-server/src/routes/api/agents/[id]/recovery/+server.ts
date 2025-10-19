@@ -2,6 +2,7 @@ import { randomUUID } from 'crypto';
 import { json, error } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { registry, RegistryError } from '$lib/server/rat/store';
+import { requireOperator, requireViewer } from '$lib/server/authorization';
 import { listRecoveryArchives } from '$lib/server/recovery/storage';
 import type {
 	RecoveryCommandPayload,
@@ -18,21 +19,25 @@ function normalizeArchiveName(input: string | undefined | null): string {
 	return name.replace(/[^\w.-]+/g, '-');
 }
 
-export const GET: RequestHandler = async ({ params }) => {
+export const GET: RequestHandler = async ({ params, locals }) => {
 	const id = params.id;
 	if (!id) {
 		throw error(400, 'Missing agent identifier');
 	}
+
+	requireViewer(locals.user);
 
 	const archives = await listRecoveryArchives(id);
 	return json({ archives });
 };
 
-export const POST: RequestHandler = async ({ params, request }) => {
+export const POST: RequestHandler = async ({ params, request, locals }) => {
 	const id = params.id;
 	if (!id) {
 		throw error(400, 'Missing agent identifier');
 	}
+
+	const user = requireOperator(locals.user);
 
 	let payload: RecoveryRequestInput;
 	try {
@@ -55,7 +60,11 @@ export const POST: RequestHandler = async ({ params, request }) => {
 	};
 
 	try {
-		const response = registry.queueCommand(id, { name: 'recovery', payload: commandPayload });
+		const response = registry.queueCommand(
+			id,
+			{ name: 'recovery', payload: commandPayload },
+			{ operatorId: user.id }
+		);
 		return json({ requestId, commandId: response.command.id } satisfies RecoveryQueueResponse);
 	} catch (err) {
 		if (err instanceof RegistryError) {

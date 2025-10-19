@@ -109,6 +109,7 @@ export const POST: RequestHandler = async (event) => {
 	event.locals.session = session;
 	event.locals.user = {
 		id: record.user.id,
+		role: record.user.role as auth.UserRole,
 		passkeyRegistered: Boolean(record.user.passkeyRegistered),
 		voucherId: record.user.voucherId,
 		voucherActive,

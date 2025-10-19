@@ -3,156 +3,228 @@ import { eq } from 'drizzle-orm';
 import { AgentRegistry, MAX_PENDING_COMMANDS } from './store';
 import { db } from '$lib/server/db';
 import {
-        agent as agentTable,
-        agentCommand as agentCommandTable,
-        agentNote as agentNoteTable,
-        agentResult as agentResultTable
+	agent as agentTable,
+	agentCommand as agentCommandTable,
+	agentNote as agentNoteTable,
+	agentResult as agentResultTable,
+	auditEvent as auditEventTable,
+	user as userTable,
+	voucher as voucherTable
 } from '$lib/server/db/schema';
 import type { AgentRegistryEvent } from '../../../../../shared/types/registry-events';
 
 vi.mock('$env/dynamic/private', () => import('../../../../tests/mocks/env-dynamic-private'));
 
 const baseMetadata = {
-        hostname: 'persisted-host',
-        username: 'persisted-user',
-        os: 'linux',
-        architecture: 'x64'
+	hostname: 'persisted-host',
+	username: 'persisted-user',
+	os: 'linux',
+	architecture: 'x64'
 };
 
 async function clearRegistryTables() {
-        await db.delete(agentNoteTable);
-        await db.delete(agentCommandTable);
-        await db.delete(agentResultTable);
-        await db.delete(agentTable);
+	await db.delete(agentNoteTable);
+	await db.delete(agentCommandTable);
+	await db.delete(agentResultTable);
+	await db.delete(auditEventTable);
+	await db.delete(agentTable);
+	await db.delete(userTable);
+	await db.delete(voucherTable);
 }
 
 describe('AgentRegistry database integration', () => {
-        beforeEach(async () => {
-                await clearRegistryTables();
-        });
+	beforeEach(async () => {
+		await clearRegistryTables();
+	});
 
-        afterEach(async () => {
-                await clearRegistryTables();
-        });
+	afterEach(async () => {
+		await clearRegistryTables();
+	});
 
-        it('persists agent metadata, commands, notes, and results across instances', async () => {
-                const registry = new AgentRegistry();
-                const registration = registry.registerAgent({ metadata: baseMetadata });
+	it('persists agent metadata, commands, notes, and results across instances', async () => {
+		const registry = new AgentRegistry();
+		const registration = registry.registerAgent({ metadata: baseMetadata });
 
-                const queued = registry.queueCommand(registration.agentId, {
-                        name: 'ping',
-                        payload: { message: 'hello' }
-                });
+		const queued = registry.queueCommand(registration.agentId, {
+			name: 'ping',
+			payload: { message: 'hello' }
+		});
 
-                const noteTimestamp = new Date().toISOString();
-                registry.syncSharedNotes(registration.agentId, registration.agentKey, [
-                        {
-                                id: 'note-1',
-                                visibility: 'shared',
-                                ciphertext: 'ciphertext',
-                                nonce: 'nonce',
-                                digest: 'digest',
-                                version: 1,
-                                updatedAt: noteTimestamp
-                        }
-                ]);
+		const noteTimestamp = new Date().toISOString();
+		registry.syncSharedNotes(registration.agentId, registration.agentKey, [
+			{
+				id: 'note-1',
+				visibility: 'shared',
+				ciphertext: 'ciphertext',
+				nonce: 'nonce',
+				digest: 'digest',
+				version: 1,
+				updatedAt: noteTimestamp
+			}
+		]);
 
-                registry.syncAgent(registration.agentId, registration.agentKey, {
-                        status: 'online',
-                        timestamp: new Date().toISOString(),
-                        results: [
-                                {
-                                        commandId: queued.command.id,
-                                        success: true,
-                                        completedAt: new Date().toISOString(),
-                                        output: 'pong'
-                                }
-                        ]
-                });
+		registry.syncAgent(registration.agentId, registration.agentKey, {
+			status: 'online',
+			timestamp: new Date().toISOString(),
+			results: [
+				{
+					commandId: queued.command.id,
+					success: true,
+					completedAt: new Date().toISOString(),
+					output: 'pong'
+				}
+			]
+		});
 
-                await registry.flush();
+		await registry.flush();
 
-                const restored = new AgentRegistry();
-                const snapshot = restored.getAgent(registration.agentId);
+		const restored = new AgentRegistry();
+		const snapshot = restored.getAgent(registration.agentId);
 
-                expect(snapshot.metadata.hostname).toBe(baseMetadata.hostname);
-                expect(snapshot.pendingCommands).toBe(0);
-                expect(snapshot.recentResults).toHaveLength(1);
+		expect(snapshot.metadata.hostname).toBe(baseMetadata.hostname);
+		expect(snapshot.pendingCommands).toBe(0);
+		expect(snapshot.recentResults).toHaveLength(1);
 
-                const restoredNotes = restored.syncSharedNotes(registration.agentId, registration.agentKey, []);
-                expect(restoredNotes).toHaveLength(1);
-                expect(restoredNotes[0]?.id).toBe('note-1');
-        });
+		const restoredNotes = restored.syncSharedNotes(registration.agentId, registration.agentKey, []);
+		expect(restoredNotes).toHaveLength(1);
+		expect(restoredNotes[0]?.id).toBe('note-1');
+	});
 
-        it('clamps pending commands under concurrent queueing and persists trimmed snapshot', async () => {
-                const registry = new AgentRegistry();
-                const { agentId } = registry.registerAgent({ metadata: baseMetadata });
+	it('records audit events for queued and executed commands', () => {
+		const registry = new AgentRegistry();
+		const registration = registry.registerAgent({ metadata: baseMetadata });
 
-                const queueCount = MAX_PENDING_COMMANDS + 32;
-                await Promise.all(
-                        Array.from({ length: queueCount }, (_, index) =>
-                                Promise.resolve(
-                                        registry.queueCommand(agentId, {
-                                                name: 'ping',
-                                                payload: { index }
-                                        })
-                                )
-                        )
-                );
+		db.insert(voucherTable)
+			.values({ id: 'voucher-audit', codeHash: 'hash', createdAt: new Date() })
+			.run();
+		db.insert(userTable)
+			.values({
+				id: 'operator-123',
+				voucherId: 'voucher-audit',
+				role: 'operator',
+				createdAt: new Date()
+			})
+			.run();
 
-                const snapshot = registry.getAgent(agentId);
-                expect(snapshot.pendingCommands).toBe(MAX_PENDING_COMMANDS);
+		const queued = registry.queueCommand(
+			registration.agentId,
+			{
+				name: 'ping',
+				payload: { message: 'audit' }
+			},
+			{ operatorId: 'operator-123' }
+		);
 
-                await registry.flush();
-                const persistedCommands = await db
-                        .select({ id: agentCommandTable.id })
-                        .from(agentCommandTable)
-                        .where(eq(agentCommandTable.agentId, agentId));
-                expect(persistedCommands).toHaveLength(MAX_PENDING_COMMANDS);
-        });
+		const initialAudit = db
+			.select()
+			.from(auditEventTable)
+			.where(eq(auditEventTable.commandId, queued.command.id))
+			.get();
 
-        it('fans out subscription events to multiple listeners', () => {
-                const registry = new AgentRegistry();
-                const registration = registry.registerAgent({ metadata: baseMetadata });
+		expect(initialAudit).toBeTruthy();
+		expect(initialAudit?.operatorId).toBe('operator-123');
+		expect(initialAudit?.executedAt).toBeNull();
 
-                const eventsA: AgentRegistryEvent[] = [];
-                const eventsB: AgentRegistryEvent[] = [];
+		registry.syncAgent(registration.agentId, registration.agentKey, {
+			status: 'online',
+			timestamp: new Date().toISOString(),
+			results: [
+				{
+					commandId: queued.command.id,
+					success: false,
+					completedAt: new Date().toISOString(),
+					error: 'Command rejected'
+				}
+			]
+		});
 
-                const unsubscribeA = registry.subscribe((event) => {
-                        eventsA.push(event);
-                });
-                const unsubscribeB = registry.subscribe((event) => {
-                        eventsB.push(event);
-                });
+		const finalAudit = db
+			.select()
+			.from(auditEventTable)
+			.where(eq(auditEventTable.commandId, queued.command.id))
+			.get();
 
-                const queued = registry.queueCommand(registration.agentId, {
-                        name: 'ping',
-                        payload: {}
-                });
+		expect(finalAudit?.executedAt).toBeInstanceOf(Date);
+		expect(finalAudit?.result).toBeTruthy();
 
-                registry.updateAgentTags(registration.agentId, ['primary']);
-                registry.syncSharedNotes(registration.agentId, registration.agentKey, [
-                        {
-                                id: 'broadcast-note',
-                                visibility: 'shared',
-                                ciphertext: 'cipher',
-                                nonce: 'nonce',
-                                digest: 'digest',
-                                version: 1,
-                                updatedAt: new Date().toISOString()
-                        }
-                ]);
+		const parsed = finalAudit?.result ? JSON.parse(finalAudit.result) : null;
+		expect(parsed?.success).toBe(false);
+		expect(parsed?.error).toContain('Command rejected');
+	});
 
-                expect(eventsA.some((event) => event.type === 'command' && event.command.id === queued.command.id)).toBe(true);
-                expect(eventsB.some((event) => event.type === 'command' && event.command.id === queued.command.id)).toBe(true);
-                expect(eventsA.some((event) => event.type === 'agent')).toBe(true);
-                expect(eventsB.some((event) => event.type === 'notes')).toBe(true);
+	it('clamps pending commands under concurrent queueing and persists trimmed snapshot', async () => {
+		const registry = new AgentRegistry();
+		const { agentId } = registry.registerAgent({ metadata: baseMetadata });
 
-                unsubscribeA();
-                unsubscribeB();
+		const queueCount = MAX_PENDING_COMMANDS + 32;
+		await Promise.all(
+			Array.from({ length: queueCount }, (_, index) =>
+				Promise.resolve(
+					registry.queueCommand(agentId, {
+						name: 'ping',
+						payload: { index }
+					})
+				)
+			)
+		);
 
-                const before = eventsA.length;
-                registry.queueCommand(registration.agentId, { name: 'ping', payload: {} });
-                expect(eventsA.length).toBe(before);
-        });
+		const snapshot = registry.getAgent(agentId);
+		expect(snapshot.pendingCommands).toBe(MAX_PENDING_COMMANDS);
+
+		await registry.flush();
+		const persistedCommands = await db
+			.select({ id: agentCommandTable.id })
+			.from(agentCommandTable)
+			.where(eq(agentCommandTable.agentId, agentId));
+		expect(persistedCommands).toHaveLength(MAX_PENDING_COMMANDS);
+	});
+
+	it('fans out subscription events to multiple listeners', () => {
+		const registry = new AgentRegistry();
+		const registration = registry.registerAgent({ metadata: baseMetadata });
+
+		const eventsA: AgentRegistryEvent[] = [];
+		const eventsB: AgentRegistryEvent[] = [];
+
+		const unsubscribeA = registry.subscribe((event) => {
+			eventsA.push(event);
+		});
+		const unsubscribeB = registry.subscribe((event) => {
+			eventsB.push(event);
+		});
+
+		const queued = registry.queueCommand(registration.agentId, {
+			name: 'ping',
+			payload: {}
+		});
+
+		registry.updateAgentTags(registration.agentId, ['primary']);
+		registry.syncSharedNotes(registration.agentId, registration.agentKey, [
+			{
+				id: 'broadcast-note',
+				visibility: 'shared',
+				ciphertext: 'cipher',
+				nonce: 'nonce',
+				digest: 'digest',
+				version: 1,
+				updatedAt: new Date().toISOString()
+			}
+		]);
+
+		expect(
+			eventsA.some((event) => event.type === 'command' && event.command.id === queued.command.id)
+		).toBe(true);
+		expect(
+			eventsB.some((event) => event.type === 'command' && event.command.id === queued.command.id)
+		).toBe(true);
+		expect(eventsA.some((event) => event.type === 'agent')).toBe(true);
+		expect(eventsB.some((event) => event.type === 'notes')).toBe(true);
+
+		unsubscribeA();
+		unsubscribeB();
+
+		const before = eventsA.length;
+		registry.queueCommand(registration.agentId, { name: 'ping', payload: {} });
+		expect(eventsA.length).toBe(before);
+	});
 });
