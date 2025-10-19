@@ -22,8 +22,8 @@
 		RemoteDesktopSettings,
 		RemoteDesktopSettingsPatch
 	} from '$lib/types/remote-desktop';
-	import SessionMetricsGrid from './SessionMetricsGrid.svelte';
-	import { createInputChannel } from './input-channel';
+	import SessionMetricsGrid from './remote-desktop/SessionMetricsGrid.svelte';
+	import { createInputChannel } from './remote-desktop/input-channel';
 
 	const fallbackMonitors = [
 		{ id: 0, label: 'Primary', width: 1280, height: 720 }
@@ -70,8 +70,8 @@
 	let sessionActive = $state(false);
 	let sessionId = $state('');
 	let viewportEl: HTMLDivElement | null = null;
-	let viewportFocused = false;
-	let pointerCaptured = false;
+	let viewportFocused = $state(false);
+	let pointerCaptured = $state(false);
 	let activePointerId: number | null = null;
 	const inputChannel = browser
 		? createInputChannel({
@@ -111,11 +111,11 @@
 	let eventSource: EventSource | null = null;
 	let streamSessionId: string | null = null;
 	let frameQueue: RemoteDesktopFramePacket[] = [];
-	let processing = false;
-	let stopRequested = false;
-	let imageBitmapFallbackLogged = false;
-	let skipMouseSync = true;
-	let skipKeyboardSync = true;
+	let processing = $state(false);
+	let stopRequested = $state(false);
+	let imageBitmapFallbackLogged = $state(false);
+	let skipMouseSync = $state(true);
+	let skipKeyboardSync = $state(true);
 
 	function isDocumentVisible() {
 		if (!browser) {

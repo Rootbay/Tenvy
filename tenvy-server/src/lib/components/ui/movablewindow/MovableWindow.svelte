@@ -21,12 +21,16 @@
 
 	let z = $state(10);
 	let dragging = $state(false);
+	let resizing = $state(false);
+	let resizeDir = $state('');
 	let offsetX = $state(0);
 	let offsetY = $state(0);
 	let velocityX = $state(0);
 	let velocityY = $state(0);
 	let lastX = $state(x);
 	let lastY = $state(y);
+	let lastWidth = $state(width);
+	let lastHeight = $state(height);
 	let windowRef = $state<HTMLElement | null>(null);
 	let isVisible = $state(true);
 
@@ -45,6 +49,10 @@
 	}
 
 	function moveDrag(e: PointerEvent) {
+		if (resizing) {
+			handleResizeMove(e);
+			return;
+		}
 		if (!dragging) return;
 		velocityX = e.clientX - lastX;
 		velocityY = e.clientY - lastY;
@@ -56,21 +64,26 @@
 	}
 
 	function endDrag() {
-		if (!dragging) return;
-		dragging = false;
+		if (dragging) {
+			dragging = false;
 
-		const bounds = {
-			maxX: window.innerWidth - width,
-			maxY: window.innerHeight - height,
-			minX: 0,
-			minY: 0
-		};
+			const bounds = {
+				maxX: window.innerWidth - width,
+				maxY: window.innerHeight - height,
+				minX: 0,
+				minY: 0
+			};
 
-		const targetX = Math.min(bounds.maxX, Math.max(bounds.minX, x + velocityX * 25));
-		const targetY = Math.min(bounds.maxY, Math.max(bounds.minY, y + velocityY * 25));
+			const targetX = Math.min(bounds.maxX, Math.max(bounds.minX, x + velocityX * 25));
+			const targetY = Math.min(bounds.maxY, Math.max(bounds.minY, y + velocityY * 25));
 
-		x = targetX;
-		y = targetY;
+			x = targetX;
+			y = targetY;
+		}
+		if (resizing) {
+			resizing = false;
+			resizeDir = '';
+		}
 	}
 
 	function handlePointerDown(e: PointerEvent) {
@@ -84,6 +97,58 @@
 			return;
 		}
 		isVisible = false;
+	}
+
+	function handleFullscreen() {
+		if (windowRef) {
+			if (windowRef.style.width === '100vw' && windowRef.style.height === '100vh') {
+				windowRef.style.width = `${width}px`;
+				windowRef.style.height = `${height}px`;
+				x = lastX;
+				y = lastY;
+			} else {
+				lastX = x;
+				lastY = y;
+				windowRef.style.width = '100vw';
+				windowRef.style.height = '100vh';
+				x = 0;
+				y = 0;
+			}
+		}
+	}
+
+	function startResize(e: PointerEvent, dir: string) {
+		resizing = true;
+		resizeDir = dir;
+		lastX = e.clientX;
+		lastY = e.clientY;
+		lastWidth = width;
+		lastHeight = height;
+		offsetX = e.clientX;
+		offsetY = e.clientY;
+		e.stopPropagation();
+	}
+
+	function handleResizeMove(e: PointerEvent) {
+		const dx = e.clientX - lastX;
+		const dy = e.clientY - lastY;
+
+		if (resizeDir.includes('right')) width = Math.max(200, lastWidth + dx);
+		if (resizeDir.includes('bottom')) height = Math.max(150, lastHeight + dy);
+		if (resizeDir.includes('left')) {
+			const newWidth = Math.max(200, lastWidth - dx);
+			if (newWidth !== width) {
+				x += dx;
+				width = newWidth;
+			}
+		}
+		if (resizeDir.includes('top')) {
+			const newHeight = Math.max(150, lastHeight - dy);
+			if (newHeight !== height) {
+				y += dy;
+				height = newHeight;
+			}
+		}
 	}
 
 	$effect(() => {
@@ -107,17 +172,35 @@
 		style:z-index={z}
 		onpointerdown={handlePointerDown}
 	>
-		<div
-			class="window-header flex cursor-move items-center justify-between border-b border-border bg-muted/70 px-4 py-2 text-sm font-medium backdrop-blur-sm"
-		>
+		<div class="window-header flex cursor-move items-center justify-between border-b border-border bg-muted/70 px-4 py-2 text-sm font-medium backdrop-blur-sm">
 			<span>{title}</span>
-			<button
-				class="h-3 w-3 rounded-full bg-destructive/80 transition-colors hover:bg-destructive"
-				onclick={handleClose}
-				aria-label="Close"
-			></button>
+			<div class="flex gap-1">
+				<button
+					class="h-3 w-3 rounded-full bg-green-500/80 transition-colors hover:bg-green-500 cursor-pointer"
+					onclick={handleFullscreen}
+					aria-label="Fullscreen"
+				></button>
+				<button
+					class="h-3 w-3 rounded-full bg-destructive/80 transition-colors hover:bg-destructive cursor-pointer"
+					onclick={handleClose}
+					aria-label="Close"
+				></button>
+			</div>
 		</div>
 
 		{@render children()}
+
+		<div
+			onpointerdown={(e) => startResize(e, 'bottom')}
+			class="absolute bottom-0 left-0 right-0 h-1 cursor-s-resize"
+		></div>
+		<div
+			onpointerdown={(e) => startResize(e, 'right')}
+			class="absolute top-0 bottom-0 right-0 w-1 cursor-e-resize"
+		></div>
+		<div
+			onpointerdown={(e) => startResize(e, 'bottom-right')}
+			class="absolute bottom-0 right-0 w-2 h-2 cursor-se-resize"
+		></div>
 	</div>
 {/if}

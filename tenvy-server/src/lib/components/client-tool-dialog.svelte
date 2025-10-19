@@ -39,7 +39,7 @@
 	import ClipboardManagerWorkspace from '$lib/components/workspace/tools/clipboard-manager-workspace.svelte';
 	import TcpConnectionsWorkspace from '$lib/components/workspace/tools/tcp-connections-workspace.svelte';
 	import RecoveryWorkspace from '$lib/components/workspace/tools/recovery-workspace.svelte';
-	import RemoteDesktopWorkspace from '$lib/components/workspace/tools/remote-desktop/remote-desktop-workspace.svelte';
+	import RemoteDesktopWorkspace from '$lib/components/workspace/tools/remote-desktop-workspace.svelte';
 	import OptionsWorkspace from '$lib/components/workspace/tools/options-workspace.svelte';
 	import ClientChatWorkspace from '$lib/components/workspace/tools/client-chat-workspace.svelte';
 	import ReportWindowWorkspace from '$lib/components/workspace/tools/report-window-workspace.svelte';
@@ -162,12 +162,6 @@
 		};
 	});
 
-	async function openWorkspace() {
-		if (!browser) return;
-		requestClose();
-		await goto(resolve(workspaceUrl));
-	}
-
 	const selectClasses =
 		'flex h-9 w-full min-w-0 rounded-md border border-input bg-background px-3 py-1 text-sm shadow-xs ring-offset-background transition-[color,box-shadow] outline-none disabled:cursor-not-allowed disabled:opacity-50 focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 dark:bg-input/30';
 
@@ -281,6 +275,8 @@
 						<div class="flex-1 overflow-auto px-6 py-5">
 							{#if keyloggerMode}
 								<KeyloggerWorkspace {client} mode={keyloggerMode} />
+							{:else if toolId === 'remote-desktop'}
+								<RemoteDesktopWorkspace client={client} initialSession={null} />
 							{:else if activeWorkspace}
 								{@const Workspace = activeWorkspace}
 								{#if toolId === 'cmd'}
@@ -389,8 +385,6 @@
 										<Button variant="outline" {...props}>Close</Button>
 									{/snippet}
 								</Dialog.Close>
-								<Button variant="ghost" type="button" onclick={openWorkspace}>Open workspace</Button
-								>
 							</div>
 						</div>
 					{:else if toolId === 'notes'}
@@ -421,8 +415,6 @@
 										<Button variant="outline" {...props}>Cancel</Button>
 									{/snippet}
 								</Dialog.Close>
-								<Button variant="ghost" type="button" onclick={openWorkspace}>Open workspace</Button
-								>
 								<Button type="submit">Save draft</Button>
 							</div>
 						</form>
