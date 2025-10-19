@@ -243,7 +243,7 @@ func (c *remoteDesktopSessionController) initializeTransport(ctx context.Context
 		Codecs:    append([]RemoteDesktopEncoder(nil), codecs...),
 	}}
 
-	offerHandle, offerErr := prepareWebRTCOffer(negotiationCtx)
+	offerHandle, offerErr := prepareWebRTCOffer(negotiationCtx, cfg.WebRTCICEServers)
 	if offerErr == nil && offerHandle != nil {
 		features := map[string]bool{}
 		if supportsIntra {
@@ -268,6 +268,7 @@ func (c *remoteDesktopSessionController) initializeTransport(ctx context.Context
 		request.WebRTC = &RemoteDesktopWebRTCOffer{
 			Offer:       offerHandle.Offer(),
 			DataChannel: offerHandle.Label(),
+			ICEServers:  append([]RemoteDesktopWebRTCICEServer(nil), cfg.WebRTCICEServers...),
 		}
 	}
 
@@ -1188,8 +1189,45 @@ func sanitizeConfig(cfg Config) Config {
 	cfg.AuthKey = strings.TrimSpace(cfg.AuthKey)
 	cfg.Client = secureHTTPClient(cfg.Client)
 	cfg.RequestTimeout = normalizeRequestTimeout(cfg.RequestTimeout)
+	cfg.WebRTCICEServers = normalizeICEServers(cfg.WebRTCICEServers)
 	cfg.authHeader = buildAuthHeader(cfg.AuthKey)
 	return cfg
+}
+
+func normalizeICEServers(servers []RemoteDesktopWebRTCICEServer) []RemoteDesktopWebRTCICEServer {
+	if len(servers) == 0 {
+		return nil
+	}
+
+	normalized := make([]RemoteDesktopWebRTCICEServer, 0, len(servers))
+	for _, server := range servers {
+		if len(server.URLs) == 0 {
+			continue
+		}
+
+		urls := make([]string, 0, len(server.URLs))
+		for _, raw := range server.URLs {
+			trimmed := strings.TrimSpace(raw)
+			if trimmed != "" {
+				urls = append(urls, trimmed)
+			}
+		}
+		if len(urls) == 0 {
+			continue
+		}
+
+		normalized = append(normalized, RemoteDesktopWebRTCICEServer{
+			URLs:           urls,
+			Username:       strings.TrimSpace(server.Username),
+			Credential:     strings.TrimSpace(server.Credential),
+			CredentialType: strings.ToLower(strings.TrimSpace(server.CredentialType)),
+		})
+	}
+
+	if len(normalized) == 0 {
+		return nil
+	}
+	return normalized
 }
 
 func normalizeRequestTimeout(value time.Duration) time.Duration {
