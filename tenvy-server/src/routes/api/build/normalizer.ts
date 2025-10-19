@@ -35,6 +35,8 @@ const allowedFileInfoKeys = new Map(allowedFileInfoEntries);
 const maxVersionComponent = 65535;
 const maxMutexLength = 120;
 
+type NormalizedAudioStreaming = 'enabled' | 'disabled' | 'unset';
+
 function resolveTargetOS(value?: string): TargetOS {
 	if (!value) {
 		return 'windows';
@@ -119,15 +121,23 @@ function sanitizePositiveInteger(
 }
 
 function sanitizeMutexName(value: string | undefined): string {
-	if (!value) {
-		return '';
-	}
+        if (!value) {
+                return '';
+        }
 	const trimmed = value.trim();
 	if (!trimmed) {
 		return '';
 	}
 	const sanitized = trimmed.replace(mutexSanitizer, '_');
 	return sanitized.slice(0, maxMutexLength);
+}
+
+function normalizeAudioStreaming(value: BuildRequest['audio'] | undefined): NormalizedAudioStreaming {
+        if (!value || value.streaming === undefined) {
+                return 'unset';
+        }
+
+        return value.streaming ? 'enabled' : 'disabled';
 }
 
 type VersionParts = { Major: number; Minor: number; Patch: number; Build: number };
@@ -189,10 +199,10 @@ export function parseVersionParts(value: string | undefined): VersionParts | nul
 }
 
 export type NormalizedBuildRequest = {
-	host: string;
-	port: string;
-	targetOS: TargetOS;
-	targetArch: TargetArch;
+        host: string;
+        port: string;
+        targetOS: TargetOS;
+        targetArch: TargetArch;
 	outputExtension: string;
 	outputFilename: string;
 	installationPath: string;
@@ -204,10 +214,11 @@ export type NormalizedBuildRequest = {
 	forceAdmin: boolean;
 	pollIntervalMs: string | null;
 	maxBackoffMs: string | null;
-	shellTimeoutSeconds: string | null;
-	fileIcon: BuildRequest['fileIcon'] | null | undefined;
-	fileInformation: BuildRequest['fileInformation'] | null | undefined;
-	raw: BuildRequest;
+        shellTimeoutSeconds: string | null;
+        fileIcon: BuildRequest['fileIcon'] | null | undefined;
+        fileInformation: BuildRequest['fileInformation'] | null | undefined;
+        audio: { streaming: NormalizedAudioStreaming };
+        raw: BuildRequest;
 };
 
 function formatZodError(err: ZodError): string {
@@ -278,11 +289,11 @@ export function normalizeBuildRequestPayload(body: unknown): NormalizedBuildRequ
 		'Shell timeout'
 	);
 
-	return {
-		host,
-		port,
-		targetOS,
-		targetArch,
+        return {
+                host,
+                port,
+                targetOS,
+                targetArch,
 		outputExtension,
 		outputFilename,
 		installationPath,
@@ -294,9 +305,10 @@ export function normalizeBuildRequestPayload(body: unknown): NormalizedBuildRequ
 		forceAdmin,
 		pollIntervalMs,
 		maxBackoffMs,
-		shellTimeoutSeconds,
-		fileIcon: parsed.fileIcon ?? null,
-		fileInformation: parsed.fileInformation ?? null,
-		raw: parsed
-	} satisfies NormalizedBuildRequest;
+                shellTimeoutSeconds,
+                fileIcon: parsed.fileIcon ?? null,
+                fileInformation: parsed.fileInformation ?? null,
+                audio: { streaming: normalizeAudioStreaming(parsed.audio) },
+                raw: parsed
+        } satisfies NormalizedBuildRequest;
 }

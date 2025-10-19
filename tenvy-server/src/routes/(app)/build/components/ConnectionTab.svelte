@@ -35,6 +35,9 @@
 	export let shellTimeoutSeconds: string;
 	export let customHeaders: HeaderKV[];
 	export let customCookies: CookieKV[];
+	export let audioStreamingEnabled: boolean;
+	export let audioStreamingTouched: boolean;
+	export let markAudioStreamingTouched: () => void;
 
 	export let addCustomHeader: () => void;
 	export let updateCustomHeader: (index: number, key: keyof HeaderKV, value: string) => void;
@@ -309,6 +312,45 @@
 				<Plus class="h-4 w-4" />
 				Add cookie
 			</Button>
+		</div>
+	</div>
+</section>
+
+<section class="space-y-6 rounded-lg border border-border/70 bg-background/60 p-6 shadow-sm">
+	<div class="space-y-1">
+		<h3 class="text-sm font-semibold">Optional modules</h3>
+		<p class="text-xs text-muted-foreground">
+			Enable features that require platform-specific toolchains during compilation.
+		</p>
+	</div>
+	<div
+		class="flex flex-wrap items-start justify-between gap-4 rounded-lg border border-dashed border-border/70 bg-background/40 p-4"
+	>
+		<div class="space-y-2 text-xs text-muted-foreground">
+			<p class="text-sm font-semibold text-foreground">Audio streaming support</p>
+			<p>
+				Bundle the CGO-based audio bridge so agents can enumerate devices and stream live microphone
+				audio.
+			</p>
+			{#if audioStreamingEnabled}
+				<p class="font-medium text-emerald-500">
+					CGO will be enabled and the realtime audio bridge compiled into the binary.
+				</p>
+			{:else if audioStreamingTouched}
+				<p class="font-medium text-amber-500">
+					Audio support explicitly disabled &mdash; the stub bridge will respond with errors.
+				</p>
+			{:else}
+				<p>Leave disabled to keep binaries smaller and avoid CGO cross-compilers.</p>
+			{/if}
+		</div>
+		<div class="flex items-center gap-2 text-xs text-muted-foreground">
+			<Switch
+				bind:checked={audioStreamingEnabled}
+				on:change={markAudioStreamingTouched}
+				aria-label="Toggle audio streaming support"
+			/>
+			<span>{audioStreamingEnabled ? 'Enabled' : 'Disabled'}</span>
 		</div>
 	</div>
 </section>

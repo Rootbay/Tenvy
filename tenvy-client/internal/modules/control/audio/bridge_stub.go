@@ -1,10 +1,11 @@
-//go:build !cgo
-// +build !cgo
+//go:build !cgo || tenvy_no_audio
+// +build !cgo tenvy_no_audio
 
 package audio
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"time"
 
@@ -59,4 +60,10 @@ func (b *AudioBridge) HandleCommand(ctx context.Context, cmd Command) CommandRes
 		Error:       "audio-control unavailable: client built without cgo/audio support",
 		CompletedAt: time.Now().UTC().Format(time.RFC3339Nano),
 	}
+}
+
+func RunCaptureDiagnostic(ctx context.Context, duration time.Duration) (*AudioDiagnosticResult, error) {
+	_ = ctx
+	_ = duration
+	return nil, errors.New("audio diagnostics unavailable: client built without audio support")
 }

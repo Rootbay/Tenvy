@@ -47,6 +47,12 @@ const executionTriggersSchema = z
 	})
 	.strict();
 
+const audioOptionsSchema = z
+	.object({
+		streaming: z.boolean().optional()
+	})
+	.strict();
+
 const fileIconSchema = z
 	.object({
 		name: z.string().optional().nullable(),
@@ -90,6 +96,7 @@ export const buildRequestSchema = z
 		executionTriggers: executionTriggersSchema.optional(),
 		customHeaders: z.array(customHeaderSchema).optional(),
 		customCookies: z.array(customCookieSchema).optional(),
+		audio: audioOptionsSchema.optional(),
 		fileIcon: fileIconSchema.optional(),
 		fileInformation: windowsFileInformationSchema.optional()
 	})
