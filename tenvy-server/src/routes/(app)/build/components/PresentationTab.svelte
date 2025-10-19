@@ -10,14 +10,26 @@
 	import { DEFAULT_FILE_INFORMATION } from '../lib/constants.js';
 	import ChevronDown from '@lucide/svelte/icons/chevron-down';
 
-	export let fileIconName: string | null;
-	export let fileIconError: string | null;
-	export let handleIconSelection: (event: Event) => void;
-	export let clearIconSelection: () => void;
+	interface Props {
+		fileIconName: string | null;
+		fileIconError: string | null;
+		handleIconSelection: (event: Event) => void;
+		clearIconSelection: () => void;
 
-	export let isWindowsTarget: boolean;
-	export let fileInformationOpen: boolean;
-	export let fileInformation: typeof DEFAULT_FILE_INFORMATION;
+		isWindowsTarget: boolean;
+		fileInformationOpen: boolean;
+		fileInformation: typeof DEFAULT_FILE_INFORMATION;
+	}
+
+	let {
+		fileIconName = $bindable(),
+		fileIconError = $bindable(),
+		handleIconSelection,
+		clearIconSelection,
+		isWindowsTarget,
+		fileInformationOpen = $bindable(),
+		fileInformation = $bindable()
+	}: Props = $props();
 </script>
 
 <section class="space-y-4 rounded-lg border border-border/70 bg-background/60 p-6 shadow-sm">
@@ -28,6 +40,7 @@
 			these settings.
 		</p>
 	</div>
+
 	{#if isWindowsTarget}
 		<div class="space-y-6">
 			<div class="space-y-3">
@@ -40,6 +53,7 @@
 						class="text-xs"
 						onchange={handleIconSelection}
 					/>
+
 					{#if fileIconName}
 						<div class="flex items-center justify-between rounded-md bg-muted/40 px-3 py-2 text-xs">
 							<span class="font-medium">{fileIconName}</span>
@@ -48,10 +62,14 @@
 							</Button>
 						</div>
 					{/if}
+
 					{#if fileIconError}
 						<p class="text-xs text-red-500">{fileIconError}</p>
 					{/if}
-					<p class="text-xs text-muted-foreground">Optional. Accepted format: .ico (max 512KB).</p>
+
+					<p class="text-xs text-muted-foreground">
+						Optional. Accepted format: .ico (max 512KB).
+					</p>
 				</div>
 			</div>
 
@@ -63,6 +81,7 @@
 							Populate Windows version metadata for the compiled binary.
 						</p>
 					</div>
+
 					<CollapsibleTrigger
 						class="flex items-center gap-2 rounded-md border border-border/60 px-3 py-1.5 text-xs font-semibold tracking-wide text-muted-foreground uppercase transition hover:bg-muted"
 					>
@@ -72,6 +91,7 @@
 						/>
 					</CollapsibleTrigger>
 				</div>
+
 				<CollapsibleContent class="mt-4 space-y-4">
 					<div class="grid gap-4 md:grid-cols-2">
 						<div class="grid gap-2">

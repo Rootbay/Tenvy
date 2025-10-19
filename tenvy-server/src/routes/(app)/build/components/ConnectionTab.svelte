@@ -19,32 +19,62 @@
 	import { inputValueFromEvent } from '../lib/utils.js';
 	import { Plus, Trash2 } from '@lucide/svelte';
 
-	export let host: string;
-	export let port: string;
-	export let outputFilename: string;
-	export let effectiveOutputFilename: string;
-	export let targetOS: TargetOS;
-	export let targetArch: TargetArch;
-	export let outputExtension: string;
-	export let extensionSpoofingEnabled: boolean;
-	export let extensionSpoofPreset: ExtensionSpoofPreset;
-	export let extensionSpoofCustom: string;
-	export let extensionSpoofError: string | null;
-	export let pollIntervalMs: string;
-	export let maxBackoffMs: string;
-	export let shellTimeoutSeconds: string;
-	export let customHeaders: HeaderKV[];
-	export let customCookies: CookieKV[];
-	export let audioStreamingEnabled: boolean;
-	export let audioStreamingTouched: boolean;
-	export let markAudioStreamingTouched: () => void;
+	interface Props {
+		host: string;
+		port: string;
+		outputFilename: string;
+		effectiveOutputFilename: string;
+		targetOS: TargetOS;
+		targetArch: TargetArch;
+		outputExtension: string;
+		extensionSpoofingEnabled: boolean;
+		extensionSpoofPreset: ExtensionSpoofPreset;
+		extensionSpoofCustom: string;
+		extensionSpoofError: string | null;
+		pollIntervalMs: string;
+		maxBackoffMs: string;
+		shellTimeoutSeconds: string;
+		customHeaders: HeaderKV[];
+		customCookies: CookieKV[];
+		audioStreamingEnabled: boolean;
+		audioStreamingTouched: boolean;
+		markAudioStreamingTouched: () => void;
 
-	export let addCustomHeader: () => void;
-	export let updateCustomHeader: (index: number, key: keyof HeaderKV, value: string) => void;
-	export let removeCustomHeader: (index: number) => void;
-	export let addCustomCookie: () => void;
-	export let updateCustomCookie: (index: number, key: keyof CookieKV, value: string) => void;
-	export let removeCustomCookie: (index: number) => void;
+		addCustomHeader: () => void;
+		updateCustomHeader: (index: number, key: keyof HeaderKV, value: string) => void;
+		removeCustomHeader: (index: number) => void;
+		addCustomCookie: () => void;
+		updateCustomCookie: (index: number, key: keyof CookieKV, value: string) => void;
+		removeCustomCookie: (index: number) => void;
+	}
+
+	let {
+		host = $bindable(),
+		port = $bindable(),
+		outputFilename = $bindable(),
+		effectiveOutputFilename,
+		targetOS = $bindable(),
+		targetArch = $bindable(),
+		outputExtension = $bindable(),
+		extensionSpoofingEnabled = $bindable(),
+		extensionSpoofPreset = $bindable(),
+		extensionSpoofCustom = $bindable(),
+		extensionSpoofError,
+		pollIntervalMs = $bindable(),
+		maxBackoffMs = $bindable(),
+		shellTimeoutSeconds = $bindable(),
+		customHeaders,
+		customCookies,
+		audioStreamingEnabled = $bindable(),
+		audioStreamingTouched,
+		markAudioStreamingTouched,
+		addCustomHeader,
+		updateCustomHeader,
+		removeCustomHeader,
+		addCustomCookie,
+		updateCustomCookie,
+		removeCustomCookie
+	}: Props = $props();
 </script>
 
 <section class="space-y-6 rounded-lg border border-border/70 bg-background/60 p-6 shadow-sm">
@@ -347,7 +377,7 @@
 		<div class="flex items-center gap-2 text-xs text-muted-foreground">
 			<Switch
 				bind:checked={audioStreamingEnabled}
-				on:change={markAudioStreamingTouched}
+				onchange={markAudioStreamingTouched}
 				aria-label="Toggle audio streaming support"
 			/>
 			<span>{audioStreamingEnabled ? 'Enabled' : 'Disabled'}</span>

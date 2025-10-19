@@ -13,7 +13,6 @@
 	import { Label } from '$lib/components/ui/label/index.js';
 	import { Separator } from '$lib/components/ui/separator/index.js';
 	import { Switch } from '$lib/components/ui/switch/index.js';
-
 	import { TriangleAlert, Check, Clock, ShieldCheck, UserPlus } from '@lucide/svelte';
 
 	type GeneralSettings = {
@@ -24,10 +23,12 @@
 		allowBeta: boolean;
 	};
 
+	type Digest = '15m' | 'hourly' | 'daily';
+
 	type NotificationSettings = {
 		realtimeOps: boolean;
 		escalateCritical: boolean;
-		digestFrequency: '15m' | 'hourly' | 'daily';
+		digestFrequency: Digest;
 		emailBridge: boolean;
 		slackBridge: boolean;
 	};
@@ -40,13 +41,9 @@
 		commandQuorum: number;
 	};
 
-	const clone = <T,>(value: T): T => structuredClone(value);
+	const clone = <T,>(v: T): T => structuredClone(v);
 
-	const initialSettings: {
-		general: GeneralSettings;
-		notifications: NotificationSettings;
-		security: SecuritySettings;
-	} = {
+	const initialSettings = {
 		general: {
 			organizationName: 'Tenvy Operator Group',
 			controlPlaneHost: 'relay.tenvy.local',
@@ -57,7 +54,7 @@
 		notifications: {
 			realtimeOps: true,
 			escalateCritical: true,
-			digestFrequency: 'hourly',
+			digestFrequency: 'hourly' as Digest,
 			emailBridge: true,
 			slackBridge: false
 		},
@@ -70,119 +67,114 @@
 		}
 	};
 
-	let saved = clone(initialSettings);
+	let saved = $state(clone(initialSettings));
 
-	let generalOrganizationName = saved.general.organizationName;
-	let generalControlPlaneHost = saved.general.controlPlaneHost;
-	let generalMaintenanceWindow = saved.general.maintenanceWindow;
-	let generalAutoUpdate = saved.general.autoUpdate;
-	let generalAllowBeta = saved.general.allowBeta;
+	let generalOrganizationName = $state(saved.general.organizationName);
+	let generalControlPlaneHost = $state(saved.general.controlPlaneHost);
+	let generalMaintenanceWindow = $state(saved.general.maintenanceWindow);
+	let generalAutoUpdate = $state(saved.general.autoUpdate);
+	let generalAllowBeta = $state(saved.general.allowBeta);
 
-	let notificationsRealtimeOps = saved.notifications.realtimeOps;
-	let notificationsEscalateCritical = saved.notifications.escalateCritical;
-	let notificationsDigestFrequency: NotificationSettings['digestFrequency'] =
-		saved.notifications.digestFrequency;
-	let notificationsEmailBridge = saved.notifications.emailBridge;
-	let notificationsSlackBridge = saved.notifications.slackBridge;
+	let notificationsRealtimeOps = $state(saved.notifications.realtimeOps);
+	let notificationsEscalateCritical = $state(saved.notifications.escalateCritical);
+	let notificationsDigestFrequency = $state<Digest>(saved.notifications.digestFrequency);
+	let notificationsEmailBridge = $state(saved.notifications.emailBridge);
+	let notificationsSlackBridge = $state(saved.notifications.slackBridge);
 
-	let securityEnforceMfa = saved.security.enforceMfa;
-	let securitySessionTimeoutMinutes = saved.security.sessionTimeoutMinutes;
-	let securityIpAllowlist = saved.security.ipAllowlist;
-	let securityRequireApproval = saved.security.requireApproval;
-	let securityCommandQuorum = saved.security.commandQuorum;
+	let securityEnforceMfa = $state(saved.security.enforceMfa);
+	let securitySessionTimeoutMinutes = $state(saved.security.sessionTimeoutMinutes);
+	let securityIpAllowlist = $state(saved.security.ipAllowlist);
+	let securityRequireApproval = $state(saved.security.requireApproval);
+	let securityCommandQuorum = $state(saved.security.commandQuorum);
 
-	let general: GeneralSettings;
-	let notifications: NotificationSettings;
-	let security: SecuritySettings;
+	const digestOptions: { label: string; value: Digest }[] = [
+		{ label: 'Every 15 minutes', value: '15m' },
+		{ label: 'Hourly digest', value: 'hourly' },
+		{ label: 'Daily summary', value: 'daily' }
+	];
 
-	$: general = {
+	const general = $derived.by(() => ({
 		organizationName: generalOrganizationName,
 		controlPlaneHost: generalControlPlaneHost,
 		maintenanceWindow: generalMaintenanceWindow,
 		autoUpdate: generalAutoUpdate,
 		allowBeta: generalAllowBeta
-	} satisfies GeneralSettings;
+	}));
 
-	$: notifications = {
+	const notifications = $derived.by(() => ({
 		realtimeOps: notificationsRealtimeOps,
 		escalateCritical: notificationsEscalateCritical,
 		digestFrequency: notificationsDigestFrequency,
 		emailBridge: notificationsEmailBridge,
 		slackBridge: notificationsSlackBridge
-	} satisfies NotificationSettings;
+	}));
 
-	$: security = {
+	const security = $derived.by(() => ({
 		enforceMfa: securityEnforceMfa,
 		sessionTimeoutMinutes: securitySessionTimeoutMinutes,
 		ipAllowlist: securityIpAllowlist,
 		requireApproval: securityRequireApproval,
 		commandQuorum: securityCommandQuorum
-	} satisfies SecuritySettings;
+	}));
 
-	let lastSavedLabel = 'Never';
+	let lastSavedLabel = $state('Never');
 
-	const digestOptions = [
-		{ label: 'Every 15 minutes', value: '15m' },
-		{ label: 'Hourly digest', value: 'hourly' },
-		{ label: 'Daily summary', value: 'daily' }
-	] satisfies { label: string; value: NotificationSettings['digestFrequency'] }[];
+	function setGeneralFrom(v: GeneralSettings) {
+		generalOrganizationName = v.organizationName;
+		generalControlPlaneHost = v.controlPlaneHost;
+		generalMaintenanceWindow = v.maintenanceWindow;
+		generalAutoUpdate = v.autoUpdate;
+		generalAllowBeta = v.allowBeta;
+	}
 
-	const setGeneralFrom = (value: GeneralSettings) => {
-		generalOrganizationName = value.organizationName;
-		generalControlPlaneHost = value.controlPlaneHost;
-		generalMaintenanceWindow = value.maintenanceWindow;
-		generalAutoUpdate = value.autoUpdate;
-		generalAllowBeta = value.allowBeta;
-	};
+	function setNotificationsFrom(v: NotificationSettings) {
+		notificationsRealtimeOps = v.realtimeOps;
+		notificationsEscalateCritical = v.escalateCritical;
+		notificationsDigestFrequency = v.digestFrequency;
+		notificationsEmailBridge = v.emailBridge;
+		notificationsSlackBridge = v.slackBridge;
+	}
 
-	const setNotificationsFrom = (value: NotificationSettings) => {
-		notificationsRealtimeOps = value.realtimeOps;
-		notificationsEscalateCritical = value.escalateCritical;
-		notificationsDigestFrequency = value.digestFrequency;
-		notificationsEmailBridge = value.emailBridge;
-		notificationsSlackBridge = value.slackBridge;
-	};
+	function setSecurityFrom(v: SecuritySettings) {
+		securityEnforceMfa = v.enforceMfa;
+		securitySessionTimeoutMinutes = v.sessionTimeoutMinutes;
+		securityIpAllowlist = v.ipAllowlist;
+		securityRequireApproval = v.requireApproval;
+		securityCommandQuorum = v.commandQuorum;
+	}
 
-	const setSecurityFrom = (value: SecuritySettings) => {
-		securityEnforceMfa = value.enforceMfa;
-		securitySessionTimeoutMinutes = value.sessionTimeoutMinutes;
-		securityIpAllowlist = value.ipAllowlist;
-		securityRequireApproval = value.requireApproval;
-		securityCommandQuorum = value.commandQuorum;
-	};
+	function resetSection(section: keyof typeof saved) {
+		if (section === 'general') setGeneralFrom(saved.general);
+		else if (section === 'notifications') setNotificationsFrom(saved.notifications);
+		else if (section === 'security') setSecurityFrom(saved.security);
+	}
 
-	const resetSection = (section: keyof typeof saved) => {
-		if (section === 'general') {
-			setGeneralFrom(saved.general);
-		}
-		if (section === 'notifications') {
-			setNotificationsFrom(saved.notifications);
-		}
-		if (section === 'security') {
-			setSecurityFrom(saved.security);
-		}
-	};
-
-	const restoreDefaults = () => {
+	function restoreDefaults() {
 		setGeneralFrom(initialSettings.general);
 		setNotificationsFrom(initialSettings.notifications);
 		setSecurityFrom(initialSettings.security);
-	};
+	}
 
-	const saveChanges = () => {
-		saved = {
-			general: clone(general),
-			notifications: clone(notifications),
-			security: clone(security)
-		};
-
+	function saveChanges() {
+		saved.general = clone(general);
+		saved.notifications = clone(notifications);
+		saved.security = clone(security);
 		lastSavedLabel = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-	};
+	}
 
-	$: generalDirty = JSON.stringify(general) !== JSON.stringify(saved.general);
-	$: notificationsDirty = JSON.stringify(notifications) !== JSON.stringify(saved.notifications);
-	$: securityDirty = JSON.stringify(security) !== JSON.stringify(saved.security);
-	$: hasChanges = generalDirty || notificationsDirty || securityDirty;
+	const generalDirty = $derived.by(() => {
+		const s = saved;
+		return JSON.stringify(general) !== JSON.stringify(s.general);
+	});
+	const notificationsDirty = $derived.by(() => {
+		const s = saved;
+		return JSON.stringify(notifications) !== JSON.stringify(s.notifications);
+	});
+	const securityDirty = $derived.by(() => {
+		const s = saved;
+		return JSON.stringify(security) !== JSON.stringify(s.security);
+	});
+	const hasChanges = $derived.by(() => generalDirty || notificationsDirty || securityDirty);
 </script>
 
 <section class="space-y-6">

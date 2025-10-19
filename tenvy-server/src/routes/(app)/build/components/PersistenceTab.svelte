@@ -8,23 +8,42 @@
 		INSTALLATION_PATH_PRESETS,
 		type FilePumperUnit
 	} from '../lib/constants.js';
-	import { Wand2 } from '@lucide/svelte';
+	import { WandSparkles } from '@lucide/svelte';
 
-	export let installationPath: string;
-	export let mutexName: string;
-	export let meltAfterRun: boolean;
-	export let startupOnBoot: boolean;
-	export let developerMode: boolean;
-	export let compressBinary: boolean;
-	export let forceAdmin: boolean;
-	export let watchdogEnabled: boolean;
-	export let watchdogIntervalSeconds: string;
-	export let enableFilePumper: boolean;
-	export let filePumperTargetSize: string;
-	export let filePumperUnit: FilePumperUnit;
+	interface Props {
+		installationPath: string;
+		mutexName: string;
+		meltAfterRun: boolean;
+		startupOnBoot: boolean;
+		developerMode: boolean;
+		compressBinary: boolean;
+		forceAdmin: boolean;
+		watchdogEnabled: boolean;
+		watchdogIntervalSeconds: string;
+		enableFilePumper: boolean;
+		filePumperTargetSize: string;
+		filePumperUnit: FilePumperUnit;
 
-	export let applyInstallationPreset: (value: string) => void;
-	export let assignMutexName: () => void;
+		applyInstallationPreset: (value: string) => void;
+		assignMutexName: () => void;
+	}
+
+	let {
+		installationPath = $bindable(),
+		mutexName = $bindable(),
+		meltAfterRun = $bindable(),
+		startupOnBoot = $bindable(),
+		developerMode = $bindable(),
+		compressBinary = $bindable(),
+		forceAdmin = $bindable(),
+		watchdogEnabled = $bindable(),
+		watchdogIntervalSeconds = $bindable(),
+		enableFilePumper = $bindable(),
+		filePumperTargetSize = $bindable(),
+		filePumperUnit = $bindable(),
+		applyInstallationPreset,
+		assignMutexName
+	}: Props = $props();
 </script>
 
 <section class="space-y-6 rounded-lg border border-border/70 bg-background/60 p-6 shadow-sm">
@@ -34,6 +53,7 @@
 			Define where the agent writes itself and how instances coexist.
 		</p>
 	</div>
+
 	<div class="space-y-6">
 		<div class="grid gap-2">
 			<Label for="path">Installation path</Label>
@@ -53,6 +73,7 @@
 				{/each}
 			</div>
 		</div>
+
 		<div class="grid gap-2">
 			<Label for="mutex">Mutex name</Label>
 			<div class="flex flex-col gap-2 sm:flex-row sm:items-center">
@@ -69,7 +90,7 @@
 					class="shrink-0"
 					onclick={assignMutexName}
 				>
-					<Wand2 class="h-4 w-4" />
+					<WandSparkles class="h-4 w-4" />
 					Generate
 				</Button>
 			</div>
@@ -88,46 +109,39 @@
 			Toggle startup behavior, resilience, and binary padding options.
 		</p>
 	</div>
+
 	<div class="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
-		<div
-			class="flex items-start justify-between gap-4 rounded-lg border border-border bg-muted/30 p-4"
-		>
+		<div class="flex items-start justify-between gap-4 rounded-lg border border-border bg-muted/30 p-4">
 			<div>
 				<p class="text-sm font-medium">Melt after run</p>
 				<p class="text-xs text-muted-foreground">
 					Remove the staging binary after installation completes.
 				</p>
 			</div>
-			<Switch
-				bind:checked={meltAfterRun}
-				aria-label="Toggle whether the temporary binary deletes itself"
-			/>
+			<Switch bind:checked={meltAfterRun} aria-label="Toggle melt-after-run" />
 		</div>
-		<div
-			class="flex items-start justify-between gap-4 rounded-lg border border-border bg-muted/30 p-4"
-		>
+
+		<div class="flex items-start justify-between gap-4 rounded-lg border border-border bg-muted/30 p-4">
 			<div>
 				<p class="text-sm font-medium">Startup on boot</p>
 				<p class="text-xs text-muted-foreground">
 					Persist the agent path so it can be launched automatically on boot.
 				</p>
 			</div>
-			<Switch bind:checked={startupOnBoot} aria-label="Toggle startup persistence preference" />
+			<Switch bind:checked={startupOnBoot} aria-label="Toggle startup persistence" />
 		</div>
-		<div
-			class="flex items-start justify-between gap-4 rounded-lg border border-border bg-muted/30 p-4"
-		>
+
+		<div class="flex items-start justify-between gap-4 rounded-lg border border-border bg-muted/30 p-4">
 			<div>
 				<p class="text-sm font-medium">Developer mode</p>
 				<p class="text-xs text-muted-foreground">
 					Keep the console window visible to surface runtime logs and errors.
 				</p>
 			</div>
-			<Switch bind:checked={developerMode} aria-label="Toggle developer mode console visibility" />
+			<Switch bind:checked={developerMode} aria-label="Toggle developer mode" />
 		</div>
-		<div
-			class="flex items-start justify-between gap-4 rounded-lg border border-border bg-muted/30 p-4"
-		>
+
+		<div class="flex items-start justify-between gap-4 rounded-lg border border-border bg-muted/30 p-4">
 			<div>
 				<p class="text-sm font-medium">Binary compression</p>
 				<p class="text-xs text-muted-foreground">
@@ -136,20 +150,18 @@
 			</div>
 			<Switch bind:checked={compressBinary} aria-label="Toggle binary compression" />
 		</div>
-		<div
-			class="flex items-start justify-between gap-4 rounded-lg border border-border bg-muted/30 p-4"
-		>
+
+		<div class="flex items-start justify-between gap-4 rounded-lg border border-border bg-muted/30 p-4">
 			<div>
 				<p class="text-sm font-medium">Require administrator</p>
 				<p class="text-xs text-muted-foreground">
 					Abort launch unless elevated privileges are detected at runtime.
 				</p>
 			</div>
-			<Switch bind:checked={forceAdmin} aria-label="Toggle administrator requirement" />
+			<Switch bind:checked={forceAdmin} aria-label="Toggle admin requirement" />
 		</div>
-		<div
-			class="flex items-start justify-between gap-4 rounded-lg border border-border bg-muted/30 p-4"
-		>
+
+		<div class="flex items-start justify-between gap-4 rounded-lg border border-border bg-muted/30 p-4">
 			<div class="w-full">
 				<p class="text-sm font-medium">Watchdog</p>
 				<p class="text-xs text-muted-foreground">
@@ -173,11 +185,10 @@
 					</div>
 				{/if}
 			</div>
-			<Switch bind:checked={watchdogEnabled} aria-label="Toggle watchdog respawn" />
+			<Switch bind:checked={watchdogEnabled} aria-label="Toggle watchdog" />
 		</div>
-		<div
-			class="flex items-start justify-between gap-4 rounded-lg border border-border bg-muted/30 p-4"
-		>
+
+		<div class="flex items-start justify-between gap-4 rounded-lg border border-border bg-muted/30 p-4">
 			<div class="w-full">
 				<p class="text-sm font-medium">File pumper</p>
 				<p class="text-xs text-muted-foreground">

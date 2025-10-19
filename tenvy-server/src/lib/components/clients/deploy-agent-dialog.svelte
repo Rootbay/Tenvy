@@ -8,14 +8,16 @@
 		DialogTitle
 	} from '$lib/components/ui/dialog/index.js';
 	import { Button } from '$lib/components/ui/button/index.js';
-	import { createEventDispatcher } from 'svelte';
 
-	export let open: boolean;
+	interface Props {
+		open: boolean;
+		onClose?: () => void;
+	}
 
-	const dispatch = createEventDispatcher<{ close: void }>();
+	let { open, onClose }: Props = $props();
 
 	function handleClose() {
-		dispatch('close');
+		onClose?.();
 	}
 </script>
 

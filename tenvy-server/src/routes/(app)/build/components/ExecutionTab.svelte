@@ -4,13 +4,25 @@
 	import { Label } from '$lib/components/ui/label/index.js';
 	import { Switch } from '$lib/components/ui/switch/index.js';
 
-	export let executionDelaySeconds: string;
-	export let executionMinUptimeMinutes: string;
-	export let executionAllowedUsernames: string;
-	export let executionAllowedLocales: string;
-	export let executionStartDate: string;
-	export let executionEndDate: string;
-	export let executionRequireInternet: boolean;
+	interface Props {
+		executionDelaySeconds: string;
+		executionMinUptimeMinutes: string;
+		executionAllowedUsernames: string;
+		executionAllowedLocales: string;
+		executionStartDate: string;
+		executionEndDate: string;
+		executionRequireInternet: boolean;
+	}
+
+	let {
+		executionDelaySeconds = $bindable(),
+		executionMinUptimeMinutes = $bindable(),
+		executionAllowedUsernames = $bindable(),
+		executionAllowedLocales = $bindable(),
+		executionStartDate = $bindable(),
+		executionEndDate = $bindable(),
+		executionRequireInternet = $bindable()
+	}: Props = $props();
 </script>
 
 <section class="space-y-4 rounded-lg border border-border/70 bg-background/60 p-6 shadow-sm">
@@ -28,6 +40,7 @@
 			Optional
 		</Badge>
 	</div>
+
 	<div class="grid gap-4 md:grid-cols-2">
 		<div class="grid gap-2">
 			<Label for="execution-delay">Delayed start (seconds)</Label>
@@ -39,6 +52,7 @@
 			/>
 			<p class="text-xs text-muted-foreground">Leave blank to run immediately.</p>
 		</div>
+
 		<div class="grid gap-2">
 			<Label for="execution-uptime">Minimum system uptime (minutes)</Label>
 			<Input
@@ -49,6 +63,7 @@
 			/>
 			<p class="text-xs text-muted-foreground">Helps avoid sandboxes that reboot frequently.</p>
 		</div>
+
 		<div class="grid gap-2">
 			<Label for="execution-usernames">Allowed usernames</Label>
 			<Input
@@ -60,6 +75,7 @@
 				Only execute when the current user matches one of these entries.
 			</p>
 		</div>
+
 		<div class="grid gap-2">
 			<Label for="execution-locales">Allowed locales</Label>
 			<Input
@@ -71,21 +87,26 @@
 				Restrict execution to systems with matching locale identifiers.
 			</p>
 		</div>
+
 		<div class="grid gap-2">
 			<Label for="execution-start">Earliest run time</Label>
 			<Input id="execution-start" type="datetime-local" bind:value={executionStartDate} />
 		</div>
+
 		<div class="grid gap-2">
 			<Label for="execution-end">Latest run time</Label>
 			<Input id="execution-end" type="datetime-local" bind:value={executionEndDate} />
 		</div>
 	</div>
+
 	<div
 		class="flex items-center justify-between gap-4 rounded-md border border-border/60 bg-muted/30 px-4 py-3 text-xs"
 	>
 		<div>
 			<p class="font-medium">Require internet connectivity</p>
-			<p class="text-muted-foreground">Delay execution until a network connection is available.</p>
+			<p class="text-muted-foreground">
+				Delay execution until a network connection is available.
+			</p>
 		</div>
 		<Switch
 			bind:checked={executionRequireInternet}
