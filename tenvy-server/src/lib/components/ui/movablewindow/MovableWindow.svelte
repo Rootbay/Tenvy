@@ -21,13 +21,13 @@
 
 	let z = $state(10);
 	let dragging = $state(false);
-	let offsetX = 0;
-	let offsetY = 0;
-	let velocityX = 0;
-	let velocityY = 0;
-	let lastX = x;
-	let lastY = y;
-	let windowRef: HTMLElement | null = null;
+	let offsetX = $state(0);
+	let offsetY = $state(0);
+	let velocityX = $state(0);
+	let velocityY = $state(0);
+	let lastX = $state(x);
+	let lastY = $state(y);
+	let windowRef = $state<HTMLElement | null>(null);
 	let isVisible = $state(true);
 
 	function bringToFront() {

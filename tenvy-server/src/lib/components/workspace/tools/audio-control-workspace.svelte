@@ -105,10 +105,10 @@
 	]);
 	void heroMetadata;
 
-	let eventSource: EventSource | null = null;
-	let audioContext: AudioContext | null = null;
-	let playbackQueueTime = 0;
-	let lastAutoInventoryRequestAt: number | null = null;
+	let eventSource = $state<EventSource | null>(null);
+	let audioContext = $state<AudioContext | null>(null);
+	let playbackQueueTime = $state(0);
+	let lastAutoInventoryRequestAt = $state<number | null>(null);
 
 	const inventoryHasDevices = (value: AudioDeviceInventory | null) =>
 		Boolean(value && (value.inputs.length > 0 || value.outputs.length > 0));
