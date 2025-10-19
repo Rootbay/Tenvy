@@ -49,6 +49,7 @@ export async function validateSessionToken(token: string) {
 		.select({
 			user: {
 				id: table.user.id,
+				role: table.user.role,
 				passkeyRegistered: table.user.passkeyRegistered,
 				voucherId: table.user.voucherId
 			},
@@ -101,6 +102,7 @@ export async function validateSessionToken(token: string) {
 
 	const sanitizedUser = {
 		id: user.id,
+		role: user.role as UserRole,
 		passkeyRegistered: Boolean(user.passkeyRegistered),
 		voucherId: user.voucherId,
 		voucherActive,
@@ -141,8 +143,11 @@ export function hashVoucherCode(code: string) {
 	return encodeHexLowerCase(digest);
 }
 
+export type UserRole = 'viewer' | 'operator' | 'admin';
+
 export type AuthenticatedUser = {
 	id: string;
+	role: UserRole;
 	passkeyRegistered: boolean;
 	voucherId: string;
 	voucherActive: boolean;

@@ -172,16 +172,18 @@
 		style:z-index={z}
 		onpointerdown={handlePointerDown}
 	>
-		<div class="window-header flex cursor-move items-center justify-between border-b border-border bg-muted/70 px-4 py-2 text-sm font-medium backdrop-blur-sm">
+		<div
+			class="window-header flex cursor-move items-center justify-between border-b border-border bg-muted/70 px-4 py-2 text-sm font-medium backdrop-blur-sm"
+		>
 			<span>{title}</span>
 			<div class="flex gap-1">
 				<button
-					class="h-3 w-3 rounded-full bg-green-500/80 transition-colors hover:bg-green-500 cursor-pointer"
+					class="h-3 w-3 cursor-pointer rounded-full bg-green-500/80 transition-colors hover:bg-green-500"
 					onclick={handleFullscreen}
 					aria-label="Fullscreen"
 				></button>
 				<button
-					class="h-3 w-3 rounded-full bg-destructive/80 transition-colors hover:bg-destructive cursor-pointer"
+					class="h-3 w-3 cursor-pointer rounded-full bg-destructive/80 transition-colors hover:bg-destructive"
 					onclick={handleClose}
 					aria-label="Close"
 				></button>
@@ -192,15 +194,15 @@
 
 		<div
 			onpointerdown={(e) => startResize(e, 'bottom')}
-			class="absolute bottom-0 left-0 right-0 h-1 cursor-s-resize"
+			class="absolute right-0 bottom-0 left-0 h-1 cursor-s-resize"
 		></div>
 		<div
 			onpointerdown={(e) => startResize(e, 'right')}
-			class="absolute top-0 bottom-0 right-0 w-1 cursor-e-resize"
+			class="absolute top-0 right-0 bottom-0 w-1 cursor-e-resize"
 		></div>
 		<div
 			onpointerdown={(e) => startResize(e, 'bottom-right')}
-			class="absolute bottom-0 right-0 w-2 h-2 cursor-se-resize"
+			class="absolute right-0 bottom-0 h-2 w-2 cursor-se-resize"
 		></div>
 	</div>
 {/if}

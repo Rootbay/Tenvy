@@ -276,7 +276,7 @@
 							{#if keyloggerMode}
 								<KeyloggerWorkspace {client} mode={keyloggerMode} />
 							{:else if toolId === 'remote-desktop'}
-								<RemoteDesktopWorkspace client={client} initialSession={null} />
+								<RemoteDesktopWorkspace {client} initialSession={null} />
 							{:else if activeWorkspace}
 								{@const Workspace = activeWorkspace}
 								{#if toolId === 'cmd'}

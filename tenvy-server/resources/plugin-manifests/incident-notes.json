@@ -1,31 +1,31 @@
 {
-  "id": "incident-notes",
-  "name": "Incident Notes Sync",
-  "version": "1.0.1",
-  "description": "Synchronize analyst notes to the secure operations vault with delta compression.",
-  "entry": "incident-notes.dll",
-  "author": "Ops Collective",
-  "categories": ["persistence"],
-  "capabilities": [
-    {
-      "name": "notes.sync",
-      "module": "notes",
-      "description": "Push local notes to the operator vault after each sync cycle."
-    }
-  ],
-  "requirements": {
-    "minAgentVersion": "1.0.0",
-    "requiredModules": ["notes"]
-  },
-  "distribution": {
-    "defaultMode": "automatic",
-    "autoUpdate": true,
-    "signature": {
-      "type": "none"
-    }
-  },
-  "package": {
-    "artifact": "incident-notes-1.0.1.dll",
-    "sizeBytes": 7340032
-  }
+	"id": "incident-notes",
+	"name": "Incident Notes Sync",
+	"version": "1.0.1",
+	"description": "Synchronize analyst notes to the secure operations vault with delta compression.",
+	"entry": "incident-notes.dll",
+	"author": "Ops Collective",
+	"categories": ["persistence"],
+	"capabilities": [
+		{
+			"name": "notes.sync",
+			"module": "notes",
+			"description": "Push local notes to the operator vault after each sync cycle."
+		}
+	],
+	"requirements": {
+		"minAgentVersion": "1.0.0",
+		"requiredModules": ["notes"]
+	},
+	"distribution": {
+		"defaultMode": "automatic",
+		"autoUpdate": true,
+		"signature": {
+			"type": "none"
+		}
+	},
+	"package": {
+		"artifact": "incident-notes-1.0.1.dll",
+		"sizeBytes": 7340032
+	}
 }

