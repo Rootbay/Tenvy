@@ -62,6 +62,25 @@ CREATE TABLE IF NOT EXISTS recovery_code (
         consumed_at INTEGER,
         FOREIGN KEY (user_id) REFERENCES user(id) ON DELETE CASCADE
 );
+
+CREATE TABLE IF NOT EXISTS plugin (
+        id TEXT PRIMARY KEY NOT NULL,
+        status TEXT NOT NULL DEFAULT 'active',
+        enabled INTEGER NOT NULL DEFAULT 1,
+        auto_update INTEGER NOT NULL DEFAULT 0,
+        installations INTEGER NOT NULL DEFAULT 0,
+        manual_targets INTEGER NOT NULL DEFAULT 0,
+        auto_targets INTEGER NOT NULL DEFAULT 0,
+        default_delivery_mode TEXT NOT NULL DEFAULT 'manual',
+        allow_manual_push INTEGER NOT NULL DEFAULT 1,
+        allow_auto_sync INTEGER NOT NULL DEFAULT 0,
+        last_manual_push_at INTEGER,
+        last_auto_sync_at INTEGER,
+        last_deployed_at INTEGER,
+        last_checked_at INTEGER,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL
+);
 COMMIT;`
 );
 

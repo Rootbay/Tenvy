@@ -75,6 +75,25 @@ export const recoveryCode = sqliteTable('recovery_code', {
 	consumedAt: timestamp('consumed_at', { optional: true })
 });
 
+export const plugin = sqliteTable('plugin', {
+	id: text('id').primaryKey(),
+	status: text('status').notNull().default('active'),
+	enabled: integer('enabled', { mode: 'boolean' }).notNull().default(true),
+	autoUpdate: integer('auto_update', { mode: 'boolean' }).notNull().default(false),
+	installations: integer('installations').notNull().default(0),
+	manualTargets: integer('manual_targets').notNull().default(0),
+	autoTargets: integer('auto_targets').notNull().default(0),
+	defaultDeliveryMode: text('default_delivery_mode').notNull().default('manual'),
+	allowManualPush: integer('allow_manual_push', { mode: 'boolean' }).notNull().default(true),
+	allowAutoSync: integer('allow_auto_sync', { mode: 'boolean' }).notNull().default(false),
+	lastManualPushAt: timestamp('last_manual_push_at', { optional: true }),
+	lastAutoSyncAt: timestamp('last_auto_sync_at', { optional: true }),
+	lastDeployedAt: timestamp('last_deployed_at', { optional: true }),
+	lastCheckedAt: timestamp('last_checked_at', { optional: true }),
+	createdAt: timestamp('created_at', { defaultNow: true }),
+	updatedAt: timestamp('updated_at', { defaultNow: true })
+});
+
 export type Session = typeof session.$inferSelect;
 
 export type User = typeof user.$inferSelect;
@@ -84,3 +103,4 @@ export type Voucher = typeof voucher.$inferSelect;
 export type Passkey = typeof passkey.$inferSelect;
 
 export type RecoveryCode = typeof recoveryCode.$inferSelect;
+export type Plugin = typeof plugin.$inferSelect;

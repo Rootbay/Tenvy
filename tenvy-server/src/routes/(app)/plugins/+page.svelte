@@ -19,12 +19,12 @@
 		pluginDeliveryModeLabels,
 		pluginStatusLabels,
 		pluginStatusStyles,
-		plugins as pluginSeed,
 		type Plugin,
 		type PluginCategory,
 		type PluginDeliveryMode,
-		type PluginStatus
-	} from '$lib/data/plugins.js';
+		type PluginStatus,
+		type PluginUpdatePayload
+	} from '$lib/data/plugin-view.js';
 	import {
 		Check,
 		Download,
@@ -36,6 +36,8 @@
 		SlidersHorizontal,
 		Wifi
 	} from '@lucide/svelte';
+
+	export let data: { plugins: Plugin[] };
 
 	const statusFilters = [
 		{ label: 'All', value: 'all' },
@@ -53,17 +55,57 @@
 		}))
 	] satisfies { label: string; value: 'all' | PluginCategory }[];
 
-	let registry = $state<Plugin[]>(pluginSeed.map((p) => ({ ...p })));
+	let registry = $state<Plugin[]>(data.plugins.map((plugin) => ({ ...plugin })));
 	let searchTerm = $state('');
 	let statusFilter = $state<'all' | PluginStatus>('all');
 	let categoryFilter = $state<'all' | PluginCategory>('all');
 	let autoUpdateOnly = $state(false);
 	let filtersOpen = $state(false);
 
-	function updatePlugin(id: string, patch: Partial<Plugin>) {
+	function mergePluginPatch(plugin: Plugin, patch: PluginUpdatePayload): Plugin {
+		const next: Plugin = { ...plugin };
+
+		if (patch.status !== undefined) next.status = patch.status;
+		if (patch.enabled !== undefined) next.enabled = patch.enabled;
+		if (patch.autoUpdate !== undefined) next.autoUpdate = patch.autoUpdate;
+		if (patch.installations !== undefined) next.installations = patch.installations;
+
+		if (patch.distribution) {
+			next.distribution = {
+				...next.distribution,
+				...patch.distribution
+			};
+		}
+
+		return next;
+	}
+
+	async function updatePlugin(id: string, patch: PluginUpdatePayload) {
+		const previous = registry;
 		registry = registry.map((plugin: Plugin) =>
-			plugin.id === id ? { ...plugin, ...patch } : plugin
+			plugin.id === id ? mergePluginPatch(plugin, patch) : plugin
 		);
+
+		try {
+			const response = await fetch(`/api/plugins/${id}`, {
+				method: 'PATCH',
+				headers: {
+					'content-type': 'application/json'
+				},
+				body: JSON.stringify(patch)
+			});
+
+			if (!response.ok) {
+				const message = await response.text().catch(() => null);
+				throw new Error(message || `Failed to update plugin ${id}`);
+			}
+
+			const payload = (await response.json()) as { plugin: Plugin };
+			registry = registry.map((plugin: Plugin) => (plugin.id === id ? payload.plugin : plugin));
+		} catch (err) {
+			console.error('Failed to update plugin', err);
+			registry = previous;
+		}
 	}
 
 	const distributionModes: PluginDeliveryMode[] = ['manual', 'automatic'];
@@ -397,7 +439,7 @@
 												: plugin.status
 											: 'disabled';
 
-										updatePlugin(plugin.id, {
+										void updatePlugin(plugin.id, {
 											enabled: value,
 											status: nextStatus
 										});
@@ -416,7 +458,7 @@
 								<Switch
 									checked={plugin.autoUpdate}
 									aria-label={`Toggle auto update for ${plugin.name}`}
-									onCheckedChange={(value) => updatePlugin(plugin.id, { autoUpdate: value })}
+									onCheckedChange={(value) => void updatePlugin(plugin.id, { autoUpdate: value })}
 								/>
 							</div>
 							<div class="space-y-3 rounded-md border border-border/60 px-3 py-2">
@@ -435,9 +477,8 @@
 											disabled={!plugin.enabled}
 											aria-pressed={plugin.distribution.defaultMode === mode}
 											onclick={() =>
-												updatePlugin(plugin.id, {
+												void updatePlugin(plugin.id, {
 													distribution: {
-														...plugin.distribution,
 														defaultMode: mode
 													}
 												})}
@@ -461,9 +502,8 @@
 											disabled={!plugin.enabled}
 											aria-label={`Toggle manual downloads for ${plugin.name}`}
 											onCheckedChange={(value) =>
-												updatePlugin(plugin.id, {
+												void updatePlugin(plugin.id, {
 													distribution: {
-														...plugin.distribution,
 														allowManualPush: value
 													}
 												})}
@@ -483,9 +523,8 @@
 											disabled={!plugin.enabled}
 											aria-label={`Toggle auto sync for ${plugin.name}`}
 											onCheckedChange={(value) =>
-												updatePlugin(plugin.id, {
+												void updatePlugin(plugin.id, {
 													distribution: {
-														...plugin.distribution,
 														allowAutoSync: value
 													}
 												})}

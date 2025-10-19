@@ -1,247 +1,209 @@
-import { pluginManifests } from './plugin-manifests.js';
 import { agentModuleIndex } from '../../../../shared/modules/index.js';
-import { validatePluginManifest } from '../../../../shared/types/plugin-manifest.js';
+import type { PluginManifest } from '../../../../shared/types/plugin-manifest.js';
+import { loadPluginManifests, type LoadedPluginManifest } from './plugin-manifests.js';
+import {
+	formatFileSize,
+	formatRelativeTime,
+	pluginCategories,
+	pluginCategoryLabels,
+	pluginDeliveryModeLabels,
+	pluginStatusLabels,
+	pluginStatusStyles,
+	type Plugin,
+	type PluginCategory,
+	type PluginDeliveryMode,
+	type PluginDistributionView,
+	type PluginStatus,
+	type PluginUpdatePayload
+} from './plugin-view.js';
+import {
+	createPluginRuntimeStore,
+	type PluginRuntimePatch,
+	type PluginRuntimeRow,
+	type PluginRuntimeStore
+} from '$lib/server/plugins/runtime-store.js';
 
-export type PluginStatus = 'active' | 'disabled' | 'update' | 'error';
-export type PluginCategory =
-	| 'collection'
-	| 'operations'
-	| 'persistence'
-	| 'exfiltration'
-	| 'transport'
-	| 'recovery';
-
-export type PluginDeliveryMode = 'manual' | 'automatic';
-
-export type PluginDistribution = {
-	defaultMode: PluginDeliveryMode;
-	allowManualPush: boolean;
-	allowAutoSync: boolean;
-	manualTargets: number;
-	autoTargets: number;
-	lastManualPush: string;
-	lastAutoSync: string;
+export type {
+	Plugin,
+	PluginCategory,
+	PluginDeliveryMode,
+	PluginDistributionView,
+	PluginStatus,
+	PluginUpdatePayload
+} from './plugin-view.js';
+export {
+	formatFileSize,
+	formatRelativeTime,
+	pluginCategories,
+	pluginCategoryLabels,
+	pluginDeliveryModeLabels,
+	pluginStatusLabels,
+	pluginStatusStyles
 };
 
-export type Plugin = {
-	id: string;
-	name: string;
-	description: string;
-	version: string;
-	author: string;
-	category: PluginCategory;
+export interface PluginRepositoryOptions {
+	directory?: string;
+	runtimeStore?: PluginRuntimeStore;
+}
+
+export type PluginRepositoryUpdate = PluginUpdatePayload & {
+	distribution?: PluginUpdatePayload['distribution'] & {
+		manualTargets?: number;
+		autoTargets?: number;
+		lastManualPushAt?: Date | null;
+		lastAutoSyncAt?: Date | null;
+	};
+	lastDeployedAt?: Date | null;
+	lastCheckedAt?: Date | null;
+};
+
+type PluginRuntimeSnapshot = {
 	status: PluginStatus;
 	enabled: boolean;
 	autoUpdate: boolean;
 	installations: number;
-	lastDeployed: string;
-	lastChecked: string;
-	size: string;
-	capabilities: string[];
-	artifact: string;
-	distribution: PluginDistribution;
-	requiredModules: { id: string; title: string }[];
-};
-
-export const pluginCategories: PluginCategory[] = [
-	'collection',
-	'operations',
-	'persistence',
-	'exfiltration',
-	'transport',
-	'recovery'
-];
-
-export const pluginCategoryLabels: Record<PluginCategory, string> = {
-	collection: 'Collection',
-	operations: 'Operations',
-	persistence: 'Persistence',
-	exfiltration: 'Exfiltration',
-	transport: 'Transport',
-	recovery: 'Recovery'
-};
-
-export const pluginDeliveryModeLabels: Record<PluginDeliveryMode, string> = {
-	manual: 'Manual delivery',
-	automatic: 'Automatic sync'
-};
-
-export const pluginStatusLabels: Record<PluginStatus, string> = {
-	active: 'Active',
-	disabled: 'Disabled',
-	update: 'Update available',
-	error: 'Attention required'
-};
-
-export const pluginStatusStyles: Record<PluginStatus, string> = {
-	active: 'border-emerald-500/40 text-emerald-500',
-	disabled: 'border-muted text-muted-foreground',
-	update: 'border-amber-500/60 text-amber-500',
-	error: 'border-red-500/60 text-red-500'
-};
-
-type PluginRuntimeState = {
-	status: PluginStatus;
-	enabled: boolean;
-	autoUpdate?: boolean;
-	installations: number;
-	lastDeployed: string;
-	lastChecked: string;
 	manualTargets: number;
 	autoTargets: number;
-	lastManualPush: string;
-	lastAutoSync: string;
+	defaultDeliveryMode: PluginDeliveryMode;
+	allowManualPush: boolean;
+	allowAutoSync: boolean;
+	lastManualPushAt: Date | null;
+	lastAutoSyncAt: Date | null;
+	lastDeployedAt: Date | null;
+	lastCheckedAt: Date | null;
 };
 
-const runtimeState: Record<string, PluginRuntimeState> = {
-	'clipboard-sync': {
-		status: 'active',
-		enabled: true,
-		autoUpdate: true,
-		installations: 62,
-		lastDeployed: daysAgoISO(3),
-		lastChecked: daysAgoISO(0.5),
-		manualTargets: 6,
-		autoTargets: 56,
-		lastManualPush: daysAgoReadable(5),
-		lastAutoSync: daysAgoReadable(1)
-	},
-	'remote-vault': {
-		status: 'update',
-		enabled: true,
-		autoUpdate: false,
-		installations: 18,
-		lastDeployed: daysAgoISO(11),
-		lastChecked: daysAgoISO(1),
-		manualTargets: 18,
-		autoTargets: 0,
-		lastManualPush: daysAgoReadable(11),
-		lastAutoSync: 'not scheduled'
-	},
-	'stream-relay': {
-		status: 'active',
-		enabled: true,
-		autoUpdate: true,
-		installations: 47,
-		lastDeployed: daysAgoISO(2),
-		lastChecked: daysAgoISO(0.2),
-		manualTargets: 5,
-		autoTargets: 42,
-		lastManualPush: daysAgoReadable(4),
-		lastAutoSync: daysAgoReadable(0.5)
-	},
-	'incident-notes': {
-		status: 'disabled',
-		enabled: false,
-		autoUpdate: true,
-		installations: 12,
-		lastDeployed: daysAgoISO(28),
-		lastChecked: daysAgoISO(3),
-		manualTargets: 12,
-		autoTargets: 0,
-		lastManualPush: daysAgoReadable(28),
-		lastAutoSync: 'not scheduled'
-	}
-};
-
-const validationErrors = pluginManifests
-	.map((manifest) => ({ id: manifest.id, errors: validatePluginManifest(manifest) }))
-	.filter(({ errors }) => errors.length > 0);
-
-if (validationErrors.length > 0) {
-	console.warn('Invalid plugin manifests detected', validationErrors);
-}
-
-function daysAgoISO(days: number): string {
-	const timestamp = new Date();
-	timestamp.setTime(timestamp.getTime() - days * 24 * 60 * 60 * 1000);
-	return timestamp.toISOString();
-}
-
-function daysAgoReadable(days: number): string {
-	if (days === 0) return 'just now';
-	if (days < 1) {
-		const hours = Math.round(days * 24);
-		return `${hours} hour${hours === 1 ? '' : 's'} ago`;
-	}
-	if (days < 14) {
-		const rounded = Math.round(days);
-		return `${rounded} day${rounded === 1 ? '' : 's'} ago`;
-	}
-	const weeks = Math.round(days / 7);
-	return `${weeks} week${weeks === 1 ? '' : 's'} ago`;
-}
-
-function formatSize(bytes?: number): string {
-	if (!bytes || bytes <= 0) return 'unknown';
-	const units = ['bytes', 'KB', 'MB', 'GB'];
-	let value = bytes;
-	let unitIndex = 0;
-	while (value >= 1024 && unitIndex < units.length - 1) {
-		value /= 1024;
-		unitIndex += 1;
-	}
-	return `${value.toFixed(unitIndex === 0 ? 0 : 1)} ${units[unitIndex]}`;
-}
-
-function manifestCategory(manifestCategory?: string[]): PluginCategory {
-	const category = manifestCategory?.[0];
+const manifestCategory = (manifest: PluginManifest): PluginCategory => {
+	const category = manifest.categories?.[0];
 	if (!category) return 'operations';
-	return category as PluginCategory;
-}
+	return (category as PluginCategory) ?? 'operations';
+};
 
-function derivePlugin(manifest: (typeof pluginManifests)[number]): Plugin {
-	const state =
-		runtimeState[manifest.id] ??
-		({
-			status: 'active',
-			enabled: true,
-			autoUpdate: manifest.distribution.autoUpdate,
-			installations: 0,
-			lastDeployed: new Date().toISOString(),
-			lastChecked: new Date().toISOString(),
-			manualTargets: 0,
-			autoTargets: 0,
-			lastManualPush: 'never',
-			lastAutoSync: 'never'
-		} satisfies PluginRuntimeState);
-
-	const autoUpdate = state.autoUpdate ?? manifest.distribution.autoUpdate;
-
-	const distribution: PluginDistribution = {
-		defaultMode: manifest.distribution.defaultMode,
-		allowManualPush: true,
-		allowAutoSync: manifest.distribution.defaultMode === 'automatic' || autoUpdate,
-		manualTargets: state.manualTargets,
-		autoTargets: state.autoTargets,
-		lastManualPush: state.lastManualPush,
-		lastAutoSync: state.lastAutoSync
-	};
-
-	const requiredModules = (manifest.requirements.requiredModules ?? [])
+const mapRequiredModules = (manifest: PluginManifest) =>
+	(manifest.requirements.requiredModules ?? [])
 		.map((moduleId) => agentModuleIndex.get(moduleId))
 		.filter((module): module is NonNullable<typeof module> => module != null)
 		.map((module) => ({ id: module.id, title: module.title }));
 
-	return {
-		id: manifest.id,
-		name: manifest.name,
-		description: manifest.description ?? '',
-		version: manifest.version,
-		author: manifest.author ?? 'Unknown',
-		category: manifestCategory(manifest.categories),
-		status: state.status,
-		enabled: state.enabled,
-		autoUpdate,
-		installations: state.installations,
-		lastDeployed: state.lastDeployed,
-		lastChecked: state.lastChecked,
-		size: formatSize(manifest.package.sizeBytes),
-		capabilities: manifest.capabilities?.map((capability) => capability.name) ?? [],
-		artifact: manifest.package.artifact,
-		distribution,
-		requiredModules
-	};
-}
+const toPluginView = (manifest: PluginManifest, runtime: PluginRuntimeSnapshot): Plugin => ({
+	id: manifest.id,
+	name: manifest.name,
+	description: manifest.description ?? '',
+	version: manifest.version,
+	author: manifest.author ?? 'Unknown',
+	category: manifestCategory(manifest),
+	status: runtime.status,
+	enabled: runtime.enabled,
+	autoUpdate: runtime.autoUpdate,
+	installations: runtime.installations,
+	lastDeployed: formatRelativeTime(runtime.lastDeployedAt),
+	lastChecked: formatRelativeTime(runtime.lastCheckedAt),
+	size: formatFileSize(manifest.package.sizeBytes),
+	capabilities: manifest.capabilities?.map((capability) => capability.name) ?? [],
+	artifact: manifest.package.artifact,
+	distribution: {
+		defaultMode: runtime.defaultDeliveryMode,
+		allowManualPush: runtime.allowManualPush,
+		allowAutoSync: runtime.allowAutoSync,
+		manualTargets: runtime.manualTargets,
+		autoTargets: runtime.autoTargets,
+		lastManualPush: formatRelativeTime(runtime.lastManualPushAt),
+		lastAutoSync: formatRelativeTime(runtime.lastAutoSyncAt)
+	},
+	requiredModules: mapRequiredModules(manifest)
+});
 
-export const plugins: Plugin[] = pluginManifests.map(derivePlugin);
+const toRuntimePatch = (update: PluginRepositoryUpdate): PluginRuntimePatch => {
+	const patch: PluginRuntimePatch = {};
+
+	if (update.status !== undefined) patch.status = update.status;
+	if (update.enabled !== undefined) patch.enabled = update.enabled;
+	if (update.autoUpdate !== undefined) patch.autoUpdate = update.autoUpdate;
+	if (update.installations !== undefined) patch.installations = update.installations;
+	if (update.lastDeployedAt !== undefined) patch.lastDeployedAt = update.lastDeployedAt;
+	if (update.lastCheckedAt !== undefined) patch.lastCheckedAt = update.lastCheckedAt;
+
+	if (update.distribution) {
+		const { distribution } = update;
+		if (distribution.defaultMode !== undefined)
+			patch.defaultDeliveryMode = distribution.defaultMode;
+		if (distribution.allowManualPush !== undefined)
+			patch.allowManualPush = distribution.allowManualPush;
+		if (distribution.allowAutoSync !== undefined) patch.allowAutoSync = distribution.allowAutoSync;
+		if (distribution.manualTargets !== undefined) patch.manualTargets = distribution.manualTargets;
+		if (distribution.autoTargets !== undefined) patch.autoTargets = distribution.autoTargets;
+		if (distribution.lastManualPushAt !== undefined)
+			patch.lastManualPushAt = distribution.lastManualPushAt;
+		if (distribution.lastAutoSyncAt !== undefined)
+			patch.lastAutoSyncAt = distribution.lastAutoSyncAt;
+	}
+
+	return patch;
+};
+
+const snapshotFromRow = (row: PluginRuntimeRow): PluginRuntimeSnapshot => ({
+	status: row.status as PluginStatus,
+	enabled: row.enabled,
+	autoUpdate: row.autoUpdate,
+	installations: row.installations,
+	manualTargets: row.manualTargets,
+	autoTargets: row.autoTargets,
+	defaultDeliveryMode: row.defaultDeliveryMode as PluginDeliveryMode,
+	allowManualPush: row.allowManualPush,
+	allowAutoSync: row.allowAutoSync,
+	lastManualPushAt: row.lastManualPushAt ?? null,
+	lastAutoSyncAt: row.lastAutoSyncAt ?? null,
+	lastDeployedAt: row.lastDeployedAt ?? null,
+	lastCheckedAt: row.lastCheckedAt ?? null
+});
+
+export const createPluginRepository = (
+	options: PluginRepositoryOptions = {}
+): {
+	list(): Promise<Plugin[]>;
+	get(id: string): Promise<Plugin>;
+	update(id: string, update: PluginRepositoryUpdate): Promise<Plugin>;
+} => {
+	const runtimeStore = options.runtimeStore ?? createPluginRuntimeStore();
+
+	const loadManifests = async () => loadPluginManifests({ directory: options.directory });
+
+	const manifestIndex = async () => {
+		const records = await loadManifests();
+		const index = new Map(records.map((record) => [record.manifest.id, record]));
+		return { records, index };
+	};
+
+	const getManifest = async (id: string): Promise<LoadedPluginManifest> => {
+		const { index } = await manifestIndex();
+		const record = index.get(id);
+		if (!record) throw new Error(`Plugin manifest ${id} not found`);
+		return record;
+	};
+
+	return {
+		async list() {
+			const records = await loadManifests();
+			const plugins = [] as Plugin[];
+
+			for (const record of records) {
+				const runtimeRow = await runtimeStore.ensure(record.manifest);
+				plugins.push(toPluginView(record.manifest, snapshotFromRow(runtimeRow)));
+			}
+
+			return plugins;
+		},
+		async get(id: string) {
+			const { manifest } = await getManifest(id);
+			const runtimeRow = await runtimeStore.ensure(manifest);
+			return toPluginView(manifest, snapshotFromRow(runtimeRow));
+		},
+		async update(id: string, update) {
+			const { manifest } = await getManifest(id);
+			await runtimeStore.ensure(manifest);
+
+			const runtimeRow = await runtimeStore.update(id, toRuntimePatch(update));
+			return toPluginView(manifest, snapshotFromRow(runtimeRow));
+		}
+	};
+};

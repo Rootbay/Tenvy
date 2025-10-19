@@ -2,6 +2,7 @@ import { paraglideVitePlugin } from '@inlang/paraglide-js';
 import tailwindcss from '@tailwindcss/vite';
 import { defineConfig } from 'vitest/config';
 import { sveltekit } from '@sveltejs/kit/vite';
+import { fileURLToPath } from 'node:url';
 
 function resolvePort(value?: string | null): number {
 	if (!value) {
@@ -35,6 +36,15 @@ function resolveHost(value?: string | null): string | boolean {
 
 const serverPort = resolvePort(process.env.TENVY_SERVER_PORT ?? process.env.PORT ?? null);
 const serverHost = resolveHost(process.env.TENVY_SERVER_HOST ?? process.env.HOST ?? null);
+const isVitest = process.env.VITEST === 'true';
+
+const testAliases = isVitest
+	? {
+			'$env/dynamic/private': fileURLToPath(
+				new URL('./tests/mocks/env-dynamic-private.ts', import.meta.url)
+			)
+		}
+	: {};
 
 export default defineConfig({
 	plugins: [
@@ -54,6 +64,11 @@ export default defineConfig({
 		host: typeof serverHost === 'string' ? serverHost : '0.0.0.0',
 		port: serverPort,
 		strictPort: true
+	},
+	resolve: {
+		alias: {
+			...testAliases
+		}
 	},
 	test: {
 		expect: { requireAssertions: true },
@@ -78,7 +93,7 @@ export default defineConfig({
 				test: {
 					name: 'server',
 					environment: 'node',
-					include: ['src/**/*.{test,spec}.{js,ts}'],
+					include: ['src/**/*.{test,spec}.{js,ts}', 'tests/**/*.{test,spec}.{js,ts}'],
 					exclude: ['src/**/*.svelte.{test,spec}.{js,ts}']
 				}
 			}
