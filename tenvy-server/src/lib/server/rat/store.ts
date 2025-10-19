@@ -1,4 +1,4 @@
-import { createHash, randomBytes, randomUUID } from 'crypto';
+import { createHash, randomBytes, randomUUID, timingSafeEqual } from 'crypto';
 import { readFileSync } from 'fs';
 import { mkdir, rename, rm, writeFile } from 'fs/promises';
 import path from 'path';
@@ -39,7 +39,7 @@ const MAX_RECENT_RESULTS = 25;
 export const MAX_PENDING_COMMANDS = 200;
 const PENDING_COMMAND_DROP_WARN_INTERVAL_MS = 30_000;
 const PERSIST_DEBOUNCE_MS = 2_000;
-const PERSIST_FILE_VERSION = 1;
+const PERSIST_FILE_VERSION = 2;
 
 const DEFAULT_STORAGE_PATH = process.env.TENVY_AGENT_REGISTRY_PATH
 	? path.resolve(process.env.TENVY_AGENT_REGISTRY_PATH)
@@ -56,7 +56,7 @@ interface PersistedSharedNoteRecord {
 
 interface PersistedAgentRecord {
 	id: string;
-	key: string;
+	keyHash: string;
 	metadata: AgentMetadata;
 	status: AgentStatus;
 	connectedAt: string;
@@ -103,7 +103,7 @@ interface AgentSessionRecord {
 
 interface AgentRecord {
 	id: string;
-	key: string;
+	keyHash: string;
 	metadata: AgentMetadata;
 	status: AgentStatus;
 	connectedAt: Date;
@@ -192,6 +192,31 @@ function computeFingerprint(metadata: AgentMetadata): string {
 	hash.update('|');
 	hash.update(normalize(metadata.group));
 	return hash.digest('hex');
+}
+
+function hashAgentKey(rawKey: string): string {
+	const hash = createHash('sha256');
+	hash.update(rawKey, 'utf-8');
+	return hash.digest('hex');
+}
+
+function timingSafeEqualHex(expected: string, candidate: string): boolean {
+	if (expected.length !== candidate.length) {
+		return false;
+	}
+
+	try {
+		const expectedBuffer = Buffer.from(expected, 'hex');
+		const candidateBuffer = Buffer.from(candidate, 'hex');
+		return timingSafeEqual(expectedBuffer, candidateBuffer);
+	} catch {
+		return false;
+	}
+}
+
+function generateAgentKey(): { token: string; hash: string } {
+	const token = randomBytes(32).toString('hex');
+	return { token, hash: hashAgentKey(token) };
 }
 
 function parsePersistedDate(value: unknown, fallback: Date): Date {
@@ -323,6 +348,15 @@ export class AgentRegistry {
 		this.loadFromDisk();
 	}
 
+	private verifyAgentKey(record: AgentRecord, key: string | undefined): boolean {
+		if (!key) {
+			return false;
+		}
+
+		const incomingHash = hashAgentKey(key);
+		return timingSafeEqualHex(record.keyHash, incomingHash);
+	}
+
 	private loadFromDisk(): void {
 		let source: string;
 		try {
@@ -347,7 +381,7 @@ export class AgentRegistry {
 			return;
 		}
 
-		const file = parsed as Partial<PersistedRegistryFile> | null;
+		const file = parsed as Partial<PersistedRegistryFile & { agents: unknown[] }> | null;
 		if (!file || typeof file !== 'object' || !Array.isArray(file.agents)) {
 			return;
 		}
@@ -355,16 +389,42 @@ export class AgentRegistry {
 		this.agents.clear();
 		this.fingerprints.clear();
 
+		const fileVersion = typeof file.version === 'number' ? file.version : 0;
+		let upgradedLegacyKey = false;
+
 		for (const entry of file.agents) {
 			if (!entry || typeof entry !== 'object') {
 				continue;
 			}
 
 			const id = typeof entry.id === 'string' && entry.id.trim() !== '' ? entry.id : null;
-			const key = typeof entry.key === 'string' && entry.key.trim() !== '' ? entry.key : null;
+			const persistedKeyHash =
+				typeof (entry as { keyHash?: unknown }).keyHash === 'string'
+					? ((entry as { keyHash?: string }).keyHash?.trim() ?? '')
+					: '';
+			const legacyKey =
+				typeof (entry as { key?: unknown }).key === 'string'
+					? ((entry as { key?: string }).key?.trim() ?? '')
+					: '';
+			let keyHash: string | null = null;
+
+			if (persistedKeyHash) {
+				keyHash = persistedKeyHash;
+			} else if (fileVersion > 0 && fileVersion < 2 && legacyKey) {
+				keyHash = hashAgentKey(legacyKey);
+				upgradedLegacyKey = true;
+			} else if (legacyKey) {
+				// Treat missing version as legacy plaintext.
+				keyHash = hashAgentKey(legacyKey);
+				upgradedLegacyKey = true;
+			}
+
 			const metadata = entry.metadata ?? null;
 			const status = entry.status;
-			if (!id || !key || !metadata) {
+			if (!id || !keyHash || !metadata) {
+				continue;
+			}
+			if (!/^[0-9a-f]{64}$/i.test(keyHash)) {
 				continue;
 			}
 			if (status !== 'online' && status !== 'offline' && status !== 'error') {
@@ -429,7 +489,7 @@ export class AgentRegistry {
 
 			const record: AgentRecord = {
 				id,
-				key,
+				keyHash,
 				metadata: normalizedMetadata,
 				status: normalizedStatus,
 				connectedAt,
@@ -444,6 +504,10 @@ export class AgentRegistry {
 
 			this.agents.set(record.id, record);
 			this.fingerprints.set(record.fingerprint, record.id);
+		}
+
+		if (upgradedLegacyKey) {
+			this.schedulePersist();
 		}
 	}
 
@@ -479,7 +543,7 @@ export class AgentRegistry {
 	private async persistToDisk(): Promise<void> {
 		const agents = Array.from(this.agents.values()).map<PersistedAgentRecord>((record) => ({
 			id: record.id,
-			key: record.key,
+			keyHash: record.keyHash,
 			metadata: cloneMetadata(record.metadata),
 			status: record.status,
 			connectedAt: record.connectedAt.toISOString(),
@@ -671,7 +735,8 @@ export class AgentRegistry {
 				existingRecord.connectedAt = now;
 				existingRecord.lastSeen = now;
 				existingRecord.metrics = undefined;
-				existingRecord.key = randomBytes(32).toString('hex');
+				const nextKey = generateAgentKey();
+				existingRecord.keyHash = nextKey.hash;
 				existingRecord.config = normalizeConfig(existingRecord.config);
 				existingRecord.fingerprint = computeFingerprint(nextMetadata);
 
@@ -684,7 +749,7 @@ export class AgentRegistry {
 
 				return {
 					agentId: existingRecord.id,
-					agentKey: existingRecord.key,
+					agentKey: nextKey.token,
 					config: { ...existingRecord.config },
 					commands: [],
 					serverTime: now.toISOString()
@@ -695,10 +760,10 @@ export class AgentRegistry {
 		}
 
 		const id = randomUUID();
-		const key = randomBytes(32).toString('hex');
+		const nextKey = generateAgentKey();
 		const record: AgentRecord = {
 			id,
-			key,
+			keyHash: nextKey.hash,
 			metadata: incomingMetadata,
 			status: 'online',
 			connectedAt: now,
@@ -717,7 +782,7 @@ export class AgentRegistry {
 
 		return {
 			agentId: id,
-			agentKey: key,
+			agentKey: nextKey.token,
 			config: { ...record.config },
 			commands: [],
 			serverTime: now.toISOString()
@@ -735,7 +800,7 @@ export class AgentRegistry {
 			throw new RegistryError('Agent not found', 404);
 		}
 
-		if (!key || key !== record.key) {
+		if (!this.verifyAgentKey(record, key)) {
 			throw new RegistryError('Invalid agent key', 401);
 		}
 
@@ -809,7 +874,7 @@ export class AgentRegistry {
 			throw new RegistryError('Agent not found', 404);
 		}
 
-		if (!key || key !== record.key) {
+		if (!this.verifyAgentKey(record, key)) {
 			throw new RegistryError('Invalid agent key', 401);
 		}
 
@@ -1058,7 +1123,7 @@ export class AgentRegistry {
 		if (!record) {
 			throw new RegistryError('Agent not found', 404);
 		}
-		if (!key || key !== record.key) {
+		if (!this.verifyAgentKey(record, key)) {
 			throw new RegistryError('Invalid agent key', 401);
 		}
 		record.lastSeen = new Date();
@@ -1078,7 +1143,7 @@ export class AgentRegistry {
 			throw new RegistryError('Agent not found', 404);
 		}
 
-		if (!key || key !== record.key) {
+		if (!this.verifyAgentKey(record, key)) {
 			throw new RegistryError('Invalid agent key', 401);
 		}
 

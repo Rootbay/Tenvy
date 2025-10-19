@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { mkdtempSync, rmSync, writeFileSync } from 'fs';
+import { mkdtempSync, rmSync, writeFileSync, readFileSync } from 'fs';
 import { tmpdir } from 'os';
 import path from 'path';
 import { createHash } from 'crypto';
@@ -24,6 +24,12 @@ function fingerprint(metadata: typeof baseMetadata & { group?: string }) {
 	hash.update(metadata.architecture.trim().toLowerCase());
 	hash.update('|');
 	hash.update(metadata.group?.trim().toLowerCase() ?? '');
+	return hash.digest('hex');
+}
+
+function hashKey(raw: string): string {
+	const hash = createHash('sha256');
+	hash.update(raw, 'utf-8');
 	return hash.digest('hex');
 }
 
@@ -105,6 +111,15 @@ describe('AgentRegistry persistence hygiene', () => {
 		expect(sync.config.jitterRatio).toBe(defaultAgentConfig.jitterRatio);
 
 		await registry.flush();
+
+		const upgradedRaw = readFileSync(storagePath, 'utf-8');
+		const upgraded = JSON.parse(upgradedRaw) as {
+			version: number;
+			agents: Array<{ keyHash?: string; key?: string }>;
+		};
+		expect(upgraded.version).toBe(2);
+		expect(upgraded.agents[0]?.keyHash).toBe(hashKey('secret-key'));
+		expect(upgraded.agents[0]?.key).toBeUndefined();
 	});
 
 	it('deduplicates recent results and protects registry snapshots from mutation', async () => {
@@ -176,6 +191,18 @@ describe('AgentRegistry persistence hygiene', () => {
 		expect(followUp.config.pollIntervalMs).toBe(defaultAgentConfig.pollIntervalMs);
 
 		await registry.flush();
+
+		const persistedRaw = readFileSync(storagePath, 'utf-8');
+		const persisted = JSON.parse(persistedRaw) as {
+			version: number;
+			agents: Array<{ keyHash?: string; key?: string }>;
+		};
+		expect(persisted.version).toBe(2);
+		const storedKeyHash = persisted.agents[0]?.keyHash;
+		expect(storedKeyHash).toBeDefined();
+		if (storedKeyHash) {
+			expect(storedKeyHash).toBe(hashKey(registration.agentKey));
+		}
 	});
 
 	it('caps pending command queues and drops oldest entries when full', () => {
@@ -201,5 +228,53 @@ describe('AgentRegistry persistence hygiene', () => {
 		} finally {
 			warnSpy.mockRestore();
 		}
+	});
+
+	it('requires hashed agent keys for attach and sync flows', async () => {
+		const storagePath = path.join(tempDir, 'attach.json');
+		const registry = new AgentRegistry({ storagePath });
+		const registration = registry.registerAgent({ metadata: baseMetadata });
+
+		const makeSocket = () =>
+			({
+				readyState: 1,
+				addEventListener: vi.fn(),
+				send: vi.fn(),
+				close: vi.fn()
+			}) as unknown as WebSocket;
+
+		const socket = makeSocket();
+		registry.attachSession(registration.agentId, registration.agentKey, socket);
+
+		expect(() =>
+			registry.attachSession(registration.agentId, 'invalid-key', makeSocket())
+		).toThrowError('Invalid agent key');
+
+		expect(() => registry.authorizeAgent(registration.agentId, 'invalid-key')).toThrowError(
+			'Invalid agent key'
+		);
+
+		expect(() =>
+			registry.syncAgent(registration.agentId, 'invalid-key', {
+				status: 'online',
+				timestamp: new Date().toISOString(),
+				results: []
+			})
+		).toThrowError('Invalid agent key');
+
+		const sync = registry.syncAgent(registration.agentId, registration.agentKey, {
+			status: 'online',
+			timestamp: new Date().toISOString(),
+			results: []
+		});
+		expect(sync.commands).toHaveLength(0);
+
+		await registry.flush();
+
+		const persistedRaw = readFileSync(storagePath, 'utf-8');
+		const persisted = JSON.parse(persistedRaw) as {
+			agents: Array<{ keyHash?: string }>;
+		};
+		expect(persisted.agents[0]?.keyHash).toBe(hashKey(registration.agentKey));
 	});
 });
