@@ -157,19 +157,22 @@
 
         async function refreshSession() {
                 if (!browser || !client) {
-                        return;
+                        return session;
                 }
                 try {
                         const response = await fetch(`/api/agents/${client.id}/remote-desktop/session`);
                         if (!response.ok) {
-                                return;
+                                return session;
                         }
                         const payload = (await response.json()) as {
                                 session?: RemoteDesktopSessionState | null;
                         };
-                        session = payload.session ?? null;
+                        const nextSession = payload.session ?? null;
+                        session = nextSession;
+                        return nextSession;
                 } catch (err) {
                         console.warn('Failed to refresh remote desktop session state', err);
+                        return session;
                 }
         }
 
@@ -998,12 +1001,12 @@
                 let destroyed = false;
 
                 const initialize = async () => {
-                        await refreshSession();
+                        const currentSession = await refreshSession();
                         if (destroyed) {
                                 return;
                         }
-                        if (sessionActive && sessionId) {
-                                connectStream(sessionId);
+                        if (currentSession?.active && currentSession.sessionId) {
+                                connectStream(currentSession.sessionId);
                         } else {
                                 maybeStartSession();
                         }
