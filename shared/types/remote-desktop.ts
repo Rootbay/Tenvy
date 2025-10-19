@@ -6,6 +6,13 @@ export type RemoteDesktopEncoder = "auto" | "hevc" | "avc" | "jpeg";
 
 export type RemoteDesktopTransport = "http" | "webrtc";
 
+export interface RemoteDesktopWebRTCICEServer {
+  urls: string[];
+  username?: string;
+  credential?: string;
+  credentialType?: "password" | "oauth";
+}
+
 export interface RemoteDesktopTransportCapability {
   transport: RemoteDesktopTransport;
   codecs: RemoteDesktopEncoder[];
@@ -22,6 +29,7 @@ export interface RemoteDesktopSessionNegotiationRequest {
   webrtc?: {
     offer?: string;
     dataChannel?: string;
+    iceServers?: RemoteDesktopWebRTCICEServer[];
   };
 }
 
@@ -34,6 +42,7 @@ export interface RemoteDesktopSessionNegotiationResponse {
   webrtc?: {
     answer?: string;
     dataChannel?: string;
+    iceServers?: RemoteDesktopWebRTCICEServer[];
   };
 }
 

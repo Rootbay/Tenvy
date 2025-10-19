@@ -31,14 +31,15 @@ type frameTransport interface {
 }
 
 type Config struct {
-	AgentID        string
-	BaseURL        string
-	AuthKey        string
-	Client         HTTPDoer
-	Logger         Logger
-	UserAgent      string
-	RequestTimeout time.Duration
-	authHeader     string
+	AgentID          string
+	BaseURL          string
+	AuthKey          string
+	Client           HTTPDoer
+	Logger           Logger
+	UserAgent        string
+	RequestTimeout   time.Duration
+	WebRTCICEServers []RemoteDesktopWebRTCICEServer
+	authHeader       string
 }
 
 type RemoteDesktopQuality string
@@ -206,13 +207,22 @@ type RemoteDesktopSessionNegotiationResponse struct {
 }
 
 type RemoteDesktopWebRTCOffer struct {
-	Offer       string `json:"offer"`
-	DataChannel string `json:"dataChannel,omitempty"`
+	Offer       string                         `json:"offer"`
+	DataChannel string                         `json:"dataChannel,omitempty"`
+	ICEServers  []RemoteDesktopWebRTCICEServer `json:"iceServers,omitempty"`
 }
 
 type RemoteDesktopWebRTCAnswer struct {
-	Answer      string `json:"answer"`
-	DataChannel string `json:"dataChannel,omitempty"`
+	Answer      string                         `json:"answer"`
+	DataChannel string                         `json:"dataChannel,omitempty"`
+	ICEServers  []RemoteDesktopWebRTCICEServer `json:"iceServers,omitempty"`
+}
+
+type RemoteDesktopWebRTCICEServer struct {
+	URLs           []string `json:"urls"`
+	Username       string   `json:"username,omitempty"`
+	Credential     string   `json:"credential,omitempty"`
+	CredentialType string   `json:"credentialType,omitempty"`
 }
 
 type RemoteDesktopVideoClip struct {

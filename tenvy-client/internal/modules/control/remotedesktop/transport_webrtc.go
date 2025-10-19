@@ -34,9 +34,10 @@ type webrtcFrameTransport struct {
 	mu        sync.Mutex
 }
 
-func prepareWebRTCOffer(ctx context.Context) (*webrtcOfferHandle, error) {
+func prepareWebRTCOffer(ctx context.Context, servers []RemoteDesktopWebRTCICEServer) (*webrtcOfferHandle, error) {
 	api := webrtc.NewAPI()
-	pc, err := api.NewPeerConnection(webrtc.Configuration{})
+	config := webrtc.Configuration{ICEServers: convertICEServers(servers)}
+	pc, err := api.NewPeerConnection(config)
 	if err != nil {
 		return nil, err
 	}
@@ -119,6 +120,45 @@ func prepareWebRTCOffer(ctx context.Context) (*webrtcOfferHandle, error) {
 		ready:  ready,
 		closed: closed,
 	}, nil
+}
+
+func convertICEServers(servers []RemoteDesktopWebRTCICEServer) []webrtc.ICEServer {
+	if len(servers) == 0 {
+		return nil
+	}
+
+	normalized := make([]webrtc.ICEServer, 0, len(servers))
+	for _, server := range servers {
+		if len(server.URLs) == 0 {
+			continue
+		}
+
+		entry := webrtc.ICEServer{
+			URLs:       append([]string(nil), server.URLs...),
+			Username:   server.Username,
+			Credential: server.Credential,
+		}
+
+		switch strings.ToLower(server.CredentialType) {
+		case "oauth":
+			entry.CredentialType = webrtc.ICECredentialTypeOauth
+		case "password", "":
+			if server.Credential != "" {
+				entry.CredentialType = webrtc.ICECredentialTypePassword
+			}
+		default:
+			if server.Credential != "" {
+				entry.CredentialType = webrtc.ICECredentialTypePassword
+			}
+		}
+
+		normalized = append(normalized, entry)
+	}
+
+	if len(normalized) == 0 {
+		return nil
+	}
+	return normalized
 }
 
 func (h *webrtcOfferHandle) Offer() string {
