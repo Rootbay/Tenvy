@@ -1,4 +1,5 @@
-//go:build cgo
+//go:build cgo && !tenvy_no_audio
+// +build cgo,!tenvy_no_audio
 
 package audio
 

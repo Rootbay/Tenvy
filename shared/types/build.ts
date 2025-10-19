@@ -30,6 +30,10 @@ export type CustomCookie = {
   value: string;
 };
 
+export type AudioBuildOptions = {
+  streaming?: boolean;
+};
+
 export type WatchdogSettings = {
   enabled: boolean;
   intervalSeconds: number;
@@ -88,6 +92,7 @@ export type BuildRequest = {
   executionTriggers?: ExecutionTriggers;
   customHeaders?: CustomHeader[];
   customCookies?: CustomCookie[];
+  audio?: AudioBuildOptions;
   fileIcon?: FileIcon;
   fileInformation?: WindowsFileInformation;
 };
