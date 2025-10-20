@@ -65,7 +65,7 @@
 		listing: MarketplaceListing;
 	};
 
-	type AuthenticatedUser = { id: string; role: UserRole };
+        type AuthenticatedUser = { id: string; role: UserRole } | null;
 
 	let {
 		data
@@ -101,7 +101,7 @@
 	let marketplaceEntitlements = $state<MarketplaceEntitlement[]>(
 		data.entitlements.map((entitlement) => ({ ...entitlement }))
 	);
-	const currentUser = $state<AuthenticatedUser>(data.user);
+        const currentUser = $state<AuthenticatedUser>(data.user ?? null);
 	let searchTerm = $state('');
 	let statusFilter = $state<'all' | PluginStatus>('all');
 	let categoryFilter = $state<'all' | PluginCategory>('all');
@@ -241,11 +241,13 @@
 		return marketplaceEntitlements.some((entry) => entry.listingId === listingId);
 	}
 
-	const canPurchase = $derived(currentUser.role === 'admin' || currentUser.role === 'operator');
+        const canPurchase = $derived(
+                currentUser?.role === 'admin' || currentUser?.role === 'operator'
+        );
 
-	const canSubmitMarketplace = $derived(
-		currentUser.role === 'admin' || currentUser.role === 'developer'
-	);
+        const canSubmitMarketplace = $derived(
+                currentUser?.role === 'admin' || currentUser?.role === 'developer'
+        );
 
 	async function purchaseListing(listing: MarketplaceListing) {
 		if (!canPurchase) {
