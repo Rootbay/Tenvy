@@ -61,10 +61,10 @@ const definitions = {
 		segments: ['management', 'file-manager'],
 		target: 'dialog'
 	},
-	'task-manager': {
-		id: 'task-manager',
-		title: 'Task Manager',
-		segments: ['management', 'task-manager'],
+	'system-monitor': {
+		id: 'system-monitor',
+		title: 'System Monitor',
+		segments: ['management', 'system-monitor'],
 		target: 'dialog'
 	},
 	'registry-manager': {
@@ -73,22 +73,10 @@ const definitions = {
 		segments: ['management', 'registry-manager'],
 		target: 'dialog'
 	},
-	'startup-manager': {
-		id: 'startup-manager',
-		title: 'Startup Manager',
-		segments: ['management', 'startup-manager'],
-		target: 'dialog'
-	},
 	'clipboard-manager': {
 		id: 'clipboard-manager',
 		title: 'Clipboard Manager',
 		segments: ['management', 'clipboard-manager'],
-		target: 'dialog'
-	},
-	'tcp-connections': {
-		id: 'tcp-connections',
-		title: 'TCP Connections',
-		segments: ['management', 'tcp-connections'],
 		target: 'dialog'
 	},
 	recovery: {
@@ -184,11 +172,9 @@ export const dialogToolIds = [
 	'keylogger-offline',
 	'cmd',
 	'file-manager',
-	'task-manager',
+	'system-monitor',
 	'registry-manager',
-	'startup-manager',
 	'clipboard-manager',
-	'tcp-connections',
 	'recovery',
 	'options',
 	'open-url',

@@ -28,7 +28,7 @@
 		TableHeader,
 		TableRow
 	} from '$lib/components/ui/table/index.js';
-	import { getClientTool } from '$lib/data/client-tools';
+	import type { DialogToolId } from '$lib/data/client-tools';
 	import type { Client } from '$lib/data/clients';
 	import { appendWorkspaceLog, createWorkspaceLogEntry } from '$lib/workspace/utils';
 	import { notifyToolActivationCommand } from '$lib/utils/agent-commands.js';
@@ -55,11 +55,11 @@
 	type SortKey = 'name' | 'impact' | 'status' | 'publisher' | 'startupTime';
 	type SortDirection = 'asc' | 'desc';
 
-	const { client } = $props<{ client: Client }>();
-	void client;
-
-	const tool = getClientTool('startup-manager');
-	void tool;
+	const {
+		client,
+		toolId = 'system-monitor',
+		panel = 'startup'
+	} = $props<{ client: Client; toolId?: DialogToolId; panel?: 'startup' }>();
 
 	const dateFormatter = new Intl.DateTimeFormat(undefined, {
 		dateStyle: 'medium',
@@ -221,11 +221,12 @@
 		metadata?: Record<string, unknown>
 	) {
 		log = appendWorkspaceLog(log, createWorkspaceLogEntry(action, detail, status));
-		notifyToolActivationCommand(client.id, 'startup-manager', {
+		notifyToolActivationCommand(client.id, toolId, {
 			action: `event:${action}`,
 			metadata: {
 				detail,
 				status,
+				panel,
 				...metadata
 			}
 		});

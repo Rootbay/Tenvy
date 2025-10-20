@@ -19,9 +19,10 @@
 		CardTitle
 	} from '$lib/components/ui/card/index.js';
 	import { Alert, AlertDescription, AlertTitle } from '$lib/components/ui/alert/index.js';
-	import { getClientTool } from '$lib/data/client-tools';
+	import type { DialogToolId } from '$lib/data/client-tools';
 	import type { Client } from '$lib/data/clients';
 	import { appendWorkspaceLog, createWorkspaceLogEntry } from '$lib/workspace/utils';
+	import { notifyToolActivationCommand } from '$lib/utils/agent-commands.js';
 	import type { WorkspaceLogEntry } from '$lib/workspace/types';
 	import type {
 		TcpConnectionEndpoint,
@@ -34,9 +35,11 @@
 		snapshot: TcpConnectionSnapshot | null;
 	}
 
-	const { client } = $props<{ client: Client }>();
-
-	const tool = getClientTool('tcp-connections');
+	const {
+		client,
+		toolId = 'system-monitor',
+		panel = 'network'
+	} = $props<{ client: Client; toolId?: DialogToolId; panel?: 'network' }>();
 
 	const stateOptions: { label: string; value: 'all' | TcpConnectionState }[] = [
 		{ label: 'All states', value: 'all' },
@@ -83,6 +86,10 @@
 
 	function recordLog(status: WorkspaceLogEntry['status'], detail: string) {
 		log = appendWorkspaceLog(log, createWorkspaceLogEntry('TCP sweep', detail, status));
+		notifyToolActivationCommand(client.id, toolId, {
+			action: 'event:tcp-scan',
+			metadata: { detail, status, panel }
+		});
 	}
 
 	function buildQuery() {

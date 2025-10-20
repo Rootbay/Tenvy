@@ -455,20 +455,14 @@
 				<ContextMenuItem on:select={() => openSection('fileManager', agent)}
 					>File Manager</ContextMenuItem
 				>
-				<ContextMenuItem on:select={() => openSection('taskManager', agent)}
-					>Task Manager</ContextMenuItem
+				<ContextMenuItem on:select={() => openSection('systemMonitor', agent)}
+					>System Monitor</ContextMenuItem
 				>
 				<ContextMenuItem on:select={() => openSection('registryManager', agent)}
 					>Registry Manager</ContextMenuItem
 				>
-				<ContextMenuItem on:select={() => openSection('startupManager', agent)}
-					>Startup Manager</ContextMenuItem
-				>
 				<ContextMenuItem on:select={() => openSection('clipboardManager', agent)}
 					>Clipboard Manager</ContextMenuItem
-				>
-				<ContextMenuItem on:select={() => openSection('tcpConnections', agent)}
-					>TCP Connections</ContextMenuItem
 				>
 			</ContextMenuSubContent>
 		</ContextMenuSub>
@@ -484,10 +478,18 @@
 			<ContextMenuSubTrigger>Miscellaneous</ContextMenuSubTrigger>
 			<ContextMenuSubContent class="w-48">
 				<ContextMenuItem on:select={() => openSection('openUrl', agent)}>Open URL</ContextMenuItem>
-				<ContextMenuItem on:select={() => openSection('clientChat', agent)}>Client Chat</ContextMenuItem>
-				<ContextMenuItem on:select={() => openSection('triggerMonitor', agent)}>Trigger Monitor</ContextMenuItem>
-				<ContextMenuItem on:select={() => openSection('ipGeolocation', agent)}>IP Geolocation</ContextMenuItem>
-				<ContextMenuItem on:select={() => openSection('environmentVariables', agent)}>Environment Variables</ContextMenuItem>
+				<ContextMenuItem on:select={() => openSection('clientChat', agent)}
+					>Client Chat</ContextMenuItem
+				>
+				<ContextMenuItem on:select={() => openSection('triggerMonitor', agent)}
+					>Trigger Monitor</ContextMenuItem
+				>
+				<ContextMenuItem on:select={() => openSection('ipGeolocation', agent)}
+					>IP Geolocation</ContextMenuItem
+				>
+				<ContextMenuItem on:select={() => openSection('environmentVariables', agent)}
+					>Environment Variables</ContextMenuItem
+				>
 			</ContextMenuSubContent>
 		</ContextMenuSub>
 
@@ -496,8 +498,12 @@
 		<ContextMenuSub>
 			<ContextMenuSubTrigger>System Controls</ContextMenuSubTrigger>
 			<ContextMenuSubContent class="w-48">
-				<ContextMenuItem on:select={() => openSection('reconnect', agent)}>Reconnect</ContextMenuItem>
-				<ContextMenuItem on:select={() => openSection('disconnect', agent)}>Disconnect</ContextMenuItem>
+				<ContextMenuItem on:select={() => openSection('reconnect', agent)}
+					>Reconnect</ContextMenuItem
+				>
+				<ContextMenuItem on:select={() => openSection('disconnect', agent)}
+					>Disconnect</ContextMenuItem
+				>
 			</ContextMenuSubContent>
 		</ContextMenuSub>
 

