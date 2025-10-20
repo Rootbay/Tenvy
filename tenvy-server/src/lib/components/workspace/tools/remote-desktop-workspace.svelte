@@ -98,34 +98,167 @@
 	let monitors = $state<RemoteDesktopMonitor[]>(fallbackMonitors);
 	let sessionActive = $state(false);
 	let sessionId = $state('');
-	let viewportEl: HTMLDivElement | null = null;
-	let viewportFocused = $state(false);
-	let pointerCaptured = $state(false);
-	let activePointerId: number | null = null;
-	const inputChannel = browser
-		? createInputChannel({
-				dispatch: async (events) => {
-					if (!client || !sessionActive || !sessionId) {
-						return false;
-					}
-					const response = await fetch(`/api/agents/${client.id}/remote-desktop/input`, {
-						method: 'POST',
-						headers: { 'Content-Type': 'application/json' },
-						body: JSON.stringify({ sessionId, events }),
-						keepalive: true
-					});
-					if (!response.ok) {
-						const message = await response.text();
-						console.warn('Remote desktop input dispatch failed', message);
-						return false;
-					}
-					return true;
-				},
-				onDispatchError: (error) => {
-					console.error('Failed to send remote desktop input events', error);
-				}
-			})
-		: null;
+        let viewportEl: HTMLDivElement | null = null;
+        let viewportFocused = $state(false);
+        let pointerCaptured = $state(false);
+        let activePointerId: number | null = null;
+        interface RemoteDesktopInputDispatchResponse {
+                accepted?: boolean;
+                delivered?: boolean;
+                reason?: string | null;
+                message?: string | null;
+                error?: string | null;
+        }
+
+        let lastInputDispatchAlert: string | null = null;
+
+        const parseInputDispatchResponse = (
+                raw: string
+        ): RemoteDesktopInputDispatchResponse | null => {
+                const trimmed = raw.trim();
+                if (!trimmed) {
+                        return null;
+                }
+                try {
+                        return JSON.parse(trimmed) as RemoteDesktopInputDispatchResponse;
+                } catch (err) {
+                        if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
+                                console.warn('Failed to parse remote desktop input response payload', err);
+                        }
+                        return null;
+                }
+        };
+
+        const extractInputDispatchReason = (
+                payload: RemoteDesktopInputDispatchResponse | null
+        ): string | null => {
+                if (!payload) {
+                        return null;
+                }
+                const candidates = [payload.reason, payload.message, payload.error];
+                for (const candidate of candidates) {
+                        if (typeof candidate === 'string' && candidate.trim().length > 0) {
+                                return candidate.trim();
+                        }
+                }
+                return null;
+        };
+
+        const formatInputDispatchFallback = (
+                response: Response,
+                raw: string,
+                payload: RemoteDesktopInputDispatchResponse | null
+        ): string | null => {
+                if (payload) {
+                        return null;
+                }
+                const trimmed = raw.trim();
+                if (trimmed && !trimmed.startsWith('{') && !trimmed.startsWith('[')) {
+                        return trimmed.length > 160 ? `${trimmed.slice(0, 157)}…` : trimmed;
+                }
+                if (response.status) {
+                        const statusText = response.statusText?.trim();
+                        if (statusText) {
+                                return `Remote desktop input delivery failed (HTTP ${response.status} ${statusText}).`;
+                        }
+                        return `Remote desktop input delivery failed (HTTP ${response.status}).`;
+                }
+                return null;
+        };
+
+        const describeInputDispatchFailure = (reason: string | null | undefined): string | null => {
+                if (!reason) {
+                        return null;
+                }
+                const trimmed = reason.trim();
+                if (!trimmed) {
+                        return null;
+                }
+                if (trimmed === 'filtered') {
+                        return 'Remote desktop input blocked: mouse and keyboard control are disabled for this session.';
+                }
+                return `Remote desktop input degraded: ${trimmed}`;
+        };
+
+        const setInputDispatchError = (reason: string | null, fallback?: string | null) => {
+                const described = describeInputDispatchFailure(reason);
+                const fallbackTrimmed = typeof fallback === 'string' ? fallback.trim() : '';
+                let message = described ?? null;
+                if (!message) {
+                        if (fallbackTrimmed) {
+                                message = fallbackTrimmed.startsWith('Remote desktop input')
+                                        ? fallbackTrimmed
+                                        : `Remote desktop input delivery failed: ${fallbackTrimmed}`;
+                        } else {
+                                message = 'Remote desktop input delivery failed.';
+                        }
+                }
+                lastInputDispatchAlert = message;
+                errorMessage = message;
+        };
+
+        const clearInputDispatchError = () => {
+                if (lastInputDispatchAlert && errorMessage === lastInputDispatchAlert) {
+                        errorMessage = null;
+                }
+                lastInputDispatchAlert = null;
+        };
+        const inputChannel = browser
+                ? createInputChannel({
+                                dispatch: async (events) => {
+                                        if (!client || !sessionActive || !sessionId) {
+                                                return false;
+                                        }
+                                        const response = await fetch(`/api/agents/${client.id}/remote-desktop/input`, {
+                                                method: 'POST',
+                                                headers: { 'Content-Type': 'application/json' },
+                                                body: JSON.stringify({ sessionId, events }),
+                                                keepalive: true
+                                        });
+                                        const raw = await response.text();
+                                        const payload = parseInputDispatchResponse(raw);
+                                        if (!response.ok) {
+                                                const reason = extractInputDispatchReason(payload);
+                                                const fallback = reason ?? formatInputDispatchFallback(response, raw, payload);
+                                                setInputDispatchError(reason, fallback);
+                                                console.warn('Remote desktop input dispatch failed', reason ?? raw);
+                                                return false;
+                                        }
+                                        if (!payload) {
+                                                setInputDispatchError(null, formatInputDispatchFallback(response, raw, null));
+                                                console.warn('Remote desktop input dispatch returned an empty payload');
+                                                return false;
+                                        }
+                                        if (payload.accepted === false) {
+                                                const reason = extractInputDispatchReason(payload);
+                                                setInputDispatchError(reason, 'Remote desktop input request was rejected.');
+                                                console.warn('Remote desktop input dispatch rejected events', reason ?? 'rejected');
+                                                return false;
+                                        }
+                                        if (payload.delivered === false) {
+                                                const reason = extractInputDispatchReason(payload);
+                                                setInputDispatchError(reason, 'Remote desktop input was not delivered to the agent.');
+                                                console.warn('Remote desktop input events were not delivered', reason ?? 'unknown');
+                                                return false;
+                                        }
+                                        clearInputDispatchError();
+                                        return true;
+                                },
+                                onDispatchFailure: () => {
+                                        if (!lastInputDispatchAlert) {
+                                                setInputDispatchError(null, 'Remote desktop input delivery failed.');
+                                        }
+                                },
+                                onDispatchError: (error) => {
+                                        const message =
+                                                error instanceof Error && error.message
+                                                        ? error.message
+                                                        : 'Failed to send remote desktop input events';
+                                        setInputDispatchError(null, message);
+                                        console.error('Failed to send remote desktop input events', error);
+                                }
+                        })
+                : null;
 
 	const captureTimestamp = () => inputChannel?.captureTimestamp() ?? Date.now();
 	const pressedKeys = new SvelteSet<number>();
