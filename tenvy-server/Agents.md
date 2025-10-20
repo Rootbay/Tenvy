@@ -64,6 +64,7 @@ Use `bun` commands unless explicitly noted otherwise – the lockfile is `bun.lo
 | `TENVY_AGENT_REGISTRY_PATH`                                                     | Override location of `clients.json` registry snapshot.             |
 | `TENVY_RECOVERY_DIR`                                                            | Override root directory for recovery archives.                     |
 | `TENVY_QUIC_INPUT_ADDRESS` / `PORT` / `KEY` / `CERT` / `DISABLED` / `AUTOSTART` | Configure the QUIC input listener for remote desktop control.      |
+| `TENVY_QUIC_INPUT_TOKENS`                                                       | Optional list of shared secrets required for QUIC registrations.   |
 
 ## Working with shared packages
 
