@@ -50,6 +50,15 @@ Each feature group is represented as a module, dynamically managed and executed 
 
 ---
 
+## 🖱️ Linux Remote Desktop Requirements
+
+Wayland sessions on Linux now rely on a virtual input device created via `/dev/uinput`. To allow the agent to inject keyboard and pointer events:
+
+- Ensure the `uinput` kernel module is available and `/dev/uinput` is writable by the agent process (typically by adding the user to the `input` group or configuring udev rules).
+- wlroots/Wayland compositors may require enabling virtual input support; consult your compositor documentation if events are ignored.
+
+---
+
 ### 🔑 Development access voucher
 
 When running the server locally a development voucher is created automatically so you can complete the onboarding flow without touching the database manually. The default code is `TEN-VY-DEV-ACCESS-0000`, but you can override it by setting the `DEV_VOUCHER_CODE` environment variable before starting the server.
