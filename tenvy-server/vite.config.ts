@@ -46,6 +46,37 @@ const testAliases = isVitest
 		}
 	: {};
 
+const enableBrowserTests = process.env.ENABLE_BROWSER_TESTS === 'true';
+
+const serverTestConfig = {
+	environment: 'node' as const,
+	include: ['src/**/*.{test,spec}.{js,ts}', 'tests/**/*.{test,spec}.{js,ts}'],
+	exclude: ['src/**/*.svelte.{test,spec}.{js,ts}']
+};
+
+const browserProjects = [
+	{
+		test: {
+			name: 'client',
+			environment: 'browser' as const,
+			browser: {
+				enabled: true,
+				provider: 'playwright',
+				instances: [{ browser: 'chromium' }]
+			},
+			include: ['src/**/*.svelte.{test,spec}.{js,ts}'],
+			exclude: ['src/lib/server/**'],
+			setupFiles: ['./vitest-setup-client.ts']
+		}
+	},
+	{
+		test: {
+			name: 'server',
+			...serverTestConfig
+		}
+	}
+];
+
 export default defineConfig({
 	plugins: [
 		tailwindcss(),
@@ -70,33 +101,13 @@ export default defineConfig({
 			...testAliases
 		}
 	},
-	test: {
-		expect: { requireAssertions: true },
-		projects: [
-			{
-				extends: './vite.config.ts',
-				test: {
-					name: 'client',
-					environment: 'browser',
-					browser: {
-						enabled: true,
-						provider: 'playwright',
-						instances: [{ browser: 'chromium' }]
-					},
-					include: ['src/**/*.svelte.{test,spec}.{js,ts}'],
-					exclude: ['src/lib/server/**'],
-					setupFiles: ['./vitest-setup-client.ts']
-				}
-			},
-			{
-				extends: './vite.config.ts',
-				test: {
-					name: 'server',
-					environment: 'node',
-					include: ['src/**/*.{test,spec}.{js,ts}', 'tests/**/*.{test,spec}.{js,ts}'],
-					exclude: ['src/**/*.svelte.{test,spec}.{js,ts}']
-				}
+	test: enableBrowserTests
+		? {
+				expect: { requireAssertions: true },
+				projects: browserProjects
 			}
-		]
-	}
+		: {
+				expect: { requireAssertions: true },
+				...serverTestConfig
+			}
 });

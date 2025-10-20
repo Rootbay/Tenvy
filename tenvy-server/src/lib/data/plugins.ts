@@ -14,7 +14,8 @@ import {
 	type PluginDeliveryMode,
 	type PluginDistributionView,
 	type PluginStatus,
-	type PluginUpdatePayload
+	type PluginUpdatePayload,
+	type PluginApprovalStatus
 } from './plugin-view.js';
 import {
 	createPluginRuntimeStore,
@@ -55,6 +56,9 @@ export type PluginRepositoryUpdate = PluginUpdatePayload & {
 	};
 	lastDeployedAt?: Date | null;
 	lastCheckedAt?: Date | null;
+	approvalStatus?: PluginApprovalStatus;
+	approvedAt?: Date | null;
+	approvalNote?: string | null;
 };
 
 type PluginRuntimeSnapshot = {
@@ -71,6 +75,9 @@ type PluginRuntimeSnapshot = {
 	lastAutoSyncAt: Date | null;
 	lastDeployedAt: Date | null;
 	lastCheckedAt: Date | null;
+	approvalStatus: PluginApprovalStatus;
+	approvedAt: Date | null;
+	approvalNote: string | null;
 };
 
 const manifestCategory = (manifest: PluginManifest): PluginCategory => {
@@ -110,7 +117,9 @@ const toPluginView = (manifest: PluginManifest, runtime: PluginRuntimeSnapshot):
 		lastManualPush: formatRelativeTime(runtime.lastManualPushAt),
 		lastAutoSync: formatRelativeTime(runtime.lastAutoSyncAt)
 	},
-	requiredModules: mapRequiredModules(manifest)
+	requiredModules: mapRequiredModules(manifest),
+	approvalStatus: runtime.approvalStatus,
+	approvedAt: runtime.approvedAt ? runtime.approvedAt.toISOString() : undefined
 });
 
 const toRuntimePatch = (update: PluginRepositoryUpdate): PluginRuntimePatch => {
@@ -122,6 +131,9 @@ const toRuntimePatch = (update: PluginRepositoryUpdate): PluginRuntimePatch => {
 	if (update.installations !== undefined) patch.installations = update.installations;
 	if (update.lastDeployedAt !== undefined) patch.lastDeployedAt = update.lastDeployedAt;
 	if (update.lastCheckedAt !== undefined) patch.lastCheckedAt = update.lastCheckedAt;
+	if (update.approvalStatus !== undefined) patch.approvalStatus = update.approvalStatus;
+	if (update.approvedAt !== undefined) patch.approvedAt = update.approvedAt;
+	if (update.approvalNote !== undefined) patch.approvalNote = update.approvalNote;
 
 	if (update.distribution) {
 		const { distribution } = update;
@@ -154,7 +166,10 @@ const snapshotFromRow = (row: PluginRuntimeRow): PluginRuntimeSnapshot => ({
 	lastManualPushAt: row.lastManualPushAt ?? null,
 	lastAutoSyncAt: row.lastAutoSyncAt ?? null,
 	lastDeployedAt: row.lastDeployedAt ?? null,
-	lastCheckedAt: row.lastCheckedAt ?? null
+	lastCheckedAt: row.lastCheckedAt ?? null,
+	approvalStatus: row.approvalStatus as PluginApprovalStatus,
+	approvedAt: row.approvedAt ?? null,
+	approvalNote: row.approvalNote ?? null
 });
 
 export const createPluginRepository = (

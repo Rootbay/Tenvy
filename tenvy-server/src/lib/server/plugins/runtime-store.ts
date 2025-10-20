@@ -3,7 +3,10 @@ import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
 import type { PluginDeliveryMode, PluginStatus } from '$lib/data/plugin-view.js';
 import { db } from '$lib/server/db/index.js';
 import { plugin } from '$lib/server/db/schema.js';
-import type { PluginManifest } from '../../../../shared/types/plugin-manifest.js';
+import type {
+	PluginApprovalStatus,
+	PluginManifest
+} from '../../../../shared/types/plugin-manifest.js';
 
 type PluginTable = typeof plugin;
 type PluginInsert = typeof plugin.$inferInsert;
@@ -26,6 +29,9 @@ export type PluginRuntimePatch = Partial<{
 	lastAutoSyncAt: Date | null;
 	lastDeployedAt: Date | null;
 	lastCheckedAt: Date | null;
+	approvalStatus: PluginApprovalStatus;
+	approvedAt: Date | null;
+	approvalNote: string | null;
 }>;
 
 export interface PluginRuntimeStore {
@@ -49,7 +55,10 @@ const ensureDefaults = (manifest: PluginManifest): PluginInsert => ({
 	lastManualPushAt: null,
 	lastAutoSyncAt: null,
 	lastDeployedAt: null,
-	lastCheckedAt: null
+	lastCheckedAt: null,
+	approvalStatus: 'pending',
+	approvedAt: null,
+	approvalNote: null
 });
 
 const normalizePatch = (patch: PluginRuntimePatch): Partial<PluginInsert> => {
@@ -69,6 +78,9 @@ const normalizePatch = (patch: PluginRuntimePatch): Partial<PluginInsert> => {
 	if (patch.lastAutoSyncAt !== undefined) update.lastAutoSyncAt = patch.lastAutoSyncAt;
 	if (patch.lastDeployedAt !== undefined) update.lastDeployedAt = patch.lastDeployedAt;
 	if (patch.lastCheckedAt !== undefined) update.lastCheckedAt = patch.lastCheckedAt;
+	if (patch.approvalStatus !== undefined) update.approvalStatus = patch.approvalStatus;
+	if (patch.approvedAt !== undefined) update.approvedAt = patch.approvedAt;
+	if (patch.approvalNote !== undefined) update.approvalNote = patch.approvalNote;
 
 	return update;
 };

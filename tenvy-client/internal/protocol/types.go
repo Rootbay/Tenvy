@@ -3,6 +3,8 @@ package protocol
 import (
 	"encoding/json"
 	"errors"
+
+	manifest "github.com/rootbay/tenvy-client/shared/pluginmanifest"
 )
 
 const (
@@ -216,10 +218,11 @@ type AgentRegistrationResponse struct {
 }
 
 type AgentSyncRequest struct {
-	Status    string          `json:"status"`
-	Timestamp string          `json:"timestamp"`
-	Metrics   *AgentMetrics   `json:"metrics,omitempty"`
-	Results   []CommandResult `json:"results,omitempty"`
+	Status    string                `json:"status"`
+	Timestamp string                `json:"timestamp"`
+	Metrics   *AgentMetrics         `json:"metrics,omitempty"`
+	Results   []CommandResult       `json:"results,omitempty"`
+	Plugins   *manifest.SyncPayload `json:"plugins,omitempty"`
 }
 
 type AgentSyncResponse struct {

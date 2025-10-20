@@ -9,6 +9,7 @@ import (
 	"time"
 
 	notes "github.com/rootbay/tenvy-client/internal/modules/notes"
+	"github.com/rootbay/tenvy-client/internal/plugins"
 	"github.com/rootbay/tenvy-client/internal/protocol"
 )
 
@@ -73,6 +74,12 @@ func Run(ctx context.Context, opts RuntimeOptions) error {
 		preferences:    opts.Preferences,
 		buildVersion:   opts.BuildVersion,
 		timing:         opts.TimingOverride,
+	}
+
+	if manager, err := plugins.NewManager(defaultPluginRoot(opts.Preferences), opts.Logger); err != nil {
+		opts.Logger.Printf("plugin telemetry disabled: %v", err)
+	} else {
+		agent.plugins = manager
 	}
 
 	modules := newDefaultModuleRegistry()

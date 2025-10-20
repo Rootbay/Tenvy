@@ -143,6 +143,9 @@ func (a *Agent) performSync(ctx context.Context, status string, results []protoc
 		Timestamp: timestampNow(),
 		Metrics:   a.collectMetrics(),
 	}
+	if plugins := a.pluginSyncPayload(); plugins != nil {
+		request.Plugins = plugins
+	}
 	if len(results) > 0 {
 		request.Results = results
 	}
