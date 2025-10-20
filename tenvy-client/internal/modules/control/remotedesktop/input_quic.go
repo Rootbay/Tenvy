@@ -2,8 +2,11 @@ package remotedesktop
 
 import (
 	"bufio"
+	"bytes"
 	"context"
+	"crypto/sha256"
 	"crypto/tls"
+	"crypto/x509"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -118,11 +121,36 @@ func (b *quicInputBridge) connectAndServe(ctx context.Context, sessionID string)
 	defer cancel()
 
 	tlsCfg := &tls.Config{
-		MinVersion:         tls.VersionTLS13,
-		NextProtos:         []string{b.cfg.alpn},
-		ServerName:         b.cfg.serverName,
-		InsecureSkipVerify: b.cfg.insecureSkipVerify,
+		MinVersion: tls.VersionTLS13,
+		NextProtos: []string{b.cfg.alpn},
+		ServerName: b.cfg.serverName,
+		RootCAs:    b.cfg.rootCAs,
 	}
+
+	if len(b.cfg.spkiPins) > 0 {
+		pins := make([][]byte, len(b.cfg.spkiPins))
+		for i, pin := range b.cfg.spkiPins {
+			pins[i] = append([]byte(nil), pin...)
+		}
+
+		tlsCfg.VerifyPeerCertificate = func(rawCerts [][]byte, verifiedChains [][]*x509.Certificate) error {
+			if len(rawCerts) == 0 {
+				return errors.New("remote desktop: peer certificate missing")
+			}
+			cert, err := x509.ParseCertificate(rawCerts[0])
+			if err != nil {
+				return fmt.Errorf("remote desktop: parse peer certificate: %w", err)
+			}
+			fingerprint := sha256.Sum256(cert.RawSubjectPublicKeyInfo)
+			for _, expected := range pins {
+				if bytes.Equal(fingerprint[:], expected) {
+					return nil
+				}
+			}
+			return errors.New("remote desktop: peer certificate pin mismatch")
+		}
+	}
+
 	quicCfg := &quic.Config{KeepAlivePeriod: 30 * time.Second}
 
 	conn, err := quic.DialAddr(dialCtx, b.cfg.address, tlsCfg, quicCfg)

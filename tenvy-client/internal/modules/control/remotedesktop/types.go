@@ -2,6 +2,7 @@ package remotedesktop
 
 import (
 	"context"
+	"crypto/x509"
 	"image"
 	"net/http"
 	"sync"
@@ -75,6 +76,8 @@ const (
 	RemoteTransportHTTP   RemoteDesktopTransport = "http"
 	RemoteTransportWebRTC RemoteDesktopTransport = "webrtc"
 )
+
+const spkiHashLength = 32
 
 const (
 	RemoteHardwareAuto   RemoteDesktopHardwarePreference = "auto"
@@ -238,17 +241,21 @@ type QUICInputConfig struct {
 	ConnectTimeout     time.Duration `json:"connectTimeout,omitempty"`
 	RetryInterval      time.Duration `json:"retryInterval,omitempty"`
 	InsecureSkipVerify bool          `json:"insecureSkipVerify,omitempty"`
+	RootCAFiles        []string      `json:"rootCaFiles,omitempty"`
+	RootCAPEMs         []string      `json:"rootCaPems,omitempty"`
+	PinnedSPKIHashes   []string      `json:"pinnedSpkiHashes,omitempty"`
 }
 
 type sanitizedQUICInput struct {
-	enabled            bool
-	address            string
-	serverName         string
-	alpn               string
-	token              string
-	connectTimeout     time.Duration
-	retryInterval      time.Duration
-	insecureSkipVerify bool
+	enabled        bool
+	address        string
+	serverName     string
+	alpn           string
+	token          string
+	connectTimeout time.Duration
+	retryInterval  time.Duration
+	rootCAs        *x509.CertPool
+	spkiPins       [][]byte
 }
 
 type RemoteDesktopInputQuicConfig struct {
