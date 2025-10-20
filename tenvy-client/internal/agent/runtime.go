@@ -151,6 +151,16 @@ func canonicalizeServerURL(raw string) (string, error) {
 	host := parsed.Hostname()
 	port := parsed.Port()
 
+	scheme := strings.ToLower(parsed.Scheme)
+	switch scheme {
+	case "https":
+		// secure by default
+	case "http":
+		return "", fmt.Errorf("server url must use https scheme: %s", trimmed)
+	default:
+		return "", fmt.Errorf("unsupported server url scheme: %s", parsed.Scheme)
+	}
+
 	if strings.EqualFold(host, "localhost") {
 		host = "127.0.0.1"
 	}

@@ -13,8 +13,8 @@ func TestCanonicalizeServerURL(t *testing.T) {
 	}{
 		{
 			name:  "localhost with port",
-			input: "http://localhost:2332",
-			want:  "http://127.0.0.1:2332",
+			input: "https://localhost:2332",
+			want:  "https://127.0.0.1:2332",
 		},
 		{
 			name:  "localhost without port",
@@ -27,9 +27,14 @@ func TestCanonicalizeServerURL(t *testing.T) {
 			want:  "https://controller.example.com",
 		},
 		{
-			name:  "ipv6 loopback",
-			input: "http://[::1]:8080",
-			want:  "http://[::1]:8080",
+			name:    "http disallowed",
+			input:   "http://[::1]:8080",
+			wantErr: true,
+		},
+		{
+			name:    "unsupported scheme",
+			input:   "ftp://controller.example.com",
+			wantErr: true,
 		},
 		{
 			name:    "invalid url",

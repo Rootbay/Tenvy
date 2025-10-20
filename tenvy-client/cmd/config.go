@@ -76,9 +76,9 @@ func defaultServerURL() string {
 		port = "2332"
 	}
 
-	scheme := "http"
-	if port == "443" {
-		scheme = "https"
+	scheme := "https"
+	if port == "80" {
+		scheme = "http"
 	}
 
 	return scheme + "://" + host + ":" + port

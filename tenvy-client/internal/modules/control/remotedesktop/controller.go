@@ -1,7 +1,11 @@
 package remotedesktop
 
 import (
+	"bytes"
 	"context"
+	"crypto/x509"
+	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -10,6 +14,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -1395,7 +1400,20 @@ func sanitizeQUICInputConfig(cfg Config) sanitizedQUICInput {
 	} else {
 		result.retryInterval = defaultQuicRetryInterval
 	}
-	result.insecureSkipVerify = raw.InsecureSkipVerify
+
+	if raw.InsecureSkipVerify {
+		if cfg.Logger != nil {
+			cfg.Logger.Printf("remote desktop: insecureSkipVerify is no longer supported; configure trust anchors instead")
+		}
+	}
+
+	if pool := loadAdditionalRootCAs(raw.RootCAFiles, raw.RootCAPEMs, cfg.Logger); pool != nil {
+		result.rootCAs = pool
+	}
+	if pins := parsePinnedSPKIHashes(raw.PinnedSPKIHashes, cfg.Logger); len(pins) > 0 {
+		result.spkiPins = pins
+	}
+
 	return result
 }
 
@@ -1436,6 +1454,117 @@ func deriveQuicAddress(override string, base string) (string, string) {
 		port = strconv.Itoa(defaultQuicInputPort)
 	}
 	return net.JoinHostPort(host, port), host
+}
+
+func loadAdditionalRootCAs(files, pems []string, logger Logger) *x509.CertPool {
+	if len(files) == 0 && len(pems) == 0 {
+		return nil
+	}
+
+	var pool *x509.CertPool
+
+	appendFromPEM := func(pemData []byte, source string) {
+		if len(bytes.TrimSpace(pemData)) == 0 {
+			return
+		}
+		if pool == nil {
+			pool = loadSystemCertPool(logger)
+			if pool == nil {
+				pool = x509.NewCertPool()
+			}
+		}
+		if !pool.AppendCertsFromPEM(pemData) && logger != nil {
+			logger.Printf("remote desktop: unable to parse certificate from %s", source)
+		}
+	}
+
+	for _, path := range files {
+		trimmed := strings.TrimSpace(path)
+		if trimmed == "" {
+			continue
+		}
+		pemData, err := os.ReadFile(trimmed)
+		if err != nil {
+			if logger != nil {
+				logger.Printf("remote desktop: failed to read root CA file %q: %v", trimmed, err)
+			}
+			continue
+		}
+		appendFromPEM(pemData, fmt.Sprintf("file %q", trimmed))
+	}
+
+	for idx, blob := range pems {
+		trimmed := strings.TrimSpace(blob)
+		if trimmed == "" {
+			continue
+		}
+		appendFromPEM([]byte(trimmed), fmt.Sprintf("inline root CA #%d", idx+1))
+	}
+
+	return pool
+}
+
+func loadSystemCertPool(logger Logger) *x509.CertPool {
+	pool, err := x509.SystemCertPool()
+	if err != nil && logger != nil {
+		logger.Printf("remote desktop: failed to load system certificate pool: %v", err)
+	}
+	return pool
+}
+
+func parsePinnedSPKIHashes(values []string, logger Logger) [][]byte {
+	if len(values) == 0 {
+		return nil
+	}
+
+	pins := make([][]byte, 0, len(values))
+	seen := make(map[string]struct{})
+
+	for _, raw := range values {
+		trimmed := strings.TrimSpace(raw)
+		if trimmed == "" {
+			continue
+		}
+
+		normalized := strings.Map(func(r rune) rune {
+			switch r {
+			case ':', ' ', '\t', '\n', '\r':
+				return -1
+			default:
+				return r
+			}
+		}, trimmed)
+
+		var decoded []byte
+		if len(normalized) == spkiHashLength*2 {
+			if value, err := hex.DecodeString(normalized); err == nil {
+				decoded = value
+			}
+		}
+		if decoded == nil {
+			if value, err := base64.StdEncoding.DecodeString(trimmed); err == nil {
+				decoded = value
+			} else if value, err := base64.RawStdEncoding.DecodeString(trimmed); err == nil {
+				decoded = value
+			}
+		}
+
+		if len(decoded) != spkiHashLength {
+			if logger != nil {
+				logger.Printf("remote desktop: ignoring invalid SPKI pin %q", raw)
+			}
+			continue
+		}
+
+		key := string(decoded)
+		if _, exists := seen[key]; exists {
+			continue
+		}
+		seen[key] = struct{}{}
+		pins = append(pins, decoded)
+	}
+
+	return pins
 }
 
 func (c *remoteDesktopSessionController) frameEndpoint(cfg Config) (string, error) {

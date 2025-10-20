@@ -58,6 +58,38 @@ func envDuration(name string) time.Duration {
 	return d
 }
 
+func envList(name string) []string {
+	raw := os.Getenv(name)
+	if strings.TrimSpace(raw) == "" {
+		return nil
+	}
+
+	parts := strings.FieldsFunc(raw, func(r rune) bool {
+		switch r {
+		case ',', ';', '\n', '\r', '\t', ' ':
+			return true
+		default:
+			return false
+		}
+	})
+
+	if len(parts) == 0 {
+		return nil
+	}
+
+	values := make([]string, 0, len(parts))
+	for _, part := range parts {
+		trimmed := strings.TrimSpace(part)
+		if trimmed != "" {
+			values = append(values, trimmed)
+		}
+	}
+	if len(values) == 0 {
+		return nil
+	}
+	return values
+}
+
 type ModuleCapability struct {
 	Name        string
 	Description string
@@ -350,7 +382,21 @@ func (m *remoteDesktopModule) configure(runtime ModuleRuntime) error {
 	if d := envDuration("TENVY_REMOTE_DESKTOP_QUIC_RETRY_INTERVAL"); d > 0 {
 		cfg.QUICInput.RetryInterval = d
 	}
-	cfg.QUICInput.InsecureSkipVerify = envBool("TENVY_REMOTE_DESKTOP_QUIC_INSECURE")
+	if v := strings.TrimSpace(os.Getenv("TENVY_REMOTE_DESKTOP_QUIC_INSECURE")); strings.EqualFold(v, "1") || strings.EqualFold(v, "true") || strings.EqualFold(v, "yes") || strings.EqualFold(v, "on") {
+		if runtime.Logger != nil {
+			runtime.Logger.Printf("remote desktop: TENVY_REMOTE_DESKTOP_QUIC_INSECURE is no longer supported; TLS validation remains enabled")
+		}
+	}
+	if path := strings.TrimSpace(os.Getenv("TENVY_REMOTE_DESKTOP_QUIC_ROOT_CA_FILE")); path != "" {
+		cfg.QUICInput.RootCAFiles = append(cfg.QUICInput.RootCAFiles, path)
+	}
+	cfg.QUICInput.RootCAFiles = append(cfg.QUICInput.RootCAFiles, envList("TENVY_REMOTE_DESKTOP_QUIC_ROOT_CA_FILES")...)
+	if pem := strings.TrimSpace(os.Getenv("TENVY_REMOTE_DESKTOP_QUIC_ROOT_CA_PEM")); pem != "" {
+		cfg.QUICInput.RootCAPEMs = append(cfg.QUICInput.RootCAPEMs, pem)
+	}
+	cfg.QUICInput.RootCAPEMs = append(cfg.QUICInput.RootCAPEMs, envList("TENVY_REMOTE_DESKTOP_QUIC_ROOT_CA_PEMS")...)
+	cfg.QUICInput.PinnedSPKIHashes = append(cfg.QUICInput.PinnedSPKIHashes, envList("TENVY_REMOTE_DESKTOP_QUIC_SPKI_HASHES")...)
+	cfg.QUICInput.PinnedSPKIHashes = append(cfg.QUICInput.PinnedSPKIHashes, envList("TENVY_REMOTE_DESKTOP_QUIC_PINNED_SPKI_HASHES")...)
 	if m.streamer == nil {
 		m.streamer = remotedesktop.NewRemoteDesktopStreamer(cfg)
 		return nil
