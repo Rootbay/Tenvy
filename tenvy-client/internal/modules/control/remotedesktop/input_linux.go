@@ -17,6 +17,15 @@ import (
 	"github.com/jezek/xgb/xtest"
 )
 
+type linuxInputBackend interface {
+	Process([]remoteMonitor, RemoteDesktopSettings, []RemoteDesktopInputEvent) error
+}
+
+var (
+	x11BackendFactory     = fetchX11Backend
+	waylandBackendFactory = getWaylandBackend
+)
+
 type x11Input struct {
 	conn       *xgb.Conn
 	root       xproto.Window
@@ -46,40 +55,36 @@ func processRemoteInput(monitors []remoteMonitor, settings RemoteDesktopSettings
 		return nil
 	}
 
-	input, err := getX11Input()
-	if err != nil {
-		return err
-	}
+	haveWayland := os.Getenv("WAYLAND_DISPLAY") != ""
+	haveX11 := os.Getenv("DISPLAY") != ""
 
-	fallback := selectMonitorForInputLinux(monitors, settings.Monitor, input.defaultMonitor())
-
-	input.mu.Lock()
-	defer input.mu.Unlock()
-
-	for _, event := range events {
-		switch event.Type {
-		case RemoteInputMouseMove:
-			target := monitorFromEventLinux(monitors, fallback, event.Monitor)
-			if err := input.movePointer(event, target); err != nil {
-				return err
+	var waylandErr error
+	if haveWayland {
+		backend, err := waylandBackendFactory()
+		if err == nil && backend != nil {
+			return backend.Process(monitors, settings, events)
+		}
+		waylandErr = err
+		if !haveX11 {
+			if err == nil {
+				return errors.New("wayland input backend is unavailable")
 			}
-		case RemoteInputMouseButton:
-			if err := input.sendMouseButton(event.Button, event.Pressed); err != nil {
-				return err
-			}
-		case RemoteInputMouseScroll:
-			if err := input.sendMouseScroll(event); err != nil {
-				return err
-			}
-		case RemoteInputKey:
-			if err := input.sendKeyEvent(event); err != nil {
-				return err
-			}
+			return fmt.Errorf("wayland input backend unavailable: %w", err)
 		}
 	}
 
-	input.conn.Sync()
-	return nil
+	backend, err := x11BackendFactory()
+	if err != nil {
+		if waylandErr != nil {
+			return fmt.Errorf("wayland backend failed: %v; x11 backend failed: %w", waylandErr, err)
+		}
+		return err
+	}
+	return backend.Process(monitors, settings, events)
+}
+
+func fetchX11Backend() (linuxInputBackend, error) {
+	return getX11Input()
 }
 
 func getX11Input() (*x11Input, error) {
@@ -97,9 +102,6 @@ func getX11Input() (*x11Input, error) {
 func newX11Input() (*x11Input, error) {
 	display := os.Getenv("DISPLAY")
 	if display == "" {
-		if os.Getenv("WAYLAND_DISPLAY") != "" {
-			return nil, errors.New("wayland session detected but X11 DISPLAY is not available")
-		}
 		return nil, errors.New("X11 DISPLAY environment variable is not set")
 	}
 
@@ -137,6 +139,38 @@ func newX11Input() (*x11Input, error) {
 func (x *x11Input) defaultMonitor() remoteMonitor {
 	info := RemoteDesktopMonitorInfo{Width: x.screenRect.Dx(), Height: x.screenRect.Dy()}
 	return remoteMonitor{info: info, bounds: x.screenRect}
+}
+
+func (x *x11Input) Process(monitors []remoteMonitor, settings RemoteDesktopSettings, events []RemoteDesktopInputEvent) error {
+	fallback := selectMonitorForInputLinux(monitors, settings.Monitor, x.defaultMonitor())
+
+	x.mu.Lock()
+	defer x.mu.Unlock()
+
+	for _, event := range events {
+		switch event.Type {
+		case RemoteInputMouseMove:
+			target := monitorFromEventLinux(monitors, fallback, event.Monitor)
+			if err := x.movePointer(event, target); err != nil {
+				return err
+			}
+		case RemoteInputMouseButton:
+			if err := x.sendMouseButton(event.Button, event.Pressed); err != nil {
+				return err
+			}
+		case RemoteInputMouseScroll:
+			if err := x.sendMouseScroll(event); err != nil {
+				return err
+			}
+		case RemoteInputKey:
+			if err := x.sendKeyEvent(event); err != nil {
+				return err
+			}
+		}
+	}
+
+	x.conn.Sync()
+	return nil
 }
 
 func selectMonitorForInputLinux(monitors []remoteMonitor, index int, fallback remoteMonitor) remoteMonitor {
