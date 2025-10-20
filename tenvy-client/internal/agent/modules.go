@@ -24,7 +24,7 @@ import (
 	"github.com/rootbay/tenvy-client/internal/protocol"
 )
 
-type moduleRuntime struct {
+type ModuleRuntime struct {
 	AgentID      string
 	BaseURL      string
 	AuthKey      string
@@ -33,6 +33,7 @@ type moduleRuntime struct {
 	UserAgent    string
 	Provider     systeminfo.AgentInfoProvider
 	BuildVersion string
+	Config       protocol.AgentConfig
 }
 
 func envBool(name string) bool {
@@ -70,15 +71,16 @@ type ModuleMetadata struct {
 	Capabilities []ModuleCapability
 }
 
-type module interface {
+type Module interface {
 	Metadata() ModuleMetadata
-	Update(moduleRuntime) error
-	HandleCommand(context.Context, protocol.Command) protocol.CommandResult
+	Init(context.Context, ModuleRuntime) error
+	Handle(context.Context, protocol.Command) protocol.CommandResult
+	UpdateConfig(context.Context, ModuleRuntime) error
 	Shutdown(context.Context)
 }
 
 type moduleEntry struct {
-	module   module
+	module   Module
 	metadata ModuleMetadata
 	commands []string
 }
@@ -111,7 +113,7 @@ func newModuleRegistry() *moduleRegistry {
 	}
 }
 
-func (r *moduleRegistry) register(m module) {
+func (r *moduleRegistry) register(m Module) {
 	metadata := m.Metadata()
 	if strings.TrimSpace(metadata.ID) == "" {
 		panic("agent module missing metadata id")
@@ -140,13 +142,31 @@ func (r *moduleRegistry) register(m module) {
 	}
 }
 
-func (r *moduleRegistry) Update(runtime moduleRuntime) error {
+func (r *moduleRegistry) Init(ctx context.Context, runtime ModuleRuntime) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
 	var errs []error
 	for _, entry := range r.lifecycle {
-		if err := entry.module.Update(runtime); err != nil {
+		if err := entry.module.Init(ctx, runtime); err != nil {
+			label := entry.metadata.Title
+			if strings.TrimSpace(label) == "" {
+				label = entry.metadata.ID
+			}
+			errs = append(errs, fmt.Errorf("%s: %w", label, err))
+		}
+	}
+
+	return errors.Join(errs...)
+}
+
+func (r *moduleRegistry) UpdateConfig(ctx context.Context, runtime ModuleRuntime) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	var errs []error
+	for _, entry := range r.lifecycle {
+		if err := entry.module.UpdateConfig(ctx, runtime); err != nil {
 			label := entry.metadata.Title
 			if strings.TrimSpace(label) == "" {
 				label = entry.metadata.ID
@@ -176,7 +196,7 @@ func (r *moduleRegistry) HandleCommand(ctx context.Context, cmd protocol.Command
 	if !ok {
 		return false, protocol.CommandResult{}
 	}
-	return true, entry.module.HandleCommand(ctx, cmd)
+	return true, entry.module.Handle(ctx, cmd)
 }
 
 func (r *moduleRegistry) Shutdown(ctx context.Context) {
@@ -221,7 +241,15 @@ func (m *appVncModule) ensureController() *appvnc.Controller {
 	return m.controller
 }
 
-func (m *appVncModule) Update(runtime moduleRuntime) error {
+func (m *appVncModule) Init(_ context.Context, runtime ModuleRuntime) error {
+	return m.configure(runtime)
+}
+
+func (m *appVncModule) UpdateConfig(_ context.Context, runtime ModuleRuntime) error {
+	return m.configure(runtime)
+}
+
+func (m *appVncModule) configure(runtime ModuleRuntime) error {
 	controller := m.ensureController()
 	root := filepath.Join(os.TempDir(), "tenvy-appvnc")
 	if err := os.MkdirAll(root, 0o755); err != nil {
@@ -234,7 +262,7 @@ func (m *appVncModule) Update(runtime moduleRuntime) error {
 	return nil
 }
 
-func (m *appVncModule) HandleCommand(ctx context.Context, cmd protocol.Command) protocol.CommandResult {
+func (m *appVncModule) Handle(ctx context.Context, cmd protocol.Command) protocol.CommandResult {
 	controller := m.ensureController()
 	if controller == nil {
 		return protocol.CommandResult{
@@ -253,8 +281,8 @@ func (m *appVncModule) Shutdown(ctx context.Context) {
 	}
 }
 
-func (a *Agent) moduleRuntime() moduleRuntime {
-	return moduleRuntime{
+func (a *Agent) moduleRuntime() ModuleRuntime {
+	return ModuleRuntime{
 		AgentID:      a.id,
 		BaseURL:      a.baseURL,
 		AuthKey:      a.key,
@@ -263,6 +291,7 @@ func (a *Agent) moduleRuntime() moduleRuntime {
 		UserAgent:    a.userAgent(),
 		Provider:     a,
 		BuildVersion: a.buildVersion,
+		Config:       a.config,
 	}
 }
 
@@ -289,7 +318,15 @@ func (m *remoteDesktopModule) Metadata() ModuleMetadata {
 	}
 }
 
-func (m *remoteDesktopModule) Update(runtime moduleRuntime) error {
+func (m *remoteDesktopModule) Init(_ context.Context, runtime ModuleRuntime) error {
+	return m.configure(runtime)
+}
+
+func (m *remoteDesktopModule) UpdateConfig(_ context.Context, runtime ModuleRuntime) error {
+	return m.configure(runtime)
+}
+
+func (m *remoteDesktopModule) configure(runtime ModuleRuntime) error {
 	var requestTimeout time.Duration
 	if runtime.HTTPClient != nil {
 		requestTimeout = runtime.HTTPClient.Timeout
@@ -322,7 +359,7 @@ func (m *remoteDesktopModule) Update(runtime moduleRuntime) error {
 	return nil
 }
 
-func (m *remoteDesktopModule) HandleCommand(ctx context.Context, cmd protocol.Command) protocol.CommandResult {
+func (m *remoteDesktopModule) Handle(ctx context.Context, cmd protocol.Command) protocol.CommandResult {
 	if m.streamer == nil {
 		return protocol.CommandResult{
 			CommandID:   cmd.ID,
@@ -406,7 +443,15 @@ func (m *audioModule) Metadata() ModuleMetadata {
 	}
 }
 
-func (m *audioModule) Update(runtime moduleRuntime) error {
+func (m *audioModule) Init(_ context.Context, runtime ModuleRuntime) error {
+	return m.configure(runtime)
+}
+
+func (m *audioModule) UpdateConfig(_ context.Context, runtime ModuleRuntime) error {
+	return m.configure(runtime)
+}
+
+func (m *audioModule) configure(runtime ModuleRuntime) error {
 	cfg := audioctrl.Config{
 		AgentID:   runtime.AgentID,
 		BaseURL:   runtime.BaseURL,
@@ -423,7 +468,7 @@ func (m *audioModule) Update(runtime moduleRuntime) error {
 	return nil
 }
 
-func (m *audioModule) HandleCommand(ctx context.Context, cmd protocol.Command) protocol.CommandResult {
+func (m *audioModule) Handle(ctx context.Context, cmd protocol.Command) protocol.CommandResult {
 	if m.bridge == nil {
 		return protocol.CommandResult{
 			CommandID:   cmd.ID,
@@ -464,7 +509,15 @@ func (m *clipboardModule) Metadata() ModuleMetadata {
 	}
 }
 
-func (m *clipboardModule) Update(runtime moduleRuntime) error {
+func (m *clipboardModule) Init(_ context.Context, runtime ModuleRuntime) error {
+	return m.configure(runtime)
+}
+
+func (m *clipboardModule) UpdateConfig(_ context.Context, runtime ModuleRuntime) error {
+	return m.configure(runtime)
+}
+
+func (m *clipboardModule) configure(runtime ModuleRuntime) error {
 	cfg := clipboard.Config{
 		AgentID:   runtime.AgentID,
 		BaseURL:   runtime.BaseURL,
@@ -481,7 +534,7 @@ func (m *clipboardModule) Update(runtime moduleRuntime) error {
 	return nil
 }
 
-func (m *clipboardModule) HandleCommand(ctx context.Context, cmd protocol.Command) protocol.CommandResult {
+func (m *clipboardModule) Handle(ctx context.Context, cmd protocol.Command) protocol.CommandResult {
 	if m.manager == nil {
 		return protocol.CommandResult{
 			CommandID:   cmd.ID,
@@ -522,7 +575,15 @@ func (m *fileManagerModule) Metadata() ModuleMetadata {
 	}
 }
 
-func (m *fileManagerModule) Update(runtime moduleRuntime) error {
+func (m *fileManagerModule) Init(_ context.Context, runtime ModuleRuntime) error {
+	return m.configure(runtime)
+}
+
+func (m *fileManagerModule) UpdateConfig(_ context.Context, runtime ModuleRuntime) error {
+	return m.configure(runtime)
+}
+
+func (m *fileManagerModule) configure(runtime ModuleRuntime) error {
 	cfg := filemanager.Config{
 		AgentID:   runtime.AgentID,
 		BaseURL:   runtime.BaseURL,
@@ -539,7 +600,7 @@ func (m *fileManagerModule) Update(runtime moduleRuntime) error {
 	return nil
 }
 
-func (m *fileManagerModule) HandleCommand(ctx context.Context, cmd protocol.Command) protocol.CommandResult {
+func (m *fileManagerModule) Handle(ctx context.Context, cmd protocol.Command) protocol.CommandResult {
 	if m.manager == nil {
 		return protocol.CommandResult{
 			CommandID:   cmd.ID,
@@ -578,7 +639,15 @@ func (m *tcpConnectionsModule) Metadata() ModuleMetadata {
 	}
 }
 
-func (m *tcpConnectionsModule) Update(runtime moduleRuntime) error {
+func (m *tcpConnectionsModule) Init(_ context.Context, runtime ModuleRuntime) error {
+	return m.configure(runtime)
+}
+
+func (m *tcpConnectionsModule) UpdateConfig(_ context.Context, runtime ModuleRuntime) error {
+	return m.configure(runtime)
+}
+
+func (m *tcpConnectionsModule) configure(runtime ModuleRuntime) error {
 	cfg := tcpconnections.Config{
 		AgentID:   runtime.AgentID,
 		BaseURL:   runtime.BaseURL,
@@ -595,7 +664,7 @@ func (m *tcpConnectionsModule) Update(runtime moduleRuntime) error {
 	return nil
 }
 
-func (m *tcpConnectionsModule) HandleCommand(ctx context.Context, cmd protocol.Command) protocol.CommandResult {
+func (m *tcpConnectionsModule) Handle(ctx context.Context, cmd protocol.Command) protocol.CommandResult {
 	if m.manager == nil {
 		return protocol.CommandResult{
 			CommandID:   cmd.ID,
@@ -634,7 +703,15 @@ func (m *recoveryModule) Metadata() ModuleMetadata {
 	}
 }
 
-func (m *recoveryModule) Update(runtime moduleRuntime) error {
+func (m *recoveryModule) Init(_ context.Context, runtime ModuleRuntime) error {
+	return m.configure(runtime)
+}
+
+func (m *recoveryModule) UpdateConfig(_ context.Context, runtime ModuleRuntime) error {
+	return m.configure(runtime)
+}
+
+func (m *recoveryModule) configure(runtime ModuleRuntime) error {
 	cfg := recovery.Config{
 		AgentID:   runtime.AgentID,
 		BaseURL:   runtime.BaseURL,
@@ -651,7 +728,7 @@ func (m *recoveryModule) Update(runtime moduleRuntime) error {
 	return nil
 }
 
-func (m *recoveryModule) HandleCommand(ctx context.Context, cmd protocol.Command) protocol.CommandResult {
+func (m *recoveryModule) Handle(ctx context.Context, cmd protocol.Command) protocol.CommandResult {
 	if m.manager == nil {
 		return protocol.CommandResult{
 			CommandID:   cmd.ID,
@@ -692,7 +769,15 @@ func (m *clientChatModule) Metadata() ModuleMetadata {
 	}
 }
 
-func (m *clientChatModule) Update(runtime moduleRuntime) error {
+func (m *clientChatModule) Init(_ context.Context, runtime ModuleRuntime) error {
+	return m.configure(runtime)
+}
+
+func (m *clientChatModule) UpdateConfig(_ context.Context, runtime ModuleRuntime) error {
+	return m.configure(runtime)
+}
+
+func (m *clientChatModule) configure(runtime ModuleRuntime) error {
 	cfg := clientchat.Config{
 		AgentID:   runtime.AgentID,
 		BaseURL:   runtime.BaseURL,
@@ -709,7 +794,7 @@ func (m *clientChatModule) Update(runtime moduleRuntime) error {
 	return nil
 }
 
-func (m *clientChatModule) HandleCommand(ctx context.Context, cmd protocol.Command) protocol.CommandResult {
+func (m *clientChatModule) Handle(ctx context.Context, cmd protocol.Command) protocol.CommandResult {
 	if m.supervisor == nil {
 		return protocol.CommandResult{
 			CommandID:   cmd.ID,
@@ -750,7 +835,15 @@ func (m *systemInfoModule) Metadata() ModuleMetadata {
 	}
 }
 
-func (m *systemInfoModule) Update(runtime moduleRuntime) error {
+func (m *systemInfoModule) Init(_ context.Context, runtime ModuleRuntime) error {
+	return m.configure(runtime)
+}
+
+func (m *systemInfoModule) UpdateConfig(_ context.Context, runtime ModuleRuntime) error {
+	return m.configure(runtime)
+}
+
+func (m *systemInfoModule) configure(runtime ModuleRuntime) error {
 	if runtime.Provider == nil {
 		return fmt.Errorf("missing agent provider")
 	}
@@ -758,7 +851,7 @@ func (m *systemInfoModule) Update(runtime moduleRuntime) error {
 	return nil
 }
 
-func (m *systemInfoModule) HandleCommand(ctx context.Context, cmd protocol.Command) protocol.CommandResult {
+func (m *systemInfoModule) Handle(ctx context.Context, cmd protocol.Command) protocol.CommandResult {
 	if m.collector == nil {
 		return protocol.CommandResult{
 			CommandID:   cmd.ID,
