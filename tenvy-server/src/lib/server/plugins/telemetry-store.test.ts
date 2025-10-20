@@ -4,17 +4,18 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { and, eq } from 'drizzle-orm';
 import { PluginTelemetryStore } from './telemetry-store.js';
+import { createPluginRuntimeStore } from './runtime-store.js';
 import { db } from '$lib/server/db/index.js';
 import {
-	plugin as pluginTable,
-	pluginInstallation as pluginInstallationTable,
-	auditEvent as auditEventTable
+        agent as agentTable,
+        plugin as pluginTable,
+        pluginInstallation as pluginInstallationTable,
+        auditEvent as auditEventTable
 } from '$lib/server/db/schema.js';
 import type { AgentMetadata } from '../../../../../shared/types/agent.js';
+import type { PluginManifest } from '../../../../../shared/types/plugin-manifest.js';
 
-vi.mock('$env/dynamic/private', () => ({
-	env: {}
-}));
+vi.mock('$env/dynamic/private', () => import('../../../../tests/mocks/env-dynamic-private'));
 
 const baseMetadata: AgentMetadata = {
 	hostname: 'agent.local',
@@ -31,46 +32,93 @@ const baseMetadata: AgentMetadata = {
 
 let manifestDir: string;
 
-function createManifest(hash: string) {
-	return {
-		id: 'test-plugin',
-		name: 'Test Plugin',
-		version: '1.0.0',
-		entry: 'plugin.dll',
-		distribution: {
-			defaultMode: 'automatic',
-			autoUpdate: true,
-			signature: { type: 'sha256', hash }
-		},
-		requirements: {
-			platforms: ['windows'],
-			architectures: ['x86_64'],
+function createManifest(hash: string): PluginManifest {
+        return {
+                id: 'test-plugin',
+                name: 'Test Plugin',
+                version: '1.0.0',
+                entry: 'plugin.dll',
+                repositoryUrl: 'https://github.com/rootbay/test-plugin',
+                license: {
+                        spdxId: 'MIT',
+                        name: 'MIT License'
+                },
+                distribution: {
+                        defaultMode: 'automatic',
+                        autoUpdate: true,
+                        signature: { type: 'sha256', hash, signature: 'signed' }
+                },
+                requirements: {
+                        platforms: ['windows'],
+                        architectures: ['x86_64'],
 			requiredModules: []
 		},
-		package: {
-			artifact: 'plugin.dll',
-			sizeBytes: 1024,
-			hash
-		}
-	} satisfies Record<string, unknown>;
+                package: {
+                        artifact: 'plugin.dll',
+                        sizeBytes: 1024,
+                        hash
+                }
+        };
 }
 
-beforeEach(() => {
-	process.env.DATABASE_URL = ':memory:';
-	manifestDir = mkdtempSync(join(tmpdir(), 'tenvy-plugin-manifests-'));
-	writeFileSync(join(manifestDir, 'test-plugin.json'), JSON.stringify(createManifest('abc123')));
+beforeEach(async () => {
+        process.env.DATABASE_URL = ':memory:';
+        manifestDir = mkdtempSync(join(tmpdir(), 'tenvy-plugin-manifests-'));
+        writeFileSync(join(manifestDir, 'test-plugin.json'), JSON.stringify(createManifest('abc123')));
+
+        const now = new Date();
+        await db.insert(agentTable).values([
+                {
+                        id: 'agent-1',
+                        keyHash: 'hash-agent-1',
+                        metadata: JSON.stringify(baseMetadata),
+                        status: 'online',
+                        connectedAt: now,
+                        lastSeen: now,
+                        metrics: JSON.stringify({}),
+                        config: JSON.stringify({}),
+                        fingerprint: 'fingerprint-agent-1',
+                        createdAt: now,
+                        updatedAt: now
+                },
+                {
+                        id: 'agent-2',
+                        keyHash: 'hash-agent-2',
+                        metadata: JSON.stringify(baseMetadata),
+                        status: 'online',
+                        connectedAt: now,
+                        lastSeen: now,
+                        metrics: JSON.stringify({}),
+                        config: JSON.stringify({}),
+                        fingerprint: 'fingerprint-agent-2',
+                        createdAt: now,
+                        updatedAt: now
+                }
+        ]);
 });
 
 afterEach(async () => {
-	await db.delete(pluginInstallationTable);
-	await db.delete(pluginTable);
-	await db.delete(auditEventTable);
-	rmSync(manifestDir, { recursive: true, force: true });
+        await db.delete(pluginInstallationTable);
+        await db.delete(pluginTable);
+        await db.delete(auditEventTable);
+        await db.delete(agentTable);
+        rmSync(manifestDir, { recursive: true, force: true });
 });
 
 describe('PluginTelemetryStore', () => {
-	it('records successful installation telemetry', async () => {
-		const store = new PluginTelemetryStore({ manifestDirectory: manifestDir });
+        it('records successful installation telemetry', async () => {
+                const runtimeStore = createPluginRuntimeStore();
+                const manifest = createManifest('abc123');
+                await runtimeStore.ensure(manifest);
+                await runtimeStore.update(manifest.id, {
+                        approvalStatus: 'approved',
+                        approvedAt: new Date()
+                });
+
+                const store = new PluginTelemetryStore({
+                        runtimeStore,
+                        manifestDirectory: manifestDir
+                });
 
 		const now = new Date().toISOString();
 		await store.syncAgent('agent-1', baseMetadata, [
@@ -93,8 +141,19 @@ describe('PluginTelemetryStore', () => {
 		expect(runtime.installations).toBe(1);
 	});
 
-	it('blocks mismatched hashes and records audit events', async () => {
-		const store = new PluginTelemetryStore({ manifestDirectory: manifestDir });
+        it('blocks mismatched hashes and records audit events', async () => {
+                const runtimeStore = createPluginRuntimeStore();
+                const manifest = createManifest('abc123');
+                await runtimeStore.ensure(manifest);
+                await runtimeStore.update(manifest.id, {
+                        approvalStatus: 'approved',
+                        approvedAt: new Date()
+                });
+
+                const store = new PluginTelemetryStore({
+                        runtimeStore,
+                        manifestDirectory: manifestDir
+                });
 		const now = new Date().toISOString();
 
 		await store.syncAgent('agent-2', baseMetadata, [
