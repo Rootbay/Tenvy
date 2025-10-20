@@ -143,7 +143,7 @@ export function hashVoucherCode(code: string) {
 	return encodeHexLowerCase(digest);
 }
 
-export type UserRole = 'viewer' | 'operator' | 'admin';
+export type UserRole = 'viewer' | 'operator' | 'developer' | 'admin';
 
 export type AuthenticatedUser = {
 	id: string;

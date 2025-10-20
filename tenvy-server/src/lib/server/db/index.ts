@@ -104,6 +104,65 @@ CREATE TABLE IF NOT EXISTS plugin_installation (
 );
 CREATE INDEX IF NOT EXISTS plugin_installation_agent_idx ON plugin_installation (agent_id);
 
+CREATE TABLE IF NOT EXISTS plugin_marketplace_listing (
+        id TEXT PRIMARY KEY NOT NULL,
+        plugin_id TEXT NOT NULL,
+        name TEXT NOT NULL,
+        summary TEXT,
+        repository_url TEXT NOT NULL,
+        version TEXT NOT NULL,
+        manifest TEXT NOT NULL,
+        pricing_tier TEXT NOT NULL DEFAULT 'free',
+        status TEXT NOT NULL DEFAULT 'pending',
+        submitted_by TEXT REFERENCES user(id) ON DELETE SET NULL,
+        reviewer_id TEXT REFERENCES user(id) ON DELETE SET NULL,
+        license_spdx_id TEXT NOT NULL,
+        license_name TEXT,
+        license_url TEXT,
+        signature_type TEXT NOT NULL,
+        signature_hash TEXT NOT NULL,
+        signature_public_key TEXT,
+        signature TEXT NOT NULL,
+        signed_at INTEGER,
+        submitted_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now')),
+        reviewed_at INTEGER,
+        updated_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now'))
+);
+CREATE UNIQUE INDEX IF NOT EXISTS plugin_marketplace_listing_plugin_idx ON plugin_marketplace_listing (plugin_id);
+
+CREATE TABLE IF NOT EXISTS plugin_marketplace_entitlement (
+        id TEXT PRIMARY KEY NOT NULL,
+        listing_id TEXT NOT NULL,
+        tenant_id TEXT NOT NULL,
+        seats INTEGER NOT NULL DEFAULT 1,
+        status TEXT NOT NULL DEFAULT 'active',
+        granted_by TEXT REFERENCES user(id) ON DELETE SET NULL,
+        granted_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now')),
+        expires_at INTEGER,
+        metadata TEXT,
+        last_synced_at INTEGER,
+        FOREIGN KEY (listing_id) REFERENCES plugin_marketplace_listing(id) ON DELETE CASCADE,
+        FOREIGN KEY (tenant_id) REFERENCES voucher(id) ON DELETE CASCADE
+);
+CREATE UNIQUE INDEX IF NOT EXISTS plugin_entitlement_tenant_listing_idx ON plugin_marketplace_entitlement (tenant_id, listing_id);
+
+CREATE TABLE IF NOT EXISTS plugin_marketplace_transaction (
+        id TEXT PRIMARY KEY NOT NULL,
+        listing_id TEXT NOT NULL,
+        tenant_id TEXT NOT NULL,
+        entitlement_id TEXT,
+        amount INTEGER NOT NULL DEFAULT 0,
+        currency TEXT NOT NULL DEFAULT 'credits',
+        status TEXT NOT NULL DEFAULT 'pending',
+        created_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now')),
+        processed_at INTEGER,
+        metadata TEXT,
+        FOREIGN KEY (listing_id) REFERENCES plugin_marketplace_listing(id) ON DELETE CASCADE,
+        FOREIGN KEY (tenant_id) REFERENCES voucher(id) ON DELETE CASCADE,
+        FOREIGN KEY (entitlement_id) REFERENCES plugin_marketplace_entitlement(id) ON DELETE SET NULL
+);
+CREATE INDEX IF NOT EXISTS plugin_marketplace_transaction_entitlement_idx ON plugin_marketplace_transaction (entitlement_id);
+
 CREATE TABLE IF NOT EXISTS agent (
         id TEXT PRIMARY KEY NOT NULL,
         key_hash TEXT NOT NULL,

@@ -53,12 +53,22 @@ export interface PluginSignature {
   type: PluginSignatureType;
   hash?: string;
   publicKey?: string;
+  signature?: string;
+  signedAt?: string;
+  signer?: string;
+  certificateChain?: string[];
 }
 
 export interface PluginDistribution {
   defaultMode: PluginDeliveryMode;
   autoUpdate: boolean;
   signature: PluginSignature;
+}
+
+export interface PluginLicenseInfo {
+  spdxId: string;
+  name?: string;
+  url?: string;
 }
 
 export interface PluginPackageDescriptor {
@@ -75,7 +85,8 @@ export interface PluginManifest {
   entry: string;
   author?: string;
   homepage?: string;
-  license?: string;
+  repositoryUrl: string;
+  license: PluginLicenseInfo;
   categories?: string[];
   capabilities?: PluginCapability[];
   requirements: PluginRequirements;
@@ -106,6 +117,19 @@ const isEmpty = (value: string | undefined | null): boolean =>
 const validateSemver = (value: string | undefined | null): boolean =>
   !value || SEMVER_PATTERN.test(value.trim());
 
+const ensureGitHubRepository = (url: string | undefined | null): boolean => {
+  if (isEmpty(url)) return false;
+  try {
+    const parsed = new URL(url!);
+    if (parsed.protocol !== "https:") return false;
+    if (parsed.hostname !== "github.com") return false;
+    const segments = parsed.pathname.split("/").filter(Boolean);
+    return segments.length >= 2;
+  } catch {
+    return false;
+  }
+};
+
 export function validatePluginManifest(manifest: PluginManifest): string[] {
   const problems: string[] = [];
 
@@ -117,6 +141,17 @@ export function validatePluginManifest(manifest: PluginManifest): string[] {
     problems.push(`invalid semantic version: ${manifest.version}`);
   }
   if (isEmpty(manifest.entry)) problems.push("missing entry");
+
+  if (!ensureGitHubRepository(manifest.repositoryUrl)) {
+    problems.push("repositoryUrl must reference a GitHub repository");
+  }
+
+  if (!manifest.license || isEmpty(manifest.license.spdxId)) {
+    problems.push("license requires spdxId");
+  }
+  if (manifest.license?.url && isEmpty(manifest.license.url)) {
+    problems.push("license url cannot be empty string");
+  }
 
   if (!manifest.package || isEmpty(manifest.package.artifact)) {
     problems.push("missing package artifact");
@@ -143,6 +178,9 @@ export function validatePluginManifest(manifest: PluginManifest): string[] {
       if (isEmpty(signature.publicKey)) {
         problems.push("ed25519 signature requires publicKey");
       }
+    }
+    if (signature.type !== "none" && isEmpty(signature.signature)) {
+      problems.push("signed manifests must provide signature value");
     }
   }
 

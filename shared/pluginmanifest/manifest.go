@@ -3,25 +3,27 @@ package pluginmanifest
 import (
 	"errors"
 	"fmt"
+	"net/url"
 	"regexp"
 	"sort"
 	"strings"
 )
 
 type Manifest struct {
-	ID           string            `json:"id"`
-	Name         string            `json:"name"`
-	Version      string            `json:"version"`
-	Description  string            `json:"description,omitempty"`
-	Entry        string            `json:"entry"`
-	Author       string            `json:"author,omitempty"`
-	Homepage     string            `json:"homepage,omitempty"`
-	License      string            `json:"license,omitempty"`
-	Categories   []string          `json:"categories,omitempty"`
-	Capabilities []Capability      `json:"capabilities,omitempty"`
-	Requirements Requirements      `json:"requirements"`
-	Distribution Distribution      `json:"distribution"`
-	Package      PackageDescriptor `json:"package"`
+	ID            string            `json:"id"`
+	Name          string            `json:"name"`
+	Version       string            `json:"version"`
+	Description   string            `json:"description,omitempty"`
+	Entry         string            `json:"entry"`
+	Author        string            `json:"author,omitempty"`
+	Homepage      string            `json:"homepage,omitempty"`
+	RepositoryURL string            `json:"repositoryUrl"`
+	License       LicenseInfo       `json:"license"`
+	Categories    []string          `json:"categories,omitempty"`
+	Capabilities  []Capability      `json:"capabilities,omitempty"`
+	Requirements  Requirements      `json:"requirements"`
+	Distribution  Distribution      `json:"distribution"`
+	Package       PackageDescriptor `json:"package"`
 }
 
 type Capability struct {
@@ -55,6 +57,16 @@ type Signature struct {
 	Type      SignatureType `json:"type"`
 	Hash      string        `json:"hash,omitempty"`
 	PublicKey string        `json:"publicKey,omitempty"`
+	Signature string        `json:"signature,omitempty"`
+	SignedAt  string        `json:"signedAt,omitempty"`
+	Signer    string        `json:"signer,omitempty"`
+	Chain     []string      `json:"certificateChain,omitempty"`
+}
+
+type LicenseInfo struct {
+	SPDXID string `json:"spdxId"`
+	Name   string `json:"name,omitempty"`
+	URL    string `json:"url,omitempty"`
 }
 
 type (
@@ -141,6 +153,12 @@ func (m Manifest) Validate() error {
 	}
 	if strings.TrimSpace(m.Entry) == "" {
 		problems = append(problems, errors.New("missing entry"))
+	}
+	if err := validateGitHubRepository(m.RepositoryURL); err != nil {
+		problems = append(problems, err)
+	}
+	if err := m.validateLicense(); err != nil {
+		problems = append(problems, err)
 	}
 	if strings.TrimSpace(m.Package.Artifact) == "" {
 		problems = append(problems, errors.New("missing package artifact"))
@@ -231,8 +249,46 @@ func (m Manifest) validateDistribution() error {
 		if strings.TrimSpace(m.Package.Hash) == "" {
 			return errors.New("signed packages must include a hash")
 		}
+		if strings.TrimSpace(sig.Signature) == "" {
+			return errors.New("signed manifests must provide signature value")
+		}
 	}
 
+	return nil
+}
+
+func (m Manifest) validateLicense() error {
+	if strings.TrimSpace(m.License.SPDXID) == "" {
+		return errors.New("license requires spdxId")
+	}
+	if trimmed := strings.TrimSpace(m.License.URL); trimmed != "" {
+		parsed, err := url.Parse(trimmed)
+		if err != nil || !parsed.IsAbs() {
+			return fmt.Errorf("license url invalid: %s", m.License.URL)
+		}
+	}
+	return nil
+}
+
+func validateGitHubRepository(raw string) error {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return errors.New("repositoryUrl is required")
+	}
+	parsed, err := url.Parse(trimmed)
+	if err != nil {
+		return fmt.Errorf("repositoryUrl invalid: %v", err)
+	}
+	if parsed.Scheme != "https" {
+		return errors.New("repositoryUrl must use https")
+	}
+	if !strings.EqualFold(parsed.Host, "github.com") {
+		return errors.New("repositoryUrl must reference github.com")
+	}
+	segments := strings.Split(strings.Trim(parsed.Path, "/"), "/")
+	if len(segments) < 2 {
+		return errors.New("repositoryUrl must include owner and repository")
+	}
 	return nil
 }
 
