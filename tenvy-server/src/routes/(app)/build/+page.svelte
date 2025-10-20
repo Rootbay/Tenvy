@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { browser } from '$app/environment';
 	import { Badge } from '$lib/components/ui/badge/index.js';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import {
@@ -9,7 +10,7 @@
 		CardTitle
 	} from '$lib/components/ui/card/index.js';
 	import { Tabs, TabsContent, TabsList, TabsTrigger } from '$lib/components/ui/tabs/index.js';
-	import { onDestroy } from 'svelte';
+	import { onDestroy, tick } from 'svelte';
 	import { SvelteSet } from 'svelte/reactivity';
 	import { toast } from 'svelte-sonner';
 	import ConnectionTab from './components/ConnectionTab.svelte';
@@ -171,6 +172,7 @@
 	let outputPath = $state<string | null>(null);
 
 	const BUILD_STATUS_TOAST_ID = 'build-status-toast';
+	const BUILD_PROGRESS_TOAST_ID = 'build-progress-toast';
 
 	let lastToastedStatus: BuildStatus = 'idle';
 	let lastWarningSignature = '';
@@ -214,6 +216,10 @@
 	});
 
 	$effect(() => {
+		if (!browser) {
+			return;
+		}
+
 		const status = buildStatus;
 
 		if (status === 'idle') {
@@ -229,11 +235,11 @@
 		}
 
 		if (status === 'running') {
-			toast('Starting build…', {
+			toast.loading('Starting build…', {
 				id: BUILD_STATUS_TOAST_ID,
 				description: `Generating ${effectiveOutputFilename}`,
 				position: 'bottom-right',
-				duration: Infinity,
+				duration: Number.POSITIVE_INFINITY,
 				dismissable: false
 			});
 		} else if (status === 'success') {
@@ -272,6 +278,10 @@
 	});
 
 	$effect(() => {
+		if (!browser) {
+			return;
+		}
+
 		if (buildStatus !== 'success') {
 			lastWarningSignature = '';
 			return;
@@ -304,23 +314,34 @@
 		outputPath = null;
 		buildWarnings = [];
 		fileIconError = null;
+		toast.dismiss(BUILD_PROGRESS_TOAST_ID);
 	}
 
 	function pushProgress(text: string, tone: 'info' | 'success' | 'error' = 'info') {
+		if (!browser) {
+			return;
+		}
+
 		const options = { position: 'bottom-right' as const };
 		if (tone === 'success') {
+			toast.dismiss(BUILD_PROGRESS_TOAST_ID);
 			toast.success(text, options);
 			return;
 		}
 
 		if (tone === 'error') {
+			toast.dismiss(BUILD_PROGRESS_TOAST_ID);
 			return;
 		}
 
-		toast(text, options);
+		toast(text, { ...options, id: BUILD_PROGRESS_TOAST_ID, dismissable: false });
 	}
 
 	function notifySharedSecret(secret: string | null) {
+		if (!browser) {
+			return;
+		}
+
 		if (!secret) {
 			return;
 		}
@@ -328,7 +349,7 @@
 		toast('Generated shared secret', {
 			description: secret,
 			position: 'bottom-right',
-			duration: Infinity,
+			duration: Number.POSITIVE_INFINITY,
 			dismissable: true,
 			action: {
 				label: 'Copy',
@@ -595,6 +616,7 @@
 		}
 
 		buildStatus = 'running';
+		await tick();
 		pushProgress('Preparing build request...');
 
 		const payload: BuildRequest = {

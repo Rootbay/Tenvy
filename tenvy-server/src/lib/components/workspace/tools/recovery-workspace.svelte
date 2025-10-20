@@ -14,6 +14,7 @@
 		CardHeader,
 		CardTitle
 	} from '$lib/components/ui/card/index.js';
+	import WorkspaceHeroHeader from '$lib/components/workspace/WorkspaceHeroHeader.svelte';
 	import { Alert, AlertDescription, AlertTitle } from '$lib/components/ui/alert/index.js';
 	import { getClientTool } from '$lib/data/client-tools';
 	import type { Client } from '$lib/data/clients';
@@ -26,10 +27,8 @@
 	} from '$lib/types/recovery';
 
 	const { client } = $props<{ client: Client }>();
-	void client;
 
 	const tool = getClientTool('recovery');
-	void tool;
 
 	type BuiltInTarget = Exclude<RecoveryTargetSelection['type'], 'custom-path'>;
 
@@ -317,7 +316,6 @@
 			value: archives[0]?.createdAt ? formatRelative(archives[0].createdAt) : '-'
 		}
 	]);
-	void heroMetadata;
 
 	const dateFormatter = new Intl.DateTimeFormat(undefined, {
 		dateStyle: 'medium',
@@ -551,6 +549,12 @@
 </script>
 
 <div class="space-y-6">
+	<WorkspaceHeroHeader
+		{client}
+		{tool}
+		metadata={heroMetadata}
+		subtitle="Stage client-side artefact capture for recovery."
+	/>
 	<Card>
 		<CardHeader>
 			<CardTitle class="text-base">Recovery plan</CardTitle>

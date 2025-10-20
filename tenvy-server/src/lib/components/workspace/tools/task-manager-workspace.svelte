@@ -21,13 +21,14 @@
 	} from '$lib/components/ui/card/index.js';
 	import { Alert, AlertDescription, AlertTitle } from '$lib/components/ui/alert/index.js';
 	import { Badge } from '$lib/components/ui/badge/index.js';
-	import type { DialogToolId } from '$lib/data/client-tools';
+	import { getClientTool, type DialogToolId } from '$lib/data/client-tools';
 	import type { Client } from '$lib/data/clients';
 	import { appendWorkspaceLog, createWorkspaceLogEntry } from '$lib/workspace/utils';
 	import { notifyToolActivationCommand } from '$lib/utils/agent-commands.js';
 	import type { WorkspaceLogEntry } from '$lib/workspace/types';
 	import { splitCommandLine } from '$lib/utils/command';
 	import { cn } from '$lib/utils.js';
+	import WorkspaceHeroHeader from '$lib/components/workspace/WorkspaceHeroHeader.svelte';
 	import type {
 		ProcessActionRequest,
 		ProcessDetail,
@@ -44,6 +45,10 @@
 		toolId = 'system-monitor',
 		panel = 'processes'
 	} = $props<{ client: Client; toolId?: DialogToolId; panel?: 'processes' }>();
+
+	const tool = $derived(getClientTool(toolId));
+	const headerTitle = 'Process manager';
+	const headerSubtitle = 'Inspect running processes and orchestrate actions.';
 
 	let processes = $state<ProcessSummary[]>([]);
 	let lastUpdated = $state<string | null>(null);
@@ -433,8 +438,6 @@
 		])()
 	);
 
-	void heroMetadata;
-
 	function refreshImmediately() {
 		void loadProcesses();
 	}
@@ -477,6 +480,13 @@
 </script>
 
 <div class="space-y-6">
+	<WorkspaceHeroHeader
+		{client}
+		tool={tool}
+		title={headerTitle}
+		subtitle={headerSubtitle}
+		metadata={heroMetadata}
+	/>
 	<div class="grid gap-6 lg:grid-cols-[2fr_1fr]">
 		<div class="space-y-6">
 			<Card>

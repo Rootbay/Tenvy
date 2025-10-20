@@ -19,6 +19,7 @@
 		CardHeader,
 		CardTitle
 	} from '$lib/components/ui/card/index.js';
+	import WorkspaceHeroHeader from '$lib/components/workspace/WorkspaceHeroHeader.svelte';
 	import { getClientTool } from '$lib/data/client-tools';
 	import type { Client } from '$lib/data/clients';
 	import type {
@@ -34,7 +35,6 @@
 	const { client } = $props<{ client: Client }>();
 
 	const tool = getClientTool('audio-control');
-	void tool;
 	const isBrowser = typeof window !== 'undefined';
 
 	let inventory = $state<AudioDeviceInventory | null>(null);
@@ -103,7 +103,6 @@
 			hint: uploads.length ? mischiefMeter : undefined
 		}
 	]);
-	void heroMetadata;
 
 	let eventSource = $state<EventSource | null>(null);
 	let audioContext = $state<AudioContext | null>(null);
@@ -750,6 +749,7 @@
 </script>
 
 <div class="space-y-6">
+	<WorkspaceHeroHeader {client} {tool} metadata={heroMetadata} />
 	<div class="grid gap-6 xl:grid-cols-[1.6fr,1.4fr]">
 		<Card>
 			<CardHeader class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">

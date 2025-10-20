@@ -11,33 +11,61 @@ function formatEvent(event: AgentRegistryEvent): Uint8Array {
 }
 
 export const GET: RequestHandler = () => {
+	let stop: (() => void) | null = null;
+
 	const stream = new ReadableStream<Uint8Array>({
 		start(controller) {
-			const send = (event: AgentRegistryEvent) => {
+			let active = true;
+			let keepAlive: ReturnType<typeof setInterval> | null = null;
+			let unsubscribe: () => void = () => {};
+
+			const shutdown = () => {
+				if (!active) {
+					return;
+				}
+				active = false;
+				if (keepAlive) {
+					clearInterval(keepAlive);
+					keepAlive = null;
+				}
+				unsubscribe();
+				unsubscribe = () => {};
+			};
+
+			const safeEnqueue = (chunk: Uint8Array): boolean => {
+				if (!active) {
+					return false;
+				}
 				try {
-					controller.enqueue(formatEvent(event));
+					controller.enqueue(chunk);
+					return true;
 				} catch (error) {
-					console.error('Failed to dispatch agent registry event', error);
+					const code = (error as { code?: string }).code;
+					if (code !== 'ERR_INVALID_STATE') {
+						console.error('Failed to queue agent registry event', error);
+					}
+					shutdown();
+					return false;
 				}
 			};
 
-			const unsubscribe = registry.subscribe((event) => {
-				send(event);
+			unsubscribe = registry.subscribe((event) => {
+				safeEnqueue(formatEvent(event));
 			});
 
-			send({ type: 'agents', agents: registry.listAgents() });
+			safeEnqueue(formatEvent({ type: 'agents', agents: registry.listAgents() } satisfies AgentRegistryEvent));
 
-			const keepAlive = setInterval(() => {
-				controller.enqueue(encoder.encode(':ping\n\n'));
+			keepAlive = setInterval(() => {
+				if (!safeEnqueue(encoder.encode(':ping\n\n'))) {
+					shutdown();
+				}
 			}, PING_INTERVAL_MS);
 
-			return () => {
-				clearInterval(keepAlive);
-				unsubscribe();
-			};
+			stop = shutdown;
 		},
 		cancel() {
-			// noop; cleanup handled in return from start
+			stop?.();
+			stop = null;
 		}
 	});
 

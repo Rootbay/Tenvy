@@ -11,6 +11,7 @@
 		CardHeader,
 		CardTitle
 	} from '$lib/components/ui/card/index.js';
+	import WorkspaceHeroHeader from '$lib/components/workspace/WorkspaceHeroHeader.svelte';
 	import { getClientTool } from '$lib/data/client-tools';
 	import type { Client } from '$lib/data/clients';
 	import { appendWorkspaceLog, createWorkspaceLogEntry } from '$lib/workspace/utils';
@@ -41,11 +42,9 @@
 
 	const props = $props<{ client: Client; mode: KeyloggerMode }>();
 	const client = props.client;
-	void client;
 	const mode = props.mode;
 
 	const tool = getClientTool(toolMap[mode as keyof typeof toolMap]);
-	void tool;
 
 	let cadence = $state(mode === 'offline' ? 15 : 250);
 	let bufferSize = $state(mode === 'offline' ? 5000 : 300);
@@ -92,7 +91,6 @@
 			value: encryptAtRest ? 'Enabled' : 'Disabled'
 		}
 	]);
-	void metadata;
 
 	const watchers = [
 		{ id: 'foreground', description: 'Track active window focus changes' },
@@ -102,6 +100,7 @@
 </script>
 
 <div class="space-y-6">
+	<WorkspaceHeroHeader {client} {tool} subtitle={copy.subtitle} metadata={metadata} />
 	<Card>
 		<CardHeader>
 			<CardTitle class="text-base">Collection settings</CardTitle>

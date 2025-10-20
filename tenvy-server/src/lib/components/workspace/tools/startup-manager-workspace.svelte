@@ -28,11 +28,12 @@
 		TableHeader,
 		TableRow
 	} from '$lib/components/ui/table/index.js';
-	import type { DialogToolId } from '$lib/data/client-tools';
+	import { getClientTool, type DialogToolId } from '$lib/data/client-tools';
 	import type { Client } from '$lib/data/clients';
 	import { appendWorkspaceLog, createWorkspaceLogEntry } from '$lib/workspace/utils';
 	import { notifyToolActivationCommand } from '$lib/utils/agent-commands.js';
 	import type { WorkspaceLogEntry } from '$lib/workspace/types';
+	import WorkspaceHeroHeader from '$lib/components/workspace/WorkspaceHeroHeader.svelte';
 
 	type StartupImpact = 'low' | 'medium' | 'high' | 'not-measured';
 
@@ -55,11 +56,15 @@
 	type SortKey = 'name' | 'impact' | 'status' | 'publisher' | 'startupTime';
 	type SortDirection = 'asc' | 'desc';
 
-	const {
-		client,
-		toolId = 'system-monitor',
-		panel = 'startup'
-	} = $props<{ client: Client; toolId?: DialogToolId; panel?: 'startup' }>();
+const {
+	client,
+	toolId = 'system-monitor',
+	panel = 'startup'
+} = $props<{ client: Client; toolId?: DialogToolId; panel?: 'startup' }>();
+
+const tool = $derived(getClientTool(toolId));
+const headerTitle = 'Startup manager';
+const headerSubtitle = 'Audit autoruns and tune persistence across scopes.';
 
 	const dateFormatter = new Intl.DateTimeFormat(undefined, {
 		dateStyle: 'medium',
@@ -475,8 +480,6 @@
 		})()
 	);
 
-	void heroMetadata;
-
 	const sortOptions: { label: string; value: SortKey }[] = [
 		{ label: 'Impact', value: 'impact' },
 		{ label: 'Name', value: 'name' },
@@ -494,6 +497,13 @@
 </script>
 
 <div class="space-y-6">
+	<WorkspaceHeroHeader
+		{client}
+		tool={tool}
+		title={headerTitle}
+		subtitle={headerSubtitle}
+		metadata={heroMetadata}
+	/>
 	<Card>
 		<CardHeader>
 			<CardTitle class="text-base">Add startup entry</CardTitle>
