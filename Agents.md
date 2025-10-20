@@ -20,7 +20,7 @@ context_for: tenvy-server / tenvy-client / shared
 - **Management** (File, Task, Registry, Startup, Clipboard, TCP)
 - **Recovery**
 - **Options**
-- **Miscellaneous** (Open URL, Message Box, Client Chat, Report Window, IP Geolocation, Env Vars)
+- **Miscellaneous** (Open URL, Client Chat, Trigger Monitor, IP Geolocation, Env Vars)
 - **System Controls** (Reconnect, Disconnect)
 - **Power** (Shutdown, Restart, Sleep, Logoff)
 

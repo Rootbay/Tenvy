@@ -25,7 +25,7 @@
 	const { client } = $props<{ client: Client }>();
 	void client;
 
-	const tool = getClientTool('report-window');
+	const tool = getClientTool('trigger-monitor');
 	void tool;
 
 	let feed = $state<'live' | 'batch'>('live');
@@ -47,7 +47,7 @@
 	function queue(status: WorkspaceLogEntry['status']) {
 		log = appendWorkspaceLog(
 			log,
-			createWorkspaceLogEntry('Report window staged', describePlan(), status)
+			createWorkspaceLogEntry('Trigger Monitor staged', describePlan(), status)
 		);
 	}
 </script>

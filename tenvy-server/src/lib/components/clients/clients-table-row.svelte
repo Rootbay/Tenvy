@@ -435,14 +435,11 @@
 				<ContextMenuSub>
 					<ContextMenuSubTrigger>Keylogger</ContextMenuSubTrigger>
 					<ContextMenuSubContent class="w-48">
-						<ContextMenuItem on:select={() => openSection('keyloggerOnline', agent)}
-							>Online</ContextMenuItem
+						<ContextMenuItem on:select={() => openSection('keyloggerStandard', agent)}
+							>Standard</ContextMenuItem
 						>
 						<ContextMenuItem on:select={() => openSection('keyloggerOffline', agent)}
 							>Offline</ContextMenuItem
-						>
-						<ContextMenuItem on:select={() => openSection('keyloggerAdvanced', agent)}
-							>Advanced Online</ContextMenuItem
 						>
 					</ContextMenuSubContent>
 				</ContextMenuSub>
@@ -487,21 +484,10 @@
 			<ContextMenuSubTrigger>Miscellaneous</ContextMenuSubTrigger>
 			<ContextMenuSubContent class="w-48">
 				<ContextMenuItem on:select={() => openSection('openUrl', agent)}>Open URL</ContextMenuItem>
-				<ContextMenuItem on:select={() => openSection('messageBox', agent)}
-					>Message Box</ContextMenuItem
-				>
-				<ContextMenuItem on:select={() => openSection('clientChat', agent)}
-					>Client Chat</ContextMenuItem
-				>
-				<ContextMenuItem on:select={() => openSection('reportWindow', agent)}
-					>Report Window</ContextMenuItem
-				>
-				<ContextMenuItem on:select={() => openSection('ipGeolocation', agent)}
-					>IP Geolocation</ContextMenuItem
-				>
-				<ContextMenuItem on:select={() => openSection('environmentVariables', agent)}
-					>Environment Variables</ContextMenuItem
-				>
+				<ContextMenuItem on:select={() => openSection('clientChat', agent)}>Client Chat</ContextMenuItem>
+				<ContextMenuItem on:select={() => openSection('triggerMonitor', agent)}>Trigger Monitor</ContextMenuItem>
+				<ContextMenuItem on:select={() => openSection('ipGeolocation', agent)}>IP Geolocation</ContextMenuItem>
+				<ContextMenuItem on:select={() => openSection('environmentVariables', agent)}>Environment Variables</ContextMenuItem>
 			</ContextMenuSubContent>
 		</ContextMenuSub>
 
@@ -510,12 +496,8 @@
 		<ContextMenuSub>
 			<ContextMenuSubTrigger>System Controls</ContextMenuSubTrigger>
 			<ContextMenuSubContent class="w-48">
-				<ContextMenuItem on:select={() => openSection('reconnect', agent)}
-					>Reconnect</ContextMenuItem
-				>
-				<ContextMenuItem on:select={() => openSection('disconnect', agent)}
-					>Disconnect</ContextMenuItem
-				>
+				<ContextMenuItem on:select={() => openSection('reconnect', agent)}>Reconnect</ContextMenuItem>
+				<ContextMenuItem on:select={() => openSection('disconnect', agent)}>Disconnect</ContextMenuItem>
 			</ContextMenuSubContent>
 		</ContextMenuSub>
 
