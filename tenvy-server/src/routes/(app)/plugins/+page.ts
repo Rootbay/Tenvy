@@ -33,8 +33,12 @@ type MarketplaceEntitlement = {
 
 type MarketplaceEntitlementsResponse = { entitlements: MarketplaceEntitlement[] };
 
+type MinimalUser = { id: string; role: UserRole };
+
 export const load: PageLoad = async ({ fetch, parent }) => {
-	const parentData = await parent();
+        const parentData = await parent<{ user?: MinimalUser | null }>();
+
+        const minimalUser = parentData.user ? { id: parentData.user.id, role: parentData.user.role } : null;
 
 	const [pluginsResponse, listingsResponse, entitlementsResponse] = await Promise.all([
 		fetch('/api/plugins'),
@@ -65,7 +69,7 @@ export const load: PageLoad = async ({ fetch, parent }) => {
 	return {
 		plugins: pluginsPayload.plugins,
 		listings: listingsPayload.listings,
-		entitlements: entitlementsPayload.entitlements,
-		user: parentData.user as { id: string; role: UserRole }
-	};
+                entitlements: entitlementsPayload.entitlements,
+                user: minimalUser
+        };
 };
