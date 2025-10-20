@@ -98,9 +98,37 @@ export const plugin = sqliteTable('plugin', {
 	lastAutoSyncAt: timestamp('last_auto_sync_at', { optional: true }),
 	lastDeployedAt: timestamp('last_deployed_at', { optional: true }),
 	lastCheckedAt: timestamp('last_checked_at', { optional: true }),
+	approvalStatus: text('approval_status').notNull().default('pending'),
+	approvedAt: timestamp('approved_at', { optional: true }),
+	approvalNote: text('approval_note'),
 	createdAt: timestamp('created_at', { defaultNow: true }),
 	updatedAt: timestamp('updated_at', { defaultNow: true })
 });
+
+export const pluginInstallation = sqliteTable(
+	'plugin_installation',
+	{
+		pluginId: text('plugin_id')
+			.notNull()
+			.references(() => plugin.id, { onDelete: 'cascade' }),
+		agentId: text('agent_id')
+			.notNull()
+			.references(() => agent.id, { onDelete: 'cascade' }),
+		status: text('status').notNull().default('pending'),
+		version: text('version').notNull(),
+		hash: text('hash'),
+		enabled: integer('enabled', { mode: 'boolean' }).notNull().default(true),
+		error: text('error'),
+		lastDeployedAt: timestamp('last_deployed_at', { optional: true }),
+		lastCheckedAt: timestamp('last_checked_at', { optional: true }),
+		createdAt: timestamp('created_at', { defaultNow: true }),
+		updatedAt: timestamp('updated_at', { defaultNow: true })
+	},
+	(table) => ({
+		pk: primaryKey({ columns: [table.pluginId, table.agentId] }),
+		agentIdx: index('plugin_installation_agent_idx').on(table.agentId)
+	})
+);
 
 export const agent = sqliteTable(
 	'agent',
@@ -197,6 +225,7 @@ export type Passkey = typeof passkey.$inferSelect;
 
 export type RecoveryCode = typeof recoveryCode.$inferSelect;
 export type Plugin = typeof plugin.$inferSelect;
+export type PluginInstallation = typeof pluginInstallation.$inferSelect;
 export type Agent = typeof agent.$inferSelect;
 export type AgentNote = typeof agentNote.$inferSelect;
 export type AgentCommand = typeof agentCommand.$inferSelect;

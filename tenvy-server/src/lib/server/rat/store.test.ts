@@ -63,7 +63,7 @@ describe('AgentRegistry database integration', () => {
 			}
 		]);
 
-		registry.syncAgent(registration.agentId, registration.agentKey, {
+		await registry.syncAgent(registration.agentId, registration.agentKey, {
 			status: 'online',
 			timestamp: new Date().toISOString(),
 			results: [
@@ -90,7 +90,7 @@ describe('AgentRegistry database integration', () => {
 		expect(restoredNotes[0]?.id).toBe('note-1');
 	});
 
-	it('records audit events for queued and executed commands', () => {
+	it('records audit events for queued and executed commands', async () => {
 		const registry = new AgentRegistry();
 		const registration = registry.registerAgent({ metadata: baseMetadata });
 
@@ -125,7 +125,7 @@ describe('AgentRegistry database integration', () => {
 		expect(initialAudit?.operatorId).toBe('operator-123');
 		expect(initialAudit?.executedAt).toBeNull();
 
-		registry.syncAgent(registration.agentId, registration.agentKey, {
+		await registry.syncAgent(registration.agentId, registration.agentKey, {
 			status: 'online',
 			timestamp: new Date().toISOString(),
 			results: [

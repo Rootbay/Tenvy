@@ -3,6 +3,8 @@ package pluginmanifest
 import (
 	"errors"
 	"fmt"
+	"regexp"
+	"sort"
 	"strings"
 )
 
@@ -29,12 +31,12 @@ type Capability struct {
 }
 
 type Requirements struct {
-	MinAgentVersion  string   `json:"minAgentVersion,omitempty"`
-	MaxAgentVersion  string   `json:"maxAgentVersion,omitempty"`
-	MinClientVersion string   `json:"minClientVersion,omitempty"`
-	Platforms        []string `json:"platforms,omitempty"`
-	Architectures    []string `json:"architectures,omitempty"`
-	RequiredModules  []string `json:"requiredModules,omitempty"`
+	MinAgentVersion  string               `json:"minAgentVersion,omitempty"`
+	MaxAgentVersion  string               `json:"maxAgentVersion,omitempty"`
+	MinClientVersion string               `json:"minClientVersion,omitempty"`
+	Platforms        []PluginPlatform     `json:"platforms,omitempty"`
+	Architectures    []PluginArchitecture `json:"architectures,omitempty"`
+	RequiredModules  []string             `json:"requiredModules,omitempty"`
 }
 
 type Distribution struct {
@@ -56,17 +58,72 @@ type Signature struct {
 }
 
 type (
-	DeliveryMode  string
-	SignatureType string
+	DeliveryMode         string
+	SignatureType        string
+	PluginPlatform       string
+	PluginArchitecture   string
+	PluginInstallStatus  string
+	PluginApprovalStatus string
 )
 
 const (
-	DeliveryManual    DeliveryMode  = "manual"
-	DeliveryAutomatic DeliveryMode  = "automatic"
-	SignatureNone     SignatureType = "none"
-	SignatureSHA256   SignatureType = "sha256"
-	SignatureEd25519  SignatureType = "ed25519"
+	DeliveryManual    DeliveryMode = "manual"
+	DeliveryAutomatic DeliveryMode = "automatic"
+
+	SignatureNone    SignatureType = "none"
+	SignatureSHA256  SignatureType = "sha256"
+	SignatureEd25519 SignatureType = "ed25519"
+
+	PlatformWindows PluginPlatform = "windows"
+	PlatformLinux   PluginPlatform = "linux"
+	PlatformMacOS   PluginPlatform = "macos"
+
+	ArchitectureX8664 PluginArchitecture = "x86_64"
+	ArchitectureARM64 PluginArchitecture = "arm64"
+
+	InstallPending    PluginInstallStatus = "pending"
+	InstallInstalling PluginInstallStatus = "installing"
+	InstallInstalled  PluginInstallStatus = "installed"
+	InstallFailed     PluginInstallStatus = "failed"
+	InstallBlocked    PluginInstallStatus = "blocked"
+
+	ApprovalPending  PluginApprovalStatus = "pending"
+	ApprovalApproved PluginApprovalStatus = "approved"
+	ApprovalRejected PluginApprovalStatus = "rejected"
 )
+
+var (
+	knownDeliveryModes  = []DeliveryMode{DeliveryManual, DeliveryAutomatic}
+	knownSignatureTypes = []SignatureType{SignatureNone, SignatureSHA256, SignatureEd25519}
+	knownPlatforms      = []PluginPlatform{PlatformWindows, PlatformLinux, PlatformMacOS}
+	knownArchitectures  = []PluginArchitecture{ArchitectureX8664, ArchitectureARM64}
+	knownInstallStates  = []PluginInstallStatus{InstallPending, InstallInstalling, InstallInstalled, InstallFailed, InstallBlocked}
+	knownApprovalStates = []PluginApprovalStatus{ApprovalPending, ApprovalApproved, ApprovalRejected}
+	semverPattern       = regexp.MustCompile(`^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-[0-9A-Za-z-.]+)?(?:\+[0-9A-Za-z-.]+)?$`)
+	registeredModules   = map[string]struct{}{
+		"remote-desktop": {},
+		"audio-control":  {},
+		"clipboard":      {},
+		"recovery":       {},
+		"client-chat":    {},
+		"system-info":    {},
+		"notes":          {},
+	}
+)
+
+type InstallationTelemetry struct {
+	PluginID       string              `json:"pluginId"`
+	Version        string              `json:"version"`
+	Status         PluginInstallStatus `json:"status"`
+	Hash           string              `json:"hash,omitempty"`
+	LastDeployedAt *string             `json:"lastDeployedAt,omitempty"`
+	LastCheckedAt  *string             `json:"lastCheckedAt,omitempty"`
+	Error          string              `json:"error,omitempty"`
+}
+
+type SyncPayload struct {
+	Installations []InstallationTelemetry `json:"installations"`
+}
 
 func (m Manifest) Validate() error {
 	var problems []error
@@ -77,8 +134,10 @@ func (m Manifest) Validate() error {
 	if strings.TrimSpace(m.Name) == "" {
 		problems = append(problems, errors.New("missing name"))
 	}
-	if strings.TrimSpace(m.Version) == "" {
+	if version := strings.TrimSpace(m.Version); version == "" {
 		problems = append(problems, errors.New("missing version"))
+	} else if !semverPattern.MatchString(version) {
+		problems = append(problems, fmt.Errorf("invalid semantic version: %s", m.Version))
 	}
 	if strings.TrimSpace(m.Entry) == "" {
 		problems = append(problems, errors.New("missing entry"))
@@ -91,11 +150,48 @@ func (m Manifest) Validate() error {
 		problems = append(problems, err)
 	}
 
-	if len(m.Requirements.RequiredModules) > 0 {
-		for index, module := range m.Requirements.RequiredModules {
-			if strings.TrimSpace(module) == "" {
-				problems = append(problems, fmt.Errorf("required module %d is empty", index))
-			}
+	for index, module := range m.Requirements.RequiredModules {
+		if strings.TrimSpace(module) == "" {
+			problems = append(problems, fmt.Errorf("required module %d is empty", index))
+			continue
+		}
+		if _, ok := registeredModules[module]; !ok {
+			problems = append(problems, fmt.Errorf("required module %s is not registered", module))
+		}
+	}
+
+	for index, capability := range m.Capabilities {
+		if strings.TrimSpace(capability.Name) == "" {
+			problems = append(problems, fmt.Errorf("capability %d is missing name", index))
+		}
+		if strings.TrimSpace(capability.Module) == "" {
+			problems = append(problems, fmt.Errorf("capability %s is missing module reference", capability.Name))
+			continue
+		}
+		if _, ok := registeredModules[capability.Module]; !ok {
+			problems = append(problems, fmt.Errorf("capability %s references unknown module %s", capability.Name, capability.Module))
+		}
+	}
+
+	if err := validateSemverConstraint("minAgentVersion", m.Requirements.MinAgentVersion); err != nil {
+		problems = append(problems, err)
+	}
+	if err := validateSemverConstraint("maxAgentVersion", m.Requirements.MaxAgentVersion); err != nil {
+		problems = append(problems, err)
+	}
+	if err := validateSemverConstraint("minClientVersion", m.Requirements.MinClientVersion); err != nil {
+		problems = append(problems, err)
+	}
+
+	for _, platform := range m.Requirements.Platforms {
+		if !containsPlatform(platform) {
+			problems = append(problems, fmt.Errorf("unsupported platform: %s", platform))
+		}
+	}
+
+	for _, arch := range m.Requirements.Architectures {
+		if !containsArchitecture(arch) {
+			problems = append(problems, fmt.Errorf("unsupported architecture: %s", arch))
 		}
 	}
 
@@ -107,28 +203,88 @@ func (m Manifest) validateDistribution() error {
 	if mode == "" {
 		return errors.New("distribution default mode is required")
 	}
-	switch DeliveryMode(mode) {
-	case DeliveryManual, DeliveryAutomatic:
-	default:
+	if !containsDeliveryMode(DeliveryMode(mode)) {
 		return fmt.Errorf("unsupported delivery mode: %s", mode)
 	}
 
-	switch m.Distribution.Signature.Type {
+	sig := m.Distribution.Signature
+	if !containsSignatureType(sig.Type) {
+		return fmt.Errorf("unsupported signature type: %s", sig.Type)
+	}
+
+	switch sig.Type {
 	case SignatureNone:
 	case SignatureSHA256:
-		if strings.TrimSpace(m.Distribution.Signature.Hash) == "" {
+		if strings.TrimSpace(sig.Hash) == "" {
 			return errors.New("sha256 signature requires hash")
 		}
 	case SignatureEd25519:
-		if strings.TrimSpace(m.Distribution.Signature.PublicKey) == "" {
+		if strings.TrimSpace(sig.PublicKey) == "" {
 			return errors.New("ed25519 signature requires publicKey")
 		}
-		if strings.TrimSpace(m.Distribution.Signature.Hash) == "" {
+		if strings.TrimSpace(sig.Hash) == "" {
 			return errors.New("ed25519 signature requires hash")
 		}
-	default:
-		return fmt.Errorf("unsupported signature type: %s", m.Distribution.Signature.Type)
+	}
+
+	if sig.Type != SignatureNone {
+		if strings.TrimSpace(m.Package.Hash) == "" {
+			return errors.New("signed packages must include a hash")
+		}
 	}
 
 	return nil
+}
+
+func containsDeliveryMode(candidate DeliveryMode) bool {
+	return containsValue(candidate, knownDeliveryModes)
+}
+
+func containsSignatureType(candidate SignatureType) bool {
+	return containsValue(candidate, knownSignatureTypes)
+}
+
+func containsPlatform(candidate PluginPlatform) bool {
+	return containsValue(candidate, knownPlatforms)
+}
+
+func containsArchitecture(candidate PluginArchitecture) bool {
+	return containsValue(candidate, knownArchitectures)
+}
+
+func containsInstallStatus(candidate PluginInstallStatus) bool {
+	return containsValue(candidate, knownInstallStates)
+}
+
+func containsApprovalStatus(candidate PluginApprovalStatus) bool {
+	return containsValue(candidate, knownApprovalStates)
+}
+
+func containsValue[T comparable](candidate T, values []T) bool {
+	for _, value := range values {
+		if value == candidate {
+			return true
+		}
+	}
+	return false
+}
+
+func validateSemverConstraint(field string, value string) error {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" {
+		return nil
+	}
+	if !semverPattern.MatchString(trimmed) {
+		return fmt.Errorf("invalid %s: %s", field, value)
+	}
+	return nil
+}
+
+func init() {
+	sort.Slice(knownDeliveryModes, func(i, j int) bool { return knownDeliveryModes[i] < knownDeliveryModes[j] })
+	sort.Slice(knownSignatureTypes, func(i, j int) bool { return knownSignatureTypes[i] < knownSignatureTypes[j] })
+	sort.Slice(knownPlatforms, func(i, j int) bool { return knownPlatforms[i] < knownPlatforms[j] })
+	sort.Slice(knownArchitectures, func(i, j int) bool { return knownArchitectures[i] < knownArchitectures[j] })
+	sort.Slice(knownInstallStates, func(i, j int) bool { return knownInstallStates[i] < knownInstallStates[j] })
+	sort.Slice(knownApprovalStates, func(i, j int) bool { return knownApprovalStates[i] < knownApprovalStates[j] })
 }

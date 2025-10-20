@@ -36,6 +36,7 @@ This document reviews the current state of the built-in modules compiled into th
 ## Next Steps
 
 - Prototype the module registry and migrate an existing module (e.g., clipboard) to validate the interface.
-- Design the shared manifest schema and update the controller to read manifests from disk during development.
-- Define signing and trust requirements, and add verification scaffolding to the agent download path.
-- Expand the controller UI to surface manifest-driven compatibility signals and delivery policy outcomes.
+- ✅ Shared plugin manifest schema with mirrored Go validation keeps manifests authoritative across stacks.
+- ✅ Signing and compatibility checks run during agent sync, blocking unapproved binaries and logging audit events.
+- ✅ The controller UI reads manifests from disk, surfaces approval workflows, and displays live per-client telemetry.
+- ✅ Document the plugin lifecycle (packaging, approvals, rollback) for operators.

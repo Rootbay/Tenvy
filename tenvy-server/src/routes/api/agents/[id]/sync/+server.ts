@@ -30,7 +30,7 @@ export const POST: RequestHandler = async ({ params, request, getClientAddress }
 	}
 
 	try {
-		const response = registry.syncAgent(id, token, payload, {
+		const response = await registry.syncAgent(id, token, payload, {
 			remoteAddress: getClientAddress()
 		});
 		return json(response);

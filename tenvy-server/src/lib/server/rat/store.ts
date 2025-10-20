@@ -37,6 +37,7 @@ import type {
 } from '../../../../../shared/types/messages';
 import type { RemoteDesktopInputBurst } from '../../../../../shared/types/remote-desktop';
 import type { AppVncInputBurst } from '../../../../../shared/types/app-vnc';
+import { PluginTelemetryStore } from '../plugins/telemetry-store.js';
 
 const MAX_TAGS = 16;
 const MAX_TAG_LENGTH = 32;
@@ -315,9 +316,11 @@ export class AgentRegistry {
 	private persistTimer: ReturnType<typeof setTimeout> | null = null;
 	private persistPromise: Promise<void> | null = null;
 	private needsPersist = false;
+	private readonly pluginTelemetry: PluginTelemetryStore;
 
 	constructor() {
 		this.loadFromDatabase();
+		this.pluginTelemetry = new PluginTelemetryStore();
 	}
 
 	subscribe(listener: AgentRegistrySubscriber): () => void {
@@ -1053,12 +1056,12 @@ export class AgentRegistry {
 		this.notifyAgentUpdate(record);
 	}
 
-	syncAgent(
+	async syncAgent(
 		id: string,
 		key: string | undefined,
 		payload: AgentSyncRequest,
 		options: { remoteAddress?: string } = {}
-	): AgentSyncResponse {
+	): Promise<AgentSyncResponse> {
 		const record = this.agents.get(id);
 		if (!record) {
 			throw new RegistryError('Agent not found', 404);
@@ -1086,6 +1089,14 @@ export class AgentRegistry {
 
 		const commands = record.pendingCommands.map((command) => ({ ...command }));
 		record.pendingCommands = [];
+
+		if (payload.plugins?.installations?.length) {
+			await this.pluginTelemetry.syncAgent(
+				record.id,
+				record.metadata,
+				payload.plugins.installations
+			);
+		}
 
 		this.schedulePersist();
 

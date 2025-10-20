@@ -8,7 +8,9 @@ import (
 	"time"
 
 	notes "github.com/rootbay/tenvy-client/internal/modules/notes"
+	"github.com/rootbay/tenvy-client/internal/plugins"
 	"github.com/rootbay/tenvy-client/internal/protocol"
+	manifest "github.com/rootbay/tenvy-client/shared/pluginmanifest"
 )
 
 type Agent struct {
@@ -35,6 +37,7 @@ type Agent struct {
 	remoteDesktopInputQueue      chan remoteDesktopInputTask
 	remoteDesktopInputStopCh     chan struct{}
 	remoteDesktopInputStopped    atomic.Bool
+	plugins                      *plugins.Manager
 }
 
 func (a *Agent) AgentID() string {
@@ -47,4 +50,15 @@ func (a *Agent) AgentMetadata() protocol.AgentMetadata {
 
 func (a *Agent) AgentStartTime() time.Time {
 	return a.startTime
+}
+
+func (a *Agent) pluginSyncPayload() *manifest.SyncPayload {
+	if a.plugins == nil {
+		return nil
+	}
+	payload := a.plugins.Snapshot()
+	if payload == nil || len(payload.Installations) == 0 {
+		return nil
+	}
+	return payload
 }
