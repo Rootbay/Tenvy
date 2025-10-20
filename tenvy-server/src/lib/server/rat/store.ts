@@ -649,98 +649,107 @@ export class AgentRegistry {
 		const now = new Date();
 		const agentIds = agents.map((agent) => agent.id);
 
-		if (agentIds.length === 0) {
-			await db.delete(agentNoteTable);
-			await db.delete(agentCommandTable);
-			await db.delete(agentResultTable);
-			await db.delete(agentTable);
-			return;
-		}
-
-		const existing = await db
-			.select({ id: agentTable.id })
-			.from(agentTable)
-			.where(inArray(agentTable.id, agentIds));
-		const existingIds = new Set(existing.map((row) => row.id));
-
-		for (const record of agents) {
-			const payload = {
-				id: record.id,
-				keyHash: record.keyHash,
-				metadata: JSON.stringify(record.metadata),
-				status: record.status,
-				connectedAt: record.connectedAt,
-				lastSeen: record.lastSeen,
-				metrics: record.metrics ? JSON.stringify(record.metrics) : null,
-				config: JSON.stringify(record.config),
-				fingerprint: record.fingerprint,
-				createdAt: record.connectedAt,
-				updatedAt: now
-			};
-
-			if (existingIds.has(record.id)) {
-				await db
-					.update(agentTable)
-					.set({
-						keyHash: payload.keyHash,
-						metadata: payload.metadata,
-						status: payload.status,
-						connectedAt: payload.connectedAt,
-						lastSeen: payload.lastSeen,
-						metrics: payload.metrics,
-						config: payload.config,
-						fingerprint: payload.fingerprint,
-						updatedAt: payload.updatedAt
-					})
-					.where(eq(agentTable.id, record.id));
-			} else {
-				await db.insert(agentTable).values(payload);
-				existingIds.add(record.id);
+		await db.transaction((tx) => {
+			if (agentIds.length === 0) {
+				tx.delete(agentNoteTable).run();
+				tx.delete(agentCommandTable).run();
+				tx.delete(agentResultTable).run();
+				tx.delete(agentTable).run();
+				return;
 			}
 
-			await db.delete(agentNoteTable).where(eq(agentNoteTable.agentId, record.id));
-			const notes = Array.from(record.sharedNotes.values());
-			if (notes.length > 0) {
-				await db.insert(agentNoteTable).values(
-					notes.map((note) => ({
-						agentId: record.id,
-						noteId: note.id,
-						ciphertext: note.ciphertext,
-						nonce: note.nonce,
-						digest: note.digest,
-						version: note.version,
-						updatedAt: note.updatedAt
-					}))
-				);
-			}
+			const existing = tx
+				.select({ id: agentTable.id })
+				.from(agentTable)
+				.where(inArray(agentTable.id, agentIds))
+				.all();
+			const existingIds = new Set(existing.map((row) => row.id));
 
-			await db.delete(agentCommandTable).where(eq(agentCommandTable.agentId, record.id));
-			if (record.pendingCommands.length > 0) {
-				await db.insert(agentCommandTable).values(
-					record.pendingCommands.map((command) => ({
-						id: command.id,
-						agentId: record.id,
-						name: command.name,
-						payload: JSON.stringify(command.payload ?? {}),
-						createdAt: new Date(command.createdAt)
-					}))
-				);
-			}
+			for (const record of agents) {
+				const payload = {
+					id: record.id,
+					keyHash: record.keyHash,
+					metadata: JSON.stringify(record.metadata),
+					status: record.status,
+					connectedAt: record.connectedAt,
+					lastSeen: record.lastSeen,
+					metrics: record.metrics ? JSON.stringify(record.metrics) : null,
+					config: JSON.stringify(record.config),
+					fingerprint: record.fingerprint,
+					createdAt: record.connectedAt,
+					updatedAt: now
+				};
 
-			await db.delete(agentResultTable).where(eq(agentResultTable.agentId, record.id));
-			if (record.recentResults.length > 0) {
-				await db.insert(agentResultTable).values(
-					record.recentResults.map((result) => ({
-						agentId: record.id,
-						commandId: result.commandId,
-						success: result.success,
-						output: result.output,
-						error: result.error,
-						completedAt: new Date(result.completedAt)
-					}))
-				);
+				if (existingIds.has(record.id)) {
+					tx.update(agentTable)
+						.set({
+							keyHash: payload.keyHash,
+							metadata: payload.metadata,
+							status: payload.status,
+							connectedAt: payload.connectedAt,
+							lastSeen: payload.lastSeen,
+							metrics: payload.metrics,
+							config: payload.config,
+							fingerprint: payload.fingerprint,
+							updatedAt: payload.updatedAt
+						})
+						.where(eq(agentTable.id, record.id))
+						.run();
+				} else {
+					tx.insert(agentTable).values(payload).run();
+					existingIds.add(record.id);
+				}
+
+				tx.delete(agentNoteTable).where(eq(agentNoteTable.agentId, record.id)).run();
+				const notes = Array.from(record.sharedNotes.values());
+				if (notes.length > 0) {
+					tx.insert(agentNoteTable)
+						.values(
+							notes.map((note) => ({
+								agentId: record.id,
+								noteId: note.id,
+								ciphertext: note.ciphertext,
+								nonce: note.nonce,
+								digest: note.digest,
+								version: note.version,
+								updatedAt: note.updatedAt
+							}))
+						)
+						.run();
+				}
+
+				tx.delete(agentCommandTable).where(eq(agentCommandTable.agentId, record.id)).run();
+				if (record.pendingCommands.length > 0) {
+					tx.insert(agentCommandTable)
+						.values(
+							record.pendingCommands.map((command) => ({
+								id: command.id,
+								agentId: record.id,
+								name: command.name,
+								payload: JSON.stringify(command.payload ?? {}),
+								createdAt: new Date(command.createdAt)
+							}))
+						)
+						.run();
+				}
+
+				tx.delete(agentResultTable).where(eq(agentResultTable.agentId, record.id)).run();
+				if (record.recentResults.length > 0) {
+					tx.insert(agentResultTable)
+						.values(
+							record.recentResults.map((result) => ({
+								agentId: record.id,
+								commandId: result.commandId,
+								success: result.success,
+								output: result.output,
+								error: result.error,
+								completedAt: new Date(result.completedAt)
+							}))
+						)
+						.run();
+				}
 			}
-		}
+		});
 	}
 
 	async flush(): Promise<void> {

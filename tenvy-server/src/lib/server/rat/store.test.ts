@@ -152,6 +152,125 @@ describe('AgentRegistry database integration', () => {
 		expect(parsed?.error).toContain('Command rejected');
 	});
 
+	it('rolls back partial persistence when a transactional error occurs', async () => {
+		const registry = new AgentRegistry();
+		const registration = registry.registerAgent({ metadata: baseMetadata });
+
+		const queued = registry.queueCommand(registration.agentId, {
+			name: 'ping',
+			payload: { message: 'rollback' }
+		});
+
+		registry.syncSharedNotes(registration.agentId, registration.agentKey, [
+			{
+				id: 'note-rollback',
+				visibility: 'shared',
+				ciphertext: 'ciphertext',
+				nonce: 'nonce',
+				digest: 'digest',
+				version: 1,
+				updatedAt: new Date().toISOString()
+			}
+		]);
+
+		await registry.syncAgent(registration.agentId, registration.agentKey, {
+			status: 'online',
+			timestamp: new Date().toISOString(),
+			results: [
+				{
+					commandId: queued.command.id,
+					success: true,
+					completedAt: new Date().toISOString(),
+					output: 'pong'
+				}
+			]
+		});
+
+		const originalTransaction = db.transaction.bind(db);
+		const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+		const transactionSpy = vi
+			.spyOn(db, 'transaction')
+			.mockImplementation((callback: (tx: unknown) => unknown) =>
+				originalTransaction((tx) => {
+					let failureInjected = false;
+					const proxied = new Proxy(tx, {
+						get(target, property, receiver) {
+							const value = Reflect.get(target, property, receiver);
+							if (property === 'insert') {
+								return (...args: unknown[]) => {
+									const builder = (value as (...args: unknown[]) => unknown).apply(target, args);
+									if (!failureInjected && args[0] === agentResultTable) {
+										failureInjected = true;
+										return new Proxy(builder as Record<string, unknown>, {
+											get(bTarget, bProperty, bReceiver) {
+												const bValue = Reflect.get(bTarget, bProperty, bReceiver);
+												if (bProperty === 'values') {
+													return (...valueArgs: unknown[]) => {
+														const nextBuilder = (
+															bValue as (...valueArgs: unknown[]) => unknown
+														).apply(bTarget, valueArgs);
+														return new Proxy(nextBuilder as Record<string, unknown>, {
+															get(nTarget, nProperty, nReceiver) {
+																const nValue = Reflect.get(nTarget, nProperty, nReceiver);
+																if (nProperty === 'run') {
+																	return () => {
+																		throw new Error('Simulated persistence failure');
+																	};
+																}
+																return typeof nValue === 'function'
+																	? (nValue as (...args: unknown[]) => unknown).bind(nTarget)
+																	: nValue;
+															}
+														});
+													};
+												}
+												return typeof bValue === 'function'
+													? (bValue as (...args: unknown[]) => unknown).bind(bTarget)
+													: bValue;
+											}
+										});
+									}
+									return builder;
+								};
+							}
+							return typeof value === 'function'
+								? (value as (...args: unknown[]) => unknown).bind(target)
+								: value;
+						}
+					});
+					return callback(proxied as typeof db);
+				})
+			);
+
+		let errorCalls = 0;
+		try {
+			await registry.flush();
+		} finally {
+			errorCalls = consoleSpy.mock.calls.length;
+			transactionSpy.mockRestore();
+			consoleSpy.mockRestore();
+		}
+
+		const persistedAgents = await db.select({ id: agentTable.id }).from(agentTable);
+		const persistedNotes = await db.select({ id: agentNoteTable.noteId }).from(agentNoteTable);
+		const persistedCommands = await db.select({ id: agentCommandTable.id }).from(agentCommandTable);
+		const persistedResults = await db
+			.select({ id: agentResultTable.commandId })
+			.from(agentResultTable);
+
+		expect(errorCalls).toBe(1);
+		expect(persistedAgents).toHaveLength(0);
+		expect(persistedNotes).toHaveLength(0);
+		expect(persistedCommands).toHaveLength(0);
+		expect(persistedResults).toHaveLength(0);
+
+		(registry as unknown as { schedulePersist: () => void }).schedulePersist();
+		await registry.flush();
+
+		const finalAgents = await db.select({ id: agentTable.id }).from(agentTable);
+		expect(finalAgents).toHaveLength(1);
+	});
+
 	it('clamps pending commands under concurrent queueing and persists trimmed snapshot', async () => {
 		const registry = new AgentRegistry();
 		const { agentId } = registry.registerAgent({ metadata: baseMetadata });
