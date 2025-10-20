@@ -39,7 +39,9 @@ type Config struct {
 	UserAgent        string
 	RequestTimeout   time.Duration
 	WebRTCICEServers []RemoteDesktopWebRTCICEServer
+	QUICInput        QUICInputConfig
 	authHeader       string
+	quicInput        sanitizedQUICInput
 }
 
 type RemoteDesktopQuality string
@@ -49,6 +51,8 @@ type RemoteDesktopStreamMode string
 type RemoteDesktopEncoder string
 
 type RemoteDesktopTransport string
+
+type RemoteDesktopHardwarePreference string
 
 const (
 	RemoteQualityAuto   RemoteDesktopQuality = "auto"
@@ -72,6 +76,12 @@ const (
 	RemoteTransportWebRTC RemoteDesktopTransport = "webrtc"
 )
 
+const (
+	RemoteHardwareAuto   RemoteDesktopHardwarePreference = "auto"
+	RemoteHardwarePrefer RemoteDesktopHardwarePreference = "prefer"
+	RemoteHardwareAvoid  RemoteDesktopHardwarePreference = "avoid"
+)
+
 type RemoteDesktopInputType string
 
 const (
@@ -90,21 +100,27 @@ const (
 )
 
 type RemoteDesktopSettings struct {
-	Quality  RemoteDesktopQuality    `json:"quality"`
-	Monitor  int                     `json:"monitor"`
-	Mouse    bool                    `json:"mouse"`
-	Keyboard bool                    `json:"keyboard"`
-	Mode     RemoteDesktopStreamMode `json:"mode"`
-	Encoder  RemoteDesktopEncoder    `json:"encoder,omitempty"`
+	Quality           RemoteDesktopQuality            `json:"quality"`
+	Monitor           int                             `json:"monitor"`
+	Mouse             bool                            `json:"mouse"`
+	Keyboard          bool                            `json:"keyboard"`
+	Mode              RemoteDesktopStreamMode         `json:"mode"`
+	Encoder           RemoteDesktopEncoder            `json:"encoder,omitempty"`
+	Transport         RemoteDesktopTransport          `json:"transport,omitempty"`
+	Hardware          RemoteDesktopHardwarePreference `json:"hardware,omitempty"`
+	TargetBitrateKbps int                             `json:"targetBitrateKbps,omitempty"`
 }
 
 type RemoteDesktopSettingsPatch struct {
-	Quality  *RemoteDesktopQuality    `json:"quality,omitempty"`
-	Monitor  *int                     `json:"monitor,omitempty"`
-	Mouse    *bool                    `json:"mouse,omitempty"`
-	Keyboard *bool                    `json:"keyboard,omitempty"`
-	Mode     *RemoteDesktopStreamMode `json:"mode,omitempty"`
-	Encoder  *RemoteDesktopEncoder    `json:"encoder,omitempty"`
+	Quality           *RemoteDesktopQuality            `json:"quality,omitempty"`
+	Monitor           *int                             `json:"monitor,omitempty"`
+	Mouse             *bool                            `json:"mouse,omitempty"`
+	Keyboard          *bool                            `json:"keyboard,omitempty"`
+	Mode              *RemoteDesktopStreamMode         `json:"mode,omitempty"`
+	Encoder           *RemoteDesktopEncoder            `json:"encoder,omitempty"`
+	Transport         *RemoteDesktopTransport          `json:"transport,omitempty"`
+	Hardware          *RemoteDesktopHardwarePreference `json:"hardware,omitempty"`
+	TargetBitrateKbps *int                             `json:"targetBitrateKbps,omitempty"`
 }
 
 type RemoteDesktopCommandPayload struct {
@@ -148,6 +164,21 @@ type RemoteDesktopFrameMetrics struct {
 	FrameLossPercent    float64 `json:"frameLossPercent,omitempty"`
 }
 
+type RemoteDesktopTransportDiagnostics struct {
+	Transport             RemoteDesktopTransport `json:"transport"`
+	Codec                 RemoteDesktopEncoder   `json:"codec,omitempty"`
+	BandwidthEstimateKbps float64                `json:"bandwidthEstimateKbps,omitempty"`
+	AvailableBitrateKbps  float64                `json:"availableBitrateKbps,omitempty"`
+	CurrentBitrateKbps    float64                `json:"currentBitrateKbps,omitempty"`
+	RTTMs                 float64                `json:"rttMs,omitempty"`
+	JitterMs              float64                `json:"jitterMs,omitempty"`
+	PacketsLost           float64                `json:"packetsLost,omitempty"`
+	FramesDropped         float64                `json:"framesDropped,omitempty"`
+	LastUpdatedAt         string                 `json:"lastUpdatedAt,omitempty"`
+	HardwareFallback      bool                   `json:"hardwareFallback,omitempty"`
+	HardwareEncoder       string                 `json:"hardwareEncoder,omitempty"`
+}
+
 type RemoteDesktopMonitorInfo struct {
 	ID     int    `json:"id"`
 	Label  string `json:"label"`
@@ -162,6 +193,15 @@ type RemoteDesktopDeltaRect struct {
 	Height   int    `json:"height"`
 	Encoding string `json:"encoding"`
 	Data     string `json:"data"`
+}
+
+type RemoteDesktopMediaSample struct {
+	Kind      string `json:"kind"`
+	Codec     string `json:"codec"`
+	Timestamp int64  `json:"timestamp"`
+	KeyFrame  bool   `json:"keyFrame,omitempty"`
+	Format    string `json:"format,omitempty"`
+	Data      string `json:"data"`
 }
 
 type RemoteDesktopFramePacket struct {
@@ -181,12 +221,44 @@ type RemoteDesktopFramePacket struct {
 	IntraRefresh    bool                       `json:"intraRefresh,omitempty"`
 	Monitors        []RemoteDesktopMonitorInfo `json:"monitors,omitempty"`
 	Metrics         *RemoteDesktopFrameMetrics `json:"metrics,omitempty"`
+	Media           []RemoteDesktopMediaSample `json:"media,omitempty"`
 }
 
 type RemoteDesktopTransportCapability struct {
 	Transport RemoteDesktopTransport `json:"transport"`
 	Codecs    []RemoteDesktopEncoder `json:"codecs"`
 	Features  map[string]bool        `json:"features,omitempty"`
+}
+
+type QUICInputConfig struct {
+	URL                string        `json:"url,omitempty"`
+	Token              string        `json:"token,omitempty"`
+	ALPN               string        `json:"alpn,omitempty"`
+	Disabled           bool          `json:"disabled,omitempty"`
+	ConnectTimeout     time.Duration `json:"connectTimeout,omitempty"`
+	RetryInterval      time.Duration `json:"retryInterval,omitempty"`
+	InsecureSkipVerify bool          `json:"insecureSkipVerify,omitempty"`
+}
+
+type sanitizedQUICInput struct {
+	enabled            bool
+	address            string
+	serverName         string
+	alpn               string
+	token              string
+	connectTimeout     time.Duration
+	retryInterval      time.Duration
+	insecureSkipVerify bool
+}
+
+type RemoteDesktopInputQuicConfig struct {
+	Enabled bool   `json:"enabled"`
+	Port    int    `json:"port,omitempty"`
+	ALPN    string `json:"alpn,omitempty"`
+}
+
+type RemoteDesktopInputNegotiation struct {
+	QUIC *RemoteDesktopInputQuicConfig `json:"quic,omitempty"`
 }
 
 type RemoteDesktopSessionNegotiationRequest struct {
@@ -198,12 +270,13 @@ type RemoteDesktopSessionNegotiationRequest struct {
 }
 
 type RemoteDesktopSessionNegotiationResponse struct {
-	Accepted     bool                       `json:"accepted"`
-	Transport    RemoteDesktopTransport     `json:"transport,omitempty"`
-	Codec        RemoteDesktopEncoder       `json:"codec,omitempty"`
-	IntraRefresh bool                       `json:"intraRefresh,omitempty"`
-	Reason       string                     `json:"reason,omitempty"`
-	WebRTC       *RemoteDesktopWebRTCAnswer `json:"webrtc,omitempty"`
+	Accepted     bool                           `json:"accepted"`
+	Transport    RemoteDesktopTransport         `json:"transport,omitempty"`
+	Codec        RemoteDesktopEncoder           `json:"codec,omitempty"`
+	IntraRefresh bool                           `json:"intraRefresh,omitempty"`
+	Reason       string                         `json:"reason,omitempty"`
+	WebRTC       *RemoteDesktopWebRTCAnswer     `json:"webrtc,omitempty"`
+	Input        *RemoteDesktopInputNegotiation `json:"input,omitempty"`
 }
 
 type RemoteDesktopWebRTCOffer struct {
@@ -286,6 +359,7 @@ type RemoteDesktopSession struct {
 	cancel             context.CancelCauseFunc
 	wg                 sync.WaitGroup
 	transport          frameTransport
+	inputBridge        *quicInputBridge
 }
 
 type remoteMonitor struct {

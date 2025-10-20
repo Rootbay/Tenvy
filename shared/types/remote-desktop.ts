@@ -6,6 +6,35 @@ export type RemoteDesktopEncoder = "auto" | "hevc" | "avc" | "jpeg";
 
 export type RemoteDesktopTransport = "http" | "webrtc";
 
+export type RemoteDesktopHardwarePreference =
+  | "auto"
+  | "prefer"
+  | "avoid";
+
+export interface RemoteDesktopMediaSample {
+  kind: "video" | "audio";
+  codec: RemoteDesktopEncoder | "opus" | "pcm";
+  timestamp: number;
+  keyFrame?: boolean;
+  format?: "annexb" | "opus" | "pcm" | "aac" | "jpeg";
+  data: string;
+}
+
+export interface RemoteDesktopTransportDiagnostics {
+  transport: RemoteDesktopTransport;
+  codec?: RemoteDesktopEncoder;
+  bandwidthEstimateKbps?: number;
+  availableBitrateKbps?: number;
+  currentBitrateKbps?: number;
+  rttMs?: number;
+  jitterMs?: number;
+  packetsLost?: number;
+  framesDropped?: number;
+  lastUpdatedAt: string;
+  hardwareFallback?: boolean;
+  hardwareEncoder?: string;
+}
+
 export interface RemoteDesktopWebRTCICEServer {
   urls: string[];
   username?: string;
@@ -19,6 +48,16 @@ export interface RemoteDesktopTransportCapability {
   features?: {
     intraRefresh?: boolean;
   };
+}
+
+export interface RemoteDesktopInputQuicConfig {
+  enabled: boolean;
+  port?: number;
+  alpn?: string;
+}
+
+export interface RemoteDesktopInputNegotiation {
+  quic?: RemoteDesktopInputQuicConfig;
 }
 
 export interface RemoteDesktopSessionNegotiationRequest {
@@ -44,6 +83,7 @@ export interface RemoteDesktopSessionNegotiationResponse {
     dataChannel?: string;
     iceServers?: RemoteDesktopWebRTCICEServer[];
   };
+  input?: RemoteDesktopInputNegotiation;
 }
 
 export interface RemoteDesktopSettings {
@@ -53,6 +93,9 @@ export interface RemoteDesktopSettings {
   keyboard: boolean;
   mode: RemoteDesktopStreamMode;
   encoder?: RemoteDesktopEncoder;
+  transport?: RemoteDesktopTransport;
+  hardware?: RemoteDesktopHardwarePreference;
+  targetBitrateKbps?: number;
 }
 
 export interface RemoteDesktopSettingsPatch {
@@ -62,6 +105,9 @@ export interface RemoteDesktopSettingsPatch {
   keyboard?: boolean;
   mode?: RemoteDesktopStreamMode;
   encoder?: RemoteDesktopEncoder;
+  transport?: RemoteDesktopTransport;
+  hardware?: RemoteDesktopHardwarePreference;
+  targetBitrateKbps?: number;
 }
 
 export type RemoteDesktopCommandAction =
@@ -181,6 +227,7 @@ export interface RemoteDesktopFramePacket {
   monitors?: RemoteDesktopMonitor[];
   cursor?: RemoteDesktopCursorState;
   metrics?: RemoteDesktopFrameMetrics;
+  media?: RemoteDesktopMediaSample[];
 }
 
 export interface RemoteDesktopMonitor {
@@ -205,6 +252,7 @@ export interface RemoteDesktopSessionState {
   encoderHardware?: string;
   monitors: RemoteDesktopMonitor[];
   metrics?: RemoteDesktopFrameMetrics;
+  transportDiagnostics?: RemoteDesktopTransportDiagnostics;
 }
 
 export interface RemoteDesktopSessionResponse {

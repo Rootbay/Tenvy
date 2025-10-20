@@ -760,6 +760,24 @@ func (c *remoteDesktopSessionController) handleVideoFrame(
 		IntraRefresh:    session.IntraRefresh,
 		Metrics:         metrics,
 	}
+	if len(framesPayload) > 0 {
+		samples := make([]RemoteDesktopMediaSample, len(framesPayload))
+		baseTs := timestamp.UTC().UnixMilli()
+		for idx, segment := range framesPayload {
+			sample := RemoteDesktopMediaSample{
+				Kind:      "video",
+				Codec:     string(selectedEncoder),
+				Timestamp: baseTs + int64(segment.OffsetMs),
+				Data:      segment.Data,
+				Format:    segment.Encoding,
+			}
+			if state.clipKeyPending && idx == 0 {
+				sample.KeyFrame = true
+			}
+			samples[idx] = sample
+		}
+		frame.Media = samples
+	}
 	if len(snapshot.monitorsPayload) > 0 {
 		frame.Monitors = snapshot.monitorsPayload
 	}

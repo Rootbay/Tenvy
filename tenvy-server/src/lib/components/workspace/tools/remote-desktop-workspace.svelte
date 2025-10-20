@@ -2,26 +2,30 @@
 	import { browser } from '$app/environment';
 	import { onMount } from 'svelte';
 	import { SvelteMap, SvelteSet } from 'svelte/reactivity';
-	import { Card, CardContent, CardFooter } from '$lib/components/ui/card/index.js';
-	import { Button } from '$lib/components/ui/button/index.js';
-	import {
-		Select,
-		SelectContent,
-		SelectItem,
-		SelectTrigger
-	} from '$lib/components/ui/select/index.js';
-	import { Switch } from '$lib/components/ui/switch/index.js';
-	import { Label } from '$lib/components/ui/label/index.js';
-	import type { Client } from '$lib/data/clients';
-	import type {
-		RemoteDesktopFramePacket,
-		RemoteDesktopInputEvent,
-		RemoteDesktopMonitor,
-		RemoteDesktopMouseButton,
-		RemoteDesktopSessionState,
-		RemoteDesktopSettings,
-		RemoteDesktopSettingsPatch
-	} from '$lib/types/remote-desktop';
+        import { Card, CardContent, CardFooter } from '$lib/components/ui/card/index.js';
+        import { Button } from '$lib/components/ui/button/index.js';
+        import {
+                Select,
+                SelectContent,
+                SelectItem,
+                SelectTrigger
+        } from '$lib/components/ui/select/index.js';
+        import { Switch } from '$lib/components/ui/switch/index.js';
+        import { Label } from '$lib/components/ui/label/index.js';
+        import { Input } from '$lib/components/ui/input/index.js';
+        import type { Client } from '$lib/data/clients';
+        import type {
+                RemoteDesktopFramePacket,
+                RemoteDesktopInputEvent,
+                RemoteDesktopMonitor,
+                RemoteDesktopMouseButton,
+                RemoteDesktopSessionState,
+                RemoteDesktopSettings,
+                RemoteDesktopSettingsPatch,
+                RemoteDesktopTransport,
+                RemoteDesktopHardwarePreference,
+                RemoteDesktopTransportDiagnostics
+        } from '$lib/types/remote-desktop';
 	import SessionMetricsGrid from './remote-desktop/SessionMetricsGrid.svelte';
 	import { createInputChannel } from './remote-desktop/input-channel';
 
@@ -29,12 +33,30 @@
 		{ id: 0, label: 'Primary', width: 1280, height: 720 }
 	] satisfies RemoteDesktopMonitor[];
 
-	const qualityOptions = [
-		{ value: 'auto', label: 'Auto' },
-		{ value: 'high', label: 'High' },
-		{ value: 'medium', label: 'Medium' },
-		{ value: 'low', label: 'Low' }
-	] satisfies { value: RemoteDesktopSettings['quality']; label: string }[];
+        const qualityOptions = [
+                { value: 'auto', label: 'Auto' },
+                { value: 'high', label: 'High' },
+                { value: 'medium', label: 'Medium' },
+                { value: 'low', label: 'Low' }
+        ] satisfies { value: RemoteDesktopSettings['quality']; label: string }[];
+
+        const encoderOptions = [
+                { value: 'auto', label: 'Auto' },
+                { value: 'hevc', label: 'HEVC (H.265)' },
+                { value: 'avc', label: 'AVC (H.264)' },
+                { value: 'jpeg', label: 'JPEG' }
+        ] satisfies { value: RemoteDesktopSettings['encoder']; label: string }[];
+
+        const transportOptions = [
+                { value: 'webrtc', label: 'WebRTC (low latency)' },
+                { value: 'http', label: 'HTTP fallback' }
+        ] satisfies { value: RemoteDesktopTransport; label: string }[];
+
+        const hardwareOptions = [
+                { value: 'auto', label: 'Auto' },
+                { value: 'prefer', label: 'Prefer hardware' },
+                { value: 'avoid', label: 'Avoid hardware' }
+        ] satisfies { value: RemoteDesktopHardwarePreference; label: string }[];
 
 	const MAX_FRAME_QUEUE = 24;
 	const supportsImageBitmap = browser && typeof createImageBitmap === 'function';
@@ -48,19 +70,23 @@
 		initialSession?: RemoteDesktopSessionState | null;
 	}>();
 
-	let session = $state<RemoteDesktopSessionState | null>(initialSession ?? null);
-	let quality = $state<RemoteDesktopSettings['quality']>('auto');
-	let encoder = $state<RemoteDesktopSettings['encoder']>('auto');
-	let mode = $state<RemoteDesktopSettings['mode']>('video');
-	let monitor = $state(0);
-	let mouseEnabled = $state(false);
-	let keyboardEnabled = $state(false);
-	let encoderHardware = $state<string | null>(null);
+        let session = $state<RemoteDesktopSessionState | null>(initialSession ?? null);
+        let quality = $state<RemoteDesktopSettings['quality']>('auto');
+        let encoder = $state<RemoteDesktopSettings['encoder']>('auto');
+        let transportPreference = $state<RemoteDesktopTransport>('webrtc');
+        let hardwarePreference = $state<RemoteDesktopHardwarePreference>('auto');
+        let targetBitrateKbps = $state<number | null>(null);
+        let mode = $state<RemoteDesktopSettings['mode']>('video');
+        let monitor = $state(0);
+        let mouseEnabled = $state(false);
+        let keyboardEnabled = $state(false);
+        let encoderHardware = $state<string | null>(null);
 	let fps = $state<number | null>(null);
 	let bandwidth = $state<number | null>(null);
 	let streamWidth = $state<number | null>(null);
 	let streamHeight = $state<number | null>(null);
-	let latencyMs = $state<number | null>(null);
+        let latencyMs = $state<number | null>(null);
+        let transportDiagnostics = $state<RemoteDesktopTransportDiagnostics | null>(null);
 	let isStarting = $state(false);
 	let isStopping = $state(false);
 	let isUpdating = $state(false);
@@ -141,15 +167,45 @@
 		void stopSession(options);
 	}
 
-	const qualityLabel = (value: string) => {
-		const found = qualityOptions.find((item) => item.value === value);
-		return found ? found.label : value;
-	};
+        const qualityLabel = (value: string) => {
+                const found = qualityOptions.find((item) => item.value === value);
+                return found ? found.label : value;
+        };
 
-	const monitorLabel = (id: number) => {
-		const list = monitors;
-		const found = list.find((item: RemoteDesktopMonitor) => item.id === id);
-		if (!found) {
+        const transportLabel = (value: RemoteDesktopTransport) => {
+                const found = transportOptions.find((item) => item.value === value);
+                return found ? found.label : value;
+        };
+
+        const hardwareLabel = (value: RemoteDesktopHardwarePreference) => {
+                const found = hardwareOptions.find((item) => item.value === value);
+                return found ? found.label : value;
+        };
+
+        function formatDiagnosticsSummary(diag: RemoteDesktopTransportDiagnostics | null) {
+                if (!diag) {
+                        return '—';
+                }
+                const parts: string[] = [];
+                if (typeof diag.currentBitrateKbps === 'number') {
+                        parts.push(`${Math.round(diag.currentBitrateKbps)} kbps`);
+                }
+                if (typeof diag.rttMs === 'number') {
+                        parts.push(`${Math.round(diag.rttMs)} ms RTT`);
+                }
+                if (typeof diag.jitterMs === 'number') {
+                        parts.push(`${Math.round(diag.jitterMs)} ms jitter`);
+                }
+                if (parts.length === 0) {
+                        return '—';
+                }
+                return parts.join(' · ');
+        }
+
+        const monitorLabel = (id: number) => {
+                const list = monitors;
+                const found = list.find((item: RemoteDesktopMonitor) => item.id === id);
+                if (!found) {
 			return `Monitor ${id + 1}`;
 		}
 		return `${found.label} · ${found.width}×${found.height}`;
@@ -184,13 +240,14 @@
 		return value;
 	};
 
-	function resetMetrics() {
-		fps = null;
-		bandwidth = null;
-		streamWidth = null;
-		streamHeight = null;
-		latencyMs = null;
-	}
+        function resetMetrics() {
+                fps = null;
+                bandwidth = null;
+                streamWidth = null;
+                streamHeight = null;
+                latencyMs = null;
+                transportDiagnostics = null;
+        }
 
 	function disconnectStream() {
 		if (eventSource) {
@@ -902,42 +959,51 @@
 		}
 	});
 
-	$effect(() => {
-		const current = session;
-		if (!current) {
-			quality = 'auto';
-			encoder = 'auto';
-			encoderHardware = null;
-			mode = 'video';
-			monitor = 0;
-			mouseEnabled = true;
-			keyboardEnabled = true;
-			sessionActive = false;
-			sessionId = '';
-			monitors = fallbackMonitors;
-			resetMetrics();
-			return;
-		}
-		quality = current.settings.quality;
-		const configuredEncoder = current.settings.encoder ?? 'auto';
-		encoder = configuredEncoder;
-		encoderHardware = current.encoderHardware ?? encoderHardware;
-		mode = current.settings.mode;
-		monitor = current.settings.monitor;
-		mouseEnabled = current.settings.mouse;
-		keyboardEnabled = current.settings.keyboard;
-		sessionActive = current.active === true;
-		sessionId = current.sessionId ?? '';
-		monitors =
-			current.monitors && current.monitors.length > 0 ? current.monitors : fallbackMonitors;
-		if (current.metrics) {
-			fps = typeof current.metrics.fps === 'number' ? current.metrics.fps : fps;
-			bandwidth =
-				typeof current.metrics.bandwidthKbps === 'number'
-					? current.metrics.bandwidthKbps
-					: bandwidth;
-		}
-	});
+        $effect(() => {
+                const current = session;
+                if (!current) {
+                        quality = 'auto';
+                        encoder = 'auto';
+                        transportPreference = 'webrtc';
+                        hardwarePreference = 'auto';
+                        targetBitrateKbps = null;
+                        encoderHardware = null;
+                        mode = 'video';
+                        monitor = 0;
+                        mouseEnabled = true;
+                        keyboardEnabled = true;
+                        sessionActive = false;
+                        sessionId = '';
+                        monitors = fallbackMonitors;
+                        transportDiagnostics = null;
+                        resetMetrics();
+                        return;
+                }
+                quality = current.settings.quality;
+                const configuredEncoder = current.settings.encoder ?? 'auto';
+                encoder = configuredEncoder;
+                encoderHardware = current.encoderHardware ?? encoderHardware;
+                mode = current.settings.mode;
+                monitor = current.settings.monitor;
+                mouseEnabled = current.settings.mouse;
+                keyboardEnabled = current.settings.keyboard;
+                transportPreference = current.settings.transport ?? 'webrtc';
+                hardwarePreference = current.settings.hardware ?? 'auto';
+                const bitrate = current.settings.targetBitrateKbps ?? 0;
+                targetBitrateKbps = bitrate > 0 ? bitrate : null;
+                sessionActive = current.active === true;
+                sessionId = current.sessionId ?? '';
+                monitors =
+                        current.monitors && current.monitors.length > 0 ? current.monitors : fallbackMonitors;
+                if (current.metrics) {
+                        fps = typeof current.metrics.fps === 'number' ? current.metrics.fps : fps;
+                        bandwidth =
+                                typeof current.metrics.bandwidthKbps === 'number'
+                                        ? current.metrics.bandwidthKbps
+                                        : bandwidth;
+                }
+                transportDiagnostics = current.transportDiagnostics ?? transportDiagnostics;
+        });
 
 	$effect(() => {
 		if (!sessionActive) {
@@ -1070,24 +1136,51 @@
 					Session inactive · start streaming to receive frames
 				</div>
 			{/if}
-		</div>
-		<SessionMetricsGrid {fps} {bandwidth} {streamWidth} {streamHeight} {latencyMs} />
-		{#if errorMessage}
-			<p class="text-sm text-destructive">{errorMessage}</p>
-		{/if}
-		{#if infoMessage}
-			<p class="text-sm text-emerald-500">{infoMessage}</p>
+                </div>
+                <SessionMetricsGrid {fps} {bandwidth} {streamWidth} {streamHeight} {latencyMs} />
+                <div class="mt-3 grid gap-2 text-xs text-muted-foreground sm:grid-cols-2">
+                        <div class="space-y-1">
+                                <p>
+                                        <span class="font-semibold text-foreground">Transport:</span>
+                                        {session?.negotiatedTransport
+                                                ? transportLabel(session.negotiatedTransport)
+                                                : '—'}
+                                        {session?.negotiatedCodec
+                                                ? ` · ${session.negotiatedCodec.toUpperCase()}`
+                                                : ''}
+                                </p>
+                                <p>
+                                        <span class="font-semibold text-foreground">Hardware encoder:</span>
+                                        {encoderHardware ?? '—'} · {hardwareLabel(hardwarePreference)}
+                                </p>
+                        </div>
+                        <div class="space-y-1">
+                                <p>
+                                        <span class="font-semibold text-foreground">Target bitrate:</span>
+                                        {targetBitrateKbps ? `${targetBitrateKbps} kbps` : 'Auto'}
+                                </p>
+                                <p>
+                                        <span class="font-semibold text-foreground">Observed:</span>
+                                        {formatDiagnosticsSummary(transportDiagnostics)}
+                                </p>
+                        </div>
+                </div>
+                {#if errorMessage}
+                        <p class="text-sm text-destructive">{errorMessage}</p>
+                {/if}
+                {#if infoMessage}
+                        <p class="text-sm text-emerald-500">{infoMessage}</p>
 		{/if}
 	</CardContent>
-	<CardFooter
-		class="flex flex-wrap items-center justify-between gap-3 text-xs text-muted-foreground"
-	>
-		<div class="flex gap-4">
-			<div class="w-70">
-				<Label class="text-sm font-medium" for="quality-select">Quality</Label>
-				<Select
-					type="single"
-					value={quality}
+        <CardFooter
+                class="flex flex-wrap items-center justify-between gap-3 text-xs text-muted-foreground"
+        >
+                <div class="flex flex-wrap gap-4">
+                        <div class="w-70">
+                                <Label class="text-sm font-medium" for="quality-select">Quality</Label>
+                                <Select
+                                        type="single"
+                                        value={quality}
 					onValueChange={(value) => {
 						quality = value as RemoteDesktopSettings['quality'];
 						if (sessionActive) {
@@ -1102,14 +1195,94 @@
 						{#each qualityOptions as option (option.value)}
 							<SelectItem value={option.value}>{option.label}</SelectItem>
 						{/each}
-					</SelectContent>
-				</Select>
-			</div>
-			<div class="w-70">
-				<Label class="text-sm font-medium" for="monitor-select">Monitor</Label>
-				<Select
-					type="single"
-					value={monitor.toString()}
+                                        </SelectContent>
+                                </Select>
+                        </div>
+                        <div class="w-70">
+                                <Label class="text-sm font-medium" for="transport-select">Transport</Label>
+                                <Select
+                                        type="single"
+                                        value={transportPreference}
+                                        onValueChange={(value) => {
+                                                transportPreference = value as RemoteDesktopTransport;
+                                                if (sessionActive) {
+                                                        void updateSession({ transport: transportPreference });
+                                                }
+                                        }}
+                                >
+                                        <SelectTrigger
+                                                id="transport-select"
+                                                class="w-full"
+                                                disabled={isUpdating && sessionActive}
+                                        >
+                                                <span class="truncate">{transportLabel(transportPreference)}</span>
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                                {#each transportOptions as option (option.value)}
+                                                        <SelectItem value={option.value}>{option.label}</SelectItem>
+                                                {/each}
+                                        </SelectContent>
+                                </Select>
+                        </div>
+                        <div class="w-70">
+                                <Label class="text-sm font-medium" for="encoder-select">Encoder</Label>
+                                <Select
+                                        type="single"
+                                        value={encoder}
+                                        onValueChange={(value) => {
+                                                encoder = value as RemoteDesktopSettings['encoder'];
+                                                if (sessionActive) {
+                                                        void updateSession({ encoder });
+                                                }
+                                        }}
+                                >
+                                        <SelectTrigger
+                                                id="encoder-select"
+                                                class="w-full"
+                                                disabled={isUpdating && sessionActive}
+                                        >
+                                                <span class="truncate">{
+                                                        encoderOptions.find((item) => item.value === encoder)?.label ?? encoder
+                                                }</span>
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                                {#each encoderOptions as option (option.value)}
+                                                        <SelectItem value={option.value}>{option.label}</SelectItem>
+                                                {/each}
+                                        </SelectContent>
+                                </Select>
+                        </div>
+                        <div class="w-70">
+                                <Label class="text-sm font-medium" for="hardware-select">Hardware</Label>
+                                <Select
+                                        type="single"
+                                        value={hardwarePreference}
+                                        onValueChange={(value) => {
+                                                hardwarePreference = value as RemoteDesktopHardwarePreference;
+                                                if (sessionActive) {
+                                                        void updateSession({ hardware: hardwarePreference });
+                                                }
+                                        }}
+                                >
+                                        <SelectTrigger
+                                                id="hardware-select"
+                                                class="w-full"
+                                                disabled={isUpdating && sessionActive}
+                                        >
+                                                <span class="truncate">{hardwareLabel(hardwarePreference)}</span>
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                                {#each hardwareOptions as option (option.value)}
+                                                        <SelectItem value={option.value}>{option.label}</SelectItem>
+                                                {/each}
+                                        </SelectContent>
+                                </Select>
+                        </div>
+                        <div class="w-70">
+                                <Label class="text-sm font-medium" for="monitor-select">Monitor</Label>
+                                <Select
+                                        type="single"
+                                        value={monitor.toString()}
 					onValueChange={(value) => {
 						const next = Number.parseInt(value, 10);
 						monitor = Number.isNaN(next) ? 0 : next;
@@ -1127,14 +1300,42 @@
 								Monitor {item.id + 1} · {item.width}×{item.height}
 							</SelectItem>
 						{/each}
-					</SelectContent>
-				</Select>
-			</div>
-			<div class="flex items-center gap-2">
-				<p class="text-sm font-medium">Mouse control</p>
-				<Switch
-					bind:checked={mouseEnabled}
-					disabled={!sessionActive || isUpdating}
+                                        </SelectContent>
+                                </Select>
+                        </div>
+                        <div class="w-56">
+                                <Label class="text-sm font-medium" for="bitrate-input">Target bitrate (kbps)</Label>
+                                <Input
+                                        id="bitrate-input"
+                                        type="number"
+                                        min="0"
+                                        step="100"
+                                        placeholder="Auto"
+                                        value={targetBitrateKbps ?? ''}
+                                        disabled={!sessionActive || isUpdating}
+                                        on:change={(event) => {
+                                                const element = event.currentTarget as HTMLInputElement;
+                                                const parsed = Number.parseInt(element.value, 10);
+                                                if (Number.isNaN(parsed) || parsed <= 0) {
+                                                        targetBitrateKbps = null;
+                                                        element.value = '';
+                                                        if (sessionActive) {
+                                                                void updateSession({ targetBitrateKbps: 0 });
+                                                        }
+                                                        return;
+                                                }
+                                                targetBitrateKbps = parsed;
+                                                if (sessionActive) {
+                                                        void updateSession({ targetBitrateKbps: parsed });
+                                                }
+                                        }}
+                                />
+                        </div>
+                        <div class="flex items-center gap-2">
+                                <p class="text-sm font-medium">Mouse control</p>
+                                <Switch
+                                        bind:checked={mouseEnabled}
+                                        disabled={!sessionActive || isUpdating}
 					aria-label="Toggle mouse control"
 				/>
 			</div>
