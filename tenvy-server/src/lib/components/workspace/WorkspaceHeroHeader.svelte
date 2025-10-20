@@ -20,7 +20,8 @@
 	const tool = props.tool;
 
 	const title = props.title ?? tool.title;
-	const subtitle = props.subtitle ?? (tool as ClientToolDefinition & { description?: string }).description ?? null;
+	const subtitle =
+		props.subtitle ?? (tool as ClientToolDefinition & { description?: string }).description ?? null;
 	const metadata = props.metadata ?? [];
 </script>
 
@@ -41,7 +42,7 @@
 			<div class="grid gap-3 text-right sm:grid-cols-2">
 				{#each metadata as item (item.label)}
 					<div class="rounded-xl border border-border/40 bg-background/70 px-4 py-2 shadow-sm">
-						<p class="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground/70">
+						<p class="text-[10px] font-semibold tracking-wide text-muted-foreground/70 uppercase">
 							{item.label}
 						</p>
 						<p class="text-sm font-semibold text-foreground">{item.value}</p>

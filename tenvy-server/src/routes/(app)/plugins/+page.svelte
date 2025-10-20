@@ -13,20 +13,20 @@
 	import { Input } from '$lib/components/ui/input/index.js';
 	import { Separator } from '$lib/components/ui/separator/index.js';
 	import { Switch } from '$lib/components/ui/switch/index.js';
-        import {
-                pluginCategories,
-                pluginCategoryLabels,
-                pluginDeliveryModeLabels,
-                pluginStatusLabels,
-                pluginStatusStyles,
-                type Plugin,
-                type PluginCategory,
-                type PluginDeliveryMode,
-                type PluginStatus,
-                type PluginUpdatePayload
-        } from '$lib/data/plugin-view.js';
-        import type { PluginManifest } from '../../../../../shared/types/plugin-manifest.js';
-        import type { UserRole } from '$lib/server/auth.js';
+	import {
+		pluginCategories,
+		pluginCategoryLabels,
+		pluginDeliveryModeLabels,
+		pluginStatusLabels,
+		pluginStatusStyles,
+		type Plugin,
+		type PluginCategory,
+		type PluginDeliveryMode,
+		type PluginStatus,
+		type PluginUpdatePayload
+	} from '$lib/data/plugin-view.js';
+	import type { PluginManifest } from '../../../../../shared/types/plugin-manifest.js';
+	import type { UserRole } from '$lib/server/auth.js';
 	import {
 		Check,
 		Download,
@@ -36,43 +36,47 @@
 		Search,
 		ShieldAlert,
 		SlidersHorizontal,
-                Wifi,
-                ShieldCheck,
-                GitFork
-        } from '@lucide/svelte';
+		Wifi,
+		ShieldCheck,
+		GitFork
+	} from '@lucide/svelte';
 
-        type MarketplaceStatus = 'pending' | 'approved' | 'rejected';
+	type MarketplaceStatus = 'pending' | 'approved' | 'rejected';
 
-        type MarketplaceListing = {
-                id: string;
-                name: string;
-                summary: string | null;
-                repositoryUrl: string;
-                version: string;
-                pricingTier: string;
-                status: MarketplaceStatus;
-                manifest: PluginManifest;
-                submittedBy: string | null;
-                reviewerId: string | null;
-        };
+	type MarketplaceListing = {
+		id: string;
+		name: string;
+		summary: string | null;
+		repositoryUrl: string;
+		version: string;
+		pricingTier: string;
+		status: MarketplaceStatus;
+		manifest: PluginManifest;
+		submittedBy: string | null;
+		reviewerId: string | null;
+	};
 
-        type MarketplaceEntitlement = {
-                id: string;
-                listingId: string;
-                tenantId: string;
-                seats: number;
-                status: string;
-                listing: MarketplaceListing;
-        };
+	type MarketplaceEntitlement = {
+		id: string;
+		listingId: string;
+		tenantId: string;
+		seats: number;
+		status: string;
+		listing: MarketplaceListing;
+	};
 
-        type AuthenticatedUser = { id: string; role: UserRole };
+	type AuthenticatedUser = { id: string; role: UserRole };
 
-        export let data: {
-                plugins: Plugin[];
-                listings: MarketplaceListing[];
-                entitlements: MarketplaceEntitlement[];
-                user: AuthenticatedUser;
-        };
+	let {
+		data
+	}: {
+		data: {
+			plugins: Plugin[];
+			listings: MarketplaceListing[];
+			entitlements: MarketplaceEntitlement[];
+			user: AuthenticatedUser;
+		};
+	} = $props();
 
 	const statusFilters = [
 		{ label: 'All', value: 'all' },
@@ -90,14 +94,14 @@
 		}))
 	] satisfies { label: string; value: 'all' | PluginCategory }[];
 
-        let registry = $state<Plugin[]>(data.plugins.map((plugin) => ({ ...plugin })));
-        let marketplaceListings = $state<MarketplaceListing[]>(
-                data.listings.map((listing) => ({ ...listing }))
-        );
-        let marketplaceEntitlements = $state<MarketplaceEntitlement[]>(
-                data.entitlements.map((entitlement) => ({ ...entitlement }))
-        );
-        const currentUser = $state<AuthenticatedUser>(data.user);
+	let registry = $state<Plugin[]>(data.plugins.map((plugin) => ({ ...plugin })));
+	let marketplaceListings = $state<MarketplaceListing[]>(
+		data.listings.map((listing) => ({ ...listing }))
+	);
+	let marketplaceEntitlements = $state<MarketplaceEntitlement[]>(
+		data.entitlements.map((entitlement) => ({ ...entitlement }))
+	);
+	const currentUser = $state<AuthenticatedUser>(data.user);
 	let searchTerm = $state('');
 	let statusFilter = $state<'all' | PluginStatus>('all');
 	let categoryFilter = $state<'all' | PluginCategory>('all');
@@ -220,142 +224,147 @@
 		registry.reduce((acc: number, p: Plugin) => acc + p.installations, 0)
 	);
 
-        const filtersActive = $derived(
-                normalizedSearch.length > 0 ||
-                        statusFilter !== 'all' ||
-                        categoryFilter !== 'all' ||
-                        autoUpdateOnly
-        );
+	const filtersActive = $derived(
+		normalizedSearch.length > 0 ||
+			statusFilter !== 'all' ||
+			categoryFilter !== 'all' ||
+			autoUpdateOnly
+	);
 
-        const listingStatusStyles: Record<MarketplaceStatus, string> = {
-                approved: 'border border-emerald-500/40 bg-emerald-500/10 text-emerald-500',
-                pending: 'border border-amber-500/40 bg-amber-500/10 text-amber-500',
-                rejected: 'border border-red-500/40 bg-red-500/10 text-red-500'
-        };
+	const listingStatusStyles: Record<MarketplaceStatus, string> = {
+		approved: 'border border-emerald-500/40 bg-emerald-500/10 text-emerald-500',
+		pending: 'border border-amber-500/40 bg-amber-500/10 text-amber-500',
+		rejected: 'border border-red-500/40 bg-red-500/10 text-red-500'
+	};
 
-        function isEntitled(listingId: string): boolean {
-                return marketplaceEntitlements.some((entry) => entry.listingId === listingId);
-        }
+	function isEntitled(listingId: string): boolean {
+		return marketplaceEntitlements.some((entry) => entry.listingId === listingId);
+	}
 
-        const canPurchase = $derived(
-                currentUser.role === 'admin' || currentUser.role === 'operator'
-        );
+	const canPurchase = $derived(currentUser.role === 'admin' || currentUser.role === 'operator');
 
-        const canSubmitMarketplace = $derived(
-                currentUser.role === 'admin' || currentUser.role === 'developer'
-        );
+	const canSubmitMarketplace = $derived(
+		currentUser.role === 'admin' || currentUser.role === 'developer'
+	);
 
-        async function purchaseListing(listing: MarketplaceListing) {
-                if (!canPurchase) {
-                        return;
-                }
+	async function purchaseListing(listing: MarketplaceListing) {
+		if (!canPurchase) {
+			return;
+		}
 
-                try {
-                        const response = await fetch('/api/marketplace/entitlements', {
-                                method: 'POST',
-                                headers: { 'content-type': 'application/json' },
-                                body: JSON.stringify({ listingId: listing.id })
-                        });
+		try {
+			const response = await fetch('/api/marketplace/entitlements', {
+				method: 'POST',
+				headers: { 'content-type': 'application/json' },
+				body: JSON.stringify({ listingId: listing.id })
+			});
 
-                        if (!response.ok) {
-                                const message = await response.text().catch(() => null);
-                                throw new Error(message ?? 'Failed to purchase listing');
-                        }
+			if (!response.ok) {
+				const message = await response.text().catch(() => null);
+				throw new Error(message ?? 'Failed to purchase listing');
+			}
 
-                        const payload = (await response.json()) as {
-                                entitlement: MarketplaceEntitlement;
-                        };
-                        marketplaceEntitlements = [...marketplaceEntitlements, payload.entitlement];
-                } catch (err) {
-                        console.error('Failed to purchase listing', err);
-                }
-        }
+			const payload = (await response.json()) as {
+				entitlement: MarketplaceEntitlement;
+			};
+			marketplaceEntitlements = [...marketplaceEntitlements, payload.entitlement];
+		} catch (err) {
+			console.error('Failed to purchase listing', err);
+		}
+	}
 </script>
 
 <section class="space-y-6">
-        <Card class="border-border/60">
-                <CardHeader class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                        <div class="space-y-1">
-                                <CardTitle>Marketplace</CardTitle>
-                                <CardDescription>
-                                        Deploy community plugins backed by signed releases from public repositories.
-                                </CardDescription>
-                        </div>
-                        <Badge variant="secondary" class="gap-2 text-xs">
-                                <ShieldCheck class="h-4 w-4" />
-                                {marketplaceListings.length} listing{marketplaceListings.length === 1 ? '' : 's'}
-                        </Badge>
-                </CardHeader>
-                <CardContent>
-                        {#if marketplaceListings.length === 0}
-                                <p class="text-sm text-muted-foreground">
-                                        No marketplace submissions yet. Developers can publish plugins once approved by an administrator.
-                                </p>
-                        {:else}
-                                <div class="grid gap-4 lg:grid-cols-2 xl:grid-cols-3">
-                                        {#each marketplaceListings as listing (listing.id)}
-                                                <div class="flex flex-col justify-between rounded-lg border border-border bg-card p-4 shadow-sm">
-                                                        <div class="space-y-3">
-                                                                <div class="flex items-start justify-between gap-3">
-                                                                        <div class="space-y-1">
-                                                                                <h3 class="text-base font-semibold leading-tight">{listing.name}</h3>
-                                                                                <p class="text-xs uppercase tracking-wide text-muted-foreground">
-                                                                                        Version {listing.version} · {listing.pricingTier}
-                                                                                </p>
-                                                                        </div>
-                                                                        <Badge class={listingStatusStyles[listing.status]}>{listing.status}</Badge>
-                                                                </div>
-                                                                <p class="text-sm text-muted-foreground leading-relaxed">
-                                                                        {listing.summary ?? listing.manifest.description ?? 'No description provided.'}
-                                                                </p>
-                                                                <div class="flex flex-col gap-2 text-xs text-muted-foreground">
-                                                                        <div class="flex items-center gap-2">
-                                                                                <GitFork class="h-3.5 w-3.5" />
-                                                                                <a
-                                                                                        href={listing.repositoryUrl}
-                                                                                        rel="noreferrer"
-                                                                                        target="_blank"
-                                                                                        class="truncate underline decoration-dotted hover:text-foreground"
-                                                                                >
-                                                                                        {listing.repositoryUrl}
-                                                                                </a>
-                                                                        </div>
-                                                                        <div class="flex items-center gap-2">
-                                                                                <ShieldCheck class="h-3.5 w-3.5" />
-                                                                                <span>{listing.manifest.license.spdxId}</span>
-                                                                        </div>
-                                                                </div>
-                                                        </div>
-                                                        <div class="mt-4 flex items-center justify-between">
-                                                                <span class="text-xs text-muted-foreground">
-                                                                        {listing.manifest.capabilities?.length ?? 0} capability{(listing.manifest.capabilities?.length ?? 0) === 1 ? '' : 'ies'}
-                                                                </span>
-                                                                <Button
-                                                                        size="sm"
-                                                                        variant={isEntitled(listing.id) ? 'outline' : 'default'}
-                                                                        disabled={!canPurchase || isEntitled(listing.id) || listing.status !== 'approved'}
-                                                                        onclick={() => purchaseListing(listing)}
-                                                                >
-                                                                        {#if isEntitled(listing.id)}
-                                                                                Entitled
-                                                                        {:else if listing.status !== 'approved'}
-                                                                                Awaiting review
-                                                                        {:else}
-                                                                                Purchase
-                                                                        {/if}
-                                                                </Button>
-                                                        </div>
-                                                </div>
-                                        {/each}
-                                </div>
-                        {/if}
-                </CardContent>
-                {#if canSubmitMarketplace}
-                        <CardFooter class="text-xs text-muted-foreground">
-                                Developers can submit new plugins via the controller API after uploading signed release assets to GitHub.
-                        </CardFooter>
-                {/if}
-        </Card>
+	<Card class="border-border/60">
+		<CardHeader class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+			<div class="space-y-1">
+				<CardTitle>Marketplace</CardTitle>
+				<CardDescription>
+					Deploy community plugins backed by signed releases from public repositories.
+				</CardDescription>
+			</div>
+			<Badge variant="secondary" class="gap-2 text-xs">
+				<ShieldCheck class="h-4 w-4" />
+				{marketplaceListings.length} listing{marketplaceListings.length === 1 ? '' : 's'}
+			</Badge>
+		</CardHeader>
+		<CardContent>
+			{#if marketplaceListings.length === 0}
+				<p class="text-sm text-muted-foreground">
+					No marketplace submissions yet. Developers can publish plugins once approved by an
+					administrator.
+				</p>
+			{:else}
+				<div class="grid gap-4 lg:grid-cols-2 xl:grid-cols-3">
+					{#each marketplaceListings as listing (listing.id)}
+						<div
+							class="flex flex-col justify-between rounded-lg border border-border bg-card p-4 shadow-sm"
+						>
+							<div class="space-y-3">
+								<div class="flex items-start justify-between gap-3">
+									<div class="space-y-1">
+										<h3 class="text-base leading-tight font-semibold">{listing.name}</h3>
+										<p class="text-xs tracking-wide text-muted-foreground uppercase">
+											Version {listing.version} · {listing.pricingTier}
+										</p>
+									</div>
+									<Badge class={listingStatusStyles[listing.status]}>{listing.status}</Badge>
+								</div>
+								<p class="text-sm leading-relaxed text-muted-foreground">
+									{listing.summary ?? listing.manifest.description ?? 'No description provided.'}
+								</p>
+								<div class="flex flex-col gap-2 text-xs text-muted-foreground">
+									<div class="flex items-center gap-2">
+										<GitFork class="h-3.5 w-3.5" />
+										<a
+											href={listing.repositoryUrl}
+											rel="noreferrer"
+											target="_blank"
+											class="truncate underline decoration-dotted hover:text-foreground"
+										>
+											{listing.repositoryUrl}
+										</a>
+									</div>
+									<div class="flex items-center gap-2">
+										<ShieldCheck class="h-3.5 w-3.5" />
+										<span>{listing.manifest.license.spdxId}</span>
+									</div>
+								</div>
+							</div>
+							<div class="mt-4 flex items-center justify-between">
+								<span class="text-xs text-muted-foreground">
+									{listing.manifest.capabilities?.length ?? 0} capability{(listing.manifest
+										.capabilities?.length ?? 0) === 1
+										? ''
+										: 'ies'}
+								</span>
+								<Button
+									size="sm"
+									variant={isEntitled(listing.id) ? 'outline' : 'default'}
+									disabled={!canPurchase || isEntitled(listing.id) || listing.status !== 'approved'}
+									onclick={() => purchaseListing(listing)}
+								>
+									{#if isEntitled(listing.id)}
+										Entitled
+									{:else if listing.status !== 'approved'}
+										Awaiting review
+									{:else}
+										Purchase
+									{/if}
+								</Button>
+							</div>
+						</div>
+					{/each}
+				</div>
+			{/if}
+		</CardContent>
+		{#if canSubmitMarketplace}
+			<CardFooter class="text-xs text-muted-foreground">
+				Developers can submit new plugins via the controller API after uploading signed release
+				assets to GitHub.
+			</CardFooter>
+		{/if}
+	</Card>
 	<Card class="border-border/60">
 		<CardHeader class="space-y-4">
 			<div class="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">

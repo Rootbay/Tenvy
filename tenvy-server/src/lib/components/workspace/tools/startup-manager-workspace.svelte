@@ -56,15 +56,15 @@
 	type SortKey = 'name' | 'impact' | 'status' | 'publisher' | 'startupTime';
 	type SortDirection = 'asc' | 'desc';
 
-const {
-	client,
-	toolId = 'system-monitor',
-	panel = 'startup'
-} = $props<{ client: Client; toolId?: DialogToolId; panel?: 'startup' }>();
+	const {
+		client,
+		toolId = 'system-monitor',
+		panel = 'startup'
+	} = $props<{ client: Client; toolId?: DialogToolId; panel?: 'startup' }>();
 
-const tool = $derived(getClientTool(toolId));
-const headerTitle = 'Startup manager';
-const headerSubtitle = 'Audit autoruns and tune persistence across scopes.';
+	const tool = $derived(getClientTool(toolId));
+	const headerTitle = 'Startup manager';
+	const headerSubtitle = 'Audit autoruns and tune persistence across scopes.';
 
 	const dateFormatter = new Intl.DateTimeFormat(undefined, {
 		dateStyle: 'medium',
@@ -499,7 +499,7 @@ const headerSubtitle = 'Audit autoruns and tune persistence across scopes.';
 <div class="space-y-6">
 	<WorkspaceHeroHeader
 		{client}
-		tool={tool}
+		{tool}
 		title={headerTitle}
 		subtitle={headerSubtitle}
 		metadata={heroMetadata}

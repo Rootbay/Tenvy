@@ -53,7 +53,9 @@ export const GET: RequestHandler = () => {
 				safeEnqueue(formatEvent(event));
 			});
 
-			safeEnqueue(formatEvent({ type: 'agents', agents: registry.listAgents() } satisfies AgentRegistryEvent));
+			safeEnqueue(
+				formatEvent({ type: 'agents', agents: registry.listAgents() } satisfies AgentRegistryEvent)
+			);
 
 			keepAlive = setInterval(() => {
 				if (!safeEnqueue(encoder.encode(':ping\n\n'))) {

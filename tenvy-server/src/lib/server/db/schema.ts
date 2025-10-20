@@ -106,8 +106,8 @@ export const plugin = sqliteTable('plugin', {
 });
 
 export const pluginInstallation = sqliteTable(
-        'plugin_installation',
-        {
+	'plugin_installation',
+	{
 		pluginId: text('plugin_id')
 			.notNull()
 			.references(() => plugin.id, { onDelete: 'cascade' }),
@@ -131,88 +131,85 @@ export const pluginInstallation = sqliteTable(
 );
 
 export const pluginMarketplaceListing = sqliteTable(
-        'plugin_marketplace_listing',
-        {
-                id: text('id').primaryKey(),
-                pluginId: text('plugin_id').notNull(),
-                name: text('name').notNull(),
-                summary: text('summary'),
-                repositoryUrl: text('repository_url').notNull(),
-                version: text('version').notNull(),
-                manifest: text('manifest').notNull(),
-                pricingTier: text('pricing_tier').notNull().default('free'),
-                status: text('status').notNull().default('pending'),
-                submittedBy: text('submitted_by').references(() => user.id, { onDelete: 'set null' }),
-                reviewerId: text('reviewer_id').references(() => user.id, { onDelete: 'set null' }),
-                licenseSpdxId: text('license_spdx_id').notNull(),
-                licenseName: text('license_name'),
-                licenseUrl: text('license_url'),
-                signatureType: text('signature_type').notNull(),
-                signatureHash: text('signature_hash').notNull(),
-                signaturePublicKey: text('signature_public_key'),
-                signature: text('signature').notNull(),
-                signedAt: timestamp('signed_at', { optional: true }),
-                submittedAt: timestamp('submitted_at', { defaultNow: true }),
-                reviewedAt: timestamp('reviewed_at', { optional: true }),
-                updatedAt: timestamp('updated_at', { defaultNow: true })
-        },
-        (table) => ({
-                pluginIdx: uniqueIndex('plugin_marketplace_listing_plugin_idx').on(table.pluginId)
-        })
+	'plugin_marketplace_listing',
+	{
+		id: text('id').primaryKey(),
+		pluginId: text('plugin_id').notNull(),
+		name: text('name').notNull(),
+		summary: text('summary'),
+		repositoryUrl: text('repository_url').notNull(),
+		version: text('version').notNull(),
+		manifest: text('manifest').notNull(),
+		pricingTier: text('pricing_tier').notNull().default('free'),
+		status: text('status').notNull().default('pending'),
+		submittedBy: text('submitted_by').references(() => user.id, { onDelete: 'set null' }),
+		reviewerId: text('reviewer_id').references(() => user.id, { onDelete: 'set null' }),
+		licenseSpdxId: text('license_spdx_id').notNull(),
+		licenseName: text('license_name'),
+		licenseUrl: text('license_url'),
+		signatureType: text('signature_type').notNull(),
+		signatureHash: text('signature_hash').notNull(),
+		signaturePublicKey: text('signature_public_key'),
+		signature: text('signature').notNull(),
+		signedAt: timestamp('signed_at', { optional: true }),
+		submittedAt: timestamp('submitted_at', { defaultNow: true }),
+		reviewedAt: timestamp('reviewed_at', { optional: true }),
+		updatedAt: timestamp('updated_at', { defaultNow: true })
+	},
+	(table) => ({
+		pluginIdx: uniqueIndex('plugin_marketplace_listing_plugin_idx').on(table.pluginId)
+	})
 );
 
 export const pluginMarketplaceEntitlement = sqliteTable(
-        'plugin_marketplace_entitlement',
-        {
-                id: text('id').primaryKey(),
-                listingId: text('listing_id')
-                        .notNull()
-                        .references(() => pluginMarketplaceListing.id, { onDelete: 'cascade' }),
-                tenantId: text('tenant_id')
-                        .notNull()
-                        .references(() => voucher.id, { onDelete: 'cascade' }),
-                seats: integer('seats').notNull().default(1),
-                status: text('status').notNull().default('active'),
-                grantedBy: text('granted_by').references(() => user.id, { onDelete: 'set null' }),
-                grantedAt: timestamp('granted_at', { defaultNow: true }),
-                expiresAt: timestamp('expires_at', { optional: true }),
-                metadata: text('metadata'),
-                lastSyncedAt: timestamp('last_synced_at', { optional: true })
-        },
-        (table) => ({
-                tenantListingIdx: uniqueIndex('plugin_entitlement_tenant_listing_idx').on(
-                        table.tenantId,
-                        table.listingId
-                )
-        })
+	'plugin_marketplace_entitlement',
+	{
+		id: text('id').primaryKey(),
+		listingId: text('listing_id')
+			.notNull()
+			.references(() => pluginMarketplaceListing.id, { onDelete: 'cascade' }),
+		tenantId: text('tenant_id')
+			.notNull()
+			.references(() => voucher.id, { onDelete: 'cascade' }),
+		seats: integer('seats').notNull().default(1),
+		status: text('status').notNull().default('active'),
+		grantedBy: text('granted_by').references(() => user.id, { onDelete: 'set null' }),
+		grantedAt: timestamp('granted_at', { defaultNow: true }),
+		expiresAt: timestamp('expires_at', { optional: true }),
+		metadata: text('metadata'),
+		lastSyncedAt: timestamp('last_synced_at', { optional: true })
+	},
+	(table) => ({
+		tenantListingIdx: uniqueIndex('plugin_entitlement_tenant_listing_idx').on(
+			table.tenantId,
+			table.listingId
+		)
+	})
 );
 
 export const pluginMarketplaceTransaction = sqliteTable(
-        'plugin_marketplace_transaction',
-        {
-                id: text('id').primaryKey(),
-                listingId: text('listing_id')
-                        .notNull()
-                        .references(() => pluginMarketplaceListing.id, { onDelete: 'cascade' }),
-                tenantId: text('tenant_id')
-                        .notNull()
-                        .references(() => voucher.id, { onDelete: 'cascade' }),
-                entitlementId: text('entitlement_id').references(
-                        () => pluginMarketplaceEntitlement.id,
-                        { onDelete: 'set null' }
-                ),
-                amount: integer('amount').notNull().default(0),
-                currency: text('currency').notNull().default('credits'),
-                status: text('status').notNull().default('pending'),
-                createdAt: timestamp('created_at', { defaultNow: true }),
-                processedAt: timestamp('processed_at', { optional: true }),
-                metadata: text('metadata')
-        },
-        (table) => ({
-                entitlementIdx: index('plugin_marketplace_transaction_entitlement_idx').on(
-                        table.entitlementId
-                )
-        })
+	'plugin_marketplace_transaction',
+	{
+		id: text('id').primaryKey(),
+		listingId: text('listing_id')
+			.notNull()
+			.references(() => pluginMarketplaceListing.id, { onDelete: 'cascade' }),
+		tenantId: text('tenant_id')
+			.notNull()
+			.references(() => voucher.id, { onDelete: 'cascade' }),
+		entitlementId: text('entitlement_id').references(() => pluginMarketplaceEntitlement.id, {
+			onDelete: 'set null'
+		}),
+		amount: integer('amount').notNull().default(0),
+		currency: text('currency').notNull().default('credits'),
+		status: text('status').notNull().default('pending'),
+		createdAt: timestamp('created_at', { defaultNow: true }),
+		processedAt: timestamp('processed_at', { optional: true }),
+		metadata: text('metadata')
+	},
+	(table) => ({
+		entitlementIdx: index('plugin_marketplace_transaction_entitlement_idx').on(table.entitlementId)
+	})
 );
 
 export const agent = sqliteTable(

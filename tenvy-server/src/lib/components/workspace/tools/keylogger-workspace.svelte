@@ -21,7 +21,7 @@
 
 	const toolMap = {
 		standard: 'keylogger-standard',
-		offline: 'keylogger-offline',
+		offline: 'keylogger-offline'
 	} as const;
 
 	const modeCopy: Record<
@@ -100,7 +100,7 @@
 </script>
 
 <div class="space-y-6">
-	<WorkspaceHeroHeader {client} {tool} subtitle={copy.subtitle} metadata={metadata} />
+	<WorkspaceHeroHeader {client} {tool} subtitle={copy.subtitle} {metadata} />
 	<Card>
 		<CardHeader>
 			<CardTitle class="text-base">Collection settings</CardTitle>

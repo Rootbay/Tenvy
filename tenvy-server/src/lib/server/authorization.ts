@@ -2,10 +2,10 @@ import { error } from '@sveltejs/kit';
 import type { AuthenticatedUser, UserRole } from '$lib/server/auth';
 
 const ROLE_PRIORITY: Record<UserRole, number> = {
-        viewer: 0,
-        operator: 1,
-        developer: 2,
-        admin: 3
+	viewer: 0,
+	operator: 1,
+	developer: 2,
+	admin: 3
 };
 
 function meetsRequirement(userRole: UserRole, required: UserRole): boolean {
@@ -53,11 +53,11 @@ export function requireViewer(user: AuthenticatedUser | null | undefined): Authe
 }
 
 export function requireAdmin(user: AuthenticatedUser | null | undefined): AuthenticatedUser {
-        return requireRole(user, 'admin');
+	return requireRole(user, 'admin');
 }
 
 export function requireDeveloper(user: AuthenticatedUser | null | undefined): AuthenticatedUser {
-        return requireRole(user, 'developer');
+	return requireRole(user, 'developer');
 }
 
 export { ROLE_PRIORITY };

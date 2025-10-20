@@ -1,35 +1,35 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type {
-        RemoteDesktopMediaSample,
-        RemoteDesktopSessionNegotiationRequest,
-        RemoteDesktopTransportDiagnostics
+	RemoteDesktopMediaSample,
+	RemoteDesktopSessionNegotiationRequest,
+	RemoteDesktopTransportDiagnostics
 } from '$lib/types/remote-desktop';
 
 interface RecordedPipeline {
-        options: {
-                offer: string;
-                dataChannel?: string;
-                onMessage?: (payload: RemoteDesktopMediaSample[] | string) => void;
-                onClose?: () => void;
-                iceServers?: unknown;
-        };
-        pipeline: MockPipeline;
+	options: {
+		offer: string;
+		dataChannel?: string;
+		onMessage?: (payload: RemoteDesktopMediaSample[] | string) => void;
+		onClose?: () => void;
+		iceServers?: unknown;
+	};
+	pipeline: MockPipeline;
 }
 
 class MockPipeline {
-        closed = false;
-        diagnostics: RemoteDesktopTransportDiagnostics | undefined;
+	closed = false;
+	diagnostics: RemoteDesktopTransportDiagnostics | undefined;
 
-        constructor(public options: RecordedPipeline['options']) {}
+	constructor(public options: RecordedPipeline['options']) {}
 
-        close = vi.fn(() => {
-                this.closed = true;
-                this.options.onClose?.();
-        });
+	close = vi.fn(() => {
+		this.closed = true;
+		this.options.onClose?.();
+	});
 
-        collectDiagnostics = vi.fn(async () => this.diagnostics);
+	collectDiagnostics = vi.fn(async () => this.diagnostics);
 
-        getDiagnostics = vi.fn(() => this.diagnostics);
+	getDiagnostics = vi.fn(() => this.diagnostics);
 }
 
 const createdPipelines: RecordedPipeline[] = [];
@@ -38,36 +38,36 @@ const sendRemoteDesktopInput = vi.fn(() => true);
 const queueCommand = vi.fn();
 
 vi.mock('./store', () => ({
-        registry: {
-                sendRemoteDesktopInput,
-                queueCommand
-        }
+	registry: {
+		sendRemoteDesktopInput,
+		queueCommand
+	}
 }));
 
 vi.mock('$lib/streams/webrtc', () => ({
-        WebRTCPipeline: {
-                create: vi.fn(async (options: RecordedPipeline['options']) => {
-                        const pipeline = new MockPipeline(options);
-                        const record: RecordedPipeline = { options, pipeline };
-                        createdPipelines.push(record);
-                        return {
-                                pipeline,
-                                answer: Buffer.from('mock-answer', 'utf8').toString('base64'),
-                                iceServers: options.iceServers ?? []
-                        };
-                })
-        }
+	WebRTCPipeline: {
+		create: vi.fn(async (options: RecordedPipeline['options']) => {
+			const pipeline = new MockPipeline(options);
+			const record: RecordedPipeline = { options, pipeline };
+			createdPipelines.push(record);
+			return {
+				pipeline,
+				answer: Buffer.from('mock-answer', 'utf8').toString('base64'),
+				iceServers: options.iceServers ?? []
+			};
+		})
+	}
 }));
 
 describe('RemoteDesktopManager WebRTC negotiation', () => {
-        beforeEach(() => {
-                vi.resetModules();
-                createdPipelines.length = 0;
-                sendRemoteDesktopInput.mockReset();
-                queueCommand.mockReset();
-        });
+	beforeEach(() => {
+		vi.resetModules();
+		createdPipelines.length = 0;
+		sendRemoteDesktopInput.mockReset();
+		queueCommand.mockReset();
+	});
 
-        afterEach(() => {
+	afterEach(() => {
 		delete process.env.TENVY_REMOTE_DESKTOP_ICE_SERVERS;
 	});
 
@@ -103,31 +103,31 @@ describe('RemoteDesktopManager WebRTC negotiation', () => {
 			}
 		};
 
-                const response = await manager.negotiateTransport('agent-1', request);
+		const response = await manager.negotiateTransport('agent-1', request);
 
-                expect(response.accepted).toBe(true);
-                expect(response.transport).toBe('webrtc');
-                expect(response.webrtc?.answer).toBeDefined();
-                expect(response.webrtc?.iceServers?.[0]?.urls[0]).toContain('turn:turn.example.com');
-                expect(createdPipelines).toHaveLength(1);
-                const pipelineRecord = createdPipelines[0];
-                expect(pipelineRecord?.options.dataChannel).toBe('remote-desktop-frames');
+		expect(response.accepted).toBe(true);
+		expect(response.transport).toBe('webrtc');
+		expect(response.webrtc?.answer).toBeDefined();
+		expect(response.webrtc?.iceServers?.[0]?.urls[0]).toContain('turn:turn.example.com');
+		expect(createdPipelines).toHaveLength(1);
+		const pipelineRecord = createdPipelines[0];
+		expect(pipelineRecord?.options.dataChannel).toBe('remote-desktop-frames');
 
-                const frame = {
-                        sessionId: session.sessionId,
-                        sequence: 1,
-                        timestamp: new Date().toISOString(),
-                        width: 1280,
-                        height: 720,
-                        keyFrame: true,
-                        encoding: 'jpeg' as const,
-                        image: Buffer.from([1]).toString('base64')
-                };
+		const frame = {
+			sessionId: session.sessionId,
+			sequence: 1,
+			timestamp: new Date().toISOString(),
+			width: 1280,
+			height: 720,
+			keyFrame: true,
+			encoding: 'jpeg' as const,
+			image: Buffer.from([1]).toString('base64')
+		};
 
-                pipelineRecord?.options.onMessage?.(JSON.stringify(frame));
+		pipelineRecord?.options.onMessage?.(JSON.stringify(frame));
 
-                const state = manager.getSessionState('agent-1');
-                expect(state?.lastSequence).toBe(1);
-                expect(state?.negotiatedTransport).toBe('webrtc');
-        });
+		const state = manager.getSessionState('agent-1');
+		expect(state?.lastSequence).toBe(1);
+		expect(state?.negotiatedTransport).toBe('webrtc');
+	});
 });

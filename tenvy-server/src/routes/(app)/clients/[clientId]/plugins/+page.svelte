@@ -33,7 +33,7 @@
 	} from '$lib/data/plugin-view.js';
 	import type { ClientPlugin } from '$lib/data/client-plugin-view.js';
 
-	export let data: { clientId: string; plugins: ClientPlugin[] };
+	let { data }: { data: { clientId: string; plugins: ClientPlugin[] } } = $props();
 
 	const clientId = data.clientId;
 	let registry = $state<ClientPlugin[]>(data.plugins.map((plugin) => ({ ...plugin })));
@@ -232,7 +232,7 @@
 								<Switch
 									aria-label={`Toggle ${plugin.name}`}
 									checked={plugin.telemetry.enabled}
-									on:checkedChange={(event) => updatePluginEnabled(plugin.id, event.detail)}
+									onCheckedChange={(event) => updatePluginEnabled(plugin.id, event.detail)}
 								/>
 								<span>{plugin.telemetry.enabled ? 'Enabled' : 'Disabled'}</span>
 							</div>

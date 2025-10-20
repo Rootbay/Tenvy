@@ -482,7 +482,7 @@
 <div class="space-y-6">
 	<WorkspaceHeroHeader
 		{client}
-		tool={tool}
+		{tool}
 		title={headerTitle}
 		subtitle={headerSubtitle}
 		metadata={heroMetadata}

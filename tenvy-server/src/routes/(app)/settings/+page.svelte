@@ -1,69 +1,67 @@
 <script lang="ts">
-        import { Badge } from '$lib/components/ui/badge/index.js';
-        import { Button } from '$lib/components/ui/button/index.js';
-        import {
-                Card,
-                CardContent,
+	import { Badge } from '$lib/components/ui/badge/index.js';
+	import { Button } from '$lib/components/ui/button/index.js';
+	import {
+		Card,
+		CardContent,
 		CardDescription,
-                CardFooter,
-                CardHeader,
-                CardTitle
-        } from '$lib/components/ui/card/index.js';
-        import { Input } from '$lib/components/ui/input/index.js';
-        import { Label } from '$lib/components/ui/label/index.js';
-        import { Separator } from '$lib/components/ui/separator/index.js';
-        import { Switch } from '$lib/components/ui/switch/index.js';
-        import { TriangleAlert, Check, Clock, ShieldCheck, UserPlus } from '@lucide/svelte';
+		CardFooter,
+		CardHeader,
+		CardTitle
+	} from '$lib/components/ui/card/index.js';
+	import { Input } from '$lib/components/ui/input/index.js';
+	import { Label } from '$lib/components/ui/label/index.js';
+	import { Separator } from '$lib/components/ui/separator/index.js';
+	import { Switch } from '$lib/components/ui/switch/index.js';
+	import { TriangleAlert, Check, Clock, ShieldCheck, UserPlus } from '@lucide/svelte';
 
-        type UserRole = 'viewer' | 'operator' | 'developer' | 'admin';
+	type UserRole = 'viewer' | 'operator' | 'developer' | 'admin';
 
-        type MemberRecord = {
-                id: string;
-                role: UserRole;
-                voucherId: string;
-                createdAt: string;
-                voucherExpiresAt: string | null;
-                voucherRedeemedAt: string | null;
-        };
+	type MemberRecord = {
+		id: string;
+		role: UserRole;
+		voucherId: string;
+		createdAt: string;
+		voucherExpiresAt: string | null;
+		voucherRedeemedAt: string | null;
+	};
 
-        export let data: { members: MemberRecord[] };
+	let { data }: { data: { members: MemberRecord[] } } = $props();
 
-        const roleOptions: { label: string; value: UserRole }[] = [
-                { label: 'Viewer', value: 'viewer' },
-                { label: 'Operator', value: 'operator' },
-                { label: 'Developer', value: 'developer' },
-                { label: 'Administrator', value: 'admin' }
-        ];
+	const roleOptions: { label: string; value: UserRole }[] = [
+		{ label: 'Viewer', value: 'viewer' },
+		{ label: 'Operator', value: 'operator' },
+		{ label: 'Developer', value: 'developer' },
+		{ label: 'Administrator', value: 'admin' }
+	];
 
-        let members = $state<MemberRecord[]>(data.members ?? []);
+	let members = $state<MemberRecord[]>(data.members ?? []);
 
-        async function setMemberRole(memberId: string, role: UserRole) {
-                const previous = members;
-                members = members.map((member) =>
-                        member.id === memberId ? { ...member, role } : member
-                );
+	async function setMemberRole(memberId: string, role: UserRole) {
+		const previous = members;
+		members = members.map((member) => (member.id === memberId ? { ...member, role } : member));
 
-                try {
-                        const response = await fetch(`/api/admin/users/${memberId}/role`, {
-                                method: 'PATCH',
-                                headers: { 'content-type': 'application/json' },
-                                body: JSON.stringify({ role })
-                        });
+		try {
+			const response = await fetch(`/api/admin/users/${memberId}/role`, {
+				method: 'PATCH',
+				headers: { 'content-type': 'application/json' },
+				body: JSON.stringify({ role })
+			});
 
-                        if (!response.ok) {
-                                const message = await response.text().catch(() => null);
-                                throw new Error(message ?? 'Role update failed');
-                        }
-                } catch (err) {
-                        console.error('Failed to update member role', err);
-                        members = previous;
-                }
-        }
+			if (!response.ok) {
+				const message = await response.text().catch(() => null);
+				throw new Error(message ?? 'Role update failed');
+			}
+		} catch (err) {
+			console.error('Failed to update member role', err);
+			members = previous;
+		}
+	}
 
-        type GeneralSettings = {
-                organizationName: string;
-                controlPlaneHost: string;
-                maintenanceWindow: string;
+	type GeneralSettings = {
+		organizationName: string;
+		controlPlaneHost: string;
+		maintenanceWindow: string;
 		autoUpdate: boolean;
 		allowBeta: boolean;
 	};
@@ -154,22 +152,22 @@
 		slackBridge: notificationsSlackBridge
 	}));
 
-        const security = $derived.by(() => ({
-                enforceMfa: securityEnforceMfa,
-                sessionTimeoutMinutes: securitySessionTimeoutMinutes,
-                ipAllowlist: securityIpAllowlist,
-                requireApproval: securityRequireApproval,
-                commandQuorum: securityCommandQuorum
-        }));
+	const security = $derived.by(() => ({
+		enforceMfa: securityEnforceMfa,
+		sessionTimeoutMinutes: securitySessionTimeoutMinutes,
+		ipAllowlist: securityIpAllowlist,
+		requireApproval: securityRequireApproval,
+		commandQuorum: securityCommandQuorum
+	}));
 
-        let lastSavedLabel = $state('Never');
+	let lastSavedLabel = $state('Never');
 
-        const formatTimestamp = (value: string | null) => {
-                if (!value) return '—';
-                const parsed = new Date(value);
-                if (Number.isNaN(parsed.getTime())) return '—';
-                return parsed.toLocaleString();
-        };
+	const formatTimestamp = (value: string | null) => {
+		if (!value) return '—';
+		const parsed = new Date(value);
+		if (Number.isNaN(parsed.getTime())) return '—';
+		return parsed.toLocaleString();
+	};
 
 	function setGeneralFrom(v: GeneralSettings) {
 		generalOrganizationName = v.organizationName;
@@ -230,83 +228,78 @@
 </script>
 
 <section class="space-y-6">
-        <Card class="border-border/60">
-                <CardHeader class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                        <div>
-                                <CardTitle>Team access control</CardTitle>
-                                <CardDescription>
-                                        Promote developers after voucher redemption and manage operator privileges.
-                                </CardDescription>
-                        </div>
-                        <Badge variant="secondary" class="gap-2">
-                                <UserPlus class="h-4 w-4" />
-                                {members.length} seat{members.length === 1 ? '' : 's'}
-                        </Badge>
-                </CardHeader>
-                <CardContent class="overflow-x-auto">
-                        <table class="min-w-full divide-y divide-border text-sm">
-                                <thead class="bg-muted/40 text-xs uppercase tracking-wide text-muted-foreground">
-                                        <tr>
-                                                <th class="px-4 py-2 text-left">User ID</th>
-                                                <th class="px-4 py-2 text-left">Voucher</th>
-                                                <th class="px-4 py-2 text-left">Role</th>
-                                                <th class="px-4 py-2 text-left">Redeemed</th>
-                                                <th class="px-4 py-2 text-left">Expires</th>
-                                        </tr>
-                                </thead>
-                                <tbody class="divide-y divide-border">
-                                        {#if members.length === 0}
-                                                <tr>
-                                                        <td colspan="5" class="px-4 py-6 text-center text-muted-foreground">
-                                                                No operators have redeemed vouchers yet.
-                                                        </td>
-                                                </tr>
-                                        {:else}
-                                                {#each members as member (member.id)}
-                                                        <tr>
-                                                                <td class="px-4 py-3 font-mono text-xs">{member.id}</td>
-                                                                <td class="px-4 py-3">
-                                                                        <span class="font-mono text-xs text-muted-foreground">
-                                                                                {member.voucherId}
-                                                                        </span>
-                                                                </td>
-                                                                <td class="px-4 py-3">
-                                                                        <select
-                                                                                class="w-full rounded-md border border-border bg-background px-3 py-1 text-sm"
-                                                                                value={member.role}
-                                                                                onchange={(event) =>
-                                                                                        setMemberRole(
-                                                                                                member.id,
-                                                                                                event.currentTarget
-                                                                                                        .value as UserRole
-                                                                                        )
-                                                                                }
-                                                                        >
-                                                                                {#each roleOptions as option}
-                                                                                        <option value={option.value}>
-                                                                                                {option.label}
-                                                                                        </option>
-                                                                                {/each}
-                                                                        </select>
-                                                                </td>
-                                                                <td class="px-4 py-3 text-muted-foreground">
-                                                                        {formatTimestamp(member.voucherRedeemedAt)}
-                                                                </td>
-                                                                <td class="px-4 py-3 text-muted-foreground">
-                                                                        {formatTimestamp(member.voucherExpiresAt)}
-                                                                </td>
-                                                        </tr>
-                                                {/each}
-                                        {/if}
-                                </tbody>
-                        </table>
-                </CardContent>
-        </Card>
-        {#if hasChanges}
-                <Card class="border border-amber-500/40 bg-amber-500/5">
-                        <CardHeader class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                                <div class="flex items-center gap-3">
-                                        <Badge variant="outline" class="border-amber-500/40 bg-amber-500/10 text-amber-600"
+	<Card class="border-border/60">
+		<CardHeader class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+			<div>
+				<CardTitle>Team access control</CardTitle>
+				<CardDescription>
+					Promote developers after voucher redemption and manage operator privileges.
+				</CardDescription>
+			</div>
+			<Badge variant="secondary" class="gap-2">
+				<UserPlus class="h-4 w-4" />
+				{members.length} seat{members.length === 1 ? '' : 's'}
+			</Badge>
+		</CardHeader>
+		<CardContent class="overflow-x-auto">
+			<table class="min-w-full divide-y divide-border text-sm">
+				<thead class="bg-muted/40 text-xs tracking-wide text-muted-foreground uppercase">
+					<tr>
+						<th class="px-4 py-2 text-left">User ID</th>
+						<th class="px-4 py-2 text-left">Voucher</th>
+						<th class="px-4 py-2 text-left">Role</th>
+						<th class="px-4 py-2 text-left">Redeemed</th>
+						<th class="px-4 py-2 text-left">Expires</th>
+					</tr>
+				</thead>
+				<tbody class="divide-y divide-border">
+					{#if members.length === 0}
+						<tr>
+							<td colspan="5" class="px-4 py-6 text-center text-muted-foreground">
+								No operators have redeemed vouchers yet.
+							</td>
+						</tr>
+					{:else}
+						{#each members as member (member.id)}
+							<tr>
+								<td class="px-4 py-3 font-mono text-xs">{member.id}</td>
+								<td class="px-4 py-3">
+									<span class="font-mono text-xs text-muted-foreground">
+										{member.voucherId}
+									</span>
+								</td>
+								<td class="px-4 py-3">
+									<select
+										class="w-full rounded-md border border-border bg-background px-3 py-1 text-sm"
+										value={member.role}
+										onchange={(event) =>
+											setMemberRole(member.id, event.currentTarget.value as UserRole)}
+									>
+										{#each roleOptions as option}
+											<option value={option.value}>
+												{option.label}
+											</option>
+										{/each}
+									</select>
+								</td>
+								<td class="px-4 py-3 text-muted-foreground">
+									{formatTimestamp(member.voucherRedeemedAt)}
+								</td>
+								<td class="px-4 py-3 text-muted-foreground">
+									{formatTimestamp(member.voucherExpiresAt)}
+								</td>
+							</tr>
+						{/each}
+					{/if}
+				</tbody>
+			</table>
+		</CardContent>
+	</Card>
+	{#if hasChanges}
+		<Card class="border border-amber-500/40 bg-amber-500/5">
+			<CardHeader class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+				<div class="flex items-center gap-3">
+					<Badge variant="outline" class="border-amber-500/40 bg-amber-500/10 text-amber-600"
 						>Unsaved changes</Badge
 					>
 					<p class="text-sm text-muted-foreground">

@@ -2,7 +2,12 @@
 	import { Tabs, TabsList, TabsTrigger, TabsContent } from '$lib/components/ui/tabs/index.js';
 	import { Switch } from '$lib/components/ui/switch/index.js';
 	import { Label } from '$lib/components/ui/label/index.js';
-	import { Select, SelectTrigger, SelectContent, SelectItem } from '$lib/components/ui/select/index.js';
+	import {
+		Select,
+		SelectTrigger,
+		SelectContent,
+		SelectItem
+	} from '$lib/components/ui/select/index.js';
 	import { Slider } from '$lib/components/ui/slider/index.js';
 	import { Input } from '$lib/components/ui/input/index.js';
 	import { Tooltip, TooltipTrigger, TooltipContent } from '$lib/components/ui/tooltip/index.js';
@@ -38,7 +43,7 @@
 	}
 </script>
 
-<div class="p-6 space-y-6">
+<div class="space-y-6 p-6">
 	<h2 class="text-xl font-semibold tracking-tight text-foreground/90">System Options</h2>
 
 	<Tabs>
@@ -50,23 +55,23 @@
 			<TabsTrigger value="misc">Misc</TabsTrigger>
 		</TabsList>
 
-		<TabsContent value="system" class="pt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-			<div class="flex items-center justify-between p-3 border border-border/50 rounded-lg">
+		<TabsContent value="system" class="grid gap-4 pt-4 sm:grid-cols-2 lg:grid-cols-3">
+			<div class="flex items-center justify-between rounded-lg border border-border/50 p-3">
 				<span>Windows Defender Exclusion</span>
 				<div class="flex items-center gap-2">
 					<Tooltip>
-						<TooltipTrigger><Info class="w-4 h-4 text-muted-foreground" /></TooltipTrigger>
+						<TooltipTrigger><Info class="h-4 w-4 text-muted-foreground" /></TooltipTrigger>
 						<TooltipContent>Simulates adding/removing system exclusions.</TooltipContent>
 					</Tooltip>
 					<Switch bind:checked={defenderExclusion} />
 				</div>
 			</div>
 
-			<div class="flex items-center justify-between p-3 border border-border/50 rounded-lg">
+			<div class="flex items-center justify-between rounded-lg border border-border/50 p-3">
 				<span>Windows Update</span>
 				<div class="flex items-center gap-2">
 					<Tooltip>
-						<TooltipTrigger><Info class="w-4 h-4 text-muted-foreground" /></TooltipTrigger>
+						<TooltipTrigger><Info class="h-4 w-4 text-muted-foreground" /></TooltipTrigger>
 						<TooltipContent>Toggle simulated update checks.</TooltipContent>
 					</Tooltip>
 					<Switch bind:checked={windowsUpdate} />
@@ -74,10 +79,14 @@
 			</div>
 		</TabsContent>
 
-		<TabsContent value="display" class="pt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+		<TabsContent value="display" class="grid gap-4 pt-4 sm:grid-cols-2 lg:grid-cols-3">
 			<div>
 				<Label>Visual Distortion</Label>
-				<Select type="single" value={visualDistortion} onValueChange={(v) => (visualDistortion = v)}>
+				<Select
+					type="single"
+					value={visualDistortion}
+					onValueChange={(v) => (visualDistortion = v)}
+				>
 					<SelectTrigger placeholder="None" />
 					<SelectContent>
 						<SelectItem value="None">None</SelectItem>
@@ -116,7 +125,7 @@
 			</div>
 		</TabsContent>
 
-		<TabsContent value="input" class="pt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+		<TabsContent value="input" class="grid gap-4 pt-4 sm:grid-cols-2 lg:grid-cols-3">
 			<div>
 				<Label>Cursor Behavior</Label>
 				<Select type="single" value={cursorBehavior} onValueChange={(v) => (cursorBehavior = v)}>
@@ -132,7 +141,11 @@
 
 			<div>
 				<Label>Keyboard Shenanigans</Label>
-				<Select type="single" value={keyboardShenanigans} onValueChange={(v) => (keyboardShenanigans = v)}>
+				<Select
+					type="single"
+					value={keyboardShenanigans}
+					onValueChange={(v) => (keyboardShenanigans = v)}
+				>
 					<SelectTrigger placeholder="None" />
 					<SelectContent>
 						<SelectItem value="None">None</SelectItem>
@@ -143,11 +156,11 @@
 				</Select>
 			</div>
 
-			<div class="flex items-center justify-between p-3 border border-border/50 rounded-lg">
+			<div class="flex items-center justify-between rounded-lg border border-border/50 p-3">
 				<span>Sound Playback</span>
 				<div class="flex items-center gap-2">
 					<Tooltip>
-						<TooltipTrigger><Info class="w-4 h-4 text-muted-foreground" /></TooltipTrigger>
+						<TooltipTrigger><Info class="h-4 w-4 text-muted-foreground" /></TooltipTrigger>
 						<TooltipContent>Enable or mute simulated audio playback.</TooltipContent>
 					</Tooltip>
 					<Switch bind:checked={soundPlayback} />
@@ -156,21 +169,28 @@
 
 			<div>
 				<Label>Sound Volume</Label>
-				<Slider type="single" min={0} max={100} step={5} value={[soundVolume]} onValueChange={(v) => (soundVolume = v[0])} />
-				<p class="text-xs text-muted-foreground mt-1">Volume: {soundVolume}%</p>
+				<Slider
+					type="single"
+					min={0}
+					max={100}
+					step={5}
+					value={[soundVolume]}
+					onValueChange={(v) => (soundVolume = v[0])}
+				/>
+				<p class="mt-1 text-xs text-muted-foreground">Volume: {soundVolume}%</p>
 			</div>
 		</TabsContent>
 
-		<TabsContent value="automation" class="pt-4 space-y-4">
+		<TabsContent value="automation" class="space-y-4 pt-4">
 			<div>
 				<Label>Script File</Label>
 				<Input type="file" accept=".ps1,.bat,.cmd,.sh,.js" onchange={handleScriptSelect} />
 				{#if scriptFile}
-					<p class="text-xs mt-1 text-muted-foreground">Selected: {scriptFile.name}</p>
+					<p class="mt-1 text-xs text-muted-foreground">Selected: {scriptFile.name}</p>
 				{/if}
 			</div>
 
-			<div class="grid sm:grid-cols-3 gap-4">
+			<div class="grid gap-4 sm:grid-cols-3">
 				<div>
 					<Label>Execution Mode</Label>
 					<Select type="single" value={scriptMode} onValueChange={(v) => (scriptMode = v)}>
@@ -185,15 +205,22 @@
 
 				<div>
 					<Label>Delay (seconds)</Label>
-					<Slider type="single" min={0} max={60} step={5} value={[scriptDelay]} onValueChange={(v) => (scriptDelay = v[0])} />
-					<p class="text-xs text-muted-foreground mt-1">Delay: {scriptDelay}s</p>
+					<Slider
+						type="single"
+						min={0}
+						max={60}
+						step={5}
+						value={[scriptDelay]}
+						onValueChange={(v) => (scriptDelay = v[0])}
+					/>
+					<p class="mt-1 text-xs text-muted-foreground">Delay: {scriptDelay}s</p>
 				</div>
 
-				<div class="flex items-center justify-between p-3 border border-border/50 rounded-lg">
+				<div class="flex items-center justify-between rounded-lg border border-border/50 p-3">
 					<span>Loop Execution</span>
 					<div class="flex items-center gap-2">
 						<Tooltip>
-							<TooltipTrigger><Info class="w-4 h-4 text-muted-foreground" /></TooltipTrigger>
+							<TooltipTrigger><Info class="h-4 w-4 text-muted-foreground" /></TooltipTrigger>
 							<TooltipContent>Repeat script indefinitely.</TooltipContent>
 						</Tooltip>
 						<Switch bind:checked={scriptLoop} />
@@ -202,7 +229,7 @@
 			</div>
 		</TabsContent>
 
-		<TabsContent value="misc" class="pt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+		<TabsContent value="misc" class="grid gap-4 pt-4 sm:grid-cols-2 lg:grid-cols-3">
 			<div>
 				<Label>Fake Event Mode</Label>
 				<Select type="single" value={fakeEventMode} onValueChange={(v) => (fakeEventMode = v)}>
@@ -216,22 +243,22 @@
 				</Select>
 			</div>
 
-			<div class="flex items-center justify-between p-3 border border-border/50 rounded-lg">
+			<div class="flex items-center justify-between rounded-lg border border-border/50 p-3">
 				<span>Speech Spam</span>
 				<div class="flex items-center gap-2">
 					<Tooltip>
-						<TooltipTrigger><Info class="w-4 h-4 text-muted-foreground" /></TooltipTrigger>
+						<TooltipTrigger><Info class="h-4 w-4 text-muted-foreground" /></TooltipTrigger>
 						<TooltipContent>Simulate fake TTS messages.</TooltipContent>
 					</Tooltip>
 					<Switch bind:checked={ttsSpam} />
 				</div>
 			</div>
 
-			<div class="flex items-center justify-between p-3 border border-border/50 rounded-lg">
+			<div class="flex items-center justify-between rounded-lg border border-border/50 p-3">
 				<span>Auto Minimize Windows</span>
 				<div class="flex items-center gap-2">
 					<Tooltip>
-						<TooltipTrigger><Info class="w-4 h-4 text-muted-foreground" /></TooltipTrigger>
+						<TooltipTrigger><Info class="h-4 w-4 text-muted-foreground" /></TooltipTrigger>
 						<TooltipContent>Mock periodic minimize actions.</TooltipContent>
 					</Tooltip>
 					<Switch bind:checked={autoMinimize} />

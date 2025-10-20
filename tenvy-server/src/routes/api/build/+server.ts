@@ -231,22 +231,20 @@ export const POST: RequestHandler = async ({ request }) => {
 	try {
 		tempDir = await mkdtemp(join(tmpdir(), 'tenvy-build-'));
 		const workDir = join(tempDir, 'src');
-                await cp(join(repoRoot, 'tenvy-client'), workDir, { recursive: true });
+		await cp(join(repoRoot, 'tenvy-client'), workDir, { recursive: true });
 
-                if (sharedGoPackages.length > 0) {
-                        const sharedRoot = join(tempDir, 'shared');
-                        await mkdir(sharedRoot, { recursive: true });
+		if (sharedGoPackages.length > 0) {
+			const sharedRoot = join(tempDir, 'shared');
+			await mkdir(sharedRoot, { recursive: true });
 
-                        await Promise.all(
-                                sharedGoPackages.map(async (sharedPackage) => {
-                                        await cp(
-                                                join(repoRoot, 'shared', sharedPackage),
-                                                join(sharedRoot, sharedPackage),
-                                                { recursive: true }
-                                        );
-                                })
-                        );
-                }
+			await Promise.all(
+				sharedGoPackages.map(async (sharedPackage) => {
+					await cp(join(repoRoot, 'shared', sharedPackage), join(sharedRoot, sharedPackage), {
+						recursive: true
+					});
+				})
+			);
+		}
 		const tempBinaryPath = join(tempDir, outputFilename);
 
 		const ldflagsParts = [

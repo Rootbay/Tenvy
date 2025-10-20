@@ -21,11 +21,11 @@ export const GET: RequestHandler = async ({ params }) => {
 		throw error(404, 'Client not found');
 	}
 
-        const [manifestRecords, pluginViews, telemetryRecords] = await Promise.all([
-                loadManifests(),
-                repository.list(),
-                telemetryStore.listAgentPlugins(id)
-        ]);
+	const [manifestRecords, pluginViews, telemetryRecords] = await Promise.all([
+		loadManifests(),
+		repository.list(),
+		telemetryStore.listAgentPlugins(id)
+	]);
 
 	const manifestIndex = new Map(
 		manifestRecords.map((record) => [record.manifest.id, record.manifest])
@@ -42,11 +42,11 @@ export const GET: RequestHandler = async ({ params }) => {
 
 		const telemetry = telemetryIndex.get(view.id);
 		plugins.push(buildClientPlugin(manifest, view, telemetry));
-        }
+	}
 
-        return json({ plugins });
+	return json({ plugins });
 };
 
 async function loadManifests() {
-        return loadPluginManifests();
+	return loadPluginManifests();
 }

@@ -4,13 +4,13 @@
 	"version": "2.1.0",
 	"description": "Optimized relay for high fidelity remote desktop streaming and archival.",
 	"entry": "stream-relay.dll",
-        "author": "Tenvy Labs",
-        "repositoryUrl": "https://github.com/rootbay/tenvy-stream-relay",
-        "license": {
-                "spdxId": "BSD-3-Clause",
-                "name": "BSD 3-Clause License",
-                "url": "https://opensource.org/license/bsd-3-clause"
-        },
+	"author": "Tenvy Labs",
+	"repositoryUrl": "https://github.com/rootbay/tenvy-stream-relay",
+	"license": {
+		"spdxId": "BSD-3-Clause",
+		"name": "BSD 3-Clause License",
+		"url": "https://opensource.org/license/bsd-3-clause"
+	},
 	"categories": ["transport"],
 	"capabilities": [
 		{
@@ -26,15 +26,15 @@
 	"distribution": {
 		"defaultMode": "automatic",
 		"autoUpdate": true,
-                "signature": {
-                        "type": "sha256",
-                        "hash": "4fa1e33f99de3c58a4f0b6cbb9df450c3a7fd41b944fdc0bb70a0e0c3a4c299a",
-                        "signature": "8c2d5d5c6a2c478af61d7e8617d6c07f6c62b80758d9bcbb9d18ec62a4ebbb47"
-                }
-        },
-        "package": {
-                "artifact": "stream-relay-2.1.0.dll",
-                "sizeBytes": 15073280,
-                "hash": "4fa1e33f99de3c58a4f0b6cbb9df450c3a7fd41b944fdc0bb70a0e0c3a4c299a"
-        }
+		"signature": {
+			"type": "sha256",
+			"hash": "4fa1e33f99de3c58a4f0b6cbb9df450c3a7fd41b944fdc0bb70a0e0c3a4c299a",
+			"signature": "8c2d5d5c6a2c478af61d7e8617d6c07f6c62b80758d9bcbb9d18ec62a4ebbb47"
+		}
+	},
+	"package": {
+		"artifact": "stream-relay-2.1.0.dll",
+		"sizeBytes": 15073280,
+		"hash": "4fa1e33f99de3c58a4f0b6cbb9df450c3a7fd41b944fdc0bb70a0e0c3a4c299a"
+	}
 }

@@ -11,35 +11,35 @@ import type {
 import type { RemoteDesktopCommandPayload } from '$lib/types/remote-desktop';
 
 function normalizeSettings(input: Record<string, unknown>): RemoteDesktopSettingsPatch {
-        const output: RemoteDesktopSettingsPatch = {};
-        if (typeof input.quality === 'string') {
-                output.quality = input.quality as RemoteDesktopSettings['quality'];
-        }
-        if (typeof input.mode === 'string') {
-                output.mode = input.mode as RemoteDesktopSettings['mode'];
-        }
-        if (typeof input.monitor === 'number') {
-                output.monitor = input.monitor;
-        }
-        if (typeof input.mouse === 'boolean') {
-                output.mouse = input.mouse;
-        }
-        if (typeof input.keyboard === 'boolean') {
-                output.keyboard = input.keyboard;
-        }
-        if (typeof input.encoder === 'string') {
-                output.encoder = input.encoder as RemoteDesktopSettings['encoder'];
-        }
-        if (typeof input.transport === 'string') {
-                output.transport = input.transport as RemoteDesktopSettings['transport'];
-        }
-        if (typeof input.hardware === 'string') {
-                output.hardware = input.hardware as RemoteDesktopSettings['hardware'];
-        }
-        if (typeof input.targetBitrateKbps === 'number') {
-                output.targetBitrateKbps = input.targetBitrateKbps;
-        }
-        return output;
+	const output: RemoteDesktopSettingsPatch = {};
+	if (typeof input.quality === 'string') {
+		output.quality = input.quality as RemoteDesktopSettings['quality'];
+	}
+	if (typeof input.mode === 'string') {
+		output.mode = input.mode as RemoteDesktopSettings['mode'];
+	}
+	if (typeof input.monitor === 'number') {
+		output.monitor = input.monitor;
+	}
+	if (typeof input.mouse === 'boolean') {
+		output.mouse = input.mouse;
+	}
+	if (typeof input.keyboard === 'boolean') {
+		output.keyboard = input.keyboard;
+	}
+	if (typeof input.encoder === 'string') {
+		output.encoder = input.encoder as RemoteDesktopSettings['encoder'];
+	}
+	if (typeof input.transport === 'string') {
+		output.transport = input.transport as RemoteDesktopSettings['transport'];
+	}
+	if (typeof input.hardware === 'string') {
+		output.hardware = input.hardware as RemoteDesktopSettings['hardware'];
+	}
+	if (typeof input.targetBitrateKbps === 'number') {
+		output.targetBitrateKbps = input.targetBitrateKbps;
+	}
+	return output;
 }
 
 export const GET: RequestHandler = ({ params, locals }) => {
