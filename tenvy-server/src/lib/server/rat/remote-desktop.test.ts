@@ -1,93 +1,73 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { RemoteDesktopSessionNegotiationRequest } from '$lib/types/remote-desktop';
+import type {
+        RemoteDesktopMediaSample,
+        RemoteDesktopSessionNegotiationRequest,
+        RemoteDesktopTransportDiagnostics
+} from '$lib/types/remote-desktop';
 
-const createdPeerConnections: MockRTCPeerConnection[] = [];
-const createdChannels: MockRTCDataChannel[] = [];
+interface RecordedPipeline {
+        options: {
+                offer: string;
+                dataChannel?: string;
+                onMessage?: (payload: RemoteDesktopMediaSample[] | string) => void;
+                onClose?: () => void;
+                iceServers?: unknown;
+        };
+        pipeline: MockPipeline;
+}
+
+class MockPipeline {
+        closed = false;
+        diagnostics: RemoteDesktopTransportDiagnostics | undefined;
+
+        constructor(public options: RecordedPipeline['options']) {}
+
+        close = vi.fn(() => {
+                this.closed = true;
+                this.options.onClose?.();
+        });
+
+        collectDiagnostics = vi.fn(async () => this.diagnostics);
+
+        getDiagnostics = vi.fn(() => this.diagnostics);
+}
+
+const createdPipelines: RecordedPipeline[] = [];
 
 const sendRemoteDesktopInput = vi.fn(() => true);
 const queueCommand = vi.fn();
 
 vi.mock('./store', () => ({
-	registry: {
-		sendRemoteDesktopInput,
-		queueCommand
-	}
+        registry: {
+                sendRemoteDesktopInput,
+                queueCommand
+        }
 }));
 
-class MockRTCDataChannel {
-	label: string;
-	binaryType: BinaryType = 'arraybuffer';
-	onmessage?: (evt: { data: unknown }) => void;
-	onclose?: () => void;
-
-	constructor(label: string) {
-		this.label = label;
-		createdChannels.push(this);
-	}
-
-	close() {
-		this.onclose?.();
-	}
-
-	emit(data: unknown) {
-		this.onmessage?.({ data });
-	}
-}
-
-class MockRTCPeerConnection {
-	configuration: RTCConfiguration;
-	localDescription: RTCSessionDescriptionInit | null = null;
-	remoteDescription: RTCSessionDescriptionInit | null = null;
-	iceGatheringState: RTCIceGatheringState = 'complete';
-	connectionState: RTCPeerConnectionState = 'new';
-	onicegatheringstatechange: (() => void) | null = null;
-	ondatachannel: ((event: { channel: RTCDataChannel }) => void) | null = null;
-	onconnectionstatechange: (() => void) | null = null;
-	channel: MockRTCDataChannel | null = null;
-
-	constructor(configuration?: RTCConfiguration) {
-		this.configuration = configuration ?? { iceServers: [] };
-		createdPeerConnections.push(this);
-	}
-
-	async setRemoteDescription(desc: RTCSessionDescriptionInit) {
-		this.remoteDescription = desc;
-		if (!this.channel && this.ondatachannel) {
-			const channel = new MockRTCDataChannel('remote-desktop-frames');
-			this.channel = channel;
-			this.ondatachannel({ channel } as unknown as { channel: RTCDataChannel });
-		}
-	}
-
-	async createAnswer(): Promise<RTCSessionDescriptionInit> {
-		return { type: 'answer', sdp: 'mock-answer' };
-	}
-
-	async setLocalDescription(desc: RTCSessionDescriptionInit) {
-		this.localDescription = desc;
-	}
-
-	close() {
-		this.connectionState = 'closed';
-		this.onconnectionstatechange?.();
-		this.channel?.close();
-	}
-}
-
-vi.mock('@koush/wrtc', () => ({
-	RTCPeerConnection: MockRTCPeerConnection
+vi.mock('$lib/streams/webrtc', () => ({
+        WebRTCPipeline: {
+                create: vi.fn(async (options: RecordedPipeline['options']) => {
+                        const pipeline = new MockPipeline(options);
+                        const record: RecordedPipeline = { options, pipeline };
+                        createdPipelines.push(record);
+                        return {
+                                pipeline,
+                                answer: Buffer.from('mock-answer', 'utf8').toString('base64'),
+                                iceServers: options.iceServers ?? []
+                        };
+                })
+        }
 }));
 
 describe('RemoteDesktopManager WebRTC negotiation', () => {
-	beforeEach(() => {
-		vi.resetModules();
-		createdPeerConnections.length = 0;
-		createdChannels.length = 0;
-		sendRemoteDesktopInput.mockReset();
-		queueCommand.mockReset();
-	});
+        beforeEach(() => {
+                vi.resetModules();
+                createdPipelines.length = 0;
+                sendRemoteDesktopInput.mockReset();
+                queueCommand.mockReset();
+        });
 
-	afterEach(() => {
+        afterEach(() => {
 		delete process.env.TENVY_REMOTE_DESKTOP_ICE_SERVERS;
 	});
 
@@ -123,35 +103,31 @@ describe('RemoteDesktopManager WebRTC negotiation', () => {
 			}
 		};
 
-		const response = await manager.negotiateTransport('agent-1', request);
+                const response = await manager.negotiateTransport('agent-1', request);
 
-		expect(response.accepted).toBe(true);
-		expect(response.transport).toBe('webrtc');
-		expect(response.webrtc?.answer).toBeDefined();
-		expect(response.webrtc?.iceServers?.[0]?.urls[0]).toContain('turn:turn.example.com');
-		expect(createdPeerConnections).toHaveLength(1);
-		expect(createdPeerConnections[0]?.configuration.iceServers?.[0]?.urls).toContain(
-			'turn:turn.example.com:3478?transport=tcp'
-		);
+                expect(response.accepted).toBe(true);
+                expect(response.transport).toBe('webrtc');
+                expect(response.webrtc?.answer).toBeDefined();
+                expect(response.webrtc?.iceServers?.[0]?.urls[0]).toContain('turn:turn.example.com');
+                expect(createdPipelines).toHaveLength(1);
+                const pipelineRecord = createdPipelines[0];
+                expect(pipelineRecord?.options.dataChannel).toBe('remote-desktop-frames');
 
-		const channel = createdChannels[0];
-		expect(channel).toBeDefined();
+                const frame = {
+                        sessionId: session.sessionId,
+                        sequence: 1,
+                        timestamp: new Date().toISOString(),
+                        width: 1280,
+                        height: 720,
+                        keyFrame: true,
+                        encoding: 'jpeg' as const,
+                        image: Buffer.from([1]).toString('base64')
+                };
 
-		const frame = {
-			sessionId: session.sessionId,
-			sequence: 1,
-			timestamp: new Date().toISOString(),
-			width: 1280,
-			height: 720,
-			keyFrame: true,
-			encoding: 'jpeg' as const,
-			image: Buffer.from([1]).toString('base64')
-		};
+                pipelineRecord?.options.onMessage?.(JSON.stringify(frame));
 
-		channel?.emit(JSON.stringify(frame));
-
-		const state = manager.getSessionState('agent-1');
-		expect(state?.lastSequence).toBe(1);
-		expect(state?.negotiatedTransport).toBe('webrtc');
-	});
+                const state = manager.getSessionState('agent-1');
+                expect(state?.lastSequence).toBe(1);
+                expect(state?.negotiatedTransport).toBe('webrtc');
+        });
 });

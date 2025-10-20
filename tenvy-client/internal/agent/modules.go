@@ -35,6 +35,28 @@ type moduleRuntime struct {
 	BuildVersion string
 }
 
+func envBool(name string) bool {
+	value := strings.TrimSpace(os.Getenv(name))
+	switch strings.ToLower(value) {
+	case "1", "true", "yes", "on":
+		return true
+	default:
+		return false
+	}
+}
+
+func envDuration(name string) time.Duration {
+	value := strings.TrimSpace(os.Getenv(name))
+	if value == "" {
+		return 0
+	}
+	d, err := time.ParseDuration(value)
+	if err != nil {
+		return 0
+	}
+	return d
+}
+
 type ModuleCapability struct {
 	Name        string
 	Description string
@@ -281,6 +303,17 @@ func (m *remoteDesktopModule) Update(runtime moduleRuntime) error {
 		UserAgent:      runtime.UserAgent,
 		RequestTimeout: requestTimeout,
 	}
+	cfg.QUICInput.URL = os.Getenv("TENVY_REMOTE_DESKTOP_QUIC_URL")
+	cfg.QUICInput.Token = os.Getenv("TENVY_REMOTE_DESKTOP_QUIC_TOKEN")
+	cfg.QUICInput.ALPN = os.Getenv("TENVY_REMOTE_DESKTOP_QUIC_ALPN")
+	cfg.QUICInput.Disabled = envBool("TENVY_REMOTE_DESKTOP_QUIC_DISABLED")
+	if d := envDuration("TENVY_REMOTE_DESKTOP_QUIC_CONNECT_TIMEOUT"); d > 0 {
+		cfg.QUICInput.ConnectTimeout = d
+	}
+	if d := envDuration("TENVY_REMOTE_DESKTOP_QUIC_RETRY_INTERVAL"); d > 0 {
+		cfg.QUICInput.RetryInterval = d
+	}
+	cfg.QUICInput.InsecureSkipVerify = envBool("TENVY_REMOTE_DESKTOP_QUIC_INSECURE")
 	if m.streamer == nil {
 		m.streamer = remotedesktop.NewRemoteDesktopStreamer(cfg)
 		return nil

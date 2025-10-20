@@ -4,12 +4,15 @@ import "strings"
 
 func defaultRemoteDesktopSettings() RemoteDesktopSettings {
 	return RemoteDesktopSettings{
-		Quality:  RemoteQualityAuto,
-		Monitor:  0,
-		Mouse:    true,
-		Keyboard: true,
-		Mode:     RemoteStreamModeVideo,
-		Encoder:  RemoteEncoderAuto,
+		Quality:           RemoteQualityAuto,
+		Monitor:           0,
+		Mouse:             true,
+		Keyboard:          true,
+		Mode:              RemoteStreamModeVideo,
+		Encoder:           RemoteEncoderAuto,
+		Transport:         RemoteTransportWebRTC,
+		Hardware:          RemoteHardwareAuto,
+		TargetBitrateKbps: 0,
 	}
 }
 
@@ -35,6 +38,20 @@ func applySettingsPatch(settings *RemoteDesktopSettings, patch *RemoteDesktopSet
 	}
 	if patch.Encoder != nil {
 		settings.Encoder = normalizeEncoder(*patch.Encoder)
+	}
+	if patch.Transport != nil {
+		settings.Transport = normalizeTransport(*patch.Transport)
+	}
+	if patch.Hardware != nil {
+		settings.Hardware = normalizeHardware(*patch.Hardware)
+	}
+	if patch.TargetBitrateKbps != nil {
+		target := *patch.TargetBitrateKbps
+		if target <= 0 {
+			settings.TargetBitrateKbps = 0
+		} else {
+			settings.TargetBitrateKbps = target
+		}
 	}
 }
 
@@ -76,5 +93,29 @@ func normalizeEncoder(value RemoteDesktopEncoder) RemoteDesktopEncoder {
 		fallthrough
 	default:
 		return RemoteEncoderAuto
+	}
+}
+
+func normalizeTransport(value RemoteDesktopTransport) RemoteDesktopTransport {
+	switch strings.ToLower(string(value)) {
+	case string(RemoteTransportHTTP):
+		return RemoteTransportHTTP
+	case string(RemoteTransportWebRTC):
+		fallthrough
+	default:
+		return RemoteTransportWebRTC
+	}
+}
+
+func normalizeHardware(value RemoteDesktopHardwarePreference) RemoteDesktopHardwarePreference {
+	switch strings.ToLower(string(value)) {
+	case string(RemoteHardwarePrefer):
+		return RemoteHardwarePrefer
+	case string(RemoteHardwareAvoid):
+		return RemoteHardwareAvoid
+	case string(RemoteHardwareAuto):
+		fallthrough
+	default:
+		return RemoteHardwareAuto
 	}
 }

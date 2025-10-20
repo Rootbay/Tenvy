@@ -10,6 +10,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -24,6 +25,13 @@ const (
 	defaultFrameRequestTimeout = 10 * time.Second
 	minFrameRequestTimeout     = 2 * time.Second
 	maxFrameRequestTimeout     = 20 * time.Second
+)
+
+const (
+	defaultQuicInputPort      = 9543
+	defaultQuicInputALPN      = "tenvy.remote-desktop.input.v1"
+	defaultQuicConnectTimeout = 5 * time.Second
+	defaultQuicRetryInterval  = 2 * time.Second
 )
 
 type frameEndpointCache struct {
@@ -237,25 +245,33 @@ func (c *remoteDesktopSessionController) initializeTransport(ctx context.Context
 
 	codecs := []RemoteDesktopEncoder{RemoteEncoderHEVC, RemoteEncoderAVC, RemoteEncoderJPEG}
 	supportsIntra := normalizeStreamMode(session.Settings.Mode) == RemoteStreamModeVideo
+	preferredTransport := normalizeTransport(session.Settings.Transport)
+	preferWebRTC := preferredTransport != RemoteTransportHTTP
 
 	transports := []RemoteDesktopTransportCapability{{
 		Transport: RemoteTransportHTTP,
 		Codecs:    append([]RemoteDesktopEncoder(nil), codecs...),
 	}}
 
-	offerHandle, offerErr := prepareWebRTCOffer(negotiationCtx, cfg.WebRTCICEServers)
-	if offerErr == nil && offerHandle != nil {
-		features := map[string]bool{}
-		if supportsIntra {
-			features["intraRefresh"] = true
+	var offerHandle *webrtcOfferHandle
+	var offerErr error
+	if preferWebRTC {
+		offerHandle, offerErr = prepareWebRTCOffer(negotiationCtx, cfg.WebRTCICEServers)
+		if offerErr == nil && offerHandle != nil {
+			features := map[string]bool{}
+			if supportsIntra {
+				features["intraRefresh"] = true
+			}
+			transports = append([]RemoteDesktopTransportCapability{
+				{
+					Transport: RemoteTransportWebRTC,
+					Codecs:    append([]RemoteDesktopEncoder(nil), codecs...),
+					Features:  features,
+				},
+			}, transports...)
+		} else if offerErr != nil {
+			c.logf("remote desktop webrtc negotiation unavailable: %v", offerErr)
 		}
-		transports = append(transports, RemoteDesktopTransportCapability{
-			Transport: RemoteTransportWebRTC,
-			Codecs:    append([]RemoteDesktopEncoder(nil), codecs...),
-			Features:  features,
-		})
-	} else if offerErr != nil {
-		c.logf("remote desktop webrtc negotiation unavailable: %v", offerErr)
 	}
 
 	request := RemoteDesktopSessionNegotiationRequest{
@@ -290,6 +306,7 @@ func (c *remoteDesktopSessionController) initializeTransport(ctx context.Context
 			offerHandle.Close()
 		}
 		c.assignSessionTransport(session, selectedTransport, nil, selectedCodec, selectedIntra)
+		c.stopInputBridge(session)
 		return err
 	}
 
@@ -325,6 +342,7 @@ func (c *remoteDesktopSessionController) initializeTransport(ctx context.Context
 			err = errors.New("remote desktop negotiation rejected")
 		}
 		c.assignSessionTransport(session, selectedTransport, nil, selectedCodec, selectedIntra)
+		c.stopInputBridge(session)
 		return err
 	}
 
@@ -337,6 +355,7 @@ func (c *remoteDesktopSessionController) initializeTransport(ctx context.Context
 	}
 
 	c.assignSessionTransport(session, selectedTransport, sender, selectedCodec, selectedIntra)
+	c.configureInputBridge(session, response.Input)
 	if selectedTransport == RemoteTransportWebRTC && sender == nil {
 		if err != nil {
 			return err
@@ -435,9 +454,11 @@ func (c *remoteDesktopSessionController) assignSessionTransport(session *RemoteD
 		previous := c.session.Transport
 		c.session.Transport = transport
 		c.session.transport = sender
+		c.session.Settings.Transport = transport
 
 		session.Transport = transport
 		session.transport = sender
+		session.Settings.Transport = transport
 		if codec != "" {
 			session.NegotiatedCodec = codec
 		}
@@ -550,6 +571,10 @@ func (c *remoteDesktopSessionController) stopLocked(cause error) *RemoteDesktopS
 		return nil
 	}
 	session := c.session
+	if session.inputBridge != nil {
+		session.inputBridge.Close()
+		session.inputBridge = nil
+	}
 	if session.cancel != nil {
 		if cause == nil {
 			cause = errSessionStopped
@@ -661,6 +686,17 @@ func (c *remoteDesktopSessionController) applySettingsLocked(session *RemoteDesk
 			session.ForceKeyFrame = true
 			c.logf("remote desktop encoder preference set to %s", nextEncoder)
 		}
+	}
+	if patch.Transport != nil {
+		session.Settings.Transport = normalizeTransport(*patch.Transport)
+	}
+	if patch.Hardware != nil {
+		session.Settings.Hardware = normalizeHardware(*patch.Hardware)
+	}
+	if patch.TargetBitrateKbps != nil {
+		target := maxInt(0, *patch.TargetBitrateKbps)
+		session.Settings.TargetBitrateKbps = target
+		session.TargetBitrateKbps = target
 	}
 
 	if len(session.monitors) == 0 || len(session.monitorInfos) == 0 {
@@ -1191,7 +1227,72 @@ func sanitizeConfig(cfg Config) Config {
 	cfg.RequestTimeout = normalizeRequestTimeout(cfg.RequestTimeout)
 	cfg.WebRTCICEServers = normalizeICEServers(cfg.WebRTCICEServers)
 	cfg.authHeader = buildAuthHeader(cfg.AuthKey)
+	cfg.quicInput = sanitizeQUICInputConfig(cfg)
 	return cfg
+}
+
+func (c *remoteDesktopSessionController) configureInputBridge(session *RemoteDesktopSession, hints *RemoteDesktopInputNegotiation) {
+	if session == nil {
+		return
+	}
+	cfg := c.config()
+	if hints == nil || hints.QUIC == nil || !hints.QUIC.Enabled {
+		c.stopInputBridge(session)
+		return
+	}
+
+	base := cfg.quicInput
+	if !base.enabled {
+		c.stopInputBridge(session)
+		return
+	}
+
+	sanitized := base
+	hint := hints.QUIC
+	if hint.Port > 0 {
+		host, _, err := net.SplitHostPort(sanitized.address)
+		if err == nil && host != "" {
+			sanitized.address = net.JoinHostPort(host, strconv.Itoa(hint.Port))
+		}
+	}
+	if alpn := strings.TrimSpace(hint.ALPN); alpn != "" {
+		sanitized.alpn = alpn
+	}
+
+	bridge := newQuicInputBridge(sanitized, cfg.AgentID, cfg.Logger, func(events []RemoteDesktopInputEvent) error {
+		return c.handleInputFromBridge(session, events)
+	})
+	if bridge == nil {
+		c.stopInputBridge(session)
+		return
+	}
+
+	c.stopInputBridge(session)
+	session.inputBridge = bridge
+	bridge.Start(session.ctx, session.ID)
+}
+
+func (c *remoteDesktopSessionController) stopInputBridge(session *RemoteDesktopSession) {
+	if session == nil || session.inputBridge == nil {
+		return
+	}
+	session.inputBridge.Close()
+	session.inputBridge = nil
+}
+
+func (c *remoteDesktopSessionController) handleInputFromBridge(session *RemoteDesktopSession, events []RemoteDesktopInputEvent) error {
+	if session == nil {
+		return errors.New("remote desktop session not active")
+	}
+	if len(events) == 0 {
+		return nil
+	}
+	payload := RemoteDesktopCommandPayload{
+		Action:    "input",
+		SessionID: session.ID,
+		Events:    append([]RemoteDesktopInputEvent(nil), events...),
+	}
+	return c.HandleInput(payload)
 }
 
 func normalizeICEServers(servers []RemoteDesktopWebRTCICEServer) []RemoteDesktopWebRTCICEServer {
@@ -1260,6 +1361,81 @@ func normalizeBaseURL(raw string) string {
 		parsed.Path = ""
 	}
 	return parsed.String()
+}
+
+func sanitizeQUICInputConfig(cfg Config) sanitizedQUICInput {
+	raw := cfg.QUICInput
+	result := sanitizedQUICInput{}
+	if raw.Disabled {
+		return result
+	}
+
+	address, serverName := deriveQuicAddress(strings.TrimSpace(raw.URL), cfg.BaseURL)
+	if address == "" || serverName == "" {
+		return result
+	}
+
+	alpn := strings.TrimSpace(raw.ALPN)
+	if alpn == "" {
+		alpn = defaultQuicInputALPN
+	}
+
+	result.enabled = true
+	result.address = address
+	result.serverName = serverName
+	result.alpn = alpn
+	result.token = strings.TrimSpace(raw.Token)
+	if raw.ConnectTimeout > 0 {
+		result.connectTimeout = raw.ConnectTimeout
+	} else {
+		result.connectTimeout = defaultQuicConnectTimeout
+	}
+	if raw.RetryInterval > 0 {
+		result.retryInterval = raw.RetryInterval
+	} else {
+		result.retryInterval = defaultQuicRetryInterval
+	}
+	result.insecureSkipVerify = raw.InsecureSkipVerify
+	return result
+}
+
+func deriveQuicAddress(override string, base string) (string, string) {
+	trimmed := strings.TrimSpace(override)
+	if trimmed != "" {
+		if !strings.Contains(trimmed, "://") {
+			trimmed = "quic://" + trimmed
+		}
+		if parsed, err := url.Parse(trimmed); err == nil {
+			host := strings.TrimSpace(parsed.Hostname())
+			if host != "" {
+				port := parsed.Port()
+				if port == "" {
+					port = strconv.Itoa(defaultQuicInputPort)
+				}
+				return net.JoinHostPort(host, port), host
+			}
+		}
+		return "", ""
+	}
+
+	base = strings.TrimSpace(base)
+	if base == "" {
+		return "", ""
+	}
+
+	parsed, err := url.Parse(base)
+	if err != nil {
+		return "", ""
+	}
+	host := strings.TrimSpace(parsed.Hostname())
+	if host == "" {
+		return "", ""
+	}
+	port := parsed.Port()
+	if port == "" {
+		port = strconv.Itoa(defaultQuicInputPort)
+	}
+	return net.JoinHostPort(host, port), host
 }
 
 func (c *remoteDesktopSessionController) frameEndpoint(cfg Config) (string, error) {
