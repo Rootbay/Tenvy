@@ -123,6 +123,11 @@ func (a *Agent) sync(ctx context.Context, status string) error {
 	}
 
 	a.config = payload.Config
+	if a.modules != nil {
+		if err := a.modules.UpdateConfig(ctx, a.moduleRuntime()); err != nil {
+			a.logger.Printf("module configuration update failed: %v", err)
+		}
+	}
 	a.processCommands(ctx, payload.Commands)
 
 	if a.notes != nil {
@@ -221,7 +226,7 @@ func (a *Agent) reRegister(ctx context.Context) error {
 	a.resultMu.Unlock()
 
 	if a.modules != nil {
-		if err := a.modules.Update(a.moduleRuntime()); err != nil {
+		if err := a.modules.UpdateConfig(ctx, a.moduleRuntime()); err != nil {
 			return fmt.Errorf("update modules: %w", err)
 		}
 	}
