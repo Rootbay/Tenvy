@@ -14,10 +14,22 @@ const (
 
 var ErrUnauthorized = errors.New("unauthorized")
 
+type PluginSignaturePolicy struct {
+        AllowUnsigned     bool              `json:"allowUnsigned,omitempty"`
+        SHA256AllowList   []string          `json:"sha256AllowList,omitempty"`
+        Ed25519PublicKeys map[string]string `json:"ed25519PublicKeys,omitempty"`
+        MaxSignatureAgeMs int64             `json:"maxSignatureAgeMs,omitempty"`
+}
+
+type PluginConfig struct {
+        SignaturePolicy *PluginSignaturePolicy `json:"signaturePolicy,omitempty"`
+}
+
 type AgentConfig struct {
-	PollIntervalMs int     `json:"pollIntervalMs"`
-	MaxBackoffMs   int     `json:"maxBackoffMs"`
-	JitterRatio    float64 `json:"jitterRatio"`
+        PollIntervalMs int           `json:"pollIntervalMs"`
+        MaxBackoffMs   int           `json:"maxBackoffMs"`
+        JitterRatio    float64       `json:"jitterRatio"`
+        Plugins        *PluginConfig `json:"plugins,omitempty"`
 }
 
 type AgentMetrics struct {

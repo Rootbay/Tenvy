@@ -1,23 +1,42 @@
 import { error } from '@sveltejs/kit';
 import type { PageLoad } from './$types';
 import type { Plugin } from '$lib/data/plugin-view.js';
-import type { PluginManifest } from '../../../../../shared/types/plugin-manifest.js';
+import type {
+        PluginManifest,
+        PluginSignatureStatus,
+        PluginSignatureType
+} from '../../../../../shared/types/plugin-manifest.js';
 import type { UserRole } from '$lib/server/auth.js';
 
 type PluginListResponse = { plugins: Plugin[] };
 type MarketplaceStatus = 'pending' | 'approved' | 'rejected';
 
+type MarketplaceSignature = {
+        status: PluginSignatureStatus;
+        trusted: boolean;
+        type: PluginSignatureType;
+        hash?: string | null;
+        signer?: string | null;
+        publicKey?: string | null;
+        signedAt?: string | null;
+        checkedAt?: string | null;
+        error?: string | null;
+        errorCode?: string | null;
+        certificateChain?: string[] | null;
+};
+
 type MarketplaceListing = {
-	id: string;
-	name: string;
-	summary: string | null;
-	repositoryUrl: string;
-	version: string;
-	pricingTier: string;
-	status: MarketplaceStatus;
-	manifest: PluginManifest;
-	submittedBy: string | null;
-	reviewerId: string | null;
+        id: string;
+        name: string;
+        summary: string | null;
+        repositoryUrl: string;
+        version: string;
+        pricingTier: string;
+        status: MarketplaceStatus;
+        manifest: PluginManifest;
+        submittedBy: string | null;
+        reviewerId: string | null;
+        signature: MarketplaceSignature;
 };
 
 type MarketplaceListingsResponse = { listings: MarketplaceListing[] };

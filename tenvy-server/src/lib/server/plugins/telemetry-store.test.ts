@@ -4,7 +4,9 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { and, eq } from 'drizzle-orm';
 import { PluginTelemetryStore } from './telemetry-store.js';
+import { refreshSignaturePolicy } from '$lib/server/plugins/signature-policy.js';
 import { createPluginRuntimeStore } from './runtime-store.js';
+import { loadPluginManifests } from '$lib/data/plugin-manifests.js';
 import { db } from '$lib/server/db/index.js';
 import {
         agent as agentTable,
@@ -31,6 +33,7 @@ const baseMetadata: AgentMetadata = {
 };
 
 let manifestDir: string;
+let policyPath: string;
 
 function createManifest(hash: string): PluginManifest {
         return {
@@ -65,6 +68,16 @@ beforeEach(async () => {
         process.env.DATABASE_URL = ':memory:';
         manifestDir = mkdtempSync(join(tmpdir(), 'tenvy-plugin-manifests-'));
         writeFileSync(join(manifestDir, 'test-plugin.json'), JSON.stringify(createManifest('abc123')));
+
+        policyPath = join(manifestDir, 'trust.json');
+        writeFileSync(
+                policyPath,
+                JSON.stringify({
+                        sha256AllowList: ['abc123']
+                })
+        );
+        process.env.TENVY_PLUGIN_TRUST_CONFIG = policyPath;
+        refreshSignaturePolicy();
 
         const now = new Date();
         await db.insert(agentTable).values([
@@ -103,30 +116,33 @@ afterEach(async () => {
         await db.delete(auditEventTable);
         await db.delete(agentTable);
         rmSync(manifestDir, { recursive: true, force: true });
+        delete process.env.TENVY_PLUGIN_TRUST_CONFIG;
+        refreshSignaturePolicy();
 });
 
 describe('PluginTelemetryStore', () => {
         it('records successful installation telemetry', async () => {
-                const runtimeStore = createPluginRuntimeStore();
-                const manifest = createManifest('abc123');
-                await runtimeStore.ensure(manifest);
-                await runtimeStore.update(manifest.id, {
-                        approvalStatus: 'approved',
-                        approvedAt: new Date()
-                });
+        const runtimeStore = createPluginRuntimeStore();
+        const [record] = await loadPluginManifests({ directory: manifestDir });
+        expect(record).toBeDefined();
+        await runtimeStore.ensure(record!);
+        await runtimeStore.update(record!.manifest.id, {
+                approvalStatus: 'approved',
+                approvedAt: new Date()
+        });
 
-                const store = new PluginTelemetryStore({
-                        runtimeStore,
-                        manifestDirectory: manifestDir
-                });
+        const store = new PluginTelemetryStore({
+                runtimeStore,
+                manifestDirectory: manifestDir
+        });
 
 		const now = new Date().toISOString();
-		await store.syncAgent('agent-1', baseMetadata, [
-			{
-				pluginId: 'test-plugin',
-				version: '1.0.0',
-				status: 'installed',
-				hash: 'abc123',
+                await store.syncAgent('agent-1', baseMetadata, [
+                        {
+                                pluginId: 'test-plugin',
+                                version: '1.0.0',
+                                status: 'installed',
+                                hash: 'abc123',
 				lastDeployedAt: now,
 				lastCheckedAt: now,
 				error: null
@@ -142,18 +158,19 @@ describe('PluginTelemetryStore', () => {
 	});
 
         it('blocks mismatched hashes and records audit events', async () => {
-                const runtimeStore = createPluginRuntimeStore();
-                const manifest = createManifest('abc123');
-                await runtimeStore.ensure(manifest);
-                await runtimeStore.update(manifest.id, {
-                        approvalStatus: 'approved',
-                        approvedAt: new Date()
-                });
+        const runtimeStore = createPluginRuntimeStore();
+        const [record] = await loadPluginManifests({ directory: manifestDir });
+        expect(record).toBeDefined();
+        await runtimeStore.ensure(record!);
+        await runtimeStore.update(record!.manifest.id, {
+                approvalStatus: 'approved',
+                approvedAt: new Date()
+        });
 
-                const store = new PluginTelemetryStore({
-                        runtimeStore,
-                        manifestDirectory: manifestDir
-                });
+        const store = new PluginTelemetryStore({
+                runtimeStore,
+                manifestDirectory: manifestDir
+        });
 		const now = new Date().toISOString();
 
 		await store.syncAgent('agent-2', baseMetadata, [

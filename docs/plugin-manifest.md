@@ -69,3 +69,41 @@ The API surface:
    - Publish a corrected manifest/binary pair (same ID, higher version). Telemetry automatically reconciles once hashes align.
 
 Refer to `shared/types/plugin-manifest.ts` and `shared/pluginmanifest/manifest.go` for the canonical schema definitions.
+
+## Signature trust configuration
+
+The controller and agent share a trust policy that defines which signatures are accepted. The policy defaults to
+`resources/plugin-signers.json` and can be overridden by setting `TENVY_PLUGIN_TRUST_CONFIG` to an absolute or relative path.
+
+```jsonc
+{
+  "allowUnsigned": false,
+  "sha256AllowList": [
+    "0123abcd…"
+  ],
+  "ed25519PublicKeys": {
+    "release": "aabbcc…"
+  },
+  "maxSignatureAgeMs": 1209600000
+}
+```
+
+- `allowUnsigned`: when `false`, unsigned manifests are rejected by the agent, controller ingestion, telemetry sync, and the
+  marketplace approval workflow.
+- `sha256AllowList`: case-insensitive SHA-256 hashes that may be installed without a public key. Use sparingly for emergency
+  recovery.
+- `ed25519PublicKeys`: map of signer IDs to 32-byte Ed25519 public keys (hex). These keys are exposed to the agent so it can
+  verify release artifacts locally.
+- `maxSignatureAgeMs`: optional upper bound for signature freshness. When set, signatures older than this duration are marked
+  expired.
+
+### Provisioning and rotation
+
+1. Generate Ed25519 key pairs on an offline machine. Store public keys in `plugin-signers.json` and distribute the private key
+   to your build pipeline.
+2. Deploy the updated policy file to both the controller and agents (or update the `TENVY_PLUGIN_TRUST_CONFIG` path). Restart
+   services so caches refresh.
+3. When rotating keys, add the new key alongside the existing one. Publish a signed manifest and plugin with the new key.
+4. Confirm the UI reports the signature as `trusted`, then remove the retired key from the policy and roll out the change.
+
+The policy loader caches values in memory; call `refreshSignaturePolicy()` (used in tests) or restart the server after edits.

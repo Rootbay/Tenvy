@@ -13,18 +13,19 @@
 	import { Input } from '$lib/components/ui/input/index.js';
 	import { Separator } from '$lib/components/ui/separator/index.js';
 	import { Switch } from '$lib/components/ui/switch/index.js';
-	import {
-		pluginCategories,
-		pluginCategoryLabels,
-		pluginDeliveryModeLabels,
-		pluginStatusLabels,
-		pluginStatusStyles,
-		type Plugin,
-		type PluginCategory,
-		type PluginDeliveryMode,
-		type PluginStatus,
-		type PluginUpdatePayload
-	} from '$lib/data/plugin-view.js';
+        import {
+                pluginCategories,
+                pluginCategoryLabels,
+                pluginDeliveryModeLabels,
+                pluginStatusLabels,
+                pluginStatusStyles,
+                formatRelativeTime,
+                type Plugin,
+                type PluginCategory,
+                type PluginDeliveryMode,
+                type PluginStatus,
+                type PluginUpdatePayload
+        } from '$lib/data/plugin-view.js';
 	import type { PluginManifest } from '../../../../../shared/types/plugin-manifest.js';
 	import type { UserRole } from '$lib/server/auth.js';
 	import {
@@ -43,18 +44,19 @@
 
 	type MarketplaceStatus = 'pending' | 'approved' | 'rejected';
 
-	type MarketplaceListing = {
-		id: string;
-		name: string;
-		summary: string | null;
-		repositoryUrl: string;
-		version: string;
-		pricingTier: string;
-		status: MarketplaceStatus;
-		manifest: PluginManifest;
-		submittedBy: string | null;
-		reviewerId: string | null;
-	};
+        type MarketplaceListing = {
+                id: string;
+                name: string;
+                summary: string | null;
+                repositoryUrl: string;
+                version: string;
+                pricingTier: string;
+                status: MarketplaceStatus;
+                manifest: PluginManifest;
+                submittedBy: string | null;
+                reviewerId: string | null;
+                signature: Plugin['signature'];
+        };
 
 	type MarketplaceEntitlement = {
 		id: string;
@@ -179,16 +181,55 @@
 		autoUpdateOnly = false;
 	}
 
-	function statusSeverity(status: PluginStatus) {
-		switch (status) {
-			case 'error':
-				return 'text-red-500';
-			case 'update':
-				return 'text-amber-500';
-			default:
-				return 'text-muted-foreground';
-		}
-	}
+        function statusSeverity(status: PluginStatus) {
+                switch (status) {
+                        case 'error':
+                                return 'text-red-500';
+                        case 'update':
+                                return 'text-amber-500';
+                        default:
+                                return 'text-muted-foreground';
+                }
+        }
+
+        function signatureBadge(signature: Plugin['signature']) {
+                switch (signature.status) {
+                        case 'trusted':
+                                return {
+                                        label: 'Signature trusted',
+                                        icon: ShieldCheck,
+                                        class: 'border-emerald-500/40 text-emerald-500'
+                                } as const;
+                        case 'unsigned':
+                                return {
+                                        label: 'Unsigned',
+                                        icon: ShieldAlert,
+                                        class: 'border-amber-500/40 text-amber-500'
+                                } as const;
+                        case 'untrusted':
+                                return {
+                                        label: 'Untrusted signature',
+                                        icon: ShieldAlert,
+                                        class: 'border-amber-500/40 text-amber-500'
+                                } as const;
+                        case 'invalid':
+                        default:
+                                return {
+                                        label: 'Signature invalid',
+                                        icon: ShieldAlert,
+                                        class: 'border-red-500/40 text-red-500'
+                                } as const;
+                }
+        }
+
+        function formatSignatureTime(value: string | null | undefined): string {
+                if (!value) return 'never';
+                const parsed = new Date(value);
+                if (Number.isNaN(parsed.valueOf())) {
+                        return value;
+                }
+                return formatRelativeTime(parsed);
+        }
 
 	const normalizedSearch = $derived(searchTerm.trim().toLowerCase());
 
@@ -303,19 +344,35 @@
 							class="flex flex-col justify-between rounded-lg border border-border bg-card p-4 shadow-sm"
 						>
 							<div class="space-y-3">
-								<div class="flex items-start justify-between gap-3">
-									<div class="space-y-1">
-										<h3 class="text-base leading-tight font-semibold">{listing.name}</h3>
-										<p class="text-xs tracking-wide text-muted-foreground uppercase">
-											Version {listing.version} · {listing.pricingTier}
-										</p>
-									</div>
-									<Badge class={listingStatusStyles[listing.status]}>{listing.status}</Badge>
-								</div>
-								<p class="text-sm leading-relaxed text-muted-foreground">
-									{listing.summary ?? listing.manifest.description ?? 'No description provided.'}
-								</p>
-								<div class="flex flex-col gap-2 text-xs text-muted-foreground">
+                                                                {@const listingSignature = signatureBadge(listing.signature)}
+                                                                <div class="flex items-start justify-between gap-3">
+                                                                        <div class="space-y-1">
+                                                                                <h3 class="text-base leading-tight font-semibold">{listing.name}</h3>
+                                                                                <p class="text-xs tracking-wide text-muted-foreground uppercase">
+                                                                                        Version {listing.version} · {listing.pricingTier}
+                                                                                </p>
+                                                                        </div>
+                                                                        <div class="flex flex-col items-end gap-2">
+                                                                                <Badge class={listingStatusStyles[listing.status]}>{listing.status}</Badge>
+                                                                                <Badge
+                                                                                        variant="outline"
+                                                                                        class={cn(
+                                                                                                'flex items-center gap-1 rounded-full border px-2 py-1 text-[10px] font-semibold uppercase tracking-wide',
+                                                                                                listingSignature.class
+                                                                                        )}
+                                                                                >
+                                                                                        <svelte:component
+                                                                                                this={listingSignature.icon}
+                                                                                                class="h-3 w-3"
+                                                                                        />
+                                                                                        {listingSignature.label}
+                                                                                </Badge>
+                                                                        </div>
+                                                                </div>
+                                                                <p class="text-sm leading-relaxed text-muted-foreground">
+                                                                        {listing.summary ?? listing.manifest.description ?? 'No description provided.'}
+                                                                </p>
+                                                                <div class="flex flex-col gap-2 text-xs text-muted-foreground">
 									<div class="flex items-center gap-2">
 										<GitFork class="h-3.5 w-3.5" />
 										<a
@@ -326,13 +383,34 @@
 										>
 											{listing.repositoryUrl}
 										</a>
-									</div>
-									<div class="flex items-center gap-2">
-										<ShieldCheck class="h-3.5 w-3.5" />
-										<span>{listing.manifest.license.spdxId}</span>
-									</div>
-								</div>
-							</div>
+                                                                        </div>
+                                                                        <div class="flex items-center gap-2">
+                                                                                <ShieldCheck class="h-3.5 w-3.5" />
+                                                                                <span>{listing.manifest.license.spdxId}</span>
+                                                                        </div>
+                                                                        <div class="flex items-center gap-2">
+                                                                                <svelte:component
+                                                                                        this={listingSignature.icon}
+                                                                                        class="h-3.5 w-3.5"
+                                                                                />
+                                                                                <span>
+                                                                                        {listing.signature.signer ?? listing.signature.publicKey ??
+                                                                                        listingSignature.label}
+                                                                                </span>
+                                                                        </div>
+                                                                        <div class="flex items-center gap-2">
+                                                                                <Info class="h-3.5 w-3.5" />
+                                                                                <span>
+                                                                                        Checked {formatSignatureTime(listing.signature.checkedAt ?? null)}
+                                                                                </span>
+                                                                        </div>
+                                                                        {#if listing.signature.error}
+                                                                                <p class="text-xs text-red-500">
+                                                                                        Signature error: {listing.signature.error}
+                                                                                </p>
+                                                                        {/if}
+                                                                </div>
+                                                        </div>
 							<div class="mt-4 flex items-center justify-between">
 								<span class="text-xs text-muted-foreground">
 									{listing.manifest.capabilities?.length ?? 0} capability{(listing.manifest
@@ -498,16 +576,24 @@
 								>
 									v{plugin.version}
 								</Badge>
-								<Badge
-									variant="outline"
-									class={cn('px-2.5 py-1 text-xs font-medium', pluginStatusStyles[plugin.status])}
-								>
-									{pluginStatusLabels[plugin.status]}
-								</Badge>
-							</div>
-							<CardDescription class="max-w-2xl text-sm text-muted-foreground"
-								>{plugin.description}</CardDescription
-							>
+                                                                <Badge
+                                                                        variant="outline"
+                                                                        class={cn('px-2.5 py-1 text-xs font-medium', pluginStatusStyles[plugin.status])}
+                                                                >
+                                                                        {pluginStatusLabels[plugin.status]}
+                                                                </Badge>
+                                                                {@const sigBadge = signatureBadge(plugin.signature)}
+                                                                <Badge
+                                                                        variant="outline"
+                                                                        class={cn('px-2.5 py-1 text-xs font-medium flex items-center gap-1', sigBadge.class)}
+                                                                >
+                                                                        <svelte:component this={sigBadge.icon} class="h-3.5 w-3.5" />
+                                                                        {sigBadge.label}
+                                                                </Badge>
+                                                        </div>
+                                                        <CardDescription class="max-w-2xl text-sm text-muted-foreground"
+                                                                >{plugin.description}</CardDescription
+                                                        >
 							<div class="flex flex-wrap items-center gap-2">
 								{#each plugin.capabilities as capability (capability)}
 									<Badge variant="secondary" class="bg-muted text-muted-foreground">
@@ -549,11 +635,27 @@
 						</div>
 					</CardHeader>
 					<CardContent class="grid gap-4 lg:grid-cols-2">
-						<div class="grid gap-4 text-sm text-muted-foreground md:grid-cols-2 xl:grid-cols-3">
-							<div class="space-y-1 rounded-md border border-border/60 px-3 py-2">
-								<span class="text-xs tracking-wide uppercase">Installations</span>
-								<p class="text-lg font-semibold text-foreground">{plugin.installations}</p>
-							</div>
+                                                <div class="grid gap-4 text-sm text-muted-foreground md:grid-cols-2 xl:grid-cols-3">
+                                                        <div class="space-y-1 rounded-md border border-border/60 px-3 py-2">
+                                                                <span class="text-xs tracking-wide uppercase">Signature</span>
+                                                                {@const sig = signatureBadge(plugin.signature)}
+                                                                <p class="flex items-center gap-2 text-sm font-semibold text-foreground">
+                                                                        <svelte:component this={sig.icon} class="h-4 w-4" />
+                                                                        {sig.label}
+                                                                </p>
+                                                                {#if plugin.signature.error}
+                                                                        <p class="text-xs text-muted-foreground">{plugin.signature.error}</p>
+                                                                {:else if plugin.signature.signer}
+                                                                        <p class="text-xs text-muted-foreground">Signer: {plugin.signature.signer}</p>
+                                                                {/if}
+                                                                <p class="text-xs text-muted-foreground">
+                                                                        Checked {formatSignatureTime(plugin.signature.checkedAt)}
+                                                                </p>
+                                                        </div>
+                                                        <div class="space-y-1 rounded-md border border-border/60 px-3 py-2">
+                                                                <span class="text-xs tracking-wide uppercase">Installations</span>
+                                                                <p class="text-lg font-semibold text-foreground">{plugin.installations}</p>
+                                                        </div>
 							<div class="space-y-1 rounded-md border border-border/60 px-3 py-2">
 								<span class="text-xs tracking-wide uppercase">Package size</span>
 								<p class="text-lg font-semibold text-foreground">{plugin.size}</p>
