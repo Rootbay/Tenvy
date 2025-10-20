@@ -85,15 +85,15 @@ type moduleEntry struct {
 	commands []string
 }
 
-type moduleRegistry struct {
+type moduleManager struct {
 	mu        sync.RWMutex
 	modules   map[string]*moduleEntry
 	lifecycle []*moduleEntry
 	remote    *remoteDesktopModule
 }
 
-func newDefaultModuleRegistry() *moduleRegistry {
-	registry := newModuleRegistry()
+func newDefaultModuleManager() *moduleManager {
+	registry := newModuleManager()
 	registry.register(&appVncModule{})
 	registry.register(&remoteDesktopModule{})
 	registry.register(&audioModule{})
@@ -106,14 +106,14 @@ func newDefaultModuleRegistry() *moduleRegistry {
 	return registry
 }
 
-func newModuleRegistry() *moduleRegistry {
-	return &moduleRegistry{
+func newModuleManager() *moduleManager {
+	return &moduleManager{
 		modules:   make(map[string]*moduleEntry),
 		lifecycle: make([]*moduleEntry, 0, 6),
 	}
 }
 
-func (r *moduleRegistry) register(m Module) {
+func (r *moduleManager) register(m Module) {
 	metadata := m.Metadata()
 	if strings.TrimSpace(metadata.ID) == "" {
 		panic("agent module missing metadata id")
@@ -142,7 +142,7 @@ func (r *moduleRegistry) register(m Module) {
 	}
 }
 
-func (r *moduleRegistry) Init(ctx context.Context, runtime ModuleRuntime) error {
+func (r *moduleManager) Init(ctx context.Context, runtime ModuleRuntime) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -160,7 +160,7 @@ func (r *moduleRegistry) Init(ctx context.Context, runtime ModuleRuntime) error 
 	return errors.Join(errs...)
 }
 
-func (r *moduleRegistry) UpdateConfig(ctx context.Context, runtime ModuleRuntime) error {
+func (r *moduleManager) UpdateConfig(ctx context.Context, runtime ModuleRuntime) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -178,7 +178,7 @@ func (r *moduleRegistry) UpdateConfig(ctx context.Context, runtime ModuleRuntime
 	return errors.Join(errs...)
 }
 
-func (r *moduleRegistry) Metadata() []ModuleMetadata {
+func (r *moduleManager) Metadata() []ModuleMetadata {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
@@ -189,7 +189,7 @@ func (r *moduleRegistry) Metadata() []ModuleMetadata {
 	return metadata
 }
 
-func (r *moduleRegistry) HandleCommand(ctx context.Context, cmd protocol.Command) (bool, protocol.CommandResult) {
+func (r *moduleManager) HandleCommand(ctx context.Context, cmd protocol.Command) (bool, protocol.CommandResult) {
 	r.mu.RLock()
 	entry, ok := r.modules[cmd.Name]
 	r.mu.RUnlock()
@@ -199,7 +199,7 @@ func (r *moduleRegistry) HandleCommand(ctx context.Context, cmd protocol.Command
 	return true, entry.module.Handle(ctx, cmd)
 }
 
-func (r *moduleRegistry) Shutdown(ctx context.Context) {
+func (r *moduleManager) Shutdown(ctx context.Context) {
 	r.mu.RLock()
 	entries := append([]*moduleEntry(nil), r.lifecycle...)
 	r.mu.RUnlock()
@@ -209,7 +209,7 @@ func (r *moduleRegistry) Shutdown(ctx context.Context) {
 	}
 }
 
-func (r *moduleRegistry) remoteDesktopModule() *remoteDesktopModule {
+func (r *moduleManager) remoteDesktopModule() *remoteDesktopModule {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	return r.remote

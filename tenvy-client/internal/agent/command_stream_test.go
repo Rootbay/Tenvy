@@ -289,7 +289,7 @@ func TestCommandStreamRequestsReconnectOnUnauthorized(t *testing.T) {
 func TestStopRemoteDesktopInputWorkerSignalsShutdown(t *testing.T) {
 	agent := &Agent{
 		logger:  log.New(io.Discard, "", 0),
-		modules: &moduleRegistry{remote: &remoteDesktopModule{}},
+		modules: &moduleManager{remote: &remoteDesktopModule{}},
 	}
 
 	queue := agent.ensureRemoteDesktopInputWorker()
@@ -314,7 +314,7 @@ func TestStopRemoteDesktopInputWorkerSignalsShutdown(t *testing.T) {
 func TestHandleRemoteDesktopInputAfterStopReturnsImmediately(t *testing.T) {
 	agent := &Agent{
 		logger:  log.New(io.Discard, "", 0),
-		modules: &moduleRegistry{remote: &remoteDesktopModule{}},
+		modules: &moduleManager{remote: &remoteDesktopModule{}},
 	}
 
 	if agent.ensureRemoteDesktopInputWorker() == nil {
@@ -341,7 +341,7 @@ func TestHandleRemoteDesktopInputAfterStopReturnsImmediately(t *testing.T) {
 func TestStopRemoteDesktopInputWorkerBeforeStart(t *testing.T) {
 	agent := &Agent{
 		logger:  log.New(io.Discard, "", 0),
-		modules: &moduleRegistry{remote: &remoteDesktopModule{}},
+		modules: &moduleManager{remote: &remoteDesktopModule{}},
 	}
 
 	agent.stopRemoteDesktopInputWorker()
