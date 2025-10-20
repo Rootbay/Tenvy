@@ -17,25 +17,32 @@ describe('loadPluginManifests', () => {
 
 	it('skips files that do not satisfy the manifest schema', async () => {
 		const directory = mkdtempSync(join(tmpdir(), 'tenvy-manifests-'));
-		const validManifest = {
-			id: 'test-valid',
-			name: 'Test Plugin',
-			version: '0.1.0',
-			entry: 'test.dll',
-			description: 'A manifest used in tests',
-			author: 'Unit Tests',
-			distribution: {
-				defaultMode: 'manual',
-				autoUpdate: false,
-				signature: { type: 'none' }
-			},
-			requirements: {
-				requiredModules: ['clipboard']
-			},
-			package: {
-				artifact: 'test.dll',
-				sizeBytes: 1024
-			}
+                const validManifest = {
+                        id: 'test-valid',
+                        name: 'Test Plugin',
+                        version: '0.1.0',
+                        entry: 'test.dll',
+                        description: 'A manifest used in tests',
+                        author: 'Unit Tests',
+                        repositoryUrl: 'https://github.com/rootbay/test-plugin',
+                        license: {
+                                spdxId: 'MIT',
+                                name: 'MIT License'
+                        },
+                        distribution: {
+                                defaultMode: 'manual',
+                                autoUpdate: false,
+                                signature: { type: 'none' }
+                        },
+                        requirements: {
+                                platforms: ['windows'],
+                                architectures: ['x86_64'],
+                                requiredModules: ['clipboard']
+                        },
+                        package: {
+                                artifact: 'test.dll',
+                                sizeBytes: 1024
+                        }
 		} satisfies Record<string, unknown>;
 
 		writeFileSync(join(directory, 'valid.json'), JSON.stringify(validManifest));

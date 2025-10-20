@@ -196,18 +196,19 @@ export const createPluginRepository = (
 		return record;
 	};
 
-	return {
-		async list() {
-			const records = await loadManifests();
-			const plugins = [] as Plugin[];
+        return {
+                async list() {
+                        const records = await loadManifests();
+                        if (records.length === 0) return [];
 
-			for (const record of records) {
-				const runtimeRow = await runtimeStore.ensure(record.manifest);
-				plugins.push(toPluginView(record.manifest, snapshotFromRow(runtimeRow)));
-			}
+                        const runtimeRows = await Promise.all(
+                                records.map((record) => runtimeStore.ensure(record.manifest))
+                        );
 
-			return plugins;
-		},
+                        return records.map((record, index) =>
+                                toPluginView(record.manifest, snapshotFromRow(runtimeRows[index]!))
+                        );
+                },
 		async get(id: string) {
 			const { manifest } = await getManifest(id);
 			const runtimeRow = await runtimeStore.ensure(manifest);
