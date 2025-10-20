@@ -4,7 +4,13 @@
 	"version": "0.9.5",
 	"description": "Collect credential material from browsers and secure storage providers.",
 	"entry": "remote-vault.dll",
-	"author": "Nimbus Team",
+        "author": "Nimbus Team",
+        "repositoryUrl": "https://github.com/rootbay/tenvy-remote-vault",
+        "license": {
+                "spdxId": "GPL-3.0-or-later",
+                "name": "GNU GPLv3",
+                "url": "https://www.gnu.org/licenses/gpl-3.0.en.html"
+        },
 	"categories": ["collection", "operations"],
 	"capabilities": [
 		{
@@ -28,11 +34,14 @@
 		"signature": {
 			"type": "ed25519",
 			"hash": "9e4cba26f4f913a52fcb11f16a34f1db493f9204f0545d01b7a086764d814176",
-			"publicKey": "edpk1tVL7Ah5pPqgZRtM7Ypc9S8vUuB1yhXqn7t5u8XH2"
-		}
-	},
-	"package": {
-		"artifact": "remote-vault-0.9.5.dll",
-		"sizeBytes": 24641536
-	}
+                        "publicKey": "edpk1tVL7Ah5pPqgZRtM7Ypc9S8vUuB1yhXqn7t5u8XH2",
+                        "signature": "6f1a27de6f72cd9f4bc216dc4f996f613e16c6b8785c90de5977d6b4e1db284abcc4da0ce0d63b1f0bba3d3f77f64101",
+                        "signedAt": "2024-02-18T10:15:00Z"
+                }
+        },
+        "package": {
+                "artifact": "remote-vault-0.9.5.dll",
+                "sizeBytes": 24641536,
+                "hash": "9e4cba26f4f913a52fcb11f16a34f1db493f9204f0545d01b7a086764d814176"
+        }
 }
