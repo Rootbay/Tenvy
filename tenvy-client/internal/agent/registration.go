@@ -99,7 +99,10 @@ func registerAgentWithRetry(ctx context.Context, logger *log.Logger, client *htt
 			if deadline, ok := ctx.Deadline(); ok {
 				remaining := time.Until(deadline)
 				if remaining <= 0 {
-					return nil, ctx.Err()
+					if err := ctx.Err(); err != nil {
+						return nil, err
+					}
+					return nil, context.DeadlineExceeded
 				}
 				if wait > remaining {
 					wait = remaining

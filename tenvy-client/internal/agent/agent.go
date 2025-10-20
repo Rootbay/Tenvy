@@ -29,7 +29,7 @@ type Agent struct {
 	notes                        *notes.Manager
 	buildVersion                 string
 	timing                       TimingOverride
-	modules                      *moduleRegistry
+	modules                      *moduleManager
 	commands                     *commandRouter
 	connectionFlag               atomic.Uint32
 	remoteDesktopInputOnce       sync.Once

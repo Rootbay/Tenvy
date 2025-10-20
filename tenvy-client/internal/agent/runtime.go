@@ -82,7 +82,7 @@ func Run(ctx context.Context, opts RuntimeOptions) error {
 		agent.plugins = manager
 	}
 
-	modules := newDefaultModuleRegistry()
+	modules := newDefaultModuleManager()
 	if err := modules.Init(ctx, agent.moduleRuntime()); err != nil {
 		return fmt.Errorf("initialize modules: %w", err)
 	}
