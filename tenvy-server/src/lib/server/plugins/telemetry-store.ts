@@ -2,13 +2,13 @@ import { createHash, randomUUID } from 'crypto';
 import { and, eq, sql } from 'drizzle-orm';
 import type { AgentMetadata } from '../../../../../shared/types/agent.js';
 import {
-	pluginInstallStatuses,
-	type PluginInstallationTelemetry,
-	type PluginManifest,
-	type PluginPlatform,
-	type PluginArchitecture
+        pluginInstallStatuses,
+        type PluginInstallationTelemetry,
+        type PluginManifest,
+        type PluginPlatform,
+        type PluginArchitecture
 } from '../../../../../shared/types/plugin-manifest.js';
-import { loadPluginManifests } from '$lib/data/plugin-manifests.js';
+import { loadPluginManifests, type LoadedPluginManifest } from '$lib/data/plugin-manifests.js';
 import { db } from '$lib/server/db/index.js';
 import {
 	auditEvent as auditEventTable,
@@ -118,18 +118,49 @@ function isArchitectureCompatible(
 }
 
 function buildAuditPayload(details: Record<string, unknown>): {
-	payloadHash: string;
-	result: string;
+        payloadHash: string;
+        result: string;
 } {
-	const serialized = JSON.stringify(details);
-	const hash = createHash('sha256').update(serialized, 'utf8').digest('hex');
-	return { payloadHash: hash, result: serialized };
+        const serialized = JSON.stringify(details);
+        const hash = createHash('sha256').update(serialized, 'utf8').digest('hex');
+        return { payloadHash: hash, result: serialized };
+}
+
+function verificationBlockReason(record: LoadedPluginManifest): string | null {
+        const { verification, manifest } = record;
+        if (!verification || verification.status === 'trusted') {
+                return null;
+        }
+
+        let message: string;
+        switch (verification.status) {
+        case 'unsigned':
+                message = 'plugin manifest is unsigned';
+                break;
+        case 'untrusted':
+                message = 'plugin signature is not trusted';
+                if (verification.signer) {
+                        message += ` (${verification.signer})`;
+                } else if (manifest.distribution.signature.publicKey) {
+                        message += ` (${manifest.distribution.signature.publicKey})`;
+                }
+                break;
+        case 'invalid':
+        default:
+                message = 'plugin signature verification failed';
+                break;
+        }
+
+        if (verification.error) {
+                message = `${message}: ${verification.error}`;
+        }
+        return message;
 }
 
 export class PluginTelemetryStore {
 	private readonly runtimeStore: PluginRuntimeStore;
 	private readonly manifestDirectory?: string;
-	private manifestCache = new Map<string, PluginManifest>();
+        private manifestCache = new Map<string, LoadedPluginManifest>();
 	private manifestLoadedAt = 0;
 
 	constructor(options: PluginTelemetryStoreOptions = {}) {
@@ -151,13 +182,14 @@ export class PluginTelemetryStore {
 		const processed = new Set<string>();
 
 		for (const installation of installations) {
-			const manifest = this.manifestCache.get(installation.pluginId);
-			if (!manifest) {
-				console.warn(`agent ${agentId} reported unknown plugin ${installation.pluginId}`);
-				continue;
-			}
+                        const record = this.manifestCache.get(installation.pluginId);
+                        if (!record) {
+                                console.warn(`agent ${agentId} reported unknown plugin ${installation.pluginId}`);
+                                continue;
+                        }
 
-			const runtimeRow = await this.runtimeStore.ensure(manifest);
+                        const runtimeRow = await this.runtimeStore.ensure(record);
+                        const manifest = record.manifest;
 
 			const current = await db
 				.select()
@@ -187,15 +219,20 @@ export class PluginTelemetryStore {
 					manifest.requirements.maxAgentVersion
 				);
 
-			const signedHash = manifest.package.hash?.toLowerCase();
-			const observedHash = installation.hash?.toLowerCase();
+                        const signatureReason = verificationBlockReason(record);
 
-			if (approvalStatus !== 'approved') {
-				status = 'blocked';
-				reason = reason ?? 'awaiting approval';
-			} else if (!compatible) {
-				status = 'blocked';
-				reason = reason ?? 'agent incompatible with plugin requirements';
+                        const signedHash = manifest.package.hash?.toLowerCase();
+                        const observedHash = installation.hash?.toLowerCase();
+
+                        if (signatureReason) {
+                                status = 'blocked';
+                                reason = signatureReason;
+                        } else if (approvalStatus !== 'approved') {
+                                status = 'blocked';
+                                reason = reason ?? 'awaiting approval';
+                        } else if (!compatible) {
+                                status = 'blocked';
+                                reason = reason ?? 'agent incompatible with plugin requirements';
 			} else if (manifest.distribution.signature.type !== 'none') {
 				if (!observedHash) {
 					status = 'blocked';
@@ -339,13 +376,13 @@ export class PluginTelemetryStore {
 		}
 
 		const records = await loadPluginManifests({ directory: this.manifestDirectory });
-		const index = new Map<string, PluginManifest>();
-		for (const record of records) {
-			index.set(record.manifest.id, record.manifest);
-		}
-		this.manifestCache = index;
-		this.manifestLoadedAt = now;
-	}
+                const index = new Map<string, LoadedPluginManifest>();
+                for (const record of records) {
+                        index.set(record.manifest.id, record);
+                }
+                this.manifestCache = index;
+                this.manifestLoadedAt = now;
+        }
 
 	private async refreshAggregates(pluginId: string): Promise<void> {
 		const [row] = await db

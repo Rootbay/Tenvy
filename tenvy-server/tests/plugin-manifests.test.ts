@@ -8,11 +8,15 @@ const manifestDir = join(process.cwd(), 'resources/plugin-manifests');
 
 describe('loadPluginManifests', () => {
 	it('loads manifests from the configured directory', async () => {
-		const records = await loadPluginManifests({ directory: manifestDir });
+                const records = await loadPluginManifests({ directory: manifestDir });
 
-		expect(records.length).toBeGreaterThan(0);
-		const identifiers = records.map((record) => record.manifest.id);
-		expect(new Set(identifiers).size).toBe(records.length);
+                expect(records.length).toBeGreaterThan(0);
+                const identifiers = records.map((record) => record.manifest.id);
+                expect(new Set(identifiers).size).toBe(records.length);
+                for (const record of records) {
+                        expect(record.verification).toBeDefined();
+                        expect(record.verification.checkedAt).toBeInstanceOf(Date);
+                }
 	});
 
 	it('skips files that do not satisfy the manifest schema', async () => {
@@ -48,9 +52,10 @@ describe('loadPluginManifests', () => {
 		writeFileSync(join(directory, 'valid.json'), JSON.stringify(validManifest));
 		writeFileSync(join(directory, 'invalid.json'), JSON.stringify({ id: 'broken' }));
 
-		const records = await loadPluginManifests({ directory });
+                const records = await loadPluginManifests({ directory });
 
-		expect(records).toHaveLength(1);
-		expect(records[0]?.manifest.id).toBe('test-valid');
-	});
+                expect(records).toHaveLength(1);
+                expect(records[0]?.manifest.id).toBe('test-valid');
+                expect(records[0]?.verification.status).toBe('unsigned');
+        });
 });

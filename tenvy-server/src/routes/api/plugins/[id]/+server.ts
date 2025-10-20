@@ -126,10 +126,19 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 		throw error(400, { message: 'No update fields supplied' });
 	}
 
-	try {
-		const plugin: Plugin = await repository.update(id, update);
-		return json({ plugin });
-	} catch (err) {
-		handleRepositoryError(id, err);
-	}
+        try {
+                if (update.approvalStatus === 'approved') {
+                        const current = await repository.get(id);
+                        if (current.signature.status !== 'trusted' || !current.signature.trusted) {
+                                throw error(409, {
+                                        message: 'Plugin cannot be approved until its signature is trusted'
+                                });
+                        }
+                }
+
+                const plugin: Plugin = await repository.update(id, update);
+                return json({ plugin });
+        } catch (err) {
+                handleRepositoryError(id, err);
+        }
 };

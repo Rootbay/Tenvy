@@ -90,6 +90,7 @@
 		"shell-quote": "^1.8.3",
 		"systeminformation": "^5.27.11",
 		"topojson-client": "^3.1.0",
+		"tweetnacl": "^1.0.3",
 		"world-atlas": "^2.0.2",
 		"zod": "^4.1.12"
 	}

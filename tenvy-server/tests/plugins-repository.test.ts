@@ -62,6 +62,17 @@ CREATE TABLE IF NOT EXISTS plugin (
         last_auto_sync_at INTEGER,
         last_deployed_at INTEGER,
         last_checked_at INTEGER,
+        signature_status TEXT NOT NULL DEFAULT 'unsigned',
+        signature_trusted INTEGER NOT NULL DEFAULT 0,
+        signature_type TEXT NOT NULL DEFAULT 'none',
+        signature_hash TEXT,
+        signature_signer TEXT,
+        signature_public_key TEXT,
+        signature_checked_at INTEGER,
+        signature_signed_at INTEGER,
+        signature_error TEXT,
+        signature_error_code TEXT,
+        signature_chain TEXT,
         approval_status TEXT NOT NULL DEFAULT 'pending',
         approved_at INTEGER,
         approval_note TEXT,
@@ -111,6 +122,8 @@ describe('plugin repository', () => {
                         expect(clipboard?.requiredModules.map((module) => module.id)).toContain(
                                 'clipboard'
                         );
+                        expect(clipboard?.signature.status).toBe('unsigned');
+                        expect(clipboard?.signature.trusted).toBe(false);
                 } finally {
                         sqlite.close();
                 }

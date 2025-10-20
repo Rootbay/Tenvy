@@ -2,7 +2,10 @@ package agent
 
 import (
 	"context"
+	"crypto/ed25519"
+	"encoding/hex"
 	"fmt"
+	"log"
 	"net"
 	"net/url"
 	"strings"
@@ -11,6 +14,7 @@ import (
 	notes "github.com/rootbay/tenvy-client/internal/modules/notes"
 	"github.com/rootbay/tenvy-client/internal/plugins"
 	"github.com/rootbay/tenvy-client/internal/protocol"
+	manifest "github.com/rootbay/tenvy-client/shared/pluginmanifest"
 )
 
 // Run boots and manages the lifecycle of the agent. It blocks until the
@@ -76,7 +80,9 @@ func Run(ctx context.Context, opts RuntimeOptions) error {
 		timing:         opts.TimingOverride,
 	}
 
-	if manager, err := plugins.NewManager(defaultPluginRoot(opts.Preferences), opts.Logger); err != nil {
+	verifyOpts := deriveSignatureVerifyOptions(registration.Config, opts.Logger)
+
+	if manager, err := plugins.NewManager(defaultPluginRoot(opts.Preferences), opts.Logger, verifyOpts); err != nil {
 		opts.Logger.Printf("plugin telemetry disabled: %v", err)
 	} else {
 		agent.plugins = manager
@@ -172,4 +178,56 @@ func canonicalizeServerURL(raw string) (string, error) {
 	}
 
 	return parsed.String(), nil
+}
+
+func deriveSignatureVerifyOptions(cfg protocol.AgentConfig, logger *log.Logger) manifest.VerifyOptions {
+	var opts manifest.VerifyOptions
+
+	if cfg.Plugins == nil || cfg.Plugins.SignaturePolicy == nil {
+		return opts
+	}
+
+	policy := cfg.Plugins.SignaturePolicy
+	opts.AllowUnsigned = policy.AllowUnsigned
+
+	if len(policy.SHA256AllowList) > 0 {
+		opts.SHA256AllowList = make([]string, 0, len(policy.SHA256AllowList))
+		for _, value := range policy.SHA256AllowList {
+			trimmed := strings.TrimSpace(value)
+			if trimmed == "" {
+				continue
+			}
+			opts.SHA256AllowList = append(opts.SHA256AllowList, strings.ToLower(trimmed))
+		}
+	}
+
+	if len(policy.Ed25519PublicKeys) > 0 {
+		opts.Ed25519PublicKeys = make(map[string]ed25519.PublicKey, len(policy.Ed25519PublicKeys))
+		for keyID, encoded := range policy.Ed25519PublicKeys {
+			trimmed := strings.TrimSpace(encoded)
+			if trimmed == "" {
+				continue
+			}
+			decoded, err := hex.DecodeString(trimmed)
+			if err != nil {
+				if logger != nil {
+					logger.Printf("plugin verifier: invalid public key for %s: %v", keyID, err)
+				}
+				continue
+			}
+			if len(decoded) != ed25519.PublicKeySize {
+				if logger != nil {
+					logger.Printf("plugin verifier: public key %s has invalid length %d", keyID, len(decoded))
+				}
+				continue
+			}
+			opts.Ed25519PublicKeys[keyID] = ed25519.PublicKey(append([]byte(nil), decoded...))
+		}
+	}
+
+	if policy.MaxSignatureAgeMs > 0 {
+		opts.MaxSignatureAge = time.Duration(policy.MaxSignatureAgeMs) * time.Millisecond
+	}
+
+	return opts
 }

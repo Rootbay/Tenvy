@@ -1,10 +1,19 @@
 import { agentModuleIds } from "../modules/index.js";
+import nacl from "tweetnacl";
 
 export const pluginDeliveryModes = ["manual", "automatic"] as const;
 export type PluginDeliveryMode = (typeof pluginDeliveryModes)[number];
 
 export const pluginSignatureTypes = ["none", "sha256", "ed25519"] as const;
 export type PluginSignatureType = (typeof pluginSignatureTypes)[number];
+
+export const pluginSignatureStatuses = [
+  "trusted",
+  "untrusted",
+  "unsigned",
+  "invalid",
+] as const;
+export type PluginSignatureStatus = (typeof pluginSignatureStatuses)[number];
 
 export const pluginPlatforms = ["windows", "linux", "macos"] as const;
 export type PluginPlatform = (typeof pluginPlatforms)[number];
@@ -108,6 +117,57 @@ export interface PluginSyncPayload {
   installations: PluginInstallationTelemetry[];
 }
 
+export type PluginSignatureVerificationErrorCode =
+  | "UNSIGNED"
+  | "HASH_MISMATCH"
+  | "HASH_NOT_ALLOWED"
+  | "UNTRUSTED_SIGNER"
+  | "INVALID_SIGNATURE"
+  | "INVALID_TIMESTAMP"
+  | "SIGNATURE_EXPIRED"
+  | "CERTIFICATE_INVALID"
+  | "INVALID_PUBLIC_KEY";
+
+export class PluginSignatureVerificationError extends Error {
+  readonly code: PluginSignatureVerificationErrorCode;
+
+  constructor(message: string, code: PluginSignatureVerificationErrorCode) {
+    super(message);
+    this.name = "PluginSignatureVerificationError";
+    this.code = code;
+  }
+}
+
+export interface PluginSignatureVerificationOptions {
+  allowUnsigned?: boolean;
+  sha256AllowList?: Iterable<string>;
+  ed25519PublicKeys?: Record<string, Uint8Array>;
+  resolveEd25519PublicKey?: (
+    keyId: string,
+  ) => Uint8Array | undefined | Promise<Uint8Array | undefined>;
+  certificateValidator?: (chain: readonly string[]) => void | Promise<void>;
+  maxSignatureAgeMs?: number;
+  now?: () => Date;
+}
+
+export interface PluginSignatureVerificationResult {
+  trusted: boolean;
+  signatureType: PluginSignatureType;
+  hash?: string;
+  signer?: string | null;
+  signedAt?: Date | null;
+  publicKey?: string | null;
+  certificateChain?: string[];
+}
+
+export interface PluginSignatureVerificationSummary
+  extends PluginSignatureVerificationResult {
+  status: PluginSignatureStatus;
+  checkedAt: Date;
+  error?: string | null;
+  errorCode?: PluginSignatureVerificationErrorCode;
+}
+
 const ensureArray = <T>(value: ReadonlyArray<T> | undefined | null): T[] =>
   Array.isArray(value) ? [...value] : [];
 
@@ -116,6 +176,34 @@ const isEmpty = (value: string | undefined | null): boolean =>
 
 const validateSemver = (value: string | undefined | null): boolean =>
   !value || SEMVER_PATTERN.test(value.trim());
+
+const textEncoder = new TextEncoder();
+
+const normalizeHex = (value: string | undefined | null): string =>
+  value?.trim().toLowerCase() ?? "";
+
+const hexToBytes = (value: string): Uint8Array => {
+  const trimmed = value.trim();
+  if (trimmed.length === 0 || trimmed.length % 2 !== 0) {
+    throw new PluginSignatureVerificationError(
+      "signature must be a non-empty even-length hex string",
+      "INVALID_SIGNATURE",
+    );
+  }
+
+  const bytes = new Uint8Array(trimmed.length / 2);
+  for (let i = 0; i < trimmed.length; i += 2) {
+    const byte = Number.parseInt(trimmed.slice(i, i + 2), 16);
+    if (Number.isNaN(byte)) {
+      throw new PluginSignatureVerificationError(
+        "signature contains non-hex characters",
+        "INVALID_SIGNATURE",
+      );
+    }
+    bytes[i / 2] = byte;
+  }
+  return bytes;
+};
 
 const ensureGitHubRepository = (url: string | undefined | null): boolean => {
   if (isEmpty(url)) return false;
@@ -251,3 +339,186 @@ export function validatePluginManifest(manifest: PluginManifest): string[] {
 
   return problems;
 }
+
+const resolvePublicKey = async (
+  keyId: string,
+  options: PluginSignatureVerificationOptions,
+): Promise<Uint8Array | undefined> => {
+  const trimmed = keyId.trim();
+  if (!trimmed) return undefined;
+
+  if (options.resolveEd25519PublicKey) {
+    const key = await options.resolveEd25519PublicKey(trimmed);
+    if (key) return key.slice();
+  }
+
+  const staticKey = options.ed25519PublicKeys?.[trimmed];
+  return staticKey ? staticKey.slice() : undefined;
+};
+
+const ensureValidSignedAt = (
+  signedAt: string | undefined,
+  options: PluginSignatureVerificationOptions,
+): Date | null => {
+  if (!signedAt?.trim()) {
+    if (options.maxSignatureAgeMs && options.maxSignatureAgeMs > 0) {
+      throw new PluginSignatureVerificationError(
+        "signedAt is required when enforcing signature age",
+        "INVALID_TIMESTAMP",
+      );
+    }
+    return null;
+  }
+
+  const parsed = new Date(signedAt);
+  if (Number.isNaN(parsed.valueOf())) {
+    throw new PluginSignatureVerificationError(
+      "signedAt must be an RFC3339 timestamp",
+      "INVALID_TIMESTAMP",
+    );
+  }
+
+  const now = options.now?.() ?? new Date();
+  const maxAge = options.maxSignatureAgeMs ?? 0;
+  if (maxAge > 0) {
+    const ageMs = now.valueOf() - parsed.valueOf();
+    if (ageMs < 0) {
+      throw new PluginSignatureVerificationError(
+        "signature timestamp is in the future",
+        "INVALID_TIMESTAMP",
+      );
+    }
+    if (ageMs > maxAge) {
+      throw new PluginSignatureVerificationError(
+        "signature has expired",
+        "SIGNATURE_EXPIRED",
+      );
+    }
+  }
+
+  return parsed;
+};
+
+const ensureHashMatches = (manifest: PluginManifest): string => {
+  const manifestHash = normalizeHex(manifest.package?.hash);
+  const signatureHash = normalizeHex(manifest.distribution?.signature?.hash);
+  if (!manifestHash || !signatureHash || manifestHash !== signatureHash) {
+    throw new PluginSignatureVerificationError(
+      "plugin hash does not match manifest signature hash",
+      "HASH_MISMATCH",
+    );
+  }
+  return signatureHash;
+};
+
+export const verifyPluginSignature = async (
+  manifest: PluginManifest,
+  options: PluginSignatureVerificationOptions = {},
+): Promise<PluginSignatureVerificationResult> => {
+  const signature = manifest.distribution?.signature;
+  if (!signature || signature.type === "none") {
+    if (options.allowUnsigned) {
+      return { trusted: false, signatureType: "none" };
+    }
+    throw new PluginSignatureVerificationError(
+      "plugin manifest is unsigned",
+      "UNSIGNED",
+    );
+  }
+
+  const signedAt = ensureValidSignedAt(signature.signedAt, options);
+  const hash = ensureHashMatches(manifest);
+
+  if (signature.type === "sha256") {
+    const allowList = options.sha256AllowList
+      ? new Set(
+          Array.from(options.sha256AllowList, (value) => normalizeHex(value)),
+        )
+      : null;
+
+    if (allowList && allowList.size > 0 && !allowList.has(hash)) {
+      throw new PluginSignatureVerificationError(
+        "hash is not in the allowed set",
+        "HASH_NOT_ALLOWED",
+      );
+    }
+
+    return {
+      trusted: allowList ? allowList.size > 0 : false,
+      signatureType: "sha256",
+      hash,
+      signer: signature.signer ?? null,
+      signedAt,
+      certificateChain: signature.certificateChain
+        ? [...signature.certificateChain]
+        : undefined,
+    };
+  }
+
+  if (signature.type !== "ed25519") {
+    throw new PluginSignatureVerificationError(
+      `unsupported signature type: ${signature.type}`,
+      "INVALID_SIGNATURE",
+    );
+  }
+
+  if (!signature.publicKey?.trim()) {
+    throw new PluginSignatureVerificationError(
+      "ed25519 signature requires publicKey",
+      "UNTRUSTED_SIGNER",
+    );
+  }
+
+  const publicKey = await resolvePublicKey(signature.publicKey, options);
+  if (!publicKey) {
+    throw new PluginSignatureVerificationError(
+      "ed25519 signer is not trusted",
+      "UNTRUSTED_SIGNER",
+    );
+  }
+  if (publicKey.length !== nacl.sign.publicKeyLength) {
+    throw new PluginSignatureVerificationError(
+      "ed25519 public key has invalid length",
+      "INVALID_PUBLIC_KEY",
+    );
+  }
+
+  const signatureBytes = hexToBytes(signature.signature ?? "");
+  if (signatureBytes.length !== nacl.sign.signatureLength) {
+    throw new PluginSignatureVerificationError(
+      "ed25519 signature has invalid length",
+      "INVALID_SIGNATURE",
+    );
+  }
+
+  const message = textEncoder.encode(hash);
+  if (!nacl.sign.detached.verify(message, signatureBytes, publicKey)) {
+    throw new PluginSignatureVerificationError(
+      "ed25519 signature verification failed",
+      "INVALID_SIGNATURE",
+    );
+  }
+
+  if (options.certificateValidator && signature.certificateChain?.length) {
+    try {
+      await options.certificateValidator([...signature.certificateChain]);
+    } catch (error) {
+      throw new PluginSignatureVerificationError(
+        (error as Error).message,
+        "CERTIFICATE_INVALID",
+      );
+    }
+  }
+
+  return {
+    trusted: true,
+    signatureType: "ed25519",
+    hash,
+    signer: signature.signer ?? null,
+    signedAt,
+    publicKey: signature.publicKey,
+    certificateChain: signature.certificateChain
+      ? [...signature.certificateChain]
+      : undefined,
+  };
+};

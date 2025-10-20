@@ -38,6 +38,7 @@ import type {
 import type { RemoteDesktopInputBurst } from '../../../../../shared/types/remote-desktop';
 import type { AppVncInputBurst } from '../../../../../shared/types/app-vnc';
 import { PluginTelemetryStore } from '../plugins/telemetry-store.js';
+import { getAgentSignaturePolicy } from '../plugins/signature-policy.js';
 
 const MAX_TAGS = 16;
 const MAX_TAG_LENGTH = 32;
@@ -214,9 +215,9 @@ function parseNumeric(value: unknown): number | null {
 }
 
 function normalizeConfig(config?: Partial<AgentConfig> | null): AgentConfig {
-	const normalized: AgentConfig = {
-		...defaultAgentConfig
-	};
+        const normalized: AgentConfig = {
+                ...defaultAgentConfig
+        };
 
 	if (!config) {
 		return normalized;
@@ -233,11 +234,14 @@ function normalizeConfig(config?: Partial<AgentConfig> | null): AgentConfig {
 	}
 
 	const jitter = parseNumeric(config.jitterRatio);
-	if (jitter !== null && jitter >= 0 && jitter <= 1) {
-		normalized.jitterRatio = jitter;
-	}
+        if (jitter !== null && jitter >= 0 && jitter <= 1) {
+                normalized.jitterRatio = jitter;
+        }
 
-	return normalized;
+        const signaturePolicy = getAgentSignaturePolicy();
+        normalized.plugins = { signaturePolicy };
+
+        return normalized;
 }
 
 function cloneMetadata(metadata: AgentMetadata): AgentMetadata {
