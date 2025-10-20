@@ -83,7 +83,7 @@ func Run(ctx context.Context, opts RuntimeOptions) error {
 	}
 
 	modules := newDefaultModuleRegistry()
-	if err := modules.Update(agent.moduleRuntime()); err != nil {
+	if err := modules.Init(ctx, agent.moduleRuntime()); err != nil {
 		return fmt.Errorf("initialize modules: %w", err)
 	}
 	agent.modules = modules
