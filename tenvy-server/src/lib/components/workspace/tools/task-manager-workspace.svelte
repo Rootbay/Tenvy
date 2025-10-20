@@ -21,7 +21,7 @@
 	} from '$lib/components/ui/card/index.js';
 	import { Alert, AlertDescription, AlertTitle } from '$lib/components/ui/alert/index.js';
 	import { Badge } from '$lib/components/ui/badge/index.js';
-	import { getClientTool } from '$lib/data/client-tools';
+	import type { DialogToolId } from '$lib/data/client-tools';
 	import type { Client } from '$lib/data/clients';
 	import { appendWorkspaceLog, createWorkspaceLogEntry } from '$lib/workspace/utils';
 	import { notifyToolActivationCommand } from '$lib/utils/agent-commands.js';
@@ -39,11 +39,11 @@
 	type SortKey = 'cpu' | 'memory' | 'name' | 'pid';
 	type SortDirection = 'asc' | 'desc';
 
-	const { client } = $props<{ client: Client }>();
-	void client;
-
-	const tool = getClientTool('task-manager');
-	void tool;
+	const {
+		client,
+		toolId = 'system-monitor',
+		panel = 'processes'
+	} = $props<{ client: Client; toolId?: DialogToolId; panel?: 'processes' }>();
 
 	let processes = $state<ProcessSummary[]>([]);
 	let lastUpdated = $state<string | null>(null);
@@ -94,11 +94,12 @@
 		metadata?: Record<string, unknown>
 	) {
 		log = appendWorkspaceLog(log, createWorkspaceLogEntry(action, detail, status));
-		notifyToolActivationCommand(client.id, 'task-manager', {
+		notifyToolActivationCommand(client.id, toolId, {
 			action: `event:${action}`,
 			metadata: {
 				detail,
 				status,
+				panel,
 				...metadata
 			}
 		});
