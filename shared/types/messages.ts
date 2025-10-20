@@ -1,5 +1,6 @@
 import type { AgentConfig } from "./config";
 import type { AgentMetrics, AgentStatus } from "./agent";
+import type { PluginSyncPayload } from "./plugin-manifest";
 import type {
   RemoteDesktopCommandPayload,
   RemoteDesktopInputBurst,
@@ -103,6 +104,7 @@ export interface AgentSyncRequest {
   timestamp: string;
   metrics?: AgentMetrics;
   results?: CommandResult[];
+  plugins?: PluginSyncPayload;
 }
 
 export interface AgentSyncResponse {

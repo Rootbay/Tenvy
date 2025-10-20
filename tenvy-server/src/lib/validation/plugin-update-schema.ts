@@ -1,7 +1,9 @@
 import { z } from 'zod';
+import { pluginApprovalStatuses } from '../../../../shared/types/plugin-manifest.js';
 
 const pluginStatusEnum = z.enum(['active', 'disabled', 'update', 'error']);
 const deliveryModeEnum = z.enum(['manual', 'automatic']);
+const approvalStatusEnum = z.enum(pluginApprovalStatuses);
 
 const optionalDate = z
 	.union([
@@ -22,6 +24,9 @@ export const pluginUpdateSchema = z
 		installations: z.number().int().min(0).optional(),
 		lastDeployedAt: optionalDate,
 		lastCheckedAt: optionalDate,
+		approvalStatus: approvalStatusEnum.optional(),
+		approvedAt: optionalDate,
+		approvalNote: z.union([z.string().trim().min(1).max(200), z.null()]).optional(),
 		distribution: z
 			.object({
 				defaultMode: deliveryModeEnum.optional(),
@@ -43,6 +48,12 @@ export const pluginUpdateSchema = z
 			if (!hasDistributionUpdate) {
 				delete payload.distribution;
 			}
+		}
+		if (payload.approvalNote === undefined) {
+			delete payload.approvalNote;
+		}
+		if (payload.approvedAt === undefined) {
+			delete payload.approvedAt;
 		}
 		return payload;
 	});

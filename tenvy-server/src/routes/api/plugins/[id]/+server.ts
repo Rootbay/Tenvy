@@ -21,6 +21,9 @@ const toRepositoryUpdate = (input: PluginUpdatePayloadInput): PluginRepositoryUp
 	if (input.installations !== undefined) patch.installations = input.installations;
 	if (input.lastDeployedAt !== undefined) patch.lastDeployedAt = input.lastDeployedAt;
 	if (input.lastCheckedAt !== undefined) patch.lastCheckedAt = input.lastCheckedAt;
+	if (input.approvalStatus !== undefined) patch.approvalStatus = input.approvalStatus;
+	if (input.approvedAt !== undefined) patch.approvedAt = input.approvedAt;
+	if (input.approvalNote !== undefined) patch.approvalNote = input.approvalNote;
 
 	if (input.distribution) {
 		const distribution: NonNullable<PluginRepositoryUpdate['distribution']> = {};
@@ -65,7 +68,10 @@ const hasUpdates = (patch: PluginRepositoryUpdate): boolean => {
 		patch.autoUpdate !== undefined ||
 		patch.installations !== undefined ||
 		patch.lastDeployedAt !== undefined ||
-		patch.lastCheckedAt !== undefined
+		patch.lastCheckedAt !== undefined ||
+		patch.approvalStatus !== undefined ||
+		patch.approvedAt !== undefined ||
+		patch.approvalNote !== undefined
 	) {
 		return true;
 	}

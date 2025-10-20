@@ -79,9 +79,30 @@ CREATE TABLE IF NOT EXISTS plugin (
         last_auto_sync_at INTEGER,
         last_deployed_at INTEGER,
         last_checked_at INTEGER,
+        approval_status TEXT NOT NULL DEFAULT 'pending',
+        approved_at INTEGER,
+        approval_note TEXT,
         created_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now')),
         updated_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now'))
 );
+
+CREATE TABLE IF NOT EXISTS plugin_installation (
+        plugin_id TEXT NOT NULL,
+        agent_id TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'pending',
+        version TEXT NOT NULL,
+        hash TEXT,
+        enabled INTEGER NOT NULL DEFAULT 1,
+        error TEXT,
+        last_deployed_at INTEGER,
+        last_checked_at INTEGER,
+        created_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now')),
+        updated_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now')),
+        PRIMARY KEY (plugin_id, agent_id),
+        FOREIGN KEY (plugin_id) REFERENCES plugin(id) ON DELETE CASCADE,
+        FOREIGN KEY (agent_id) REFERENCES agent(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS plugin_installation_agent_idx ON plugin_installation (agent_id);
 
 CREATE TABLE IF NOT EXISTS agent (
         id TEXT PRIMARY KEY NOT NULL,
@@ -158,5 +179,8 @@ const ensureColumn = (table: string, column: string, ddl: string) => {
 
 ensureColumn('passkey', 'last_used_at', 'last_used_at INTEGER');
 ensureColumn('user', 'role', "role TEXT NOT NULL DEFAULT 'operator'");
+ensureColumn('plugin', 'approval_status', "approval_status TEXT NOT NULL DEFAULT 'pending'");
+ensureColumn('plugin', 'approved_at', 'approved_at INTEGER');
+ensureColumn('plugin', 'approval_note', 'approval_note TEXT');
 
 export const db = drizzle(client, { schema });

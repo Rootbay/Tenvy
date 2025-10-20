@@ -47,6 +47,14 @@ export const pluginStatusStyles: Record<PluginStatus, string> = {
 	error: 'border-red-500/60 text-red-500'
 };
 
+export type PluginApprovalStatus = 'pending' | 'approved' | 'rejected';
+
+export const pluginApprovalLabels: Record<PluginApprovalStatus, string> = {
+	pending: 'Pending approval',
+	approved: 'Approved',
+	rejected: 'Rejected'
+};
+
 export type PluginDistributionView = {
 	defaultMode: PluginDeliveryMode;
 	allowManualPush: boolean;
@@ -75,6 +83,8 @@ export type Plugin = {
 	artifact: string;
 	distribution: PluginDistributionView;
 	requiredModules: { id: string; title: string }[];
+	approvalStatus: PluginApprovalStatus;
+	approvedAt?: string;
 };
 
 export type PluginUpdatePayload = {
@@ -89,6 +99,9 @@ export type PluginUpdatePayload = {
 		manualTargets?: number;
 		autoTargets?: number;
 	};
+	approvalStatus?: PluginApprovalStatus;
+	approvedAt?: Date | null;
+	approvalNote?: string | null;
 };
 
 const BYTES_IN_KIB = 1024;
