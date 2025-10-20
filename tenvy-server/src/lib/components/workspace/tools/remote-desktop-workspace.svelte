@@ -15,17 +15,19 @@
 	import { Input } from '$lib/components/ui/input/index.js';
 	import type { Client } from '$lib/data/clients';
 	import type {
-		RemoteDesktopFramePacket,
-		RemoteDesktopInputEvent,
-		RemoteDesktopMonitor,
-		RemoteDesktopMouseButton,
-		RemoteDesktopSessionState,
-		RemoteDesktopSettings,
+                RemoteDesktopFramePacket,
+                RemoteDesktopMediaSample,
+                RemoteDesktopInputEvent,
+                RemoteDesktopMonitor,
+                RemoteDesktopMouseButton,
+                RemoteDesktopSessionState,
+                RemoteDesktopSettings,
 		RemoteDesktopSettingsPatch,
-		RemoteDesktopTransport,
-		RemoteDesktopHardwarePreference,
-		RemoteDesktopTransportDiagnostics
-	} from '$lib/types/remote-desktop';
+                RemoteDesktopStreamMediaMessage,
+                RemoteDesktopTransport,
+                RemoteDesktopHardwarePreference,
+                RemoteDesktopTransportDiagnostics
+        } from '$lib/types/remote-desktop';
 	import SessionMetricsGrid from './remote-desktop/SessionMetricsGrid.svelte';
 	import { createInputChannel } from './remote-desktop/input-channel';
 
@@ -58,17 +60,18 @@
 		{ value: 'avoid', label: 'Avoid hardware' }
 	] satisfies { value: RemoteDesktopHardwarePreference; label: string }[];
 
-	const MAX_FRAME_QUEUE = 24;
-	const supportsImageBitmap = browser && typeof createImageBitmap === 'function';
-	const IMAGE_BASE64_PREFIX = {
-		png: 'data:image/png;base64,',
-		jpeg: 'data:image/jpeg;base64,'
-	} as const;
+        const MAX_FRAME_QUEUE = 24;
+        const supportsImageBitmap = browser && typeof createImageBitmap === 'function';
+        const IMAGE_BASE64_PREFIX = {
+                png: 'data:image/png;base64,',
+                jpeg: 'data:image/jpeg;base64,'
+        } as const;
+        const REMOTE_DESKTOP_AUDIO_SAMPLE_RATE = 48_000;
 
-	let { client, initialSession = null } = $props<{
-		client: Client;
-		initialSession?: RemoteDesktopSessionState | null;
-	}>();
+        let { client, initialSession = null } = $props<{
+                client: Client;
+                initialSession?: RemoteDesktopSessionState | null;
+        }>();
 
 	let session = $state<RemoteDesktopSessionState | null>(initialSession ?? null);
 	let quality = $state<RemoteDesktopSettings['quality']>('auto');
@@ -136,12 +139,14 @@
 	let canvasContext: CanvasRenderingContext2D | null = null;
 	let eventSource: EventSource | null = null;
 	let streamSessionId: string | null = null;
-	let frameQueue: RemoteDesktopFramePacket[] = [];
-	let processing = $state(false);
-	let stopRequested = $state(false);
-	let imageBitmapFallbackLogged = $state(false);
-	let skipMouseSync = $state(true);
-	let skipKeyboardSync = $state(true);
+        let frameQueue: RemoteDesktopFramePacket[] = [];
+        let processing = $state(false);
+        let stopRequested = $state(false);
+        let imageBitmapFallbackLogged = $state(false);
+        let skipMouseSync = $state(true);
+        let skipKeyboardSync = $state(true);
+        let audioContext: AudioContext | null = null;
+        let audioQueueTime = 0;
 
 	function isDocumentVisible() {
 		if (!browser) {
@@ -240,27 +245,36 @@
 		return value;
 	};
 
-	function resetMetrics() {
-		fps = null;
-		bandwidth = null;
-		streamWidth = null;
-		streamHeight = null;
-		latencyMs = null;
-		transportDiagnostics = null;
-	}
+        function resetMetrics() {
+                fps = null;
+                bandwidth = null;
+                streamWidth = null;
+                streamHeight = null;
+                latencyMs = null;
+                transportDiagnostics = null;
+        }
 
-	function disconnectStream() {
-		if (eventSource) {
-			eventSource.close();
-			eventSource = null;
-		}
-		streamSessionId = null;
-		stopRequested = true;
-		frameQueue = [];
-		processing = false;
-		imageBitmapFallbackLogged = false;
-		inputChannel?.clear();
-	}
+        function cleanupAudio() {
+                if (audioContext) {
+                        audioContext.close().catch(() => {});
+                        audioContext = null;
+                }
+                audioQueueTime = 0;
+        }
+
+        function disconnectStream() {
+                if (eventSource) {
+                        eventSource.close();
+                        eventSource = null;
+                }
+                streamSessionId = null;
+                stopRequested = true;
+                frameQueue = [];
+                processing = false;
+                imageBitmapFallbackLogged = false;
+                inputChannel?.clear();
+                cleanupAudio();
+        }
 
 	function connectStream(id?: string) {
 		if (!browser) return;
@@ -290,18 +304,32 @@
 			}
 		});
 
-		eventSource.addEventListener('frame', (event) => {
-			const frame = parseFrameEvent(event as MessageEvent);
-			if (frame) {
-				enqueueFrame(frame);
-			}
-		});
+                eventSource.addEventListener('frame', (event) => {
+                        const frame = parseFrameEvent(event as MessageEvent);
+                        if (frame) {
+                                enqueueFrame(frame);
+                                if (frame.media && frame.media.length > 0) {
+                                        void handleMediaSamples(frame.sessionId, frame.media);
+                                }
+                        }
+                });
 
-		eventSource.addEventListener('end', (event) => {
-			const reason = parseEndEvent(event as MessageEvent);
-			if (session) {
-				session = { ...session, active: false };
-			}
+                eventSource.addEventListener('media', (event) => {
+                        const detail = parseMediaEvent(event as MessageEvent);
+                        if (!detail) {
+                                return;
+                        }
+                        if (streamSessionId && detail.sessionId && detail.sessionId !== streamSessionId) {
+                                return;
+                        }
+                        void handleMediaSamples(detail.sessionId, detail.media);
+                });
+
+                eventSource.addEventListener('end', (event) => {
+                        const reason = parseEndEvent(event as MessageEvent);
+                        if (session) {
+                                session = { ...session, active: false };
+                        }
 			infoMessage = reason ?? 'Remote desktop session ended.';
 			disconnectStream();
 		});
@@ -323,30 +351,152 @@
 		}
 	}
 
-	function parseFrameEvent(event: MessageEvent): RemoteDesktopFramePacket | null {
-		try {
-			const data = JSON.parse(event.data) as { frame?: RemoteDesktopFramePacket };
-			return data?.frame ?? null;
-		} catch (err) {
-			console.error('Failed to parse frame event', err);
-			return null;
-		}
-	}
+        function parseFrameEvent(event: MessageEvent): RemoteDesktopFramePacket | null {
+                try {
+                        const data = JSON.parse(event.data) as { frame?: RemoteDesktopFramePacket };
+                        return data?.frame ?? null;
+                } catch (err) {
+                        console.error('Failed to parse frame event', err);
+                        return null;
+                }
+        }
 
-	function parseEndEvent(event: MessageEvent): string | null {
-		try {
-			const data = JSON.parse(event.data) as { reason?: string };
-			return data?.reason ?? null;
-		} catch {
-			return null;
-		}
-	}
+        function parseMediaEvent(event: MessageEvent): RemoteDesktopStreamMediaMessage | null {
+                try {
+                        const data = JSON.parse(event.data) as RemoteDesktopStreamMediaMessage;
+                        if (!data || !Array.isArray(data.media)) {
+                                return null;
+                        }
+                        return data;
+                } catch (err) {
+                        console.error('Failed to parse media event', err);
+                        return null;
+                }
+        }
 
-	function ensureContext(): CanvasRenderingContext2D | null {
-		if (!canvasEl) {
-			return null;
-		}
-		if (!canvasContext) {
+        function parseEndEvent(event: MessageEvent): string | null {
+                try {
+                        const data = JSON.parse(event.data) as { reason?: string };
+                        return data?.reason ?? null;
+                } catch {
+                        return null;
+                }
+        }
+
+        async function handleMediaSamples(
+                sessionKey: string,
+                samples: RemoteDesktopMediaSample[]
+        ): Promise<void> {
+                if (!browser || !samples || samples.length === 0) {
+                        return;
+                }
+                const currentSessionId = session?.sessionId ?? null;
+                if (currentSessionId && sessionKey && sessionKey !== currentSessionId) {
+                        return;
+                }
+                for (const sample of samples) {
+                        if (sample.kind === 'audio') {
+                                await handleAudioSample(sample);
+                        }
+                }
+        }
+
+        async function ensureAudioPlaybackContext(): Promise<boolean> {
+                if (!browser) {
+                        return false;
+                }
+                if (!audioContext) {
+                        try {
+                                audioContext = new AudioContext();
+                                audioQueueTime = audioContext.currentTime;
+                        } catch (err) {
+                                console.warn('Remote desktop audio playback unavailable', err);
+                                return false;
+                        }
+                }
+                if (audioContext.state === 'suspended') {
+                        try {
+                                await audioContext.resume();
+                        } catch (err) {
+                                console.warn('Failed to resume remote desktop audio context', err);
+                        }
+                }
+                return true;
+        }
+
+        function decodePcmSample(data: string): Int16Array | null {
+                try {
+                        const binary = atob(data);
+                        if (binary.length % 2 !== 0) {
+                                return null;
+                        }
+                        const buffer = new ArrayBuffer(binary.length);
+                        const bytes = new Uint8Array(buffer);
+                        for (let i = 0; i < binary.length; i += 1) {
+                                bytes[i] = binary.charCodeAt(i);
+                        }
+                        return new Int16Array(buffer);
+                } catch (err) {
+                        console.warn('Failed to decode remote desktop PCM sample', err);
+                        return null;
+                }
+        }
+
+        function scheduleAudioPlayback(pcm: Int16Array, channels: number) {
+                if (!audioContext) {
+                        return;
+                }
+                const normalizedChannels = Math.max(1, Math.min(2, channels));
+                const frameCount = Math.floor(pcm.length / normalizedChannels);
+                if (frameCount <= 0) {
+                        return;
+                }
+                const buffer = audioContext.createBuffer(
+                        normalizedChannels,
+                        frameCount,
+                        REMOTE_DESKTOP_AUDIO_SAMPLE_RATE
+                );
+                for (let channel = 0; channel < normalizedChannels; channel += 1) {
+                        const channelData = buffer.getChannelData(channel);
+                        for (let frame = 0; frame < frameCount; frame += 1) {
+                                const sampleIndex = frame * normalizedChannels + channel;
+                                const value = pcm[sampleIndex] / 32768;
+                                channelData[frame] = Math.max(-1, Math.min(1, value));
+                        }
+                }
+                const source = audioContext.createBufferSource();
+                source.buffer = buffer;
+                source.connect(audioContext.destination);
+                const startAt = Math.max(audioContext.currentTime + 0.05, audioQueueTime);
+                source.start(startAt);
+                audioQueueTime = startAt + buffer.duration;
+        }
+
+        async function handleAudioSample(sample: RemoteDesktopMediaSample): Promise<void> {
+                if (!browser) {
+                        return;
+                }
+                if (sample.format !== 'pcm' && sample.codec !== 'pcm') {
+                        console.debug('Unsupported remote desktop audio sample codec', sample.codec);
+                        return;
+                }
+                if (!(await ensureAudioPlaybackContext())) {
+                        return;
+                }
+                const pcm = decodePcmSample(sample.data);
+                if (!pcm) {
+                        console.warn('Received malformed remote desktop audio sample');
+                        return;
+                }
+                const channels = pcm.length % 2 === 0 ? 2 : 1;
+                scheduleAudioPlayback(pcm, channels);
+        }
+
+        function ensureContext(): CanvasRenderingContext2D | null {
+                if (!canvasEl) {
+                        return null;
+                }
+                if (!canvasContext) {
 			canvasContext = canvasEl.getContext('2d');
 		}
 		return canvasContext;

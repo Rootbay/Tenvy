@@ -267,6 +267,11 @@ export interface RemoteDesktopStreamFrameMessage {
   frame: RemoteDesktopFramePacket;
 }
 
+export interface RemoteDesktopStreamMediaMessage {
+  sessionId: string;
+  media: RemoteDesktopMediaSample[];
+}
+
 export interface RemoteDesktopStreamEndMessage {
   reason?: string;
 }
