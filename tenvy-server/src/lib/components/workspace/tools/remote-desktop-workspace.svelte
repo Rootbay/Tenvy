@@ -1111,15 +1111,17 @@
 		releasePointerCapture();
 	}
 
-	function handleWheel(event: WheelEvent) {
-		if (!mouseEnabled || !sessionActive) {
-			return;
-		}
-		queueInput({
-			type: 'mouse-scroll',
-			deltaX: event.deltaX,
-			deltaY: event.deltaY,
-			deltaMode: event.deltaMode,
+function handleWheel(event: WheelEvent) {
+if (!mouseEnabled || !sessionActive) {
+return;
+}
+event.preventDefault();
+event.stopPropagation();
+queueInput({
+type: 'mouse-scroll',
+deltaX: event.deltaX,
+deltaY: event.deltaY,
+deltaMode: event.deltaMode,
 			monitor,
 			capturedAt: captureTimestamp()
 		});
