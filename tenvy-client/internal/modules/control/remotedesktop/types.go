@@ -376,9 +376,20 @@ type remoteMonitor struct {
 	bounds image.Rectangle
 }
 
+type Engine interface {
+	Configure(Config) error
+	StartSession(context.Context, RemoteDesktopCommandPayload) error
+	StopSession(string) error
+	UpdateSession(RemoteDesktopCommandPayload) error
+	HandleInput(context.Context, RemoteDesktopCommandPayload) error
+	Shutdown()
+}
+
 type RemoteDesktopStreamer struct {
 	controller *remoteDesktopSessionController
 }
+
+var _ Engine = (*RemoteDesktopStreamer)(nil)
 
 type remoteDesktopSessionController struct {
 	cfg            atomic.Value // stores Config

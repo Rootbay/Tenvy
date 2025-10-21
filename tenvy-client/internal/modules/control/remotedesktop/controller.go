@@ -57,6 +57,14 @@ func NewRemoteDesktopStreamer(cfg Config) *RemoteDesktopStreamer {
 	}
 }
 
+func (s *RemoteDesktopStreamer) Configure(cfg Config) error {
+	if s == nil || s.controller == nil {
+		return errors.New("remote desktop subsystem not initialized")
+	}
+	s.controller.updateConfig(cfg)
+	return nil
+}
+
 func newRemoteDesktopSessionController(cfg Config) *remoteDesktopSessionController {
 	controller := &remoteDesktopSessionController{}
 	controller.updateConfig(cfg)
@@ -68,6 +76,37 @@ func (s *RemoteDesktopStreamer) UpdateConfig(cfg Config) {
 		return
 	}
 	s.controller.updateConfig(cfg)
+}
+
+func (s *RemoteDesktopStreamer) StartSession(ctx context.Context, payload RemoteDesktopCommandPayload) error {
+	if s == nil || s.controller == nil {
+		return errors.New("remote desktop subsystem not initialized")
+	}
+	return s.controller.Start(ctx, payload)
+}
+
+func (s *RemoteDesktopStreamer) StopSession(sessionID string) error {
+	if s == nil || s.controller == nil {
+		return errors.New("remote desktop subsystem not initialized")
+	}
+	return s.controller.Stop(sessionID)
+}
+
+func (s *RemoteDesktopStreamer) UpdateSession(payload RemoteDesktopCommandPayload) error {
+	if s == nil || s.controller == nil {
+		return errors.New("remote desktop subsystem not initialized")
+	}
+	return s.controller.Configure(payload)
+}
+
+func (s *RemoteDesktopStreamer) HandleInput(ctx context.Context, payload RemoteDesktopCommandPayload) error {
+	if s == nil || s.controller == nil {
+		return errors.New("remote desktop subsystem not initialized")
+	}
+	if strings.TrimSpace(payload.SessionID) == "" {
+		return errors.New("missing session identifier")
+	}
+	return s.controller.HandleInput(payload)
 }
 
 func (s *RemoteDesktopStreamer) HandleCommand(ctx context.Context, cmd Command) CommandResult {
@@ -126,12 +165,16 @@ func (s *RemoteDesktopStreamer) HandleInputPayload(ctx context.Context, payload 
 	return s.controller.HandleInput(payload)
 }
 
-func decodeRemoteDesktopPayload(raw json.RawMessage) (RemoteDesktopCommandPayload, error) {
+func DecodeCommandPayload(raw json.RawMessage) (RemoteDesktopCommandPayload, error) {
 	var payload RemoteDesktopCommandPayload
 	if err := json.Unmarshal(raw, &payload); err != nil {
 		return RemoteDesktopCommandPayload{}, fmt.Errorf("invalid remote desktop payload: %w", err)
 	}
 	return payload, nil
+}
+
+func decodeRemoteDesktopPayload(raw json.RawMessage) (RemoteDesktopCommandPayload, error) {
+	return DecodeCommandPayload(raw)
 }
 
 func (c *remoteDesktopSessionController) Start(ctx context.Context, payload RemoteDesktopCommandPayload) error {
