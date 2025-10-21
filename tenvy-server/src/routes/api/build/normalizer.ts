@@ -252,10 +252,16 @@ export function normalizeBuildRequestPayload(body: unknown): NormalizedBuildRequ
 		throw error(400, 'Host cannot contain whitespace');
 	}
 
-	const port = parsed.port !== undefined ? parsed.port.toString().trim() : '2332';
-	if (!/^\d+$/.test(port)) {
-		throw error(400, 'Port must be numeric');
-	}
+        let port = parsed.port !== undefined ? parsed.port.toString().trim() : '2332';
+        if (!/^\d+$/.test(port)) {
+                throw error(400, 'Port must be numeric');
+        }
+
+        const numericPort = Number.parseInt(port, 10);
+        if (numericPort < 1 || numericPort > 65535) {
+                throw error(400, 'Port must be between 1 and 65535');
+        }
+        port = String(numericPort);
 
 	const targetOS = resolveTargetOS(parsed.targetOS);
 	const targetArch = resolveTargetArch(parsed.targetArch, targetOS);

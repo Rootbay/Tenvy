@@ -464,12 +464,21 @@
 			buildStatus = 'error';
 			return;
 		}
-		if (trimmedPort && !/^\d+$/.test(trimmedPort)) {
-			buildError = 'Port must be numeric.';
-			pushProgress(buildError, 'error');
-			buildStatus = 'error';
-			return;
-		}
+                if (trimmedPort && !/^\d+$/.test(trimmedPort)) {
+                        buildError = 'Port must be numeric.';
+                        pushProgress(buildError, 'error');
+                        buildStatus = 'error';
+                        return;
+                }
+                if (trimmedPort) {
+                        const numericPort = Number.parseInt(trimmedPort, 10);
+                        if (numericPort < 1 || numericPort > 65535) {
+                                buildError = 'Port must be between 1 and 65535.';
+                                pushProgress(buildError, 'error');
+                                buildStatus = 'error';
+                                return;
+                        }
+                }
 		if (trimmedPollInterval) {
 			const pollValue = Number(trimmedPollInterval);
 			if (!Number.isFinite(pollValue) || pollValue < 1000 || pollValue > 3_600_000) {
