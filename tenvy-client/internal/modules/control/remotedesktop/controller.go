@@ -109,6 +109,13 @@ func (s *RemoteDesktopStreamer) HandleInput(ctx context.Context, payload RemoteD
 	return s.controller.HandleInput(payload)
 }
 
+func (s *RemoteDesktopStreamer) DeliverFrame(ctx context.Context, frame RemoteDesktopFramePacket) error {
+	if s == nil || s.controller == nil {
+		return errors.New("remote desktop subsystem not initialized")
+	}
+	return s.controller.DeliverFrame(ctx, frame)
+}
+
 func (s *RemoteDesktopStreamer) HandleCommand(ctx context.Context, cmd Command) CommandResult {
 	payload, err := decodeRemoteDesktopPayload(cmd.Payload)
 	if err != nil {
@@ -629,6 +636,30 @@ func (c *remoteDesktopSessionController) HandleInput(payload RemoteDesktopComman
 	}
 
 	return processRemoteInput(monitors, settings, filtered)
+}
+
+func (c *remoteDesktopSessionController) DeliverFrame(ctx context.Context, frame RemoteDesktopFramePacket) error {
+	sessionID := strings.TrimSpace(frame.SessionID)
+	if sessionID == "" {
+		return errors.New("missing session identifier")
+	}
+
+	c.mu.Lock()
+	if c.session == nil || c.session.ID != sessionID {
+		c.mu.Unlock()
+		return fmt.Errorf("session %s not active", sessionID)
+	}
+	session := c.session
+	session.Sequence++
+	frame.Sequence = session.Sequence
+	frame.SessionID = session.ID
+	c.mu.Unlock()
+
+	if frame.Timestamp == "" {
+		frame.Timestamp = time.Now().UTC().Format(time.RFC3339Nano)
+	}
+
+	return c.sendFrame(ctx, session, frame)
 }
 
 func (c *remoteDesktopSessionController) Shutdown() {
