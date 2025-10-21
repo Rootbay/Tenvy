@@ -33,6 +33,13 @@ type AudioStreamFormat struct {
 	Channels   int    `json:"channels"`
 }
 
+type AudioStreamTransport struct {
+	Transport string            `json:"transport"`
+	URL       string            `json:"url"`
+	Protocol  string            `json:"protocol,omitempty"`
+	Headers   map[string]string `json:"headers,omitempty"`
+}
+
 type AudioStreamChunk struct {
 	SessionID string            `json:"sessionId"`
 	Sequence  uint64            `json:"sequence"`
@@ -42,15 +49,16 @@ type AudioStreamChunk struct {
 }
 
 type AudioControlCommandPayload struct {
-	Action      string         `json:"action"`
-	RequestID   string         `json:"requestId,omitempty"`
-	SessionID   string         `json:"sessionId,omitempty"`
-	DeviceID    string         `json:"deviceId,omitempty"`
-	DeviceLabel string         `json:"deviceLabel,omitempty"`
-	Direction   AudioDirection `json:"direction,omitempty"`
-	SampleRate  int            `json:"sampleRate,omitempty"`
-	Channels    int            `json:"channels,omitempty"`
-	Encoding    string         `json:"encoding,omitempty"`
+	Action          string                `json:"action"`
+	RequestID       string                `json:"requestId,omitempty"`
+	SessionID       string                `json:"sessionId,omitempty"`
+	DeviceID        string                `json:"deviceId,omitempty"`
+	DeviceLabel     string                `json:"deviceLabel,omitempty"`
+	Direction       AudioDirection        `json:"direction,omitempty"`
+	SampleRate      int                   `json:"sampleRate,omitempty"`
+	Channels        int                   `json:"channels,omitempty"`
+	Encoding        string                `json:"encoding,omitempty"`
+	StreamTransport *AudioStreamTransport `json:"streamTransport,omitempty"`
 }
 
 type AudioDiagnosticResult struct {
