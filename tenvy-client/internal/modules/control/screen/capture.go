@@ -2,7 +2,6 @@ package screen
 
 import (
 	"bytes"
-	"encoding/base64"
 	"errors"
 	"image"
 	"image/jpeg"
@@ -15,10 +14,10 @@ var (
 	imageBufferPool = sync.Pool{New: func() interface{} { return new(bytes.Buffer) }}
 )
 
-// EncodeRGBAAsPNG encodes the provided RGBA buffer to a base64 PNG payload.
-func EncodeRGBAAsPNG(width, height int, data []byte) (string, error) {
+// EncodeRGBAAsPNG encodes the provided RGBA buffer to a PNG byte slice.
+func EncodeRGBAAsPNG(width, height int, data []byte) ([]byte, error) {
 	if len(data) == 0 || width <= 0 || height <= 0 {
-		return "", errors.New("invalid frame data")
+		return nil, errors.New("invalid frame data")
 	}
 
 	img := &image.RGBA{
@@ -31,17 +30,16 @@ func EncodeRGBAAsPNG(width, height int, data []byte) (string, error) {
 	defer imageBufferPool.Put(bufPtr)
 
 	if err := pngEncoder.Encode(bufPtr, img); err != nil {
-		return "", err
+		return nil, err
 	}
-	encoded := base64.StdEncoding.EncodeToString(bufPtr.Bytes())
-	return encoded, nil
+	return append([]byte(nil), bufPtr.Bytes()...), nil
 }
 
-// EncodeRGBAAsJPEG encodes the provided RGBA buffer to a base64 JPEG payload
+// EncodeRGBAAsJPEG encodes the provided RGBA buffer to a JPEG byte slice
 // using the supplied quality value.
-func EncodeRGBAAsJPEG(width, height, quality int, data []byte) (string, error) {
+func EncodeRGBAAsJPEG(width, height, quality int, data []byte) ([]byte, error) {
 	if len(data) == 0 || width <= 0 || height <= 0 {
-		return "", errors.New("invalid frame data")
+		return nil, errors.New("invalid frame data")
 	}
 
 	if quality <= 0 {
@@ -57,8 +55,7 @@ func EncodeRGBAAsJPEG(width, height, quality int, data []byte) (string, error) {
 	defer imageBufferPool.Put(bufPtr)
 
 	if err := jpeg.Encode(bufPtr, img, &jpeg.Options{Quality: quality}); err != nil {
-		return "", err
+		return nil, err
 	}
-	encoded := base64.StdEncoding.EncodeToString(bufPtr.Bytes())
-	return encoded, nil
+	return append([]byte(nil), bufPtr.Bytes()...), nil
 }

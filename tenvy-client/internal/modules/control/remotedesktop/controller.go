@@ -267,6 +267,7 @@ func (c *remoteDesktopSessionController) initializeTransport(ctx context.Context
 			if supportsIntra {
 				features["intraRefresh"] = true
 			}
+			features["binaryFrames"] = true
 			transports = append([]RemoteDesktopTransportCapability{
 				{
 					Transport: RemoteTransportWebRTC,
@@ -304,13 +305,14 @@ func (c *remoteDesktopSessionController) initializeTransport(ctx context.Context
 		selectedCodec = RemoteEncoderAuto
 	}
 	selectedIntra := false
+	selectedFeatures := map[string]bool{}
 	var sender frameTransport
 
 	if err != nil {
 		if offerHandle != nil {
 			offerHandle.Close()
 		}
-		c.assignSessionTransport(session, selectedTransport, nil, selectedCodec, selectedIntra)
+		c.assignSessionTransport(session, selectedTransport, nil, selectedCodec, selectedIntra, nil)
 		c.stopInputBridge(session)
 		return err
 	}
@@ -323,6 +325,9 @@ func (c *remoteDesktopSessionController) initializeTransport(ctx context.Context
 			selectedCodec = normalized
 		}
 		selectedIntra = response.IntraRefresh
+		if len(response.Features) > 0 {
+			selectedFeatures = cloneTransportFeatures(response.Features)
+		}
 
 		if selectedTransport == RemoteTransportWebRTC {
 			if offerHandle != nil && response.WebRTC != nil {
@@ -331,9 +336,11 @@ func (c *remoteDesktopSessionController) initializeTransport(ctx context.Context
 					c.logf("remote desktop webrtc establishment failed: %v", err)
 					selectedTransport = RemoteTransportHTTP
 					sender = nil
+					selectedFeatures = nil
 				}
 			} else {
 				selectedTransport = RemoteTransportHTTP
+				selectedFeatures = nil
 			}
 		}
 	} else {
@@ -346,7 +353,7 @@ func (c *remoteDesktopSessionController) initializeTransport(ctx context.Context
 		} else {
 			err = errors.New("remote desktop negotiation rejected")
 		}
-		c.assignSessionTransport(session, selectedTransport, nil, selectedCodec, selectedIntra)
+		c.assignSessionTransport(session, selectedTransport, nil, selectedCodec, selectedIntra, nil)
 		c.stopInputBridge(session)
 		return err
 	}
@@ -357,9 +364,13 @@ func (c *remoteDesktopSessionController) initializeTransport(ctx context.Context
 
 	if selectedTransport != RemoteTransportWebRTC {
 		selectedIntra = false
+		selectedFeatures = nil
 	}
 
-	c.assignSessionTransport(session, selectedTransport, sender, selectedCodec, selectedIntra)
+	if wt, ok := sender.(*webrtcFrameTransport); ok {
+		wt.SetBinaryEnabled(selectedFeatures["binaryFrames"])
+	}
+	c.assignSessionTransport(session, selectedTransport, sender, selectedCodec, selectedIntra, selectedFeatures)
 	c.configureInputBridge(session, response.Input)
 	if selectedTransport == RemoteTransportWebRTC && sender == nil {
 		if err != nil {
@@ -441,7 +452,18 @@ func (c *remoteDesktopSessionController) sendNegotiationRequest(ctx context.Cont
 	return response, nil
 }
 
-func (c *remoteDesktopSessionController) assignSessionTransport(session *RemoteDesktopSession, transport RemoteDesktopTransport, sender frameTransport, codec RemoteDesktopEncoder, intra bool) {
+func cloneTransportFeatures(features map[string]bool) map[string]bool {
+	if len(features) == 0 {
+		return nil
+	}
+	cloned := make(map[string]bool, len(features))
+	for key, value := range features {
+		cloned[key] = value
+	}
+	return cloned
+}
+
+func (c *remoteDesktopSessionController) assignSessionTransport(session *RemoteDesktopSession, transport RemoteDesktopTransport, sender frameTransport, codec RemoteDesktopEncoder, intra bool, features map[string]bool) {
 	var toClose frameTransport
 	var replaced frameTransport
 	var changed bool
@@ -460,6 +482,7 @@ func (c *remoteDesktopSessionController) assignSessionTransport(session *RemoteD
 		c.session.Transport = transport
 		c.session.transport = sender
 		c.session.Settings.Transport = transport
+		c.session.TransportFeatures = cloneTransportFeatures(features)
 
 		session.Transport = transport
 		session.transport = sender
@@ -468,6 +491,7 @@ func (c *remoteDesktopSessionController) assignSessionTransport(session *RemoteD
 			session.NegotiatedCodec = codec
 		}
 		session.IntraRefresh = intra
+		session.TransportFeatures = cloneTransportFeatures(features)
 
 		changed = previous != transport
 	}

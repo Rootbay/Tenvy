@@ -190,41 +190,41 @@ type RemoteDesktopMonitorInfo struct {
 }
 
 type RemoteDesktopDeltaRect struct {
-	X        int    `json:"x"`
-	Y        int    `json:"y"`
-	Width    int    `json:"width"`
-	Height   int    `json:"height"`
-	Encoding string `json:"encoding"`
-	Data     string `json:"data"`
+	X        int    `json:"x" msgpack:"x"`
+	Y        int    `json:"y" msgpack:"y"`
+	Width    int    `json:"width" msgpack:"width"`
+	Height   int    `json:"height" msgpack:"height"`
+	Encoding string `json:"encoding" msgpack:"encoding"`
+	Data     []byte `json:"data" msgpack:"data"`
 }
 
 type RemoteDesktopMediaSample struct {
-	Kind      string `json:"kind"`
-	Codec     string `json:"codec"`
-	Timestamp int64  `json:"timestamp"`
-	KeyFrame  bool   `json:"keyFrame,omitempty"`
-	Format    string `json:"format,omitempty"`
-	Data      string `json:"data"`
+	Kind      string `json:"kind" msgpack:"kind"`
+	Codec     string `json:"codec" msgpack:"codec"`
+	Timestamp int64  `json:"timestamp" msgpack:"timestamp"`
+	KeyFrame  bool   `json:"keyFrame,omitempty" msgpack:"keyFrame,omitempty"`
+	Format    string `json:"format,omitempty" msgpack:"format,omitempty"`
+	Data      []byte `json:"data" msgpack:"data"`
 }
 
 type RemoteDesktopFramePacket struct {
-	SessionID       string                     `json:"sessionId"`
-	Sequence        uint64                     `json:"sequence"`
-	Timestamp       string                     `json:"timestamp"`
-	Width           int                        `json:"width"`
-	Height          int                        `json:"height"`
-	KeyFrame        bool                       `json:"keyFrame"`
-	Encoding        string                     `json:"encoding"`
-	Transport       RemoteDesktopTransport     `json:"transport,omitempty"`
-	Image           string                     `json:"image,omitempty"`
-	Deltas          []RemoteDesktopDeltaRect   `json:"deltas,omitempty"`
-	Clip            *RemoteDesktopVideoClip    `json:"clip,omitempty"`
-	Encoder         RemoteDesktopEncoder       `json:"encoder,omitempty"`
-	EncoderHardware string                     `json:"encoderHardware,omitempty"`
-	IntraRefresh    bool                       `json:"intraRefresh,omitempty"`
-	Monitors        []RemoteDesktopMonitorInfo `json:"monitors,omitempty"`
-	Metrics         *RemoteDesktopFrameMetrics `json:"metrics,omitempty"`
-	Media           []RemoteDesktopMediaSample `json:"media,omitempty"`
+	SessionID       string                     `json:"sessionId" msgpack:"sessionId"`
+	Sequence        uint64                     `json:"sequence" msgpack:"sequence"`
+	Timestamp       string                     `json:"timestamp" msgpack:"timestamp"`
+	Width           int                        `json:"width" msgpack:"width"`
+	Height          int                        `json:"height" msgpack:"height"`
+	KeyFrame        bool                       `json:"keyFrame" msgpack:"keyFrame"`
+	Encoding        string                     `json:"encoding" msgpack:"encoding"`
+	Transport       RemoteDesktopTransport     `json:"transport,omitempty" msgpack:"transport,omitempty"`
+	Image           []byte                     `json:"image,omitempty" msgpack:"image,omitempty"`
+	Deltas          []RemoteDesktopDeltaRect   `json:"deltas,omitempty" msgpack:"deltas,omitempty"`
+	Clip            *RemoteDesktopVideoClip    `json:"clip,omitempty" msgpack:"clip,omitempty"`
+	Encoder         RemoteDesktopEncoder       `json:"encoder,omitempty" msgpack:"encoder,omitempty"`
+	EncoderHardware string                     `json:"encoderHardware,omitempty" msgpack:"encoderHardware,omitempty"`
+	IntraRefresh    bool                       `json:"intraRefresh,omitempty" msgpack:"intraRefresh,omitempty"`
+	Monitors        []RemoteDesktopMonitorInfo `json:"monitors,omitempty" msgpack:"monitors,omitempty"`
+	Metrics         *RemoteDesktopFrameMetrics `json:"metrics,omitempty" msgpack:"metrics,omitempty"`
+	Media           []RemoteDesktopMediaSample `json:"media,omitempty" msgpack:"media,omitempty"`
 }
 
 type RemoteDesktopTransportCapability struct {
@@ -281,6 +281,7 @@ type RemoteDesktopSessionNegotiationResponse struct {
 	Transport    RemoteDesktopTransport         `json:"transport,omitempty"`
 	Codec        RemoteDesktopEncoder           `json:"codec,omitempty"`
 	IntraRefresh bool                           `json:"intraRefresh,omitempty"`
+	Features     map[string]bool                `json:"features,omitempty"`
 	Reason       string                         `json:"reason,omitempty"`
 	WebRTC       *RemoteDesktopWebRTCAnswer     `json:"webrtc,omitempty"`
 	Input        *RemoteDesktopInputNegotiation `json:"input,omitempty"`
@@ -306,16 +307,16 @@ type RemoteDesktopWebRTCICEServer struct {
 }
 
 type RemoteDesktopVideoClip struct {
-	DurationMs int                      `json:"durationMs"`
-	Frames     []RemoteDesktopClipFrame `json:"frames"`
+	DurationMs int                      `json:"durationMs" msgpack:"durationMs"`
+	Frames     []RemoteDesktopClipFrame `json:"frames" msgpack:"frames"`
 }
 
 type RemoteDesktopClipFrame struct {
-	OffsetMs int    `json:"offsetMs"`
-	Width    int    `json:"width"`
-	Height   int    `json:"height"`
-	Encoding string `json:"encoding"`
-	Data     string `json:"data"`
+	OffsetMs int    `json:"offsetMs" msgpack:"offsetMs"`
+	Width    int    `json:"width" msgpack:"width"`
+	Height   int    `json:"height" msgpack:"height"`
+	Encoding string `json:"encoding" msgpack:"encoding"`
+	Data     []byte `json:"data" msgpack:"data"`
 }
 
 type RemoteDesktopSession struct {
@@ -326,6 +327,7 @@ type RemoteDesktopSession struct {
 	Transport          RemoteDesktopTransport
 	IntraRefresh       bool
 	EncoderHardware    string
+	TransportFeatures  map[string]bool
 	Width              int
 	Height             int
 	TileSize           int

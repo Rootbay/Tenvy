@@ -1,12 +1,16 @@
+import { decode as decodeMsgpack } from '@msgpack/msgpack';
 import type {
 	RemoteDesktopEncoder,
+	RemoteDesktopFramePacket,
 	RemoteDesktopMediaSample,
 	RemoteDesktopTransport,
 	RemoteDesktopTransportDiagnostics,
 	RemoteDesktopWebRTCICEServer
 } from '$lib/types/remote-desktop';
 
-type DataHandler = (payload: RemoteDesktopMediaSample[] | string) => void;
+type DataHandler = (
+	payload: RemoteDesktopMediaSample[] | RemoteDesktopFramePacket | string
+) => void;
 
 interface WebRTCPipelineOptions {
 	offer: string;
@@ -123,21 +127,20 @@ export class WebRTCPipeline {
 		};
 	}
 
-	private decodePayload(data: unknown): RemoteDesktopMediaSample[] | string | null {
+	private decodePayload(
+		data: unknown
+	): RemoteDesktopMediaSample[] | RemoteDesktopFramePacket | string | null {
 		try {
 			if (typeof data === 'string') {
-				return parsePayload(data);
+				return parseStructuredPayload(data);
 			}
-			if (data instanceof ArrayBuffer) {
-				return parsePayload(encoder.decode(data));
-			}
-			if (ArrayBuffer.isView(data)) {
-				const view = data as ArrayBufferView;
-				const slice = Buffer.from(view.buffer, view.byteOffset, view.byteLength);
-				return parsePayload(slice.toString('utf8'));
-			}
-			if (data instanceof Uint8Array) {
-				return parsePayload(Buffer.from(data).toString('utf8'));
+			const bytes = toUint8Array(data);
+			if (bytes) {
+				const decoded = tryDecodeBinaryPayload(bytes);
+				if (decoded) {
+					return decoded;
+				}
+				return parseStructuredPayload(encoder.decode(bytes));
 			}
 		} catch (err) {
 			console.warn('Failed to decode WebRTC media payload', err);
@@ -188,35 +191,205 @@ export class WebRTCPipeline {
 	}
 }
 
-function parsePayload(raw: string): RemoteDesktopMediaSample[] | string | null {
+function toUint8Array(data: unknown): Uint8Array | null {
+	if (data instanceof Uint8Array) {
+		return data;
+	}
+	if (data instanceof ArrayBuffer) {
+		return new Uint8Array(data);
+	}
+	if (ArrayBuffer.isView(data)) {
+		const view = data as ArrayBufferView;
+		return new Uint8Array(view.buffer, view.byteOffset, view.byteLength);
+	}
+	return null;
+}
+
+function tryDecodeBinaryPayload(
+	bytes: Uint8Array
+): RemoteDesktopMediaSample[] | RemoteDesktopFramePacket | string | null {
+	try {
+		const decoded = decodeMsgpack(bytes);
+		return normalizeDecodedPayload(decoded);
+	} catch {
+		return null;
+	}
+}
+
+function parseStructuredPayload(
+	raw: string
+): RemoteDesktopMediaSample[] | RemoteDesktopFramePacket | string | null {
 	const trimmed = raw.trim();
 	if (!trimmed) {
 		return null;
 	}
 	try {
-		const parsed = JSON.parse(trimmed) as
-			| RemoteDesktopMediaSample[]
-			| { media?: RemoteDesktopMediaSample[] }
-			| string
-			| Record<string, unknown>;
-		if (Array.isArray(parsed)) {
-			return parsed;
+		const parsed = JSON.parse(trimmed) as unknown;
+		const normalized = normalizeDecodedPayload(parsed);
+		if (normalized) {
+			return normalized;
 		}
-		if (typeof parsed === 'string') {
-			return parsed;
-		}
-		if (parsed && typeof parsed === 'object') {
-			const media = (parsed as { media?: RemoteDesktopMediaSample[] }).media;
-			if (Array.isArray(media)) {
-				return media as RemoteDesktopMediaSample[];
-			}
-			return trimmed;
-		}
-		return null;
+		return trimmed;
 	} catch (err) {
 		console.warn('Failed to parse WebRTC pipeline payload', err);
 		return null;
 	}
+}
+
+function normalizeDecodedPayload(
+	value: unknown
+): RemoteDesktopMediaSample[] | RemoteDesktopFramePacket | string | null {
+	if (Array.isArray(value)) {
+		const media = normalizeMediaSamples(value);
+		if (media) {
+			return media;
+		}
+	}
+	if (value && typeof value === 'object') {
+		const record = value as Record<string, unknown> & { media?: unknown };
+		if (Array.isArray(record.media)) {
+			const media = normalizeMediaSamples(record.media);
+			if (media) {
+				return media;
+			}
+		}
+		const frame = normalizeFramePacket(record);
+		if (frame) {
+			return frame;
+		}
+	}
+	if (typeof value === 'string') {
+		return value;
+	}
+	return null;
+}
+
+function normalizeFramePacket(value: Record<string, unknown>): RemoteDesktopFramePacket | null {
+	const sessionId = value.sessionId;
+	const width = value.width;
+	const height = value.height;
+	const encoding = value.encoding;
+	const timestamp = value.timestamp;
+	if (
+		typeof sessionId !== 'string' ||
+		typeof width !== 'number' ||
+		typeof height !== 'number' ||
+		typeof encoding !== 'string' ||
+		typeof timestamp !== 'string'
+	) {
+		return null;
+	}
+
+	const frame: RemoteDesktopFramePacket = {
+		...(value as RemoteDesktopFramePacket)
+	};
+
+	const image = toBase64String(value.image);
+	if (image === null) {
+		return null;
+	}
+	if (image !== undefined) {
+		frame.image = image;
+	}
+
+	if (Array.isArray(value.deltas)) {
+		const deltas: RemoteDesktopFramePacket['deltas'] = [];
+		for (const entry of value.deltas as unknown[]) {
+			if (!entry || typeof entry !== 'object') {
+				return null;
+			}
+			const rect = { ...(entry as RemoteDesktopFramePacket['deltas'][number]) };
+			const data = toBase64String((entry as { data?: unknown }).data);
+			if (data === null || data === undefined) {
+				return null;
+			}
+			rect.data = data;
+			deltas.push(rect);
+		}
+		frame.deltas = deltas;
+	}
+
+	if (value.clip && typeof value.clip === 'object') {
+		const clipSource = value.clip as { durationMs?: unknown; frames?: unknown };
+		const framesSource = Array.isArray(clipSource.frames) ? clipSource.frames : [];
+		const frames: RemoteDesktopFramePacket['clip']['frames'] = [];
+		for (const entry of framesSource) {
+			if (!entry || typeof entry !== 'object') {
+				return null;
+			}
+			const clipFrame = {
+				...(entry as RemoteDesktopFramePacket['clip']['frames'][number])
+			};
+			const data = toBase64String((entry as { data?: unknown }).data);
+			if (data === null || data === undefined) {
+				return null;
+			}
+			clipFrame.data = data;
+			frames.push(clipFrame);
+		}
+		frame.clip = {
+			durationMs:
+				typeof clipSource.durationMs === 'number'
+					? clipSource.durationMs
+					: (frame.clip?.durationMs ?? 0),
+			frames
+		};
+	}
+
+	if (Array.isArray(value.media)) {
+		const media = normalizeMediaSamples(value.media);
+		if (!media) {
+			return null;
+		}
+		frame.media = media;
+	}
+
+	return frame;
+}
+
+function normalizeMediaSamples(value: unknown): RemoteDesktopMediaSample[] | null {
+	if (!Array.isArray(value)) {
+		return null;
+	}
+	const normalized: RemoteDesktopMediaSample[] = [];
+	for (const entry of value) {
+		if (!entry || typeof entry !== 'object') {
+			return null;
+		}
+		const sample = {
+			...(entry as RemoteDesktopMediaSample)
+		};
+		const data = toBase64String((entry as { data?: unknown }).data);
+		if (data === null || data === undefined) {
+			return null;
+		}
+		sample.data = data;
+		normalized.push(sample);
+	}
+	return normalized;
+}
+
+function toBase64String(value: unknown): string | undefined | null {
+	if (value === undefined) {
+		return undefined;
+	}
+	if (typeof value === 'string') {
+		return value;
+	}
+	if (value === null) {
+		return '';
+	}
+	if (value instanceof Uint8Array) {
+		return Buffer.from(value).toString('base64');
+	}
+	if (value instanceof ArrayBuffer) {
+		return Buffer.from(value).toString('base64');
+	}
+	if (ArrayBuffer.isView(value)) {
+		const view = value as ArrayBufferView;
+		return Buffer.from(view.buffer, view.byteOffset, view.byteLength).toString('base64');
+	}
+	return null;
 }
 
 function normalizeIceServers(

@@ -3,7 +3,6 @@ package remotedesktop
 import (
 	"bytes"
 	"context"
-	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -987,7 +986,7 @@ func (c *remoteDesktopSessionController) handleImageFrame(
 
 	prev := snapshot.previousFrame
 	keyFrame := snapshot.forceKey || len(prev) != len(current) || len(prev) == 0
-	var imageData string
+	var imageData []byte
 	var deltas []RemoteDesktopDeltaRect
 	var borrowedDeltas []RemoteDesktopDeltaRect
 	defer func() {
@@ -1034,7 +1033,7 @@ func (c *remoteDesktopSessionController) handleImageFrame(
 			}
 		}
 
-		if keyFrame && imageData == "" {
+		if keyFrame && len(imageData) == 0 {
 			encodeStart := time.Now()
 			encoded, encoding, encErr := encodeKeyFrame(snapshot.width, snapshot.height, snapshot.clipQuality, current)
 			if encErr != nil {
@@ -1407,9 +1406,9 @@ func releaseFrameBuffer(buf []byte) {
 	frameBufferPool.Put(buf[:0])
 }
 
-func encodeJPEG(width, height, quality int, data []byte) (string, error) {
+func encodeJPEG(width, height, quality int, data []byte) ([]byte, error) {
 	if len(data) == 0 || width <= 0 || height <= 0 {
-		return "", errors.New("invalid frame data")
+		return nil, errors.New("invalid frame data")
 	}
 
 	img := &image.RGBA{
@@ -1429,14 +1428,13 @@ func encodeJPEG(width, height, quality int, data []byte) (string, error) {
 	err := jpeg.Encode(bufPtr, img, optsPtr)
 	jpegOptionsPool.Put(optsPtr)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 
-	encoded := base64.StdEncoding.EncodeToString(bufPtr.Bytes())
-	return encoded, nil
+	return append([]byte(nil), bufPtr.Bytes()...), nil
 }
 
-func encodeKeyFrame(width, height, quality int, data []byte) (string, string, error) {
+func encodeKeyFrame(width, height, quality int, data []byte) ([]byte, string, error) {
 	useJPEG := shouldUseJPEGForKeyFrame(width, height, quality)
 	if useJPEG {
 		if encoded, err := encodeJPEG(width, height, quality, data); err == nil {
@@ -1446,7 +1444,7 @@ func encodeKeyFrame(width, height, quality int, data []byte) (string, string, er
 
 	encoded, err := screen.EncodeRGBAAsPNG(width, height, data)
 	if err != nil {
-		return "", remoteEncodingPNG, err
+		return nil, remoteEncodingPNG, err
 	}
 	return encoded, remoteEncodingPNG, nil
 }
@@ -1468,19 +1466,19 @@ func shouldUseJPEGForKeyFrame(width, height, quality int) bool {
 	return false
 }
 
-func encodeRegionPNG(data []byte, stride, x, y, w, h int) (string, error) {
+func encodeRegionPNG(data []byte, stride, x, y, w, h int) ([]byte, error) {
 	if stride <= 0 || w <= 0 || h <= 0 {
-		return "", errors.New("invalid region dimensions")
+		return nil, errors.New("invalid region dimensions")
 	}
 
 	start := y*stride + x*4
 	if start < 0 || start >= len(data) {
-		return "", errors.New("region start out of range")
+		return nil, errors.New("region start out of range")
 	}
 
 	needed := (h-1)*stride + w*4
 	if start+needed > len(data) {
-		return "", errors.New("region exceeds frame bounds")
+		return nil, errors.New("region exceeds frame bounds")
 	}
 
 	region := image.RGBA{
@@ -1494,26 +1492,25 @@ func encodeRegionPNG(data []byte, stride, x, y, w, h int) (string, error) {
 	defer imageBufferPool.Put(bufPtr)
 
 	if err := pngEncoder.Encode(bufPtr, &region); err != nil {
-		return "", err
+		return nil, err
 	}
 
-	encoded := base64.StdEncoding.EncodeToString(bufPtr.Bytes())
-	return encoded, nil
+	return append([]byte(nil), bufPtr.Bytes()...), nil
 }
 
-func encodeRegionJPEG(data []byte, stride, x, y, w, h, quality int) (string, error) {
+func encodeRegionJPEG(data []byte, stride, x, y, w, h, quality int) ([]byte, error) {
 	if stride <= 0 || w <= 0 || h <= 0 {
-		return "", errors.New("invalid region dimensions")
+		return nil, errors.New("invalid region dimensions")
 	}
 
 	start := y*stride + x*4
 	if start < 0 || start >= len(data) {
-		return "", errors.New("region start out of range")
+		return nil, errors.New("region start out of range")
 	}
 
 	needed := (h-1)*stride + w*4
 	if start+needed > len(data) {
-		return "", errors.New("region exceeds frame bounds")
+		return nil, errors.New("region exceeds frame bounds")
 	}
 
 	region := image.RGBA{
@@ -1534,11 +1531,10 @@ func encodeRegionJPEG(data []byte, stride, x, y, w, h, quality int) (string, err
 	err := jpeg.Encode(bufPtr, &region, optsPtr)
 	jpegOptionsPool.Put(optsPtr)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 
-	encoded := base64.StdEncoding.EncodeToString(bufPtr.Bytes())
-	return encoded, nil
+	return append([]byte(nil), bufPtr.Bytes()...), nil
 }
 
 func shouldUseJPEGForRegion(width, height, quality int) bool {
