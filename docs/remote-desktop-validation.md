@@ -7,6 +7,7 @@ This guide documents the lightweight scripts that can be used to validate QUIC i
 * A running controller instance that exposes the SvelteKit API.
 * An active remote desktop session for the target agent.
 * `bun` installed locally for executing the helper scripts.
+* For Linux screen capture builds, install PipeWire development headers (e.g. `libpipewire-0.3-dev`, `libspa-0.2-dev`, and `pkg-config`) and compile the agent with `-tags pipewire` to enable the native backend.
 * Environment variables pointing to the controller base URL and the agent identifier:
 
 ```bash
