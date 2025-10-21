@@ -1,6 +1,6 @@
 //go:build !windows && !linux && !darwin
 
-package remotedesktop
+package remotedesktopengine
 
 import "errors"
 

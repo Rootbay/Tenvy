@@ -1,0 +1,44 @@
+{
+  "id": "remote-desktop-engine",
+  "name": "Remote Desktop Engine",
+  "version": "0.1.0",
+  "description": "Standalone remote desktop capture and encoding engine.",
+  "entry": "remote-desktop-engine",
+  "author": "Rootbay",
+  "homepage": "https://github.com/rootbay/tenvy-client",
+  "repositoryUrl": "https://github.com/rootbay/tenvy-client",
+  "license": {
+    "spdxId": "MIT",
+    "url": "https://github.com/rootbay/tenvy-client/blob/main/LICENSE"
+  },
+  "capabilities": [
+    {
+      "name": "remote-desktop.stream",
+      "module": "remote-desktop",
+      "description": "Provides capture and encoding services for the remote desktop module."
+    }
+  ],
+  "requirements": {
+    "minAgentVersion": "0.1.0",
+    "platforms": ["windows", "linux", "macos"],
+    "architectures": ["x86_64", "arm64"],
+    "requiredModules": ["remote-desktop"]
+  },
+  "distribution": {
+    "defaultMode": "automatic",
+    "autoUpdate": true,
+    "signature": {
+      "type": "ed25519",
+      "hash": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+      "publicKey": "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789",
+      "signature": "fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210",
+      "signedAt": "2025-01-01T00:00:00Z",
+      "signer": "release"
+    }
+  },
+  "package": {
+    "artifact": "remote-desktop-engine/remote-desktop-engine.zip",
+    "sizeBytes": 0,
+    "hash": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+  }
+}

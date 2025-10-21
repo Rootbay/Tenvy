@@ -1,6 +1,6 @@
 //go:build darwin
 
-package remotedesktop
+package remotedesktopengine
 
 /*
 #cgo CFLAGS: -x objective-c -fmodules -fobjc-arc

@@ -1,6 +1,6 @@
 //go:build linux
 
-package remotedesktop
+package remotedesktopengine
 
 import (
 	"errors"
