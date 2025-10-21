@@ -1,6 +1,7 @@
 package remotedesktop
 
 import (
+	"errors"
 	"sync"
 	"testing"
 	"time"
@@ -167,12 +168,165 @@ func TestClipEncoderProfilerHook(t *testing.T) {
 	}
 }
 
+func TestEnsureClipEncoderUsesNativeWhenAvailable(t *testing.T) {
+	state := newStreamLoopState(RemoteStreamModeVideo)
+	fake := &fakeClipEncoder{}
+
+	originalNative := nativeHEVCFactory
+	originalFFmpeg := ffmpegHEVCFactory
+	nativeHEVCFactory = func() (clipVideoEncoder, error) {
+		return fake, nil
+	}
+	ffmpegHEVCFactory = func(ffmpegEnvProvider) (clipVideoEncoder, error) {
+		t.Fatalf("unexpected ffmpeg fallback")
+		return nil, errors.New("unexpected")
+	}
+	defer func() {
+		nativeHEVCFactory = originalNative
+		ffmpegHEVCFactory = originalFFmpeg
+	}()
+
+	encoder := state.ensureClipEncoder(remoteClipEncodingHEVC)
+	if encoder == nil {
+		t.Fatalf("expected native encoder instance")
+	}
+	if encoder != fake {
+		t.Fatalf("expected native encoder to be returned")
+	}
+	if state.ffmpegEnv != nil {
+		t.Fatalf("ffmpeg environment should not be initialized when native encoder succeeds")
+	}
+}
+
+func TestNewHEVCVideoEncoderFallsBackWhenNativeUnavailable(t *testing.T) {
+	originalNative := nativeHEVCFactory
+	originalFFmpeg := ffmpegHEVCFactory
+	defer func() {
+		nativeHEVCFactory = originalNative
+		ffmpegHEVCFactory = originalFFmpeg
+	}()
+
+	nativeHEVCFactory = func() (clipVideoEncoder, error) {
+		return nil, ErrNativeEncoderUnavailable
+	}
+
+	var providerCalled bool
+	fake := &fakeClipEncoder{}
+	ffmpegHEVCFactory = func(provider ffmpegEnvProvider) (clipVideoEncoder, error) {
+		providerCalled = true
+		if provider == nil {
+			t.Fatalf("expected provider to be forwarded to ffmpeg factory")
+		}
+		env, err := provider()
+		if err != nil {
+			return nil, err
+		}
+		if env == nil {
+			t.Fatalf("expected ffmpeg environment from provider")
+		}
+		return fake, nil
+	}
+
+	env := &ffmpegEnvironment{path: "fake-ffmpeg", caps: &ffmpegEncoderCapabilities{encoders: map[string]struct{}{}}}
+	encoder, err := newHEVCVideoEncoder(func() (*ffmpegEnvironment, error) {
+		return env, nil
+	})
+	if err != nil {
+		t.Fatalf("expected ffmpeg fallback to succeed, got %v", err)
+	}
+	if encoder != fake {
+		t.Fatalf("expected ffmpeg encoder to be returned")
+	}
+	if !providerCalled {
+		t.Fatalf("expected ffmpeg factory to be invoked")
+	}
+}
+
+func TestNewHEVCVideoEncoderNativeTelemetry(t *testing.T) {
+	defer SetClipEncoderProfiler(nil)
+
+	originalNative := nativeHEVCFactory
+	originalFFmpeg := ffmpegHEVCFactory
+	defer func() {
+		nativeHEVCFactory = originalNative
+		ffmpegHEVCFactory = originalFFmpeg
+	}()
+
+	nativeErr := errors.New("native backend failed")
+	nativeHEVCFactory = func() (clipVideoEncoder, error) {
+		return nil, nativeErr
+	}
+
+	fake := &fakeClipEncoder{}
+	ffmpegHEVCFactory = func(provider ffmpegEnvProvider) (clipVideoEncoder, error) {
+		if provider == nil {
+			t.Fatalf("expected provider for ffmpeg fallback")
+		}
+		if _, err := provider(); err != nil {
+			return nil, err
+		}
+		return fake, nil
+	}
+
+	var (
+		mu     sync.Mutex
+		events []ClipEncoderEvent
+	)
+	SetClipEncoderProfiler(clipEncoderProfilerFunc(func(event ClipEncoderEvent) {
+		mu.Lock()
+		events = append(events, event)
+		mu.Unlock()
+	}))
+
+	env := &ffmpegEnvironment{path: "fake-ffmpeg", caps: &ffmpegEncoderCapabilities{encoders: map[string]struct{}{}}}
+	encoder, err := newHEVCVideoEncoder(func() (*ffmpegEnvironment, error) {
+		return env, nil
+	})
+	if err != nil {
+		t.Fatalf("expected encoder initialization to succeed, got %v", err)
+	}
+	if encoder != fake {
+		t.Fatalf("expected ffmpeg encoder to be returned after telemetry test setup")
+	}
+
+	mu.Lock()
+	defer mu.Unlock()
+	if len(events) < 2 {
+		t.Fatalf("expected at least two telemetry events, got %d", len(events))
+	}
+
+	var nativeEvent, ffmpegEvent *ClipEncoderEvent
+	for i := range events {
+		event := events[i]
+		if event.Candidate == "native" && nativeEvent == nil {
+			nativeEvent = &event
+		}
+		if event.Candidate == "ffmpeg" {
+			ffmpegEvent = &event
+		}
+	}
+	if nativeEvent == nil {
+		t.Fatalf("expected native telemetry event to be recorded")
+	}
+	if !errors.Is(nativeEvent.Err, nativeErr) {
+		t.Fatalf("expected native telemetry error %v, got %v", nativeErr, nativeEvent.Err)
+	}
+	if ffmpegEvent == nil {
+		t.Fatalf("expected ffmpeg telemetry event to be recorded")
+	}
+	if ffmpegEvent.Err != nil {
+		t.Fatalf("expected successful ffmpeg telemetry event, got error %v", ffmpegEvent.Err)
+	}
+}
+
 func BenchmarkFFmpegClipEncoderQueueFlush(b *testing.B) {
 	env, err := newFFmpegEnvironment()
 	if err != nil {
 		b.Skipf("ffmpeg not available: %v", err)
 	}
-	encoder, err := newAVCVideoEncoder(env)
+	encoder, err := newAVCVideoEncoder(func() (*ffmpegEnvironment, error) {
+		return env, nil
+	})
 	if err != nil {
 		b.Skipf("unable to initialize encoder: %v", err)
 	}

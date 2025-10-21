@@ -181,25 +181,20 @@ func (s *streamLoopState) ensureClipEncoder(kind string) clipVideoEncoder {
 		return state.encoder
 	}
 	var (
-		encoder clipVideoEncoder
-		err     error
+		encoder  clipVideoEncoder
+		err      error
+		provider ffmpegEnvProvider
 	)
-	var env *ffmpegEnvironment
 	if kind == remoteClipEncodingHEVC || kind == remoteClipEncodingH264 {
-		env, err = s.ensureFFmpegEnvironment()
-		if err != nil {
-			state.init = true
-			state.err = err
-			state.encoder = nil
-			state.queued = 0
-			return nil
+		provider = func() (*ffmpegEnvironment, error) {
+			return s.ensureFFmpegEnvironment()
 		}
 	}
 	switch kind {
 	case remoteClipEncodingHEVC:
-		encoder, err = newHEVCVideoEncoder(env)
+		encoder, err = newHEVCVideoEncoder(provider)
 	case remoteClipEncodingH264:
-		encoder, err = newAVCVideoEncoder(env)
+		encoder, err = newAVCVideoEncoder(provider)
 	default:
 		err = fmt.Errorf("unsupported clip encoder: %s", kind)
 	}
