@@ -8,6 +8,7 @@ import (
 	"log"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -271,5 +272,50 @@ func TestReRegisterPreservesPendingResults(t *testing.T) {
 		} else if count != 0 {
 			t.Fatalf("expected result store to be empty after sync, got %d", count)
 		}
+	}
+}
+
+func TestPerformSyncIncludesCustomHeadersAndCookies(t *testing.T) {
+	t.Parallel()
+
+	received := make(chan http.Header, 1)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		select {
+		case received <- r.Header.Clone():
+		default:
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(protocol.AgentSyncResponse{Config: protocol.AgentConfig{}})
+	}))
+	defer server.Close()
+
+	agent := &Agent{
+		id:             "agent-1",
+		key:            "token-1",
+		baseURL:        server.URL,
+		client:         server.Client(),
+		logger:         log.New(io.Discard, "", 0),
+		requestHeaders: []CustomHeader{{Key: "X-Test", Value: "value"}},
+		requestCookies: []CustomCookie{{Name: "session", Value: "abc"}},
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+
+	if _, err := agent.performSync(ctx, statusOnline, nil); err != nil {
+		t.Fatalf("performSync failed: %v", err)
+	}
+
+	select {
+	case headers := <-received:
+		if got := headers.Get("X-Test"); got != "value" {
+			t.Fatalf("expected custom header to be set, got %q", got)
+		}
+		cookieHeader := headers.Get("Cookie")
+		if cookieHeader == "" || !strings.Contains(cookieHeader, "session=abc") {
+			t.Fatalf("expected custom cookie to be present, got %q", cookieHeader)
+		}
+	case <-time.After(time.Second):
+		t.Fatalf("no sync request captured")
 	}
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/ed25519"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"log"
 	"net"
@@ -20,16 +21,57 @@ import (
 // Run boots and manages the lifecycle of the agent. It blocks until the
 // provided context is cancelled or a fatal error occurs.
 func Run(ctx context.Context, opts RuntimeOptions) error {
-	opts.ensureDefaults()
-	if err := opts.Validate(); err != nil {
-		return err
+	runner := func(runCtx context.Context, runOpts RuntimeOptions) error {
+		runOpts.ensureDefaults()
+		if err := runOpts.Validate(); err != nil {
+			return err
+		}
+		return runAgentOnce(runCtx, runOpts)
 	}
 
+	if opts.Watchdog.Enabled {
+		return runWithWatchdog(ctx, opts, runner)
+	}
+
+	return runner(ctx, opts)
+}
+
+func runWithWatchdog(ctx context.Context, opts RuntimeOptions, runner func(context.Context, RuntimeOptions) error) error {
+	interval := opts.Watchdog.Interval
+	if interval <= 0 {
+		interval = time.Minute
+	}
+
+	for {
+		err := runner(ctx, opts)
+		if err == nil {
+			return nil
+		}
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			return err
+		}
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+		if opts.Logger != nil {
+			opts.Logger.Printf("agent terminated unexpectedly: %v; restarting in %s", err, interval)
+		}
+		if sleepErr := sleepContext(ctx, interval); sleepErr != nil {
+			return sleepErr
+		}
+	}
+}
+
+func runAgentOnce(ctx context.Context, opts RuntimeOptions) error {
 	normalizedServerURL, err := canonicalizeServerURL(opts.ServerURL)
 	if err != nil {
 		return err
 	}
 	opts.ServerURL = normalizedServerURL
+
+	if err := enforceExecutionGates(ctx, opts.Logger, opts.Execution, opts.ServerURL); err != nil {
+		return err
+	}
 
 	if err := enforcePrivilegeRequirement(opts.Preferences.ForceAdmin); err != nil {
 		return err
@@ -59,7 +101,17 @@ func Run(ctx context.Context, opts RuntimeOptions) error {
 
 	client := opts.HTTPClient
 
-	registration, err := registerAgentWithRetry(ctx, opts.Logger, client, opts.ServerURL, opts.SharedSecret, metadata, opts.maxBackoffOverride())
+	registration, err := registerAgentWithRetry(
+		ctx,
+		opts.Logger,
+		client,
+		opts.ServerURL,
+		opts.SharedSecret,
+		metadata,
+		opts.maxBackoffOverride(),
+		opts.CustomHeaders,
+		opts.CustomCookies,
+	)
 	if err != nil {
 		return fmt.Errorf("failed to register agent: %w", err)
 	}
@@ -85,6 +137,8 @@ func Run(ctx context.Context, opts RuntimeOptions) error {
 		preferences:     opts.Preferences,
 		buildVersion:    opts.BuildVersion,
 		timing:          opts.TimingOverride,
+		requestHeaders:  opts.CustomHeaders,
+		requestCookies:  opts.CustomCookies,
 	}
 
 	agent.reloadResultCache()

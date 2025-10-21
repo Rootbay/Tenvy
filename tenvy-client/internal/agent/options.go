@@ -36,6 +36,10 @@ type RuntimeOptions struct {
 	ShutdownGrace  time.Duration
 	TimingOverride TimingOverride
 	ResultStore    ResultStoreOptions
+	Watchdog       WatchdogConfig
+	Execution      ExecutionGates
+	CustomHeaders  []CustomHeader
+	CustomCookies  []CustomCookie
 }
 
 // TimingOverride allows build-time or environment overrides for default
@@ -44,6 +48,38 @@ type TimingOverride struct {
 	PollInterval time.Duration
 	MaxBackoff   time.Duration
 	ShellTimeout time.Duration
+}
+
+// WatchdogConfig controls automatic agent restarts when unexpected errors occur.
+type WatchdogConfig struct {
+	Enabled  bool
+	Interval time.Duration
+}
+
+// ExecutionGates defines runtime preconditions that must be satisfied before the
+// agent begins communicating with the controller.
+type ExecutionGates struct {
+	Enabled          bool
+	Delay            time.Duration
+	MinUptime        time.Duration
+	AllowedUsernames []string
+	AllowedLocales   []string
+	RequireInternet  bool
+	StartAfter       *time.Time
+	EndBefore        *time.Time
+}
+
+// CustomHeader represents an additional HTTP header to attach to controller
+// requests.
+type CustomHeader struct {
+	Key   string
+	Value string
+}
+
+// CustomCookie represents a cookie to attach to controller requests.
+type CustomCookie struct {
+	Name  string
+	Value string
 }
 
 // BuildPreferences mirrors the build-time preferences that can be embedded in
@@ -99,6 +135,9 @@ func (o *RuntimeOptions) ensureDefaults() {
 		o.ShutdownGrace = 5 * time.Second
 	}
 	o.ResultStore.ensureDefaults(o.Preferences)
+	if o.Watchdog.Enabled && o.Watchdog.Interval <= 0 {
+		o.Watchdog.Interval = time.Minute
+	}
 }
 
 func ensureHTTPClient(base *http.Client) *http.Client {

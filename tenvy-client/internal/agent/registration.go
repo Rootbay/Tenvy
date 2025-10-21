@@ -58,14 +58,23 @@ func (e *registrationError) RetryAfter() time.Duration {
 	return e.retryAfter
 }
 
-func registerAgentWithRetry(ctx context.Context, logger *log.Logger, client *http.Client, serverURL, token string, metadata protocol.AgentMetadata, maxBackoff time.Duration) (*protocol.AgentRegistrationResponse, error) {
+func registerAgentWithRetry(
+	ctx context.Context,
+	logger *log.Logger,
+	client *http.Client,
+	serverURL, token string,
+	metadata protocol.AgentMetadata,
+	maxBackoff time.Duration,
+	headers []CustomHeader,
+	cookies []CustomCookie,
+) (*protocol.AgentRegistrationResponse, error) {
 	if maxBackoff <= 0 {
 		maxBackoff = defaultBackoff
 	}
 
 	backoff := time.Second
 	for attempt := 1; ; attempt++ {
-		registration, err := registerAgent(ctx, client, serverURL, token, metadata)
+		registration, err := registerAgent(ctx, client, serverURL, token, metadata, headers, cookies)
 		if err == nil {
 			if attempt > 1 {
 				logger.Printf("registration succeeded after %d attempts", attempt)
@@ -124,7 +133,14 @@ func registerAgentWithRetry(ctx context.Context, logger *log.Logger, client *htt
 	}
 }
 
-func registerAgent(ctx context.Context, client *http.Client, serverURL, token string, metadata protocol.AgentMetadata) (*protocol.AgentRegistrationResponse, error) {
+func registerAgent(
+	ctx context.Context,
+	client *http.Client,
+	serverURL, token string,
+	metadata protocol.AgentMetadata,
+	headers []CustomHeader,
+	cookies []CustomCookie,
+) (*protocol.AgentRegistrationResponse, error) {
 	request := protocol.AgentRegistrationRequest{Metadata: metadata}
 	if strings.TrimSpace(token) != "" {
 		request.Token = token
@@ -143,6 +159,7 @@ func registerAgent(ctx context.Context, client *http.Client, serverURL, token st
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
 	req.Header.Set("User-Agent", fmt.Sprintf("tenvy-client/%s", metadata.Version))
+	applyRequestDecorations(req, headers, cookies)
 
 	resp, err := client.Do(req)
 	if err != nil {

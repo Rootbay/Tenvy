@@ -179,6 +179,7 @@ func (a *Agent) performSync(ctx context.Context, status string, results []protoc
 	if strings.TrimSpace(a.key) != "" {
 		req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", a.key))
 	}
+	applyRequestDecorations(req, a.requestHeaders, a.requestCookies)
 
 	resp, err := a.client.Do(req)
 	if err != nil {
@@ -245,7 +246,17 @@ func (a *Agent) reRegister(ctx context.Context) error {
 	}
 
 	metadata := CollectMetadataWithClient(a.buildVersion, a.client)
-	registration, err := registerAgentWithRetry(ctx, a.logger, a.client, a.baseURL, a.sharedSecret, metadata, a.maxBackoff())
+	registration, err := registerAgentWithRetry(
+		ctx,
+		a.logger,
+		a.client,
+		a.baseURL,
+		a.sharedSecret,
+		metadata,
+		a.maxBackoff(),
+		a.requestHeaders,
+		a.requestCookies,
+	)
 	if err != nil {
 		return err
 	}
