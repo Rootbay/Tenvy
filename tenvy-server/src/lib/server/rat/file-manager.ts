@@ -41,8 +41,10 @@ function cloneDirectory(listing: DirectoryListing): DirectoryListing {
 }
 
 function cloneFile(resource: FileContent): FileContent {
+	const { stream, ...rest } = resource;
 	return {
-		...resource,
+		...rest,
+		stream: undefined,
 		root: normalizePath(resource.root),
 		path: normalizePath(resource.path)
 	} satisfies FileContent;
@@ -109,6 +111,31 @@ function assertDirectoryResource(resource: unknown): asserts resource is Directo
 	listing.entries.forEach(assertEntry);
 }
 
+function assertFileStream(stream: unknown): asserts stream is NonNullable<FileContent['stream']> {
+	if (!stream || typeof stream !== 'object') {
+		throw new FileManagerError('File stream descriptor is required', 400);
+	}
+	const descriptor = stream as Partial<NonNullable<FileContent['stream']>>;
+	if (!isNonEmptyString(descriptor.id)) {
+		throw new FileManagerError('File stream identifier is required', 400);
+	}
+	if (!isNonEmptyString(descriptor.part)) {
+		throw new FileManagerError('File stream part identifier is required', 400);
+	}
+	if (!Number.isInteger(descriptor.index) || (descriptor.index ?? 0) < 0) {
+		throw new FileManagerError('File stream chunk index must be a non-negative integer', 400);
+	}
+	if (!Number.isInteger(descriptor.count) || (descriptor.count ?? 0) <= 0) {
+		throw new FileManagerError('File stream chunk count must be a positive integer', 400);
+	}
+	if (!Number.isInteger(descriptor.offset) || (descriptor.offset ?? 0) < 0) {
+		throw new FileManagerError('File stream chunk offset must be a non-negative integer', 400);
+	}
+	if (!Number.isInteger(descriptor.length) || (descriptor.length ?? 0) < 0) {
+		throw new FileManagerError('File stream chunk length must be a non-negative integer', 400);
+	}
+}
+
 function assertFileResource(resource: unknown): asserts resource is FileContent {
 	if (!resource || typeof resource !== 'object') {
 		throw new FileManagerError('File content payload is required', 400);
@@ -135,14 +162,28 @@ function assertFileResource(resource: unknown): asserts resource is FileContent 
 	if (file.encoding !== 'utf-8' && file.encoding !== 'base64') {
 		throw new FileManagerError('Unsupported file encoding', 400);
 	}
-	if (typeof file.content !== 'string') {
+	const hasStream = file.stream !== undefined && file.stream !== null;
+	if (hasStream) {
+		assertFileStream(file.stream);
+	}
+	if (!hasStream && typeof file.content !== 'string') {
 		throw new FileManagerError('File content must be a string', 400);
+	}
+	if (file.content !== undefined && typeof file.content !== 'string') {
+		throw new FileManagerError('File content must be a string when provided', 400);
 	}
 }
 
 interface ResourceRecord<T extends FileManagerResource> {
 	value: T;
 	storedAt: Date;
+}
+
+interface PendingFileStream {
+	metadata: FileContent;
+	chunks: Map<number, Buffer>;
+	totalChunks: number;
+	updatedAt: number;
 }
 
 function ensureAgent(id: string | undefined): asserts id is string {
@@ -178,6 +219,8 @@ export class FileManagerStore {
 
 	private files = new Map<string, Map<string, ResourceRecord<FileContent>>>();
 
+	private pendingStreams = new Map<string, Map<string, PendingFileStream>>();
+
 	private roots = new Map<string, string>();
 
 	private defaults = new Map<string, string>();
@@ -193,7 +236,7 @@ export class FileManagerStore {
 		this.pruneIntervalMs = options.pruneIntervalMs ?? 30_000;
 	}
 
-	ingestResource(agentId: string, resource: unknown): FileManagerResource {
+	ingestResource(agentId: string, resource: unknown, chunk?: Buffer): FileManagerResource {
 		ensureAgent(agentId);
 
 		if (!resource || typeof resource !== 'object') {
@@ -207,18 +250,21 @@ export class FileManagerStore {
 
 		if ((resource as { type?: string }).type === 'file') {
 			assertFileResource(resource);
-			return this.storeFile(agentId, resource);
+			return this.storeFileResource(agentId, resource, chunk);
 		}
 
 		throw new FileManagerError('Unsupported file manager resource type', 400);
 	}
 
-	ingestResources(agentId: string, resources: unknown[]): FileManagerResource[] {
+	ingestResources(
+		agentId: string,
+		resources: { resource: unknown; chunk?: Buffer }[]
+	): FileManagerResource[] {
 		ensureAgent(agentId);
 		if (!Array.isArray(resources)) {
 			throw new FileManagerError('Resources payload must be an array', 400);
 		}
-		return resources.map((resource) => this.ingestResource(agentId, resource));
+		return resources.map((item) => this.ingestResource(agentId, item.resource, item.chunk));
 	}
 
 	getResource(agentId: string, path?: string | null): FileManagerResource {
@@ -262,6 +308,7 @@ export class FileManagerStore {
 		ensureAgent(agentId);
 		this.directories.delete(agentId);
 		this.files.delete(agentId);
+		this.pendingStreams.delete(agentId);
 		this.defaults.delete(agentId);
 		this.roots.delete(agentId);
 		this.lastPruned.delete(agentId);
@@ -294,6 +341,26 @@ export class FileManagerStore {
 		return cloneDirectory(cloned);
 	}
 
+	private storeFileResource(
+		agentId: string,
+		resource: FileContent,
+		chunk?: Buffer
+	): FileManagerResource {
+		if (resource.stream) {
+			if (!chunk || !Buffer.isBuffer(chunk)) {
+				throw new FileManagerError('File stream chunk payload is required', 400);
+			}
+			this.acceptStreamChunk(agentId, resource, chunk);
+			return resource;
+		}
+
+		if (typeof resource.content !== 'string') {
+			throw new FileManagerError('File content must be a string', 400);
+		}
+
+		return this.storeFile(agentId, resource);
+	}
+
 	private storeFile(agentId: string, resource: FileContent): FileContent {
 		const now = Date.now();
 		this.pruneAgent(agentId, now, true);
@@ -305,6 +372,96 @@ export class FileManagerStore {
 			this.roots.set(agentId, cloned.root);
 		}
 		return cloneFile(cloned);
+	}
+
+	private acceptStreamChunk(agentId: string, resource: FileContent, chunk: Buffer): void {
+		const descriptor = resource.stream;
+		if (!descriptor) {
+			throw new FileManagerError('File stream descriptor is required', 400);
+		}
+
+		const streamId = descriptor.id.trim();
+		if (!streamId) {
+			throw new FileManagerError('File stream identifier is required', 400);
+		}
+		if (descriptor.index < 0 || descriptor.count <= 0 || descriptor.index >= descriptor.count) {
+			throw new FileManagerError('Invalid file stream chunk metadata', 400);
+		}
+		if (descriptor.length < 0 || descriptor.offset < 0) {
+			throw new FileManagerError('Invalid file stream chunk range', 400);
+		}
+		if (descriptor.offset + descriptor.length > resource.size) {
+			throw new FileManagerError('File stream chunk exceeds declared file size', 400);
+		}
+		if (chunk.length !== descriptor.length) {
+			throw new FileManagerError('File stream chunk length mismatch', 409);
+		}
+
+		let streams = this.pendingStreams.get(agentId);
+		if (!streams) {
+			streams = new Map<string, PendingFileStream>();
+			this.pendingStreams.set(agentId, streams);
+		}
+
+		const now = Date.now();
+		let pending = streams.get(streamId);
+		if (!pending) {
+			if (descriptor.index !== 0) {
+				throw new FileManagerError('Out-of-order file stream chunk received', 409);
+			}
+			const metadata = cloneFile(resource);
+			metadata.stream = undefined;
+			metadata.content = undefined;
+			metadata.encoding = 'base64';
+			pending = {
+				metadata,
+				chunks: new Map<number, Buffer>(),
+				totalChunks: descriptor.count,
+				updatedAt: now
+			} satisfies PendingFileStream;
+			streams.set(streamId, pending);
+		} else if (pending.totalChunks !== descriptor.count) {
+			throw new FileManagerError('File stream chunk count mismatch', 409);
+		}
+
+		const existing = pending.chunks.get(descriptor.index);
+		if (existing) {
+			if (existing.length !== chunk.length) {
+				throw new FileManagerError('File stream chunk length mismatch on retry', 409);
+			}
+			pending.updatedAt = now;
+			return;
+		}
+
+		pending.chunks.set(descriptor.index, chunk);
+		pending.updatedAt = now;
+
+		if (pending.chunks.size !== pending.totalChunks) {
+			return;
+		}
+
+		const ordered: Buffer[] = [];
+		for (let i = 0; i < pending.totalChunks; i += 1) {
+			const part = pending.chunks.get(i);
+			if (!part) {
+				throw new FileManagerError('Missing file stream chunk during assembly', 500);
+			}
+			ordered.push(part);
+		}
+
+		const combined = Buffer.concat(ordered);
+		const completed: FileContent = {
+			...pending.metadata,
+			encoding: 'base64',
+			content: combined.toString('base64')
+		} satisfies FileContent;
+
+		this.storeFile(agentId, completed);
+
+		streams.delete(streamId);
+		if (streams.size === 0) {
+			this.pendingStreams.delete(agentId);
+		}
 	}
 
 	private pruneAgent(agentId: string, now: number, force = false): void {
@@ -337,6 +494,18 @@ export class FileManagerStore {
 
 		const prunedDirectories = pruneMap(directories);
 		const prunedFiles = pruneMap(files);
+
+		const streams = this.pendingStreams.get(agentId);
+		if (streams) {
+			for (const [key, pending] of streams) {
+				if (pending.updatedAt <= cutoff) {
+					streams.delete(key);
+				}
+			}
+			if (streams.size === 0) {
+				this.pendingStreams.delete(agentId);
+			}
+		}
 
 		if (prunedDirectories === undefined) {
 			this.directories.delete(agentId);
