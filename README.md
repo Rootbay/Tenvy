@@ -57,6 +57,18 @@ Wayland sessions on Linux now rely on a virtual input device created via `/dev/u
 - Ensure the `uinput` kernel module is available and `/dev/uinput` is writable by the agent process (typically by adding the user to the `input` group or configuring udev rules).
 - wlroots/Wayland compositors may require enabling virtual input support; consult your compositor documentation if events are ignored.
 
+### 🎞️ Native Clip Encoder Toolchains
+
+Remote desktop clips now prefer platform encoders before falling back to `ffmpeg`. Building those native backends requires the following toolchains in addition to a Go toolchain with `CGO_ENABLED=1`:
+
+| Platform | Required SDKs / Packages | Notes |
+|----------|--------------------------|-------|
+| Windows  | Windows 10 (or later) SDK with Media Foundation headers and `mfplat.lib` on the link path. | Builds must run in a Visual Studio Developer Command Prompt or have `VCINSTALLDIR`/`WindowsSdkDir` exported so `go build` can find the libraries. |
+| macOS    | Xcode Command Line Tools (or full Xcode) providing `VideoToolbox.framework`. | `CGO_CFLAGS`/`CGO_LDFLAGS` should include `-framework VideoToolbox` when cross-compiling. |
+| Linux    | VA-API development headers (`libva-dev` or distribution equivalent) and access to `/dev/dri/renderD128`. | When VA-API is unavailable the agent falls back to the software encoder path. |
+
+Cross-compiling the agent should add the relevant SDK paths via `PKG_CONFIG_PATH`/`CGO_CFLAGS`/`CGO_LDFLAGS`. When these prerequisites are missing, the encoder factory records telemetry and the runtime transparently falls back to the existing `ffmpeg` worker.
+
 ---
 
 ### 🔑 Development access voucher

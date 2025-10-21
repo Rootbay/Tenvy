@@ -87,6 +87,18 @@ func recordClipEncoderEvent(event ClipEncoderEvent) {
 	profiler.RecordClipEncoderEvent(event)
 }
 
+var (
+	ErrNativeEncoderUnavailable = errors.New("native encoder unavailable")
+
+	nativeHEVCFactory = platformNewNativeHEVCVideoEncoder
+	nativeAVCFactory  = platformNewNativeAVCVideoEncoder
+
+	ffmpegHEVCFactory = newFFmpegHEVCVideoEncoder
+	ffmpegAVCFactory  = newFFmpegAVCVideoEncoder
+)
+
+type ffmpegEnvProvider func() (*ffmpegEnvironment, error)
+
 type ffmpegClipEncoder struct {
 	env        *ffmpegEnvironment
 	container  string
@@ -153,13 +165,55 @@ func newFFmpegEnvironment() (*ffmpegEnvironment, error) {
 	return &ffmpegEnvironment{path: path, caps: caps}, nil
 }
 
-func newHEVCVideoEncoder(env *ffmpegEnvironment) (clipVideoEncoder, error) {
-	if env == nil {
-		var err error
-		env, err = newFFmpegEnvironment()
-		if err != nil {
-			return nil, err
-		}
+func newHEVCVideoEncoder(provider ffmpegEnvProvider) (clipVideoEncoder, error) {
+	start := time.Now()
+	encoder, err := nativeHEVCFactory()
+	if err == nil {
+		recordClipEncoderEvent(ClipEncoderEvent{Encoder: remoteClipEncodingHEVC, Candidate: "native", Event: "init", Duration: time.Since(start)})
+		return encoder, nil
+	}
+	recordClipEncoderEvent(ClipEncoderEvent{Encoder: remoteClipEncodingHEVC, Candidate: "native", Event: "init", Duration: time.Since(start), Err: err})
+
+	encoder, ferr := ffmpegHEVCFactory(provider)
+	duration := time.Since(start)
+	if ferr != nil {
+		recordClipEncoderEvent(ClipEncoderEvent{Encoder: remoteClipEncodingHEVC, Candidate: "ffmpeg", Event: "init", Duration: duration, Err: ferr})
+		return nil, ferr
+	}
+	recordClipEncoderEvent(ClipEncoderEvent{Encoder: remoteClipEncodingHEVC, Candidate: "ffmpeg", Event: "init", Duration: duration})
+	return encoder, nil
+}
+
+func newAVCVideoEncoder(provider ffmpegEnvProvider) (clipVideoEncoder, error) {
+	start := time.Now()
+	encoder, err := nativeAVCFactory()
+	if err == nil {
+		recordClipEncoderEvent(ClipEncoderEvent{Encoder: remoteClipEncodingH264, Candidate: "native", Event: "init", Duration: time.Since(start)})
+		return encoder, nil
+	}
+	recordClipEncoderEvent(ClipEncoderEvent{Encoder: remoteClipEncodingH264, Candidate: "native", Event: "init", Duration: time.Since(start), Err: err})
+
+	encoder, ferr := ffmpegAVCFactory(provider)
+	duration := time.Since(start)
+	if ferr != nil {
+		recordClipEncoderEvent(ClipEncoderEvent{Encoder: remoteClipEncodingH264, Candidate: "ffmpeg", Event: "init", Duration: duration, Err: ferr})
+		return nil, ferr
+	}
+	recordClipEncoderEvent(ClipEncoderEvent{Encoder: remoteClipEncodingH264, Candidate: "ffmpeg", Event: "init", Duration: duration})
+	return encoder, nil
+}
+
+func resolveFFmpegEnvironment(provider ffmpegEnvProvider) (*ffmpegEnvironment, error) {
+	if provider != nil {
+		return provider()
+	}
+	return newFFmpegEnvironment()
+}
+
+func newFFmpegHEVCVideoEncoder(provider ffmpegEnvProvider) (clipVideoEncoder, error) {
+	env, err := resolveFFmpegEnvironment(provider)
+	if err != nil {
+		return nil, err
 	}
 	caps := env.caps
 	candidates := make([]ffmpegEncoderCandidate, 0, 5)
@@ -195,13 +249,10 @@ func newHEVCVideoEncoder(env *ffmpegEnvironment) (clipVideoEncoder, error) {
 	}, nil
 }
 
-func newAVCVideoEncoder(env *ffmpegEnvironment) (clipVideoEncoder, error) {
-	if env == nil {
-		var err error
-		env, err = newFFmpegEnvironment()
-		if err != nil {
-			return nil, err
-		}
+func newFFmpegAVCVideoEncoder(provider ffmpegEnvProvider) (clipVideoEncoder, error) {
+	env, err := resolveFFmpegEnvironment(provider)
+	if err != nil {
+		return nil, err
 	}
 	caps := env.caps
 	candidates := make([]ffmpegEncoderCandidate, 0, 6)

@@ -60,3 +60,11 @@ go test ./tenvy-client/internal/modules/control/screen \
 ```
 
 These tests validate backend selection, surface capability diagnostics, and simulate multi-GPU monitor topologies so regressions are caught without requiring hardware swaps.
+
+To cover the clip encoder matrix without requiring a bundled `ffmpeg`, run the targeted native encoder simulations:
+
+```bash
+go test ./tenvy-client/internal/modules/control/remotedesktop -run Native
+```
+
+The unit tests inject platform-specific factories so Windows (Media Foundation), macOS (VideoToolbox), and Linux (VA-API) code paths are exercised even when cross-compiling from another host.
