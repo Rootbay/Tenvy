@@ -1,9 +1,15 @@
 package agent
 
 import (
+	"context"
+	"encoding/json"
 	"fmt"
+	"io"
+	"log"
 	"net/http"
+	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/rootbay/tenvy-client/internal/protocol"
 )
@@ -104,5 +110,109 @@ func TestShouldReRegister(t *testing.T) {
 				t.Fatalf("unexpected result for %s: got %t want %t", tc.name, got, tc.want)
 			}
 		})
+	}
+}
+
+func TestReRegisterPreservesPendingResults(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	expectedIDs := []string{"result-1", "result-2"}
+
+	resultsCh := make(chan []protocol.CommandResult, 1)
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/agents/register", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		response := protocol.AgentRegistrationResponse{
+			AgentID:  "agent-new",
+			AgentKey: "key-new",
+			Config:   protocol.AgentConfig{},
+		}
+		w.Header().Set("Content-Type", "application/json")
+		if err := json.NewEncoder(w).Encode(response); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
+	})
+	mux.HandleFunc("/api/agents/agent-new/sync", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		if auth := r.Header.Get("Authorization"); auth != "Bearer key-new" {
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
+		var payload protocol.AgentSyncRequest
+		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		select {
+		case resultsCh <- payload.Results:
+		default:
+		}
+		w.Header().Set("Content-Type", "application/json")
+		if err := json.NewEncoder(w).Encode(protocol.AgentSyncResponse{Config: protocol.AgentConfig{}}); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
+	})
+
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	originalResolver := publicIPCache
+	publicIPCache = &publicIPResolver{
+		value:     "cached",
+		expiresAt: time.Now().Add(time.Hour),
+	}
+	defer func() { publicIPCache = originalResolver }()
+
+	agent := &Agent{
+		baseURL:        server.URL,
+		client:         server.Client(),
+		logger:         log.New(io.Discard, "", 0),
+		pendingResults: make([]protocol.CommandResult, 0, len(expectedIDs)),
+		buildVersion:   "test",
+	}
+
+	for _, id := range expectedIDs {
+		agent.pendingResults = append(agent.pendingResults, makeCommandResult(id))
+	}
+
+	if err := agent.reRegister(ctx); err != nil {
+		t.Fatalf("reRegister returned error: %v", err)
+	}
+
+	if agent.id != "agent-new" {
+		t.Fatalf("expected agent id to be refreshed: got %q want %q", agent.id, "agent-new")
+	}
+	if agent.key != "key-new" {
+		t.Fatalf("expected agent key to be refreshed: got %q want %q", agent.key, "key-new")
+	}
+
+	if err := agent.sync(ctx, statusOnline); err != nil {
+		t.Fatalf("sync returned error: %v", err)
+	}
+
+	select {
+	case results := <-resultsCh:
+		if len(results) != len(expectedIDs) {
+			t.Fatalf("unexpected number of results submitted: got %d want %d", len(results), len(expectedIDs))
+		}
+		for idx, id := range expectedIDs {
+			if results[idx].CommandID != id {
+				t.Fatalf("unexpected result at index %d: got %q want %q", idx, results[idx].CommandID, id)
+			}
+		}
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for sync results")
+	}
+
+	if len(agent.pendingResults) != 0 {
+		t.Fatalf("expected pending results to be consumed after sync, got %d", len(agent.pendingResults))
 	}
 }

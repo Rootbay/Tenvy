@@ -116,21 +116,21 @@ func (a *Agent) sync(ctx context.Context, status string) error {
 	results := a.consumeResults()
 	payload, err := a.performSync(ctx, status, results)
 	if err != nil {
-		if len(results) > 0 && !errors.Is(err, protocol.ErrUnauthorized) {
+		if len(results) > 0 {
 			a.enqueueResults(results)
 		}
 		return err
 	}
 
-        a.config = payload.Config
-        if a.plugins != nil {
-                a.plugins.UpdateVerification(deriveSignatureVerifyOptions(a.config, a.logger))
-        }
-        if a.modules != nil {
-                if err := a.modules.UpdateConfig(ctx, a.moduleRuntime()); err != nil {
-                        a.logger.Printf("module configuration update failed: %v", err)
-                }
-        }
+	a.config = payload.Config
+	if a.plugins != nil {
+		a.plugins.UpdateVerification(deriveSignatureVerifyOptions(a.config, a.logger))
+	}
+	if a.modules != nil {
+		if err := a.modules.UpdateConfig(ctx, a.moduleRuntime()); err != nil {
+			a.logger.Printf("module configuration update failed: %v", err)
+		}
+	}
 	a.processCommands(ctx, payload.Commands)
 
 	if a.notes != nil {
@@ -213,6 +213,30 @@ func (a *Agent) reRegister(ctx context.Context) error {
 		return ctx.Err()
 	}
 
+	a.resultMu.Lock()
+	savedResults := slices.Clone(a.pendingResults)
+	if len(savedResults) > 0 {
+		a.pendingResults = a.pendingResults[:0]
+	}
+	a.resultMu.Unlock()
+
+	defer func() {
+		if len(savedResults) == 0 {
+			return
+		}
+		a.resultMu.Lock()
+		if len(a.pendingResults) == 0 {
+			a.pendingResults = append(a.pendingResults, savedResults...)
+		} else {
+			combined := make([]protocol.CommandResult, 0, len(savedResults)+len(a.pendingResults))
+			combined = append(combined, savedResults...)
+			combined = append(combined, a.pendingResults...)
+			a.pendingResults = combined
+		}
+		a.trimPendingResultsLocked()
+		a.resultMu.Unlock()
+	}()
+
 	metadata := CollectMetadataWithClient(a.buildVersion, a.client)
 	registration, err := registerAgentWithRetry(ctx, a.logger, a.client, a.baseURL, a.sharedSecret, metadata, a.maxBackoff())
 	if err != nil {
@@ -224,9 +248,6 @@ func (a *Agent) reRegister(ctx context.Context) error {
 	a.key = registration.AgentKey
 	a.config = registration.Config
 	a.startTime = time.Now()
-	a.resultMu.Lock()
-	a.pendingResults = a.pendingResults[:0]
-	a.resultMu.Unlock()
 
 	if a.modules != nil {
 		if err := a.modules.UpdateConfig(ctx, a.moduleRuntime()); err != nil {
