@@ -12,9 +12,28 @@ import (
 	"testing"
 	"time"
 
+	remotedesktop "github.com/rootbay/tenvy-client/internal/modules/control/remotedesktop"
 	"github.com/rootbay/tenvy-client/internal/protocol"
 	"nhooyr.io/websocket"
 )
+
+type stubRemoteDesktopEngine struct{}
+
+func (stubRemoteDesktopEngine) Configure(remotedesktop.Config) error { return nil }
+func (stubRemoteDesktopEngine) StartSession(context.Context, remotedesktop.RemoteDesktopCommandPayload) error {
+	return nil
+}
+func (stubRemoteDesktopEngine) StopSession(string) error { return nil }
+func (stubRemoteDesktopEngine) UpdateSession(remotedesktop.RemoteDesktopCommandPayload) error {
+	return nil
+}
+func (stubRemoteDesktopEngine) HandleInput(context.Context, remotedesktop.RemoteDesktopCommandPayload) error {
+	return nil
+}
+func (stubRemoteDesktopEngine) DeliverFrame(context.Context, remotedesktop.RemoteDesktopFramePacket) error {
+	return nil
+}
+func (stubRemoteDesktopEngine) Shutdown() {}
 
 func makeTestAgent(baseURL string, client *http.Client, router *commandRouter) *Agent {
 	return &Agent{
@@ -289,7 +308,7 @@ func TestCommandStreamRequestsReconnectOnUnauthorized(t *testing.T) {
 func TestStopRemoteDesktopInputWorkerSignalsShutdown(t *testing.T) {
 	agent := &Agent{
 		logger:  log.New(io.Discard, "", 0),
-		modules: &moduleManager{remote: newRemoteDesktopModule()},
+		modules: &moduleManager{remote: newRemoteDesktopModule(stubRemoteDesktopEngine{})},
 	}
 
 	queue := agent.ensureRemoteDesktopInputWorker()
@@ -314,7 +333,7 @@ func TestStopRemoteDesktopInputWorkerSignalsShutdown(t *testing.T) {
 func TestHandleRemoteDesktopInputAfterStopReturnsImmediately(t *testing.T) {
 	agent := &Agent{
 		logger:  log.New(io.Discard, "", 0),
-		modules: &moduleManager{remote: newRemoteDesktopModule()},
+		modules: &moduleManager{remote: newRemoteDesktopModule(stubRemoteDesktopEngine{})},
 	}
 
 	if agent.ensureRemoteDesktopInputWorker() == nil {
@@ -341,7 +360,7 @@ func TestHandleRemoteDesktopInputAfterStopReturnsImmediately(t *testing.T) {
 func TestStopRemoteDesktopInputWorkerBeforeStart(t *testing.T) {
 	agent := &Agent{
 		logger:  log.New(io.Discard, "", 0),
-		modules: &moduleManager{remote: newRemoteDesktopModule()},
+		modules: &moduleManager{remote: newRemoteDesktopModule(stubRemoteDesktopEngine{})},
 	}
 
 	agent.stopRemoteDesktopInputWorker()

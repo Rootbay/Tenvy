@@ -127,7 +127,7 @@ type moduleManager struct {
 func newDefaultModuleManager() *moduleManager {
 	registry := newModuleManager()
 	registry.register(&appVncModule{})
-	registry.register(newRemoteDesktopModule())
+	registry.register(newRemoteDesktopModule(nil))
 	registry.register(&audioModule{})
 	registry.register(&clipboardModule{})
 	registry.register(&fileManagerModule{})
@@ -336,8 +336,12 @@ type remoteDesktopModule struct {
 	factory      remoteDesktopEngineFactory
 }
 
-func newRemoteDesktopModule() *remoteDesktopModule {
-	return &remoteDesktopModule{factory: defaultRemoteDesktopEngineFactory}
+func newRemoteDesktopModule(engine remotedesktop.Engine) *remoteDesktopModule {
+	module := &remoteDesktopModule{factory: defaultRemoteDesktopEngineFactory}
+	if engine != nil {
+		module.engine = engine
+	}
+	return module
 }
 
 func (m *remoteDesktopModule) Metadata() ModuleMetadata {

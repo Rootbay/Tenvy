@@ -382,6 +382,7 @@ type Engine interface {
 	StopSession(string) error
 	UpdateSession(RemoteDesktopCommandPayload) error
 	HandleInput(context.Context, RemoteDesktopCommandPayload) error
+	DeliverFrame(context.Context, RemoteDesktopFramePacket) error
 	Shutdown()
 }
 
