@@ -64,21 +64,30 @@ func Run(ctx context.Context, opts RuntimeOptions) error {
 		return fmt.Errorf("failed to register agent: %w", err)
 	}
 
-	agent := &Agent{
-		id:             registration.AgentID,
-		key:            registration.AgentKey,
-		baseURL:        opts.ServerURL,
-		client:         client,
-		config:         registration.Config,
-		logger:         opts.Logger,
-		pendingResults: make([]protocol.CommandResult, 0, 8),
-		startTime:      time.Now(),
-		metadata:       metadata,
-		sharedSecret:   opts.SharedSecret,
-		preferences:    opts.Preferences,
-		buildVersion:   opts.BuildVersion,
-		timing:         opts.TimingOverride,
+	store, err := newResultStore(resultStoreConfig{Path: opts.ResultStore.Path, Retention: opts.ResultStore.Retention})
+	if err != nil {
+		return fmt.Errorf("initialize result store: %w", err)
 	}
+
+	agent := &Agent{
+		id:              registration.AgentID,
+		key:             registration.AgentKey,
+		baseURL:         opts.ServerURL,
+		client:          client,
+		config:          registration.Config,
+		logger:          opts.Logger,
+		pendingResults:  make([]protocol.CommandResult, 0, opts.ResultStore.HotCache),
+		resultStore:     store,
+		resultCacheSize: opts.ResultStore.HotCache,
+		startTime:       time.Now(),
+		metadata:        metadata,
+		sharedSecret:    opts.SharedSecret,
+		preferences:     opts.Preferences,
+		buildVersion:    opts.BuildVersion,
+		timing:          opts.TimingOverride,
+	}
+
+	agent.reloadResultCache()
 
 	verifyOpts := deriveSignatureVerifyOptions(registration.Config, opts.Logger)
 

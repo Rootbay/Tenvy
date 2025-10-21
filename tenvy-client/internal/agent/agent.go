@@ -22,6 +22,8 @@ type Agent struct {
 	logger                       *log.Logger
 	resultMu                     sync.Mutex
 	pendingResults               []protocol.CommandResult
+	resultStore                  *resultStore
+	resultCacheSize              int
 	startTime                    time.Time
 	metadata                     protocol.AgentMetadata
 	sharedSecret                 string
