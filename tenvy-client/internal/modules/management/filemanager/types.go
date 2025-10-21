@@ -1,5 +1,7 @@
 package filemanager
 
+import "io"
+
 type FileSystemEntryType string
 
 const (
@@ -41,7 +43,19 @@ type FileContent struct {
 	Size       int64        `json:"size"`
 	ModifiedAt string       `json:"modifiedAt"`
 	Encoding   FileEncoding `json:"encoding"`
-	Content    string       `json:"content"`
+	Content    string       `json:"content,omitempty"`
+	Stream     *FileStream  `json:"stream,omitempty"`
+
+	reader io.ReadCloser `json:"-"`
+}
+
+type FileStream struct {
+	ID     string `json:"id"`
+	Part   string `json:"part"`
+	Index  int    `json:"index"`
+	Count  int    `json:"count"`
+	Offset int64  `json:"offset"`
+	Length int64  `json:"length"`
 }
 
 type FileManagerCommandPayload struct {
@@ -63,3 +77,11 @@ type Resource interface {
 
 func (DirectoryListing) isFileManagerResource() {}
 func (FileContent) isFileManagerResource()      {}
+
+func (f *FileContent) setStreamReader(r io.ReadCloser) {
+	f.reader = r
+}
+
+func (f *FileContent) streamReader() io.ReadCloser {
+	return f.reader
+}
