@@ -48,3 +48,14 @@ Warnings are emitted when fewer than two monitors are reported, making it easy t
 * **Missing monitors** usually means the agent has not yet pushed monitor metadata; confirm the session has streamed at least one frame and retry.
 
 Combine these scripts with the controller UI diagnostics panel to cross-check bitrate, RTT, and codec selection while iterating on encoder settings.
+
+## Automated Backend Coverage
+
+Complement the scripting workflow with the automated capture and monitor integration tests that exercise the DXGI, ScreenCaptureKit, and PipeWire backends:
+
+```bash
+go test ./tenvy-client/internal/modules/control/screen \
+        ./tenvy-client/internal/modules/control/remotedesktop -run Capture
+```
+
+These tests validate backend selection, surface capability diagnostics, and simulate multi-GPU monitor topologies so regressions are caught without requiring hardware swaps.

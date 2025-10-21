@@ -26,6 +26,13 @@ import (
 	"github.com/rootbay/tenvy-client/internal/modules/control/screen"
 )
 
+var (
+	captureRectFunc             = screen.SafeCaptureRect
+	captureCapabilityErrorsFunc = screen.CapabilityErrors
+	selectedCaptureBackendFunc  = screen.SelectedBackend
+	detectRemoteMonitorsFunc    = detectRemoteMonitors
+)
+
 type remoteTileHasher struct {
 	tile      int
 	cols      int
@@ -1326,9 +1333,16 @@ func captureMonitorFrame(monitor remoteMonitor, width, height int) ([]byte, erro
 		return nil, errors.New("invalid frame dimensions")
 	}
 
-	img, err := screen.SafeCaptureRect(monitor.bounds)
+	img, err := captureRectFunc(monitor.bounds)
 	if err != nil {
-		return nil, err
+		backend := selectedCaptureBackendFunc()
+		if backend == "" {
+			if capabilityErrs := captureCapabilityErrorsFunc(); len(capabilityErrs) > 0 {
+				return nil, fmt.Errorf("capture unavailable (%v): %w", capabilityErrs[0], err)
+			}
+			return nil, err
+		}
+		return nil, fmt.Errorf("%s capture failed: %w", backend, err)
 	}
 	srcBounds := img.Bounds()
 	if srcBounds.Dx() == 0 || srcBounds.Dy() == 0 {
@@ -1903,7 +1917,7 @@ func (c *remoteDesktopSessionController) refreshMonitorsLocked(session *RemoteDe
 		}
 	}
 
-	monitors := detectRemoteMonitors()
+	monitors := detectRemoteMonitorsFunc()
 	if len(monitors) == 0 {
 		rect := image.Rect(0, 0, 1280, 720)
 		monitors = []remoteMonitor{{

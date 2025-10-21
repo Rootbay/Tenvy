@@ -4,33 +4,16 @@ import (
 	"bytes"
 	"encoding/base64"
 	"errors"
-	"fmt"
 	"image"
 	"image/jpeg"
 	"image/png"
 	"sync"
-
-	"github.com/kbinani/screenshot"
 )
 
 var (
 	pngEncoder      = png.Encoder{CompressionLevel: png.BestSpeed}
 	imageBufferPool = sync.Pool{New: func() interface{} { return new(bytes.Buffer) }}
 )
-
-// SafeCaptureRect captures the specified screen rectangle, recovering from
-// underlying platform panics that can be triggered by transient display driver
-// changes. A nil image with an error is returned when capture fails.
-func SafeCaptureRect(bounds image.Rectangle) (img *image.RGBA, err error) {
-	defer func() {
-		if r := recover(); r != nil {
-			err = fmt.Errorf("capture panic: %v", r)
-			img = nil
-		}
-	}()
-
-	return screenshot.CaptureRect(bounds)
-}
 
 // EncodeRGBAAsPNG encodes the provided RGBA buffer to a base64 PNG payload.
 func EncodeRGBAAsPNG(width, height int, data []byte) (string, error) {
