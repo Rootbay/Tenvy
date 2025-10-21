@@ -72,7 +72,8 @@
 		"vitest-browser-svelte": "^1.1.0"
 	},
 	"dependencies": {
-		"@koush/wrtc": "^0.5.3",
+                "@koush/wrtc": "^0.5.3",
+                "@msgpack/msgpack": "^3.0.0",
 		"@lucia-auth/adapter-drizzle": "^1.1.0",
 		"@motionone/dom": "^10.18.0",
 		"@node-rs/argon2": "^2.0.2",

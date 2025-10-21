@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"bytes"
 	"context"
-	"encoding/base64"
 	"errors"
 	"fmt"
 	"io"
@@ -163,7 +162,7 @@ func (e *ffmpegClipEncoder) EncodeClip(frames []clipFrameBuffer, opts clipEncode
 			lastErr = fmt.Errorf("%s encoder produced no data", candidate.name)
 			continue
 		}
-		encoded := base64.StdEncoding.EncodeToString(data)
+		encoded := append([]byte(nil), data...)
 		return clipEncodeResult{
 			Frames: []RemoteDesktopClipFrame{{
 				OffsetMs: 0,

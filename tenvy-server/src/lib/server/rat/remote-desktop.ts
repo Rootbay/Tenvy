@@ -2,26 +2,27 @@ import { randomUUID } from 'crypto';
 import type {
 	RemoteDesktopEncoder,
 	RemoteDesktopFrameMetrics,
-        RemoteDesktopFramePacket,
-        RemoteDesktopHardwarePreference,
-        RemoteDesktopInputBurst,
-        RemoteDesktopInputEvent,
-        RemoteDesktopMediaSample,
+	RemoteDesktopFramePacket,
+	RemoteDesktopHardwarePreference,
+	RemoteDesktopInputBurst,
+	RemoteDesktopInputEvent,
+	RemoteDesktopMediaSample,
 	RemoteDesktopMonitor,
 	RemoteDesktopSessionNegotiationRequest,
 	RemoteDesktopSessionNegotiationResponse,
 	RemoteDesktopSessionState,
 	RemoteDesktopSettings,
-        RemoteDesktopSettingsPatch,
-        RemoteDesktopTransport,
-        RemoteDesktopTransportCapability,
-        RemoteDesktopTransportDiagnostics,
-        RemoteDesktopStreamMediaMessage,
-        RemoteDesktopWebRTCICEServer
+	RemoteDesktopSettingsPatch,
+	RemoteDesktopTransport,
+	RemoteDesktopTransportCapability,
+	RemoteDesktopTransportDiagnostics,
+	RemoteDesktopStreamMediaMessage,
+	RemoteDesktopWebRTCICEServer
 } from '$lib/types/remote-desktop';
 import { registry } from './store';
 import { WebRTCPipeline } from '$lib/streams/webrtc';
 import { remoteDesktopInputService } from './remote-desktop-input';
+import { Buffer } from 'node:buffer';
 
 const encoder = new TextEncoder();
 const HEARTBEAT_INTERVAL_MS = 15_000;
@@ -203,8 +204,8 @@ interface RemoteDesktopSessionRecord {
 	encoderHardware?: string;
 	monitors: RemoteDesktopMonitor[];
 	metrics?: RemoteDesktopFrameMetrics;
-        transportDiagnostics?: RemoteDesktopTransportDiagnostics;
-        history: RemoteDesktopHistoryEntry[];
+	transportDiagnostics?: RemoteDesktopTransportDiagnostics;
+	history: RemoteDesktopHistoryEntry[];
 	hasKeyFrame: boolean;
 	transportHandle?: RemoteDesktopTransportHandle | null;
 	pipeline?: WebRTCPipeline | null;
@@ -220,30 +221,32 @@ interface RemoteDesktopSubscriber {
 }
 
 interface RemoteDesktopTransportHandle {
-        close(): void;
+	close(): void;
 }
 
 type RemoteDesktopHistoryEntry =
-        | { type: 'frame'; frame: RemoteDesktopFramePacket }
-        | { type: 'media'; sessionId: string; media: RemoteDesktopMediaSample[] };
+	| { type: 'frame'; frame: RemoteDesktopFramePacket }
+	| { type: 'media'; sessionId: string; media: RemoteDesktopMediaSample[] };
 
 function cloneSettings(settings: RemoteDesktopSettings): RemoteDesktopSettings {
-        return { ...settings };
+	return { ...settings };
 }
 
 function cloneMonitors(monitors: readonly RemoteDesktopMonitor[]): RemoteDesktopMonitor[] {
-        return monitors.map((monitor) => ({ ...monitor }));
+	return monitors.map((monitor) => ({ ...monitor }));
 }
 
-function cloneMediaSamples(samples: readonly RemoteDesktopMediaSample[]): RemoteDesktopMediaSample[] {
-        return samples.map((sample) => ({ ...sample }));
+function cloneMediaSamples(
+	samples: readonly RemoteDesktopMediaSample[]
+): RemoteDesktopMediaSample[] {
+	return samples.map((sample) => ({ ...sample }));
 }
 
 function monitorsEqual(a: readonly RemoteDesktopMonitor[], b: readonly RemoteDesktopMonitor[]) {
-        if (a.length !== b.length) return false;
-        for (let i = 0; i < a.length; i += 1) {
-                const first = a[i];
-                const second = b[i];
+	if (a.length !== b.length) return false;
+	for (let i = 0; i < a.length; i += 1) {
+		const first = a[i];
+		const second = b[i];
 		if (!second) return false;
 		if (
 			first.id !== second.id ||
@@ -275,15 +278,15 @@ function cloneFrame(frame: RemoteDesktopFramePacket): RemoteDesktopFramePacket {
 		cloned.monitors = cloneMonitors(frame.monitors);
 	}
 
-        if (frame.metrics) {
-                cloned.metrics = { ...frame.metrics };
-        }
+	if (frame.metrics) {
+		cloned.metrics = { ...frame.metrics };
+	}
 
-        if (Array.isArray(frame.media)) {
-                cloned.media = cloneMediaSamples(frame.media);
-        }
+	if (Array.isArray(frame.media)) {
+		cloned.media = cloneMediaSamples(frame.media);
+	}
 
-        return cloned;
+	return cloned;
 }
 
 function isFiniteNumber(value: unknown): value is number {
@@ -415,140 +418,255 @@ function validateFramePacket(frame: RemoteDesktopFramePacket) {
 		}
 	}
 
-        if (frame.media) {
-                validateMediaSamples(frame.media);
-        }
+	if (frame.media) {
+		validateMediaSamples(frame.media);
+	}
 }
 
 function validateMediaSamples(samples: RemoteDesktopMediaSample[]) {
-        if (!Array.isArray(samples)) {
-                throw new RemoteDesktopError('Media samples must be an array', 400);
-        }
-        for (const sample of samples) {
-                if (!sample || typeof sample !== 'object') {
-                        throw new RemoteDesktopError('Invalid media sample payload', 400);
-                }
-                if (sample.kind !== 'video' && sample.kind !== 'audio') {
-                        throw new RemoteDesktopError('Unsupported media sample kind', 400);
-                }
-                if (typeof sample.codec !== 'string' || sample.codec.length === 0) {
-                        throw new RemoteDesktopError('Media sample codec is required', 400);
-                }
-                if (!isFiniteNumber(sample.timestamp)) {
-                        throw new RemoteDesktopError('Media sample timestamp invalid', 400);
-                }
-                if (sample.keyFrame !== undefined && typeof sample.keyFrame !== 'boolean') {
-                        throw new RemoteDesktopError('Media sample keyframe flag invalid', 400);
-                }
-                if (sample.format && typeof sample.format !== 'string') {
-                        throw new RemoteDesktopError('Media sample format invalid', 400);
-                }
-                validateBase64Payload(sample.data, 'Media sample');
-        }
+	if (!Array.isArray(samples)) {
+		throw new RemoteDesktopError('Media samples must be an array', 400);
+	}
+	for (const sample of samples) {
+		if (!sample || typeof sample !== 'object') {
+			throw new RemoteDesktopError('Invalid media sample payload', 400);
+		}
+		if (sample.kind !== 'video' && sample.kind !== 'audio') {
+			throw new RemoteDesktopError('Unsupported media sample kind', 400);
+		}
+		if (typeof sample.codec !== 'string' || sample.codec.length === 0) {
+			throw new RemoteDesktopError('Media sample codec is required', 400);
+		}
+		if (!isFiniteNumber(sample.timestamp)) {
+			throw new RemoteDesktopError('Media sample timestamp invalid', 400);
+		}
+		if (sample.keyFrame !== undefined && typeof sample.keyFrame !== 'boolean') {
+			throw new RemoteDesktopError('Media sample keyframe flag invalid', 400);
+		}
+		if (sample.format && typeof sample.format !== 'string') {
+			throw new RemoteDesktopError('Media sample format invalid', 400);
+		}
+		validateBase64Payload(sample.data, 'Media sample');
+	}
+}
+
+function coerceFramePacket(payload: unknown): RemoteDesktopFramePacket | null {
+	if (!payload || typeof payload !== 'object') {
+		return null;
+	}
+
+	const candidate = payload as RemoteDesktopFramePacket;
+	if (
+		typeof candidate.sessionId !== 'string' ||
+		typeof candidate.timestamp !== 'string' ||
+		typeof candidate.width !== 'number' ||
+		typeof candidate.height !== 'number' ||
+		typeof candidate.encoding !== 'string'
+	) {
+		return null;
+	}
+
+	const frame: RemoteDesktopFramePacket = { ...candidate };
+
+	const image = ensureBase64Data((payload as { image?: unknown }).image, true);
+	if (image === null) {
+		return null;
+	}
+	if (image !== undefined) {
+		frame.image = image;
+	}
+
+	if (Array.isArray((payload as { deltas?: unknown }).deltas)) {
+		const deltas: RemoteDesktopFramePacket['deltas'] = [];
+		for (const entry of (payload as { deltas: unknown[] }).deltas) {
+			if (!entry || typeof entry !== 'object') {
+				return null;
+			}
+			const rect = { ...(entry as RemoteDesktopFramePacket['deltas'][number]) };
+			const data = ensureBase64Data((entry as { data?: unknown }).data);
+			if (data === null || data === undefined) {
+				return null;
+			}
+			rect.data = data;
+			deltas.push(rect);
+		}
+		frame.deltas = deltas;
+	}
+
+	if (
+		(payload as { clip?: unknown }).clip &&
+		typeof (payload as { clip?: unknown }).clip === 'object'
+	) {
+		const clipSource = (payload as { clip: { durationMs?: unknown; frames?: unknown } }).clip;
+		const frames: RemoteDesktopFramePacket['clip']['frames'] = [];
+		if (Array.isArray(clipSource.frames)) {
+			for (const entry of clipSource.frames) {
+				if (!entry || typeof entry !== 'object') {
+					return null;
+				}
+				const clipFrame = { ...(entry as RemoteDesktopFramePacket['clip']['frames'][number]) };
+				const data = ensureBase64Data((entry as { data?: unknown }).data);
+				if (data === null || data === undefined) {
+					return null;
+				}
+				clipFrame.data = data;
+				frames.push(clipFrame);
+			}
+		}
+		frame.clip = {
+			durationMs:
+				typeof clipSource.durationMs === 'number'
+					? clipSource.durationMs
+					: (frame.clip?.durationMs ?? 0),
+			frames
+		};
+	}
+
+	if (Array.isArray((payload as { media?: unknown }).media)) {
+		const media: RemoteDesktopMediaSample[] = [];
+		for (const entry of (payload as { media: unknown[] }).media) {
+			if (!entry || typeof entry !== 'object') {
+				return null;
+			}
+			const sample = { ...(entry as RemoteDesktopMediaSample) };
+			const data = ensureBase64Data((entry as { data?: unknown }).data);
+			if (data === null || data === undefined) {
+				return null;
+			}
+			sample.data = data;
+			media.push(sample);
+		}
+		frame.media = media;
+	}
+
+	return frame;
+}
+
+function ensureBase64Data(value: unknown, allowUndefined = false): string | undefined | null {
+	if (value === undefined) {
+		return allowUndefined ? undefined : null;
+	}
+	if (typeof value === 'string') {
+		return value;
+	}
+	if (value === null) {
+		return '';
+	}
+	if (value instanceof Uint8Array) {
+		return Buffer.from(value).toString('base64');
+	}
+	if (value instanceof ArrayBuffer) {
+		return Buffer.from(value).toString('base64');
+	}
+	if (ArrayBuffer.isView(value)) {
+		const view = value as ArrayBufferView;
+		return Buffer.from(view.buffer, view.byteOffset, view.byteLength).toString('base64');
+	}
+	return null;
 }
 
 function appendFrameHistory(record: RemoteDesktopSessionRecord, frame: RemoteDesktopFramePacket) {
-        const entry: RemoteDesktopHistoryEntry = { type: 'frame', frame };
-        if (frame.keyFrame) {
-                record.history = [entry];
-                record.hasKeyFrame = true;
-                return;
-        }
+	const entry: RemoteDesktopHistoryEntry = { type: 'frame', frame };
+	if (frame.keyFrame) {
+		record.history = [entry];
+		record.hasKeyFrame = true;
+		return;
+	}
 
-        record.history.push(entry);
+	record.history.push(entry);
 
-        if (!record.hasKeyFrame) {
-                const keyIndex = record.history.findIndex(
-                        (item) => item.type === 'frame' && item.frame.keyFrame
-                );
-                if (keyIndex >= 0) {
-                        record.history = record.history.slice(keyIndex);
-                        record.hasKeyFrame = true;
-                }
-        }
+	if (!record.hasKeyFrame) {
+		const keyIndex = record.history.findIndex(
+			(item) => item.type === 'frame' && item.frame.keyFrame
+		);
+		if (keyIndex >= 0) {
+			record.history = record.history.slice(keyIndex);
+			record.hasKeyFrame = true;
+		}
+	}
 
-        trimHistory(record);
+	trimHistory(record);
 }
 
 function appendMediaHistory(
-        record: RemoteDesktopSessionRecord,
-        sessionId: string,
-        media: RemoteDesktopMediaSample[]
+	record: RemoteDesktopSessionRecord,
+	sessionId: string,
+	media: RemoteDesktopMediaSample[]
 ) {
-        if (!Array.isArray(media) || media.length === 0) {
-                return;
-        }
+	if (!Array.isArray(media) || media.length === 0) {
+		return;
+	}
 
-        const entry: RemoteDesktopHistoryEntry = {
-                type: 'media',
-                sessionId,
-                media: cloneMediaSamples(media)
-        };
-        record.history.push(entry);
-        trimHistory(record);
+	const entry: RemoteDesktopHistoryEntry = {
+		type: 'media',
+		sessionId,
+		media: cloneMediaSamples(media)
+	};
+	record.history.push(entry);
+	trimHistory(record);
 }
 
 function countFrameEntries(entries: readonly RemoteDesktopHistoryEntry[]): number {
-        let count = 0;
-        for (const entry of entries) {
-                if (entry.type === 'frame') {
-                        count += 1;
-                }
-        }
-        return count;
+	let count = 0;
+	for (const entry of entries) {
+		if (entry.type === 'frame') {
+			count += 1;
+		}
+	}
+	return count;
 }
 
 function trimHistory(record: RemoteDesktopSessionRecord) {
-        const frameCount = countFrameEntries(record.history);
-        if (frameCount <= HISTORY_LIMIT) {
-                if (frameCount === 0 && record.history.length > HISTORY_LIMIT) {
-                        record.history = record.history.slice(record.history.length - HISTORY_LIMIT);
-                }
-                return;
-        }
+	const frameCount = countFrameEntries(record.history);
+	if (frameCount <= HISTORY_LIMIT) {
+		if (frameCount === 0 && record.history.length > HISTORY_LIMIT) {
+			record.history = record.history.slice(record.history.length - HISTORY_LIMIT);
+		}
+		return;
+	}
 
-        if (record.hasKeyFrame && record.history[0]?.type === 'frame') {
-                const keyframeEntry = record.history[0];
-                const tail: RemoteDesktopHistoryEntry[] = [];
-                const frameLimit = Math.max(0, HISTORY_LIMIT - 1);
-                let framesKept = 0;
-                for (let index = record.history.length - 1; index >= 1; index -= 1) {
-                        const entry = record.history[index];
-                        if (entry.type === 'frame') {
-                                if (framesKept >= frameLimit) {
-                                        break;
-                                }
-                                framesKept += 1;
-                                tail.unshift(entry);
-                        } else {
-                                if (framesKept >= frameLimit) {
-                                        continue;
-                                }
-                                tail.unshift(entry);
-                        }
-                }
-                record.history = [keyframeEntry, ...tail];
-                return;
-        }
+	if (record.hasKeyFrame && record.history[0]?.type === 'frame') {
+		const keyframeEntry = record.history[0];
+		const tail: RemoteDesktopHistoryEntry[] = [];
+		const frameLimit = Math.max(0, HISTORY_LIMIT - 1);
+		let framesKept = 0;
+		for (let index = record.history.length - 1; index >= 1; index -= 1) {
+			const entry = record.history[index];
+			if (entry.type === 'frame') {
+				if (framesKept >= frameLimit) {
+					break;
+				}
+				framesKept += 1;
+				tail.unshift(entry);
+			} else {
+				if (framesKept >= frameLimit) {
+					continue;
+				}
+				tail.unshift(entry);
+			}
+		}
+		record.history = [keyframeEntry, ...tail];
+		return;
+	}
 
-        const trimmed: RemoteDesktopHistoryEntry[] = [];
-        let framesKept = 0;
-        for (let index = record.history.length - 1; index >= 0; index -= 1) {
-                const entry = record.history[index];
-                if (entry.type === 'frame') {
-                        if (framesKept >= HISTORY_LIMIT) {
-                                break;
-                        }
-                        framesKept += 1;
-                        trimmed.unshift(entry);
-                } else {
-                        if (framesKept >= HISTORY_LIMIT) {
-                                continue;
-                        }
-                        trimmed.unshift(entry);
-                }
-        }
-        record.history = trimmed;
+	const trimmed: RemoteDesktopHistoryEntry[] = [];
+	let framesKept = 0;
+	for (let index = record.history.length - 1; index >= 0; index -= 1) {
+		const entry = record.history[index];
+		if (entry.type === 'frame') {
+			if (framesKept >= HISTORY_LIMIT) {
+				break;
+			}
+			framesKept += 1;
+			trimmed.unshift(entry);
+		} else {
+			if (framesKept >= HISTORY_LIMIT) {
+				continue;
+			}
+			trimmed.unshift(entry);
+		}
+	}
+	record.history = trimmed;
 }
 
 function resolveSettings(settings?: RemoteDesktopSettingsPatch): RemoteDesktopSettings {
@@ -883,6 +1001,7 @@ export class RemoteDesktopManager {
 		const webrtcCapability = capabilities.find(
 			(cap) => cap.transport === 'webrtc' && request.webrtc?.offer
 		);
+		const supportsBinaryFrames = Boolean(webrtcCapability?.features?.binaryFrames);
 		if (webrtcCapability) {
 			const codec = selectCodec(webrtcCapability);
 			if (codec) {
@@ -942,6 +1061,9 @@ export class RemoteDesktopManager {
 				dataChannel: request.webrtc?.dataChannel,
 				iceServers: responseIce
 			};
+		}
+		if (selectedTransport === 'webrtc' && supportsBinaryFrames) {
+			response.features = { binaryFrames: true };
 		}
 		if (reason && selectedTransport !== 'webrtc') {
 			response.reason = reason;
@@ -1068,38 +1190,36 @@ export class RemoteDesktopManager {
 						return;
 					}
 
-                                        for (const entry of session.history) {
-                                                if (!subscriber || subscriber.closed) {
-                                                        return;
-                                                }
-                                                if (entry.type === 'frame') {
-                                                        const frame = entry.frame;
-                                                        if (sessionId && sessionId !== frame.sessionId) {
-                                                                continue;
-                                                        }
-                                                        const frameChunk = encoder.encode(
-                                                                formatEvent('frame', { frame })
-                                                        );
-                                                        if (!this.enqueueSubscriber(agentId, subscriber, frameChunk)) {
-                                                                subscriber = null;
-                                                                return;
-                                                        }
-                                                } else {
-                                                        if (sessionId && sessionId !== entry.sessionId) {
-                                                                continue;
-                                                        }
-                                                        const mediaChunk = encoder.encode(
-                                                                formatEvent('media', {
-                                                                        sessionId: entry.sessionId,
-                                                                        media: entry.media
-                                                                })
-                                                        );
-                                                        if (!this.enqueueSubscriber(agentId, subscriber, mediaChunk)) {
-                                                                subscriber = null;
-                                                                return;
-                                                        }
-                                                }
-                                        }
+					for (const entry of session.history) {
+						if (!subscriber || subscriber.closed) {
+							return;
+						}
+						if (entry.type === 'frame') {
+							const frame = entry.frame;
+							if (sessionId && sessionId !== frame.sessionId) {
+								continue;
+							}
+							const frameChunk = encoder.encode(formatEvent('frame', { frame }));
+							if (!this.enqueueSubscriber(agentId, subscriber, frameChunk)) {
+								subscriber = null;
+								return;
+							}
+						} else {
+							if (sessionId && sessionId !== entry.sessionId) {
+								continue;
+							}
+							const mediaChunk = encoder.encode(
+								formatEvent('media', {
+									sessionId: entry.sessionId,
+									media: entry.media
+								})
+							);
+							if (!this.enqueueSubscriber(agentId, subscriber, mediaChunk)) {
+								subscriber = null;
+								return;
+							}
+						}
+					}
 				} else if (subscriber) {
 					const sessionChunk = encoder.encode(
 						formatEvent('session', {
@@ -1160,46 +1280,46 @@ export class RemoteDesktopManager {
 			return;
 		}
 
-                if (event === 'frame') {
-                        const frame = (payload as { frame: RemoteDesktopFramePacket }).frame;
-                        let encoded: Uint8Array | null = null;
-                        for (const subscriber of subscribers) {
-                                if (subscriber.closed) continue;
+		if (event === 'frame') {
+			const frame = (payload as { frame: RemoteDesktopFramePacket }).frame;
+			let encoded: Uint8Array | null = null;
+			for (const subscriber of subscribers) {
+				if (subscriber.closed) continue;
 				if (subscriber.sessionId && subscriber.sessionId !== frame.sessionId) {
 					continue;
 				}
 				if (!encoded) {
 					encoded = encoder.encode(formatEvent(event, { frame }));
 				}
-                                this.enqueueSubscriber(agentId, subscriber, encoded);
-                        }
-                        return;
-                }
+				this.enqueueSubscriber(agentId, subscriber, encoded);
+			}
+			return;
+		}
 
-                if (event === 'media') {
-                        const mediaPayload = payload as RemoteDesktopStreamMediaMessage;
-                        if (!Array.isArray(mediaPayload.media) || mediaPayload.media.length === 0) {
-                                return;
-                        }
-                        let encoded: Uint8Array | null = null;
-                        for (const subscriber of subscribers) {
-                                if (subscriber.closed) continue;
-                                if (subscriber.sessionId && subscriber.sessionId !== mediaPayload.sessionId) {
-                                        continue;
-                                }
-                                if (!encoded) {
-                                        encoded = encoder.encode(formatEvent(event, mediaPayload));
-                                }
-                                this.enqueueSubscriber(agentId, subscriber, encoded);
-                        }
-                        return;
-                }
+		if (event === 'media') {
+			const mediaPayload = payload as RemoteDesktopStreamMediaMessage;
+			if (!Array.isArray(mediaPayload.media) || mediaPayload.media.length === 0) {
+				return;
+			}
+			let encoded: Uint8Array | null = null;
+			for (const subscriber of subscribers) {
+				if (subscriber.closed) continue;
+				if (subscriber.sessionId && subscriber.sessionId !== mediaPayload.sessionId) {
+					continue;
+				}
+				if (!encoded) {
+					encoded = encoder.encode(formatEvent(event, mediaPayload));
+				}
+				this.enqueueSubscriber(agentId, subscriber, encoded);
+			}
+			return;
+		}
 
-                const data = encoder.encode(formatEvent(event, payload));
-                for (const subscriber of subscribers) {
-                        if (subscriber.closed) continue;
-                        this.enqueueSubscriber(agentId, subscriber, data);
-                }
+		const data = encoder.encode(formatEvent(event, payload));
+		for (const subscriber of subscribers) {
+			if (subscriber.closed) continue;
+			this.enqueueSubscriber(agentId, subscriber, data);
+		}
 	}
 
 	private enqueueSubscriber(
@@ -1325,80 +1445,94 @@ export class RemoteDesktopManager {
 	private handleWebRTCMessage(
 		agentId: string,
 		record: RemoteDesktopSessionRecord,
-		message: RemoteDesktopMediaSample[] | string
+		message: RemoteDesktopMediaSample[] | RemoteDesktopFramePacket | string
 	) {
-                if (Array.isArray(message)) {
-                        if (message.length === 0) {
-                                return;
-                        }
-                        try {
-                                validateMediaSamples(message);
-                        } catch (err) {
-                                console.error('Failed to validate WebRTC media payload', err);
-                                return;
-                        }
+		if (Array.isArray(message)) {
+			if (message.length === 0) {
+				return;
+			}
+			try {
+				validateMediaSamples(message);
+			} catch (err) {
+				console.error('Failed to validate WebRTC media payload', err);
+				return;
+			}
 
-                        appendMediaHistory(record, record.id, message);
-                        record.lastUpdatedAt = new Date();
-                        this.broadcast(agentId, 'media', {
-                                sessionId: record.id,
-                                media: cloneMediaSamples(message)
-                        });
-                        return;
-                }
+			appendMediaHistory(record, record.id, message);
+			record.lastUpdatedAt = new Date();
+			this.broadcast(agentId, 'media', {
+				sessionId: record.id,
+				media: cloneMediaSamples(message)
+			});
+			return;
+		}
 
-		const payload = message?.toString() ?? '';
+		if (message && typeof message === 'object') {
+			const frame = coerceFramePacket(message);
+			if (!frame || frame.sessionId !== record.id) {
+				return;
+			}
+			this.processWebRTCFrame(agentId, record, frame);
+			return;
+		}
+
+		const payload = typeof message === 'string' ? message.trim() : '';
 		if (!payload) {
 			return;
 		}
 
 		try {
-			const frame = JSON.parse(payload) as RemoteDesktopFramePacket;
-			if (frame.sessionId !== record.id) {
+			const frame = coerceFramePacket(JSON.parse(payload));
+			if (!frame || frame.sessionId !== record.id) {
 				return;
 			}
-
-			try {
-				this.ingestFrame(agentId, frame);
-			} catch (err) {
-				if (err instanceof RemoteDesktopError) {
-					console.warn('WebRTC frame rejected:', err.message);
-				} else {
-					console.error('Failed to ingest WebRTC frame', err);
-				}
-			}
+			this.processWebRTCFrame(agentId, record, frame);
 		} catch (err) {
 			console.error('Failed to process WebRTC frame payload', err);
 		}
+	}
+
+	private processWebRTCFrame(
+		agentId: string,
+		record: RemoteDesktopSessionRecord,
+		frame: RemoteDesktopFramePacket
+	) {
+		try {
+			this.ingestFrame(agentId, frame);
+		} catch (err) {
+			if (err instanceof RemoteDesktopError) {
+				console.warn('WebRTC frame rejected:', err.message);
+			} else {
+				console.error('Failed to ingest WebRTC frame', err);
+			}
+		}
 
 		const currentPipeline = record.pipeline;
-		if (currentPipeline) {
-			void currentPipeline.collectDiagnostics().then((diagnostics) => {
-				if (!diagnostics) {
-					return;
-				}
-				if (record.pipeline !== currentPipeline) {
-					return;
-				}
-				const previous = record.transportDiagnostics;
-				const next = { ...diagnostics } satisfies RemoteDesktopTransportDiagnostics;
-				if (record.encoderHardware) {
-					next.hardwareEncoder = record.encoderHardware;
-				}
-				const changed =
-					!previous ||
-					previous.transport !== next.transport ||
-					previous.codec !== next.codec ||
-					previous.currentBitrateKbps !== next.currentBitrateKbps ||
-					previous.bandwidthEstimateKbps !== next.bandwidthEstimateKbps ||
-					previous.rttMs !== next.rttMs;
-				record.transportDiagnostics = next;
-				if (changed) {
-					record.lastUpdatedAt = new Date();
-					this.broadcastSession(agentId);
-				}
-			});
+		if (!currentPipeline) {
+			return;
 		}
+		void currentPipeline.collectDiagnostics().then((diagnostics) => {
+			if (!diagnostics || record.pipeline !== currentPipeline) {
+				return;
+			}
+			const previous = record.transportDiagnostics;
+			const next = { ...diagnostics } satisfies RemoteDesktopTransportDiagnostics;
+			if (record.encoderHardware) {
+				next.hardwareEncoder = record.encoderHardware;
+			}
+			const changed =
+				!previous ||
+				previous.transport !== next.transport ||
+				previous.codec !== next.codec ||
+				previous.currentBitrateKbps !== next.currentBitrateKbps ||
+				previous.bandwidthEstimateKbps !== next.bandwidthEstimateKbps ||
+				previous.rttMs !== next.rttMs;
+			record.transportDiagnostics = next;
+			if (changed) {
+				record.lastUpdatedAt = new Date();
+				this.broadcastSession(agentId);
+			}
+		});
 	}
 
 	removeSubscriber(agentId: string, subscriber: RemoteDesktopSubscriber) {

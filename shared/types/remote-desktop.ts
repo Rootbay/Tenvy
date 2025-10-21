@@ -6,10 +6,7 @@ export type RemoteDesktopEncoder = "auto" | "hevc" | "avc" | "jpeg";
 
 export type RemoteDesktopTransport = "http" | "webrtc";
 
-export type RemoteDesktopHardwarePreference =
-  | "auto"
-  | "prefer"
-  | "avoid";
+export type RemoteDesktopHardwarePreference = "auto" | "prefer" | "avoid";
 
 export interface RemoteDesktopMediaSample {
   kind: "video" | "audio";
@@ -47,6 +44,7 @@ export interface RemoteDesktopTransportCapability {
   codecs: RemoteDesktopEncoder[];
   features?: {
     intraRefresh?: boolean;
+    binaryFrames?: boolean;
   };
 }
 
@@ -77,6 +75,9 @@ export interface RemoteDesktopSessionNegotiationResponse {
   transport?: RemoteDesktopTransport;
   codec?: RemoteDesktopEncoder;
   intraRefresh?: boolean;
+  features?: {
+    binaryFrames?: boolean;
+  };
   reason?: string;
   webrtc?: {
     answer?: string;

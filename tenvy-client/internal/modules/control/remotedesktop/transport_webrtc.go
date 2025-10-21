@@ -7,9 +7,11 @@ import (
 	"errors"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/pion/webrtc/v3"
+	"github.com/vmihailenco/msgpack/v5"
 )
 
 const remoteDesktopDataChannelLabel = "remote-desktop-frames"
@@ -26,12 +28,13 @@ type webrtcOfferHandle struct {
 }
 
 type webrtcFrameTransport struct {
-	pc        *webrtc.PeerConnection
-	dc        *webrtc.DataChannel
-	ready     <-chan struct{}
-	closed    chan struct{}
-	closeOnce sync.Once
-	mu        sync.Mutex
+	pc            *webrtc.PeerConnection
+	dc            *webrtc.DataChannel
+	ready         <-chan struct{}
+	closed        chan struct{}
+	closeOnce     sync.Once
+	mu            sync.Mutex
+	binaryEnabled atomic.Bool
 }
 
 func prepareWebRTCOffer(ctx context.Context, servers []RemoteDesktopWebRTCICEServer) (*webrtcOfferHandle, error) {
@@ -271,10 +274,16 @@ func (t *webrtcFrameTransport) Send(ctx context.Context, frame RemoteDesktopFram
 		ctx = context.Background()
 	}
 
-	payload, err := json.Marshal(frame)
+	useBinary := t.binaryEnabled.Load()
+	payload, err := t.encodeFrame(frame, useBinary)
 	if err != nil {
 		return err
 	}
+	if payload == nil {
+		return errors.New("remote desktop: empty webrtc payload")
+	}
+	// encodeFrame may disable binary support if serialization fails.
+	useBinary = useBinary && t.binaryEnabled.Load()
 
 	select {
 	case <-t.closed:
@@ -289,7 +298,28 @@ func (t *webrtcFrameTransport) Send(ctx context.Context, frame RemoteDesktopFram
 	if t.dc == nil {
 		return errors.New("remote desktop: webrtc channel closed")
 	}
+	if useBinary {
+		return t.dc.Send(payload)
+	}
 	return t.dc.SendText(string(payload))
+}
+
+func (t *webrtcFrameTransport) encodeFrame(frame RemoteDesktopFramePacket, preferBinary bool) ([]byte, error) {
+	if preferBinary {
+		payload, err := msgpack.Marshal(&frame)
+		if err == nil {
+			return payload, nil
+		}
+		t.binaryEnabled.Store(false)
+	}
+	return json.Marshal(frame)
+}
+
+func (t *webrtcFrameTransport) SetBinaryEnabled(enabled bool) {
+	if t == nil {
+		return
+	}
+	t.binaryEnabled.Store(enabled)
 }
 
 func (t *webrtcFrameTransport) Close() error {
