@@ -1,6 +1,6 @@
 //go:build linux
 
-package remotedesktop
+package remotedesktopengine
 
 /*
 #cgo CFLAGS: -D_GNU_SOURCE

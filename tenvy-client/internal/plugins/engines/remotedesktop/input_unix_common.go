@@ -1,6 +1,6 @@
 //go:build linux || darwin
 
-package remotedesktop
+package remotedesktopengine
 
 import "image"
 

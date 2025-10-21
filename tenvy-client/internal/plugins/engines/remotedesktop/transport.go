@@ -1,4 +1,4 @@
-package remotedesktop
+package remotedesktopengine
 
 import (
 	"crypto/tls"

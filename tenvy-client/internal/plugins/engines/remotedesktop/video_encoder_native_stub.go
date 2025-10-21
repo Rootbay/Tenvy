@@ -1,6 +1,6 @@
 //go:build !windows && !darwin && !linux
 
-package remotedesktop
+package remotedesktopengine
 
 func platformNewNativeHEVCVideoEncoder() (clipVideoEncoder, error) {
 	return nil, ErrNativeEncoderUnavailable
