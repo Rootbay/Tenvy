@@ -51,21 +51,39 @@ describe('normalizeBuildRequestPayload', () => {
 		}
 	});
 
-	it('rejects payloads containing unsupported fields', () => {
-		try {
-			normalizeBuildRequestPayload({
-				host: 'example.local',
-				binder: { enabled: true }
-			});
-			throw new Error('Expected payload validation to fail');
-		} catch (error) {
-			const err = error as HttpError;
-			expect(err.status).toBe(400);
-			const message =
-				typeof err.body === 'object' && err.body && 'message' in err.body
-					? String(err.body.message)
-					: String(err);
-			expect(message).toContain('binder');
-		}
-	});
+        it('rejects payloads containing unsupported fields', () => {
+                try {
+                        normalizeBuildRequestPayload({
+                                host: 'example.local',
+                                binder: { enabled: true }
+                        });
+                        throw new Error('Expected payload validation to fail');
+                } catch (error) {
+                        const err = error as HttpError;
+                        expect(err.status).toBe(400);
+                        const message =
+                                typeof err.body === 'object' && err.body && 'message' in err.body
+                                        ? String(err.body.message)
+                                        : String(err);
+                        expect(message).toContain('binder');
+                }
+        });
+
+        it('rejects ports outside the allowed range', () => {
+                try {
+                        normalizeBuildRequestPayload({
+                                host: 'example.local',
+                                port: 70000
+                        });
+                        throw new Error('Expected payload validation to fail');
+                } catch (error) {
+                        const err = error as HttpError;
+                        expect(err.status).toBe(400);
+                        const message =
+                                typeof err.body === 'object' && err.body && 'message' in err.body
+                                        ? String(err.body.message)
+                                        : String(err);
+                        expect(message).toContain('Port must be between 1 and 65535');
+                }
+        });
 });
