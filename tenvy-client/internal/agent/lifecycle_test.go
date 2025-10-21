@@ -18,17 +18,35 @@ func makeCommandResult(id string) protocol.CommandResult {
 	return protocol.CommandResult{CommandID: id}
 }
 
+func newTestAgentWithStore(t *testing.T, cacheSize, retention int) *Agent {
+	t.Helper()
+	store, err := newResultStore(resultStoreConfig{Path: t.TempDir(), Retention: retention})
+	if err != nil {
+		t.Fatalf("create result store: %v", err)
+	}
+	logger := log.New(io.Discard, "", 0)
+	agent := &Agent{
+		logger:          logger,
+		resultStore:     store,
+		resultCacheSize: cacheSize,
+		pendingResults:  make([]protocol.CommandResult, 0, cacheSize),
+	}
+	agent.reloadResultCache()
+	return agent
+}
+
 func TestEnqueueResultTrimsToMax(t *testing.T) {
-	var a Agent
-	for i := 0; i < maxBufferedResults; i++ {
-		a.pendingResults = append(a.pendingResults, makeCommandResult(fmt.Sprintf("cmd-%d", i)))
+	cacheSize := 5
+	a := newTestAgentWithStore(t, cacheSize, 100)
+	for i := 0; i < cacheSize; i++ {
+		a.enqueueResult(makeCommandResult(fmt.Sprintf("cmd-%d", i)))
 	}
 
 	extra := makeCommandResult("cmd-extra")
 	a.enqueueResult(extra)
 
-	if len(a.pendingResults) != maxBufferedResults {
-		t.Fatalf("unexpected pending results length: got %d want %d", len(a.pendingResults), maxBufferedResults)
+	if len(a.pendingResults) != cacheSize {
+		t.Fatalf("unexpected pending results length: got %d want %d", len(a.pendingResults), cacheSize)
 	}
 
 	first := a.pendingResults[0].CommandID
@@ -40,12 +58,20 @@ func TestEnqueueResultTrimsToMax(t *testing.T) {
 	if last != extra.CommandID {
 		t.Fatalf("expected last command to be new result: got %q want %q", last, extra.CommandID)
 	}
+
+	all, err := a.resultStore.All()
+	if err != nil {
+		t.Fatalf("unexpected error reading store: %v", err)
+	}
+	if len(all) != cacheSize+1 {
+		t.Fatalf("expected store to retain all results, got %d", len(all))
+	}
 }
 
 func TestEnqueueResultsBatched(t *testing.T) {
-	var a Agent
+	a := newTestAgentWithStore(t, 5, 100)
 	initial := makeCommandResult("cmd-0")
-	a.pendingResults = append(a.pendingResults, initial)
+	a.enqueueResult(initial)
 
 	batch := []protocol.CommandResult{
 		makeCommandResult("cmd-1"),
@@ -62,22 +88,31 @@ func TestEnqueueResultsBatched(t *testing.T) {
 			t.Fatalf("unexpected command id at index %d: got %q want %q", idx, got, want)
 		}
 	}
+
+	all, err := a.resultStore.All()
+	if err != nil {
+		t.Fatalf("unexpected error reading store: %v", err)
+	}
+	if len(all) != 3 {
+		t.Fatalf("expected store to contain 3 results, got %d", len(all))
+	}
 }
 
 func TestEnqueueResultsLargeBatch(t *testing.T) {
-	var a Agent
-	batch := make([]protocol.CommandResult, maxBufferedResults+10)
+	cacheSize := 10
+	a := newTestAgentWithStore(t, cacheSize, 200)
+	batch := make([]protocol.CommandResult, cacheSize+10)
 	for i := range batch {
 		batch[i] = makeCommandResult(fmt.Sprintf("cmd-%d", i))
 	}
 
 	a.enqueueResults(batch)
 
-	if len(a.pendingResults) != maxBufferedResults {
-		t.Fatalf("unexpected pending results length: got %d want %d", len(a.pendingResults), maxBufferedResults)
+	if len(a.pendingResults) != cacheSize {
+		t.Fatalf("unexpected pending results length: got %d want %d", len(a.pendingResults), cacheSize)
 	}
 
-	expectedFirst := fmt.Sprintf("cmd-%d", len(batch)-maxBufferedResults)
+	expectedFirst := fmt.Sprintf("cmd-%d", len(batch)-cacheSize)
 	if got := a.pendingResults[0].CommandID; got != expectedFirst {
 		t.Fatalf("unexpected first command id after trimming batch: got %q want %q", got, expectedFirst)
 	}
@@ -85,6 +120,14 @@ func TestEnqueueResultsLargeBatch(t *testing.T) {
 	expectedLast := fmt.Sprintf("cmd-%d", len(batch)-1)
 	if got := a.pendingResults[len(a.pendingResults)-1].CommandID; got != expectedLast {
 		t.Fatalf("unexpected last command id after trimming batch: got %q want %q", got, expectedLast)
+	}
+
+	results, err := a.resultStore.All()
+	if err != nil {
+		t.Fatalf("unexpected error reading store: %v", err)
+	}
+	if len(results) != len(batch) {
+		t.Fatalf("expected store to keep full batch, got %d want %d", len(results), len(batch))
 	}
 }
 
@@ -171,16 +214,23 @@ func TestReRegisterPreservesPendingResults(t *testing.T) {
 	}
 	defer func() { publicIPCache = originalResolver }()
 
-	agent := &Agent{
-		baseURL:        server.URL,
-		client:         server.Client(),
-		logger:         log.New(io.Discard, "", 0),
-		pendingResults: make([]protocol.CommandResult, 0, len(expectedIDs)),
-		buildVersion:   "test",
+	store, err := newResultStore(resultStoreConfig{Path: t.TempDir(), Retention: 100})
+	if err != nil {
+		t.Fatalf("create result store: %v", err)
 	}
+	agent := &Agent{
+		baseURL:         server.URL,
+		client:          server.Client(),
+		logger:          log.New(io.Discard, "", 0),
+		pendingResults:  make([]protocol.CommandResult, 0, len(expectedIDs)),
+		resultStore:     store,
+		resultCacheSize: len(expectedIDs),
+		buildVersion:    "test",
+	}
+	agent.reloadResultCache()
 
 	for _, id := range expectedIDs {
-		agent.pendingResults = append(agent.pendingResults, makeCommandResult(id))
+		agent.enqueueResult(makeCommandResult(id))
 	}
 
 	if err := agent.reRegister(ctx); err != nil {
@@ -214,5 +264,12 @@ func TestReRegisterPreservesPendingResults(t *testing.T) {
 
 	if len(agent.pendingResults) != 0 {
 		t.Fatalf("expected pending results to be consumed after sync, got %d", len(agent.pendingResults))
+	}
+	if agent.resultStore != nil {
+		if count, err := agent.resultStore.Count(); err != nil {
+			t.Fatalf("result store count error: %v", err)
+		} else if count != 0 {
+			t.Fatalf("expected result store to be empty after sync, got %d", count)
+		}
 	}
 }

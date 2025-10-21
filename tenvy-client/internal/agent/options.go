@@ -16,10 +16,11 @@ const (
 	statusOnline  = "online"
 	statusOffline = "offline"
 
-	maxBufferedResults  = 50
-	defaultPollInterval = 5 * time.Second
-	defaultBackoff      = 30 * time.Second
-	defaultShellTimeout = 30 * time.Second
+	defaultPollInterval    = 5 * time.Second
+	defaultBackoff         = 30 * time.Second
+	defaultShellTimeout    = 30 * time.Second
+	defaultResultRetention = 1024
+	defaultHotResultCache  = 50
 )
 
 // RuntimeOptions defines the dependencies and configuration required to run an
@@ -34,6 +35,7 @@ type RuntimeOptions struct {
 	BuildVersion   string
 	ShutdownGrace  time.Duration
 	TimingOverride TimingOverride
+	ResultStore    ResultStoreOptions
 }
 
 // TimingOverride allows build-time or environment overrides for default
@@ -52,6 +54,25 @@ type BuildPreferences struct {
 	StartupOnBoot bool
 	MutexKey      string
 	ForceAdmin    bool
+}
+
+// ResultStoreOptions defines configuration for persisting command results.
+type ResultStoreOptions struct {
+	Path      string
+	Retention int
+	HotCache  int
+}
+
+func (o *ResultStoreOptions) ensureDefaults(pref BuildPreferences) {
+	if strings.TrimSpace(o.Path) == "" {
+		o.Path = defaultResultStorePath(pref)
+	}
+	if o.Retention <= 0 {
+		o.Retention = defaultResultRetention
+	}
+	if o.HotCache <= 0 {
+		o.HotCache = defaultHotResultCache
+	}
 }
 
 // Validate verifies that all required runtime options have been provided.
@@ -77,6 +98,7 @@ func (o *RuntimeOptions) ensureDefaults() {
 	if o.ShutdownGrace <= 0 {
 		o.ShutdownGrace = 5 * time.Second
 	}
+	o.ResultStore.ensureDefaults(o.Preferences)
 }
 
 func ensureHTTPClient(base *http.Client) *http.Client {

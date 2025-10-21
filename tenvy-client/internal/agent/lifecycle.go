@@ -116,7 +116,7 @@ func (a *Agent) sync(ctx context.Context, status string) error {
 	results := a.consumeResults()
 	payload, err := a.performSync(ctx, status, results)
 	if err != nil {
-		if len(results) > 0 {
+		if len(results) > 0 && a.resultStore == nil {
 			a.enqueueResults(results)
 		}
 		return err
@@ -140,6 +140,10 @@ func (a *Agent) sync(ctx context.Context, status string) error {
 			}
 			a.logger.Printf("notes sync failed: %v", err)
 		}
+	}
+
+	if len(results) > 0 {
+		a.commitResults(len(results))
 	}
 
 	return nil
@@ -213,29 +217,32 @@ func (a *Agent) reRegister(ctx context.Context) error {
 		return ctx.Err()
 	}
 
-	a.resultMu.Lock()
-	savedResults := slices.Clone(a.pendingResults)
-	if len(savedResults) > 0 {
-		a.pendingResults = a.pendingResults[:0]
-	}
-	a.resultMu.Unlock()
-
-	defer func() {
-		if len(savedResults) == 0 {
-			return
-		}
+	var savedResults []protocol.CommandResult
+	if a.resultStore == nil {
 		a.resultMu.Lock()
-		if len(a.pendingResults) == 0 {
-			a.pendingResults = append(a.pendingResults, savedResults...)
-		} else {
-			combined := make([]protocol.CommandResult, 0, len(savedResults)+len(a.pendingResults))
-			combined = append(combined, savedResults...)
-			combined = append(combined, a.pendingResults...)
-			a.pendingResults = combined
+		savedResults = slices.Clone(a.pendingResults)
+		if len(savedResults) > 0 {
+			a.pendingResults = a.pendingResults[:0]
 		}
-		a.trimPendingResultsLocked()
 		a.resultMu.Unlock()
-	}()
+
+		defer func() {
+			if len(savedResults) == 0 {
+				return
+			}
+			a.resultMu.Lock()
+			if len(a.pendingResults) == 0 {
+				a.pendingResults = append(a.pendingResults, savedResults...)
+			} else {
+				combined := make([]protocol.CommandResult, 0, len(savedResults)+len(a.pendingResults))
+				combined = append(combined, savedResults...)
+				combined = append(combined, a.pendingResults...)
+				a.pendingResults = combined
+			}
+			a.trimPendingResultsLocked()
+			a.resultMu.Unlock()
+		}()
+	}
 
 	metadata := CollectMetadataWithClient(a.buildVersion, a.client)
 	registration, err := registerAgentWithRetry(ctx, a.logger, a.client, a.baseURL, a.sharedSecret, metadata, a.maxBackoff())
@@ -257,12 +264,27 @@ func (a *Agent) reRegister(ctx context.Context) error {
 
 	a.logger.Printf("re-registered as %s", a.id)
 	a.processCommands(ctx, registration.Commands)
+	if a.resultStore != nil {
+		a.reloadResultCache()
+	}
 	return nil
 }
 
 func (a *Agent) enqueueResult(result protocol.CommandResult) {
 	a.resultMu.Lock()
 	defer a.resultMu.Unlock()
+
+	if a.resultStore != nil {
+		if err := a.resultStore.Append(result); err != nil {
+			a.logger.Printf("result persistence failed: %v", err)
+		}
+		a.reloadResultCacheLocked()
+		return
+	}
+
+	if a.resultCacheSize <= 0 {
+		a.resultCacheSize = defaultHotResultCache
+	}
 	a.pendingResults = append(a.pendingResults, result)
 	a.trimPendingResultsLocked()
 }
@@ -275,7 +297,19 @@ func (a *Agent) enqueueResults(results []protocol.CommandResult) {
 	a.resultMu.Lock()
 	defer a.resultMu.Unlock()
 
-	trimmed := limitResults(results, maxBufferedResults)
+	if a.resultStore != nil {
+		if err := a.resultStore.AppendAll(results); err != nil {
+			a.logger.Printf("result persistence failed: %v", err)
+		}
+		a.reloadResultCacheLocked()
+		return
+	}
+
+	if a.resultCacheSize <= 0 {
+		a.resultCacheSize = defaultHotResultCache
+	}
+
+	trimmed := limitResults(results, a.resultCacheSize)
 	if len(trimmed) == 0 {
 		return
 	}
@@ -288,27 +322,82 @@ func (a *Agent) trimPendingResultsLocked() {
 	if len(a.pendingResults) == 0 {
 		return
 	}
-	if maxBufferedResults <= 0 {
-		a.pendingResults = a.pendingResults[:0]
+	limit := a.resultCacheSize
+	if limit <= 0 {
+		if a.resultStore != nil {
+			a.pendingResults = a.pendingResults[:0]
+		}
 		return
 	}
-	if len(a.pendingResults) <= maxBufferedResults {
+	if len(a.pendingResults) <= limit {
 		return
 	}
 
-	keep := a.pendingResults[len(a.pendingResults)-maxBufferedResults:]
+	keep := a.pendingResults[len(a.pendingResults)-limit:]
 	a.pendingResults = slices.Clone(keep)
 }
 
 func (a *Agent) consumeResults() []protocol.CommandResult {
 	a.resultMu.Lock()
 	defer a.resultMu.Unlock()
+	if a.resultStore != nil {
+		results, err := a.resultStore.All()
+		if err != nil {
+			a.logger.Printf("result load failed: %v", err)
+			return nil
+		}
+		return results
+	}
 	if len(a.pendingResults) == 0 {
 		return nil
 	}
 	results := slices.Clone(a.pendingResults)
 	a.pendingResults = a.pendingResults[:0]
 	return results
+}
+
+func (a *Agent) commitResults(count int) {
+	if count <= 0 {
+		return
+	}
+	a.resultMu.Lock()
+	defer a.resultMu.Unlock()
+
+	if a.resultStore != nil {
+		if err := a.resultStore.RemoveFirst(count); err != nil {
+			a.logger.Printf("result prune failed: %v", err)
+			return
+		}
+		a.reloadResultCacheLocked()
+		return
+	}
+
+	if count >= len(a.pendingResults) {
+		a.pendingResults = a.pendingResults[:0]
+		return
+	}
+	trimmed := a.pendingResults[count:]
+	a.pendingResults = slices.Clone(trimmed)
+}
+
+func (a *Agent) reloadResultCache() {
+	a.resultMu.Lock()
+	defer a.resultMu.Unlock()
+	a.reloadResultCacheLocked()
+}
+
+func (a *Agent) reloadResultCacheLocked() {
+	if a.resultStore == nil || a.resultCacheSize <= 0 {
+		a.pendingResults = a.pendingResults[:0]
+		return
+	}
+	results, err := a.resultStore.Tail(a.resultCacheSize)
+	if err != nil {
+		a.logger.Printf("result cache refresh failed: %v", err)
+		a.pendingResults = a.pendingResults[:0]
+		return
+	}
+	a.pendingResults = append(a.pendingResults[:0], results...)
 }
 
 func (a *Agent) collectMetrics() *protocol.AgentMetrics {
