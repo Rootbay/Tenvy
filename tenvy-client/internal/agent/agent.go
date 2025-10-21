@@ -40,6 +40,8 @@ type Agent struct {
 	remoteDesktopInputStopCh     chan struct{}
 	remoteDesktopInputStopped    atomic.Bool
 	plugins                      *plugins.Manager
+	requestHeaders               []CustomHeader
+	requestCookies               []CustomCookie
 }
 
 func (a *Agent) AgentID() string {

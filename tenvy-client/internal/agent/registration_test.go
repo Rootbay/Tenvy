@@ -155,7 +155,7 @@ func TestRegisterAgentWithRetryHonoursRetryAfter(t *testing.T) {
 	defer cancel()
 
 	start := time.Now()
-	_, err := registerAgentWithRetry(ctx, logger, server.Client(), server.URL, "", metadata, time.Second)
+	_, err := registerAgentWithRetry(ctx, logger, server.Client(), server.URL, "", metadata, time.Second, nil, nil)
 	if err != nil {
 		t.Fatalf("registerAgentWithRetry returned error: %v", err)
 	}
@@ -188,7 +188,7 @@ func TestRegisterAgentWithRetryClampsWaitToContextDeadline(t *testing.T) {
 	logger := log.New(&buf, "", 0)
 
 	start := time.Now()
-	_, err := registerAgentWithRetry(ctx, logger, server.Client(), server.URL, "", metadata, time.Second)
+	_, err := registerAgentWithRetry(ctx, logger, server.Client(), server.URL, "", metadata, time.Second, nil, nil)
 	if !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatalf("expected deadline exceeded, got %v", err)
 	}
