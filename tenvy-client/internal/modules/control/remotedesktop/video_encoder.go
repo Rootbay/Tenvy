@@ -23,7 +23,8 @@ type clipFrameBuffer struct {
 }
 
 type clipVideoEncoder interface {
-	EncodeClip(frames []clipFrameBuffer, opts clipEncodeOptions) (clipEncodeResult, error)
+	QueueFrame(frame clipFrameBuffer, opts clipEncodeOptions, forceKey bool) error
+	Flush(forceKey bool) (clipEncodeResult, error)
 	Close() error
 }
 
@@ -44,10 +45,62 @@ type clipEncodeResult struct {
 	EncoderName string
 }
 
+type ClipEncoderEvent struct {
+	Encoder   string
+	Candidate string
+	Event     string
+	Frames    int
+	Bytes     int
+	Duration  time.Duration
+	Err       error
+}
+
+type ClipEncoderProfiler interface {
+	RecordClipEncoderEvent(event ClipEncoderEvent)
+}
+
+type clipEncoderProfilerFunc func(event ClipEncoderEvent)
+
+func (f clipEncoderProfilerFunc) RecordClipEncoderEvent(event ClipEncoderEvent) {
+	f(event)
+}
+
+var (
+	clipEncoderProfiler     ClipEncoderProfiler = clipEncoderProfilerFunc(func(ClipEncoderEvent) {})
+	clipEncoderProfilerLock sync.RWMutex
+)
+
+func SetClipEncoderProfiler(prof ClipEncoderProfiler) {
+	clipEncoderProfilerLock.Lock()
+	if prof == nil {
+		clipEncoderProfiler = clipEncoderProfilerFunc(func(ClipEncoderEvent) {})
+	} else {
+		clipEncoderProfiler = prof
+	}
+	clipEncoderProfilerLock.Unlock()
+}
+
+func recordClipEncoderEvent(event ClipEncoderEvent) {
+	clipEncoderProfilerLock.RLock()
+	profiler := clipEncoderProfiler
+	clipEncoderProfilerLock.RUnlock()
+	profiler.RecordClipEncoderEvent(event)
+}
+
 type ffmpegClipEncoder struct {
-	ffmpegPath string
+	env        *ffmpegEnvironment
 	container  string
 	candidates []ffmpegEncoderCandidate
+
+	mu               sync.Mutex
+	worker           *ffmpegEncoderWorker
+	lastCandidate    ffmpegEncoderCandidate
+	failedCandidates map[string]error
+}
+
+type ffmpegEnvironment struct {
+	path string
+	caps *ffmpegEncoderCapabilities
 }
 
 type ffmpegEncoderCandidate struct {
@@ -57,12 +110,58 @@ type ffmpegEncoderCandidate struct {
 	extraArgs []string
 }
 
-func newHEVCVideoEncoder() (clipVideoEncoder, error) {
+type clipWorkerConfig struct {
+	width        int
+	height       int
+	bitrate      int
+	gop          int
+	fps          float64
+	intraRefresh bool
+}
+
+type ffmpegEncoderWorker struct {
+	candidate ffmpegEncoderCandidate
+	container string
+	config    clipWorkerConfig
+
+	cmd    *exec.Cmd
+	stdin  io.WriteCloser
+	stdout io.ReadCloser
+	stderr bytes.Buffer
+
+	mu        sync.Mutex
+	buffer    []byte
+	keyframes []int
+	notify    chan struct{}
+	closed    bool
+	err       error
+	parser    *annexBNALParser
+	closeOnce sync.Once
+}
+
+type annexBNALParser struct {
+	codec string
+	tail  []byte
+}
+
+func newFFmpegEnvironment() (*ffmpegEnvironment, error) {
 	path, err := exec.LookPath("ffmpeg")
 	if err != nil {
 		return nil, fmt.Errorf("ffmpeg binary not found: %w", err)
 	}
 	caps := detectFFmpegEncoderCapabilities(path)
+	return &ffmpegEnvironment{path: path, caps: caps}, nil
+}
+
+func newHEVCVideoEncoder(env *ffmpegEnvironment) (clipVideoEncoder, error) {
+	if env == nil {
+		var err error
+		env, err = newFFmpegEnvironment()
+		if err != nil {
+			return nil, err
+		}
+	}
+	caps := env.caps
 	candidates := make([]ffmpegEncoderCandidate, 0, 5)
 	if caps.supports("hevc_nvenc") {
 		candidates = append(candidates, ffmpegEncoderCandidate{name: "NVENC", encoder: "hevc_nvenc", filter: "format=yuv420p"})
@@ -88,20 +187,23 @@ func newHEVCVideoEncoder() (clipVideoEncoder, error) {
 	} else if len(candidates) == 0 {
 		candidates = append(candidates, ffmpegEncoderCandidate{name: "libx265", encoder: "libx265", filter: "format=yuv420p", extraArgs: []string{"-preset", "faster"}})
 	}
-	encoder := &ffmpegClipEncoder{
-		ffmpegPath: path,
-		container:  "hevc",
-		candidates: candidates,
-	}
-	return encoder, nil
+	return &ffmpegClipEncoder{
+		env:              env,
+		container:        "hevc",
+		candidates:       candidates,
+		failedCandidates: map[string]error{},
+	}, nil
 }
 
-func newAVCVideoEncoder() (clipVideoEncoder, error) {
-	path, err := exec.LookPath("ffmpeg")
-	if err != nil {
-		return nil, fmt.Errorf("ffmpeg binary not found: %w", err)
+func newAVCVideoEncoder(env *ffmpegEnvironment) (clipVideoEncoder, error) {
+	if env == nil {
+		var err error
+		env, err = newFFmpegEnvironment()
+		if err != nil {
+			return nil, err
+		}
 	}
-	caps := detectFFmpegEncoderCapabilities(path)
+	caps := env.caps
 	candidates := make([]ffmpegEncoderCandidate, 0, 6)
 	if caps.supports("h264_nvenc") {
 		candidates = append(candidates, ffmpegEncoderCandidate{name: "NVENC", encoder: "h264_nvenc", filter: "format=yuv420p"})
@@ -127,77 +229,214 @@ func newAVCVideoEncoder() (clipVideoEncoder, error) {
 	} else if len(candidates) == 0 {
 		candidates = append(candidates, ffmpegEncoderCandidate{name: "libx264", encoder: "libx264", filter: "format=yuv420p", extraArgs: []string{"-preset", "fast"}})
 	}
-	encoder := &ffmpegClipEncoder{
-		ffmpegPath: path,
-		container:  "h264",
-		candidates: candidates,
-	}
-	return encoder, nil
+	return &ffmpegClipEncoder{
+		env:              env,
+		container:        "h264",
+		candidates:       candidates,
+		failedCandidates: map[string]error{},
+	}, nil
 }
 
 func (e *ffmpegClipEncoder) Close() error {
+	e.mu.Lock()
+	worker := e.worker
+	e.worker = nil
+	e.mu.Unlock()
+	if worker != nil {
+		return worker.Close()
+	}
 	return nil
 }
 
-func (e *ffmpegClipEncoder) EncodeClip(frames []clipFrameBuffer, opts clipEncodeOptions) (clipEncodeResult, error) {
-	if len(frames) == 0 {
-		return clipEncodeResult{}, errors.New("no frames provided for encoding")
+func (e *ffmpegClipEncoder) QueueFrame(frame clipFrameBuffer, opts clipEncodeOptions, forceKey bool) error {
+	frameSize := opts.Width * opts.Height * 4
+	if frameSize <= 0 {
+		return errors.New("invalid frame dimensions")
+	}
+	if len(frame.Buffer) < frameSize {
+		return errors.New("frame buffer too small")
 	}
 
-	bitrate := estimateClipBitrate(opts.Width, opts.Height, opts.Quality, opts.TargetBitrate)
-	fps := estimateClipFPS(frames, opts.FrameInterval)
-	gop := clampInt(int(math.Round(fps)), 1, 300)
-	if opts.ForceKey {
-		gop = 1
+	start := time.Now()
+
+	worker, candidate, err := e.ensureWorker(opts, forceKey)
+	if err != nil {
+		recordClipEncoderEvent(ClipEncoderEvent{
+			Encoder:   e.container,
+			Candidate: candidate.name,
+			Event:     "queue",
+			Frames:    1,
+			Bytes:     frameSize,
+			Duration:  time.Since(start),
+			Err:       err,
+		})
+		return err
+	}
+
+	err = worker.writeFrame(frame.Buffer[:frameSize])
+	duration := time.Since(start)
+	recordClipEncoderEvent(ClipEncoderEvent{
+		Encoder:   e.container,
+		Candidate: candidate.name,
+		Event:     "queue",
+		Frames:    1,
+		Bytes:     frameSize,
+		Duration:  duration,
+		Err:       err,
+	})
+	if err != nil {
+		e.mu.Lock()
+		if e.worker == worker {
+			delete(e.failedCandidates, candidate.encoder)
+			e.worker = nil
+		}
+		e.mu.Unlock()
+		worker.Close()
+		return err
+	}
+	return nil
+}
+
+func (e *ffmpegClipEncoder) Flush(forceKey bool) (clipEncodeResult, error) {
+	e.mu.Lock()
+	worker := e.worker
+	candidate := e.lastCandidate
+	e.mu.Unlock()
+	if worker == nil {
+		return clipEncodeResult{}, nil
+	}
+	start := time.Now()
+	data, err := worker.flush(forceKey)
+	duration := time.Since(start)
+	recordClipEncoderEvent(ClipEncoderEvent{
+		Encoder:   e.container,
+		Candidate: candidate.name,
+		Event:     "flush",
+		Frames:    0,
+		Bytes:     len(data),
+		Duration:  duration,
+		Err:       err,
+	})
+	if err != nil {
+		e.mu.Lock()
+		if e.worker == worker {
+			e.worker = nil
+			e.failedCandidates[candidate.encoder] = err
+		}
+		e.mu.Unlock()
+		worker.Close()
+		return clipEncodeResult{}, err
+	}
+	if len(data) == 0 {
+		return clipEncodeResult{}, nil
+	}
+	result := clipEncodeResult{
+		Frames: []RemoteDesktopClipFrame{{
+			OffsetMs: 0,
+			Width:    worker.config.width,
+			Height:   worker.config.height,
+			Encoding: e.container,
+			Data:     append([]byte(nil), data...),
+		}},
+		Bytes:       len(data),
+		Encoding:    e.container,
+		EncoderName: candidate.name,
+	}
+	return result, nil
+}
+
+func (e *ffmpegClipEncoder) ensureWorker(opts clipEncodeOptions, forceKey bool) (*ffmpegEncoderWorker, ffmpegEncoderCandidate, error) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+
+	if e.env == nil {
+		env, err := newFFmpegEnvironment()
+		if err != nil {
+			return nil, ffmpegEncoderCandidate{}, err
+		}
+		e.env = env
+	}
+
+	config := newClipWorkerConfig(opts)
+	if forceKey && e.worker != nil {
+		_ = e.worker.Close()
+		e.worker = nil
+	}
+	if e.worker != nil && e.worker.matches(config) {
+		return e.worker, e.lastCandidate, nil
+	}
+	if e.worker != nil {
+		_ = e.worker.Close()
+		e.worker = nil
 	}
 
 	var lastErr error
 	for _, candidate := range e.candidates {
-		data, err := e.encodeWithCandidate(candidate, frames, opts, fps, bitrate, gop)
-		if err != nil {
+		if err, failed := e.failedCandidates[candidate.encoder]; failed {
 			lastErr = err
 			continue
 		}
-		if len(data) == 0 {
-			lastErr = fmt.Errorf("%s encoder produced no data", candidate.name)
+		worker, err := newFFmpegEncoderWorker(e.env.path, e.container, candidate, config)
+		if err != nil {
+			e.failedCandidates[candidate.encoder] = err
+			lastErr = err
 			continue
 		}
-		encoded := append([]byte(nil), data...)
-		return clipEncodeResult{
-			Frames: []RemoteDesktopClipFrame{{
-				OffsetMs: 0,
-				Width:    opts.Width,
-				Height:   opts.Height,
-				Encoding: e.container,
-				Data:     encoded,
-			}},
-			Bytes:       len(encoded),
-			Encoding:    e.container,
-			EncoderName: candidate.name,
-		}, nil
+		e.worker = worker
+		e.lastCandidate = candidate
+		delete(e.failedCandidates, candidate.encoder)
+		return worker, candidate, nil
 	}
 	if lastErr == nil {
-		lastErr = errors.New("no encoder candidates succeeded")
+		lastErr = errors.New("no encoder candidates available")
 	}
-	return clipEncodeResult{}, lastErr
+	return nil, ffmpegEncoderCandidate{}, lastErr
 }
 
-func (e *ffmpegClipEncoder) encodeWithCandidate(
-	candidate ffmpegEncoderCandidate,
-	frames []clipFrameBuffer,
-	opts clipEncodeOptions,
-	fps float64,
-	bitrate int,
-	gop int,
-) ([]byte, error) {
+func newClipWorkerConfig(opts clipEncodeOptions) clipWorkerConfig {
+	fps := estimateClipFPSFromInterval(opts.FrameInterval)
+	gop := clampInt(int(math.Round(fps)), 1, 300)
+	if opts.ForceKey {
+		gop = 1
+	}
+	bitrate := estimateClipBitrate(opts.Width, opts.Height, opts.Quality, opts.TargetBitrate)
+	return clipWorkerConfig{
+		width:        opts.Width,
+		height:       opts.Height,
+		bitrate:      bitrate,
+		gop:          gop,
+		fps:          fps,
+		intraRefresh: opts.IntraRefresh,
+	}
+}
+
+func estimateClipFPSFromInterval(interval time.Duration) float64 {
+	if interval <= 0 {
+		return 30
+	}
+	ms := float64(interval.Milliseconds())
+	if ms <= 0 {
+		return 30
+	}
+	fps := 1000 / ms
+	if fps < 5 {
+		return 5
+	}
+	if fps > 240 {
+		return 240
+	}
+	return fps
+}
+
+func newFFmpegEncoderWorker(path, container string, candidate ffmpegEncoderCandidate, config clipWorkerConfig) (*ffmpegEncoderWorker, error) {
 	args := []string{
 		"-hide_banner", "-loglevel", "error",
 		"-f", "rawvideo",
 		"-pix_fmt", "bgra",
-		"-video_size", fmt.Sprintf("%dx%d", opts.Width, opts.Height),
+		"-video_size", fmt.Sprintf("%dx%d", config.width, config.height),
 	}
-	if fps > 0 {
-		args = append(args, "-framerate", strconv.FormatFloat(fps, 'f', 3, 64))
+	if config.fps > 0 {
+		args = append(args, "-framerate", strconv.FormatFloat(config.fps, 'f', 3, 64))
 	}
 	args = append(args, "-i", "pipe:0")
 
@@ -207,26 +446,26 @@ func (e *ffmpegClipEncoder) encodeWithCandidate(
 	}
 	args = append(args, "-vf", filter)
 	args = append(args, "-c:v", candidate.encoder)
-	args = append(args, "-g", strconv.Itoa(gop))
+	args = append(args, "-g", strconv.Itoa(config.gop))
 	args = append(args, "-bf", "0")
 
-	rate := fmt.Sprintf("%dk", bitrate)
-	args = append(args, "-b:v", rate, "-maxrate", rate, "-bufsize", fmt.Sprintf("%dk", clampInt(bitrate*2, bitrate, 100000)))
+	rate := fmt.Sprintf("%dk", config.bitrate)
+	args = append(args, "-b:v", rate, "-maxrate", rate, "-bufsize", fmt.Sprintf("%dk", clampInt(config.bitrate*2, config.bitrate, 100000)))
 
 	if len(candidate.extraArgs) > 0 {
 		args = append(args, candidate.extraArgs...)
 	}
-	if opts.IntraRefresh {
+	if config.intraRefresh {
 		args = append(args, "-intra-refresh", "1")
 	}
 
-	container := strings.TrimSpace(e.container)
+	container = strings.TrimSpace(container)
 	if container == "" {
 		container = "hevc"
 	}
 	args = append(args, "-f", container, "pipe:1")
 
-	cmd := exec.Command(e.ffmpegPath, args...)
+	cmd := exec.Command(path, args...)
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
 		return nil, err
@@ -236,8 +475,18 @@ func (e *ffmpegClipEncoder) encodeWithCandidate(
 		stdin.Close()
 		return nil, err
 	}
-	var stderr bytes.Buffer
-	cmd.Stderr = &stderr
+
+	worker := &ffmpegEncoderWorker{
+		candidate: candidate,
+		container: container,
+		config:    config,
+		cmd:       cmd,
+		stdin:     stdin,
+		stdout:    stdout,
+		notify:    make(chan struct{}, 1),
+		parser:    &annexBNALParser{codec: container},
+	}
+	cmd.Stderr = &worker.stderr
 
 	if err := cmd.Start(); err != nil {
 		stdin.Close()
@@ -245,42 +494,209 @@ func (e *ffmpegClipEncoder) encodeWithCandidate(
 		return nil, err
 	}
 
-	frameSize := opts.Width * opts.Height * 4
-	writeErr := func(err error) ([]byte, error) {
-		stdin.Close()
-		_ = cmd.Process.Kill()
-		_ = cmd.Wait()
-		if stderr.Len() > 0 {
-			return nil, fmt.Errorf("%s encoder failed: %w: %s", candidate.name, err, strings.TrimSpace(stderr.String()))
-		}
-		return nil, fmt.Errorf("%s encoder failed: %w", candidate.name, err)
-	}
+	go worker.readLoop()
+	return worker, nil
+}
 
-	for _, frame := range frames {
-		if len(frame.Buffer) < frameSize {
-			return writeErr(fmt.Errorf("frame buffer too small"))
-		}
-		if _, err := stdin.Write(frame.Buffer[:frameSize]); err != nil {
-			return writeErr(err)
-		}
-	}
-	if err := stdin.Close(); err != nil {
-		return writeErr(err)
-	}
+func (w *ffmpegEncoderWorker) matches(config clipWorkerConfig) bool {
+	return w.config.width == config.width &&
+		w.config.height == config.height &&
+		w.config.bitrate == config.bitrate &&
+		w.config.gop == config.gop &&
+		w.config.intraRefresh == config.intraRefresh
+}
 
-	data, err := io.ReadAll(stdout)
+func (w *ffmpegEncoderWorker) writeFrame(frame []byte) error {
+	frameSize := w.config.width * w.config.height * 4
+	if len(frame) < frameSize {
+		return errors.New("frame buffer too small")
+	}
+	_, err := w.stdin.Write(frame[:frameSize])
 	if err != nil {
-		return writeErr(err)
+		w.fail(err)
 	}
+	return err
+}
 
-	if err := cmd.Wait(); err != nil {
-		if stderr.Len() > 0 {
-			return nil, fmt.Errorf("%s encoder failed: %w: %s", candidate.name, err, strings.TrimSpace(stderr.String()))
+func (w *ffmpegEncoderWorker) flush(forceKey bool) ([]byte, error) {
+	deadline := time.Now().Add(500 * time.Millisecond)
+	for {
+		w.mu.Lock()
+		hasData := len(w.buffer) > 0
+		keyReady := !forceKey || (len(w.keyframes) > 0 && w.keyframes[0] == 0)
+		closed := w.closed
+		err := w.err
+		if hasData && keyReady {
+			data := append([]byte(nil), w.buffer...)
+			w.buffer = nil
+			w.keyframes = nil
+			w.mu.Unlock()
+			return data, nil
 		}
-		return nil, fmt.Errorf("%s encoder failed: %w", candidate.name, err)
-	}
+		if closed {
+			w.buffer = nil
+			w.keyframes = nil
+			w.mu.Unlock()
+			if err != nil {
+				return nil, err
+			}
+			return nil, nil
+		}
+		w.mu.Unlock()
 
-	return data, nil
+		if time.Now().After(deadline) {
+			w.mu.Lock()
+			if !forceKey && len(w.buffer) > 0 {
+				data := append([]byte(nil), w.buffer...)
+				w.buffer = nil
+				w.keyframes = nil
+				w.mu.Unlock()
+				return data, nil
+			}
+			err := w.err
+			w.mu.Unlock()
+			if err != nil {
+				return nil, err
+			}
+			if forceKey {
+				return nil, errors.New("encoder has not produced a keyframe")
+			}
+			return nil, errors.New("encoder flush timeout")
+		}
+
+		select {
+		case <-w.notify:
+		case <-time.After(10 * time.Millisecond):
+		}
+	}
+}
+
+func (w *ffmpegEncoderWorker) Close() error {
+	w.closeOnce.Do(func() {
+		w.mu.Lock()
+		w.closed = true
+		w.mu.Unlock()
+		if w.stdin != nil {
+			_ = w.stdin.Close()
+		}
+		if w.stdout != nil {
+			_ = w.stdout.Close()
+		}
+		if w.cmd != nil && w.cmd.Process != nil {
+			_ = w.cmd.Process.Kill()
+		}
+		if w.cmd != nil {
+			_ = w.cmd.Wait()
+		}
+		w.signal()
+	})
+	return nil
+}
+
+func (w *ffmpegEncoderWorker) signal() {
+	select {
+	case w.notify <- struct{}{}:
+	default:
+	}
+}
+
+func (w *ffmpegEncoderWorker) readLoop() {
+	buf := make([]byte, 64*1024)
+	for {
+		n, err := w.stdout.Read(buf)
+		if n > 0 {
+			chunk := append([]byte(nil), buf[:n]...)
+			w.mu.Lock()
+			base := len(w.buffer)
+			w.buffer = append(w.buffer, chunk...)
+			offsets := w.parser.push(chunk)
+			for _, offset := range offsets {
+				w.keyframes = append(w.keyframes, base+offset)
+			}
+			w.mu.Unlock()
+			w.signal()
+		}
+		if err != nil {
+			if !errors.Is(err, io.EOF) {
+				w.fail(err)
+			}
+			break
+		}
+	}
+	w.mu.Lock()
+	w.closed = true
+	w.mu.Unlock()
+	w.signal()
+}
+
+func (w *ffmpegEncoderWorker) fail(err error) {
+	w.mu.Lock()
+	if w.err == nil {
+		w.err = err
+	}
+	w.mu.Unlock()
+	w.signal()
+}
+
+func (p *annexBNALParser) push(chunk []byte) []int {
+	if len(chunk) == 0 {
+		return nil
+	}
+	data := append(p.tail, chunk...)
+	prevTailLen := len(p.tail)
+	offsets := make([]int, 0, 1)
+	i := 0
+	for i <= len(data)-4 {
+		startLen := 0
+		if data[i] == 0 && data[i+1] == 0 {
+			if data[i+2] == 1 {
+				startLen = 3
+			} else if i+3 < len(data) && data[i+2] == 0 && data[i+3] == 1 {
+				startLen = 4
+			}
+		}
+		if startLen > 0 {
+			start := i + startLen
+			if start < len(data) {
+				if isKeyframeNAL(p.codec, data[start:]) {
+					offset := start - prevTailLen
+					if offset < 0 {
+						offset = 0
+					}
+					offsets = append(offsets, offset)
+				}
+			}
+			i = start
+			continue
+		}
+		i++
+	}
+	if len(data) > 4 {
+		p.tail = append([]byte(nil), data[len(data)-4:]...)
+	} else {
+		p.tail = append([]byte(nil), data...)
+	}
+	return offsets
+}
+
+func isKeyframeNAL(codec string, nal []byte) bool {
+	if len(nal) == 0 {
+		return false
+	}
+	normalized := strings.ToLower(strings.TrimSpace(codec))
+	switch normalized {
+	case remoteClipEncodingH264, "avc":
+		nalType := nal[0] & 0x1F
+		return nalType == 5
+	case remoteClipEncodingHEVC, "h265":
+		if len(nal) < 2 {
+			return false
+		}
+		nalType := (nal[0] >> 1) & 0x3F
+		return nalType >= 16 && nalType <= 21
+	default:
+		return false
+	}
 }
 
 type ffmpegEncoderCapabilities struct {
@@ -327,7 +743,6 @@ func detectFFmpegEncoderCapabilities(path string) *ffmpegEncoderCapabilities {
 		if len(fields) < 2 {
 			continue
 		}
-		// Encoder lines usually begin with capability flags (e.g. " V..... hevc_nvenc")
 		name := strings.ToLower(strings.TrimSpace(fields[1]))
 		if name != "" {
 			caps.encoders[name] = struct{}{}
