@@ -10,26 +10,28 @@ import (
 const (
 	CommandStreamSubprotocol    = "tenvy.agent.v1"
 	CommandStreamMaxMessageSize = 1 << 20 // 1 MiB
+	AudioStreamSubprotocol      = "tenvy.audio.v1"
+	AudioStreamTokenHeader      = "X-Audio-Stream-Token"
 )
 
 var ErrUnauthorized = errors.New("unauthorized")
 
 type PluginSignaturePolicy struct {
-        AllowUnsigned     bool              `json:"allowUnsigned,omitempty"`
-        SHA256AllowList   []string          `json:"sha256AllowList,omitempty"`
-        Ed25519PublicKeys map[string]string `json:"ed25519PublicKeys,omitempty"`
-        MaxSignatureAgeMs int64             `json:"maxSignatureAgeMs,omitempty"`
+	AllowUnsigned     bool              `json:"allowUnsigned,omitempty"`
+	SHA256AllowList   []string          `json:"sha256AllowList,omitempty"`
+	Ed25519PublicKeys map[string]string `json:"ed25519PublicKeys,omitempty"`
+	MaxSignatureAgeMs int64             `json:"maxSignatureAgeMs,omitempty"`
 }
 
 type PluginConfig struct {
-        SignaturePolicy *PluginSignaturePolicy `json:"signaturePolicy,omitempty"`
+	SignaturePolicy *PluginSignaturePolicy `json:"signaturePolicy,omitempty"`
 }
 
 type AgentConfig struct {
-        PollIntervalMs int           `json:"pollIntervalMs"`
-        MaxBackoffMs   int           `json:"maxBackoffMs"`
-        JitterRatio    float64       `json:"jitterRatio"`
-        Plugins        *PluginConfig `json:"plugins,omitempty"`
+	PollIntervalMs int           `json:"pollIntervalMs"`
+	MaxBackoffMs   int           `json:"maxBackoffMs"`
+	JitterRatio    float64       `json:"jitterRatio"`
+	Plugins        *PluginConfig `json:"plugins,omitempty"`
 }
 
 type AgentMetrics struct {

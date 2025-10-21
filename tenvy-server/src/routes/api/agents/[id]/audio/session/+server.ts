@@ -82,6 +82,22 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 		throw error(500, 'Failed to create audio session');
 	}
 
+	let streamTransport: AudioControlCommandPayload['streamTransport'];
+	try {
+		const prepared = audioBridgeManager.prepareBinaryTransport(id, session.sessionId);
+		streamTransport = prepared.command;
+		const refreshed = audioBridgeManager.getSessionState(id);
+		if (refreshed) {
+			session = refreshed;
+		}
+	} catch (err) {
+		if (err instanceof AudioBridgeError) {
+			console.warn(`Audio stream negotiation unavailable for agent ${id}: ${err.message}`);
+		} else {
+			console.warn(`Audio stream negotiation failed for agent ${id}:`, err);
+		}
+	}
+
 	const command: AudioControlCommandPayload = {
 		action: 'start',
 		sessionId: session.sessionId,
@@ -90,7 +106,8 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 		direction: session.direction,
 		sampleRate,
 		channels,
-		encoding
+		encoding,
+		streamTransport
 	};
 
 	try {

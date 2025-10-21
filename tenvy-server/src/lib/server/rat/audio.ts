@@ -1,4 +1,4 @@
-import { randomUUID } from 'crypto';
+import { createHash, randomBytes, randomUUID, timingSafeEqual } from 'crypto';
 import type {
 	AudioDeviceInventory,
 	AudioDeviceInventoryState,
@@ -6,12 +6,56 @@ import type {
 	AudioSessionState,
 	AudioStreamChunk,
 	AudioStreamFormat,
+	AudioStreamTransport,
 	AudioUploadTrack
 } from '$lib/types/audio';
 import { join } from 'node:path';
 import { mkdir, stat, unlink } from 'node:fs/promises';
+import {
+	AUDIO_STREAM_SUBPROTOCOL,
+	AUDIO_STREAM_TOKEN_HEADER
+} from '../../../../../shared/constants/protocol';
 
 const encoder = new TextEncoder();
+const AUDIO_STREAM_TOKEN_TTL_MS = 60_000;
+
+function hashStreamToken(token: string): string {
+	const hash = createHash('sha256');
+	hash.update(token, 'utf-8');
+	return hash.digest('hex');
+}
+
+function timingSafeEqualHex(expected: string, candidate: string): boolean {
+	if (expected.length !== candidate.length) {
+		return false;
+	}
+	try {
+		const expectedBuffer = Buffer.from(expected, 'hex');
+		const candidateBuffer = Buffer.from(candidate, 'hex');
+		return timingSafeEqual(expectedBuffer, candidateBuffer);
+	} catch {
+		return false;
+	}
+}
+
+function generateStreamToken(): { token: string; hash: string; expiresAt: number } {
+	const token = randomBytes(32).toString('hex');
+	return { token, hash: hashStreamToken(token), expiresAt: Date.now() + AUDIO_STREAM_TOKEN_TTL_MS };
+}
+
+function cloneTransportState(
+	transport: AudioStreamTransport | undefined
+): AudioStreamTransport | undefined {
+	if (!transport) {
+		return undefined;
+	}
+	const { transport: kind, url, protocol } = transport;
+	return {
+		transport: kind,
+		url,
+		protocol
+	} satisfies AudioStreamTransport;
+}
 
 export class AudioBridgeError extends Error {
 	status: number;
@@ -40,6 +84,10 @@ interface AudioSessionRecord {
 	lastSequence?: number;
 	active: boolean;
 	subscribers: Set<AudioSubscriber>;
+	transport?: AudioStreamTransport;
+	streamTokenHash?: string;
+	streamTokenExpiresAt?: number;
+	streamSocket?: WebSocket;
 }
 
 interface AudioUploadRecord {
@@ -76,7 +124,8 @@ function toSessionState(record: AudioSessionRecord): AudioSessionState {
 		startedAt: record.startedAt.toISOString(),
 		lastUpdatedAt: record.lastUpdatedAt?.toISOString(),
 		lastSequence: record.lastSequence,
-		active: record.active
+		active: record.active,
+		transport: cloneTransportState(record.transport)
 	} satisfies AudioSessionState;
 }
 
@@ -168,6 +217,47 @@ export class AudioBridgeManager {
 		return toSessionState(record);
 	}
 
+	prepareBinaryTransport(
+		agentId: string,
+		sessionId: string
+	): {
+		command: AudioStreamTransport;
+		state: AudioStreamTransport;
+	} {
+		const record = this.sessions.get(agentId);
+		if (!record || record.id !== sessionId) {
+			throw new AudioBridgeError('Audio session not found', 404);
+		}
+		if (!record.active) {
+			throw new AudioBridgeError('Audio session is not active', 409);
+		}
+
+		const url = `/api/agents/${agentId}/audio/ingest?sessionId=${encodeURIComponent(record.id)}`;
+		const baseTransport: AudioStreamTransport = {
+			transport: 'websocket',
+			url,
+			protocol: AUDIO_STREAM_SUBPROTOCOL
+		} satisfies AudioStreamTransport;
+
+		this.disconnectBinaryStream(record, { code: 1012, reason: 'Stream renegotiated' });
+
+		const generated = generateStreamToken();
+		record.streamTokenHash = generated.hash;
+		record.streamTokenExpiresAt = generated.expiresAt;
+		record.transport = { ...baseTransport } satisfies AudioStreamTransport;
+
+		const command: AudioStreamTransport = {
+			...baseTransport,
+			headers: {
+				[AUDIO_STREAM_TOKEN_HEADER]: generated.token
+			}
+		} satisfies AudioStreamTransport;
+
+		this.broadcast(record, 'session', toSessionState(record));
+
+		return { command, state: record.transport };
+	}
+
 	getSessionState(agentId: string): AudioSessionState | null {
 		const record = this.sessions.get(agentId);
 		if (!record) {
@@ -241,6 +331,11 @@ export class AudioBridgeManager {
 			return this.getSessionState(agentId);
 		}
 
+		this.disconnectBinaryStream(record, { code: 1011, reason: 'Audio session closed' });
+		record.streamTokenHash = undefined;
+		record.streamTokenExpiresAt = undefined;
+		record.transport = undefined;
+
 		if (record.active) {
 			record.active = false;
 			record.lastUpdatedAt = new Date();
@@ -300,6 +395,164 @@ export class AudioBridgeManager {
 				}
 			}
 		});
+	}
+
+	private disconnectBinaryStream(
+		record: AudioSessionRecord,
+		options: { code?: number; reason?: string } = {}
+	) {
+		const socket = record.streamSocket;
+		if (!socket) {
+			return;
+		}
+		record.streamSocket = undefined;
+		try {
+			socket.close(options.code ?? 1011, options.reason ?? 'Audio stream closed');
+		} catch {
+			// ignore close errors
+		}
+	}
+
+	private validateStreamToken(record: AudioSessionRecord, token: string | null | undefined) {
+		if (!token || token.trim() === '') {
+			throw new AudioBridgeError('Missing audio stream token', 401);
+		}
+		if (!record.streamTokenHash) {
+			throw new AudioBridgeError('Audio stream token not negotiated', 401);
+		}
+		if (!record.streamTokenExpiresAt || Date.now() >= record.streamTokenExpiresAt) {
+			record.streamTokenHash = undefined;
+			record.streamTokenExpiresAt = undefined;
+			throw new AudioBridgeError('Audio stream token expired', 401);
+		}
+
+		const incoming = hashStreamToken(token);
+		if (!timingSafeEqualHex(record.streamTokenHash, incoming)) {
+			throw new AudioBridgeError('Invalid audio stream token', 401);
+		}
+
+		record.streamTokenExpiresAt = Date.now() + AUDIO_STREAM_TOKEN_TTL_MS;
+	}
+
+	private handleBinaryPayload(agentId: string, record: AudioSessionRecord, payload: unknown) {
+		if (payload == null) {
+			return;
+		}
+
+		let buffer: Buffer;
+		if (typeof Buffer !== 'undefined' && Buffer.isBuffer(payload)) {
+			buffer = payload;
+		} else if (payload instanceof ArrayBuffer) {
+			buffer = Buffer.from(payload);
+		} else if (ArrayBuffer.isView(payload)) {
+			buffer = Buffer.from(payload.buffer, payload.byteOffset, payload.byteLength);
+		} else if (typeof payload === 'string') {
+			buffer = Buffer.from(payload, 'utf-8');
+		} else {
+			throw new AudioBridgeError('Unsupported audio stream payload', 400);
+		}
+
+		const newlineIndex = buffer.indexOf(0x0a);
+		if (newlineIndex <= 0) {
+			throw new AudioBridgeError('Malformed audio stream frame', 400);
+		}
+
+		const headerRaw = buffer.subarray(0, newlineIndex).toString('utf-8');
+		let header: {
+			sessionId?: string;
+			sequence?: number | string;
+			timestamp?: string;
+			format?: AudioStreamFormat;
+		};
+		try {
+			header = JSON.parse(headerRaw) as typeof header;
+		} catch {
+			throw new AudioBridgeError('Invalid audio stream frame header', 400);
+		}
+
+		const payloadData = buffer.subarray(newlineIndex + 1);
+		const base64Data = payloadData.length > 0 ? payloadData.toString('base64') : '';
+
+		let sequence: number | undefined;
+		if (typeof header.sequence === 'number' && Number.isFinite(header.sequence)) {
+			sequence = header.sequence;
+		} else if (typeof header.sequence === 'string') {
+			const parsed = Number.parseInt(header.sequence, 10);
+			if (Number.isFinite(parsed)) {
+				sequence = parsed;
+			}
+		}
+
+		const chunk: AudioStreamChunk = {
+			sessionId: header.sessionId?.trim() || record.id,
+			sequence: sequence ?? (record.lastSequence ?? 0) + 1,
+			timestamp:
+				typeof header.timestamp === 'string' && header.timestamp.trim() !== ''
+					? header.timestamp
+					: new Date().toISOString(),
+			format: header.format ? { ...record.format, ...header.format } : { ...record.format },
+			data: base64Data
+		} satisfies AudioStreamChunk;
+
+		this.ingestChunk(agentId, chunk);
+	}
+
+	attachBinaryStream(agentId: string, sessionId: string, token: string | null, socket: WebSocket) {
+		const record = this.sessions.get(agentId);
+		if (!record || record.id !== sessionId) {
+			throw new AudioBridgeError('Audio session not found', 404);
+		}
+		if (!record.active) {
+			throw new AudioBridgeError('Audio session is not active', 409);
+		}
+
+		this.validateStreamToken(record, token);
+		this.disconnectBinaryStream(record, { code: 1012, reason: 'Stream replaced' });
+
+		const acceptingSocket = socket as unknown as {
+			accept?: (options?: { protocol?: string }) => void;
+		};
+		if (typeof acceptingSocket.accept === 'function') {
+			try {
+				acceptingSocket.accept({
+					protocol: record.transport?.protocol ?? AUDIO_STREAM_SUBPROTOCOL
+				});
+			} catch {
+				// ignore accept failures
+			}
+		}
+
+		record.streamSocket = socket;
+
+		const handleClose = () => {
+			if (record.streamSocket === socket) {
+				record.streamSocket = undefined;
+			}
+		};
+
+		const handleMessage = (event: MessageEvent) => {
+			try {
+				this.handleBinaryPayload(agentId, record, event.data);
+			} catch (err) {
+				handleClose();
+				const reason = err instanceof AudioBridgeError ? err.message : 'Audio stream error';
+				try {
+					socket.close(1011, reason);
+				} catch {
+					// ignore close errors
+				}
+			}
+		};
+
+		if (typeof socket.addEventListener === 'function') {
+			socket.addEventListener('message', handleMessage as EventListener);
+			socket.addEventListener('close', handleClose as EventListener);
+			socket.addEventListener('error', handleClose as EventListener);
+		} else {
+			(socket as { onmessage?: (event: MessageEvent) => void }).onmessage = handleMessage;
+			(socket as { onclose?: () => void }).onclose = handleClose;
+			(socket as { onerror?: () => void }).onerror = handleClose;
+		}
 	}
 
 	private broadcast(record: AudioSessionRecord, event: string, payload: unknown) {

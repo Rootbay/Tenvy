@@ -21,6 +21,7 @@ import (
 
 	"github.com/gen2brain/malgo"
 	"github.com/rootbay/tenvy-client/internal/protocol"
+	"nhooyr.io/websocket"
 )
 
 type (
@@ -68,9 +69,21 @@ type AudioStreamSession struct {
 	stopped   atomic.Bool
 	sequence  uint64
 
+	transportMu  sync.Mutex
+	transport    *AudioStreamTransport
+	transportURL string
+	streamConn   *websocket.Conn
+
 	deviceToken malgo.DeviceID
 	useDeviceID bool
 	done        chan struct{}
+}
+
+type audioBinaryHeader struct {
+	SessionID string            `json:"sessionId"`
+	Sequence  uint64            `json:"sequence"`
+	Timestamp string            `json:"timestamp"`
+	Format    AudioStreamFormat `json:"format"`
 }
 
 func (s *AudioStreamSession) logf(format string, args ...interface{}) {
@@ -357,6 +370,10 @@ func (b *AudioBridge) startSession(ctx context.Context, payload AudioControlComm
 	session.device = device
 	session.runCtx, session.runCancel = context.WithCancel(context.Background())
 
+	if err := session.configureTransport(cfg, payload.StreamTransport); err != nil {
+		session.logf("audio stream %s transport negotiation failed: %v", session.id, err)
+	}
+
 	go session.run()
 
 	b.mu.Lock()
@@ -409,6 +426,262 @@ func (s *AudioStreamSession) handleInput(input []byte) {
 	}
 }
 
+func (s *AudioStreamSession) configureTransport(cfg Config, transport *AudioStreamTransport) error {
+	if s == nil {
+		return nil
+	}
+	if transport == nil {
+		s.clearTransport()
+		return nil
+	}
+
+	mode := strings.ToLower(strings.TrimSpace(transport.Transport))
+	if mode == "" {
+		s.clearTransport()
+		return errors.New("audio stream transport type is missing")
+	}
+	if mode != "websocket" {
+		s.clearTransport()
+		return fmt.Errorf("audio stream transport %s is not supported", transport.Transport)
+	}
+
+	resolved, err := resolveStreamEndpoint(cfg.BaseURL, transport.URL)
+	if err != nil {
+		s.clearTransport()
+		return err
+	}
+
+	headers := make(map[string]string, len(transport.Headers))
+	for key, value := range transport.Headers {
+		trimmedKey := strings.TrimSpace(key)
+		trimmedValue := strings.TrimSpace(value)
+		if trimmedKey == "" || trimmedValue == "" {
+			continue
+		}
+		headers[trimmedKey] = trimmedValue
+	}
+
+	s.transportMu.Lock()
+	s.transport = &AudioStreamTransport{
+		Transport: mode,
+		URL:       transport.URL,
+		Protocol:  strings.TrimSpace(transport.Protocol),
+		Headers:   headers,
+	}
+	s.transportURL = resolved
+	s.transportMu.Unlock()
+
+	if err := s.establishBinaryTransport(cfg); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (s *AudioStreamSession) clearTransport() {
+	if s == nil {
+		return
+	}
+	s.transportMu.Lock()
+	conn := s.streamConn
+	s.streamConn = nil
+	s.transport = nil
+	s.transportURL = ""
+	s.transportMu.Unlock()
+	if conn != nil {
+		_ = conn.Close(websocket.StatusNormalClosure, "transport cleared")
+	}
+}
+
+func resolveStreamEndpoint(baseURL, endpoint string) (string, error) {
+	trimmed := strings.TrimSpace(endpoint)
+	if trimmed == "" {
+		return "", errors.New("audio stream endpoint is empty")
+	}
+
+	parsed, err := url.Parse(trimmed)
+	if err != nil {
+		return "", err
+	}
+
+	if !parsed.IsAbs() {
+		base := strings.TrimSpace(baseURL)
+		if base == "" {
+			return "", errors.New("audio stream base url is missing")
+		}
+		baseParsed, err := url.Parse(base)
+		if err != nil {
+			return "", err
+		}
+		parsed = baseParsed.ResolveReference(parsed)
+	}
+
+	switch strings.ToLower(parsed.Scheme) {
+	case "https":
+		parsed.Scheme = "wss"
+	case "wss":
+	default:
+		return "", fmt.Errorf("unsupported audio stream scheme: %s", parsed.Scheme)
+	}
+
+	return parsed.String(), nil
+}
+
+func (s *AudioStreamSession) establishBinaryTransport(cfg Config) error {
+	if s == nil {
+		return errors.New("audio stream session is not initialized")
+	}
+
+	s.transportMu.Lock()
+	transport := s.transport
+	resolved := s.transportURL
+	protocolName := ""
+	headers := make(map[string]string)
+	if transport != nil {
+		protocolName = strings.TrimSpace(transport.Protocol)
+		for key, value := range transport.Headers {
+			headers[key] = value
+		}
+	}
+	s.transportMu.Unlock()
+
+	if transport == nil || !strings.EqualFold(transport.Transport, "websocket") {
+		return errors.New("audio stream binary transport unavailable")
+	}
+	if resolved == "" {
+		return errors.New("audio stream endpoint is not configured")
+	}
+
+	httpHeaders := http.Header{}
+	if ua := strings.TrimSpace(s.bridge.userAgent()); ua != "" {
+		httpHeaders.Set("User-Agent", ua)
+	}
+	if key := strings.TrimSpace(cfg.AuthKey); key != "" {
+		httpHeaders.Set("Authorization", fmt.Sprintf("Bearer %s", key))
+	}
+	for key, value := range headers {
+		httpHeaders.Set(key, value)
+	}
+
+	dialCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	options := &websocket.DialOptions{
+		HTTPHeader:      httpHeaders,
+		CompressionMode: websocket.CompressionDisabled,
+	}
+	if protocolName != "" {
+		options.Subprotocols = []string{protocolName}
+	}
+
+	conn, _, err := websocket.Dial(dialCtx, resolved, options)
+	if err != nil {
+		return err
+	}
+
+	s.transportMu.Lock()
+	if s.streamConn != nil {
+		_ = s.streamConn.Close(websocket.StatusNormalClosure, "replaced")
+	}
+	s.streamConn = conn
+	s.transportMu.Unlock()
+	return nil
+}
+
+func (s *AudioStreamSession) trySendBinary(cfg Config, data []byte, sequence uint64, timestamp time.Time) bool {
+	if s == nil {
+		return false
+	}
+
+	s.transportMu.Lock()
+	transport := s.transport
+	s.transportMu.Unlock()
+
+	if transport == nil || !strings.EqualFold(strings.TrimSpace(transport.Transport), "websocket") {
+		return false
+	}
+
+	if err := s.sendBinaryFrame(data, sequence, timestamp); err == nil {
+		return true
+	}
+
+	if !s.reconnectTransport(cfg) {
+		return false
+	}
+
+	return s.sendBinaryFrame(data, sequence, timestamp) == nil
+}
+
+func (s *AudioStreamSession) sendBinaryFrame(data []byte, sequence uint64, timestamp time.Time) error {
+	if s == nil {
+		return errors.New("audio stream session is not initialized")
+	}
+
+	s.transportMu.Lock()
+	conn := s.streamConn
+	transport := s.transport
+	format := s.format
+	s.transportMu.Unlock()
+
+	if conn == nil || transport == nil || !strings.EqualFold(strings.TrimSpace(transport.Transport), "websocket") {
+		return errors.New("audio stream binary transport unavailable")
+	}
+
+	header := audioBinaryHeader{
+		SessionID: s.id,
+		Sequence:  sequence,
+		Timestamp: timestamp.UTC().Format(time.RFC3339Nano),
+		Format:    format,
+	}
+
+	headerPayload, err := json.Marshal(header)
+	if err != nil {
+		return err
+	}
+
+	frame := make([]byte, len(headerPayload)+1+len(data))
+	copy(frame, headerPayload)
+	frame[len(headerPayload)] = '\n'
+	copy(frame[len(headerPayload)+1:], data)
+
+	sendCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	if err := conn.Write(sendCtx, websocket.MessageBinary, frame); err != nil {
+		s.transportMu.Lock()
+		if s.streamConn == conn {
+			s.streamConn = nil
+		}
+		s.transportMu.Unlock()
+		return err
+	}
+
+	return nil
+}
+
+func (s *AudioStreamSession) reconnectTransport(cfg Config) bool {
+	if s == nil {
+		return false
+	}
+	if err := s.establishBinaryTransport(cfg); err != nil {
+		s.logf("audio stream %s binary transport reconnect failed: %v", s.id, err)
+		return false
+	}
+	return true
+}
+
+func (s *AudioStreamSession) closeStreamConn(status websocket.StatusCode, reason string) {
+	if s == nil {
+		return
+	}
+	s.transportMu.Lock()
+	conn := s.streamConn
+	s.streamConn = nil
+	s.transportMu.Unlock()
+	if conn != nil {
+		_ = conn.Close(status, reason)
+	}
+}
+
 func (s *AudioStreamSession) run() {
 	defer close(s.done)
 
@@ -422,6 +695,13 @@ func (s *AudioStreamSession) run() {
 			}
 
 			cfg := s.bridge.config()
+			sequence := atomic.AddUint64(&s.sequence, 1)
+			capturedAt := time.Now().UTC()
+
+			if s.trySendBinary(cfg, data, sequence, capturedAt) {
+				continue
+			}
+
 			baseURL := strings.TrimRight(strings.TrimSpace(cfg.BaseURL), "/")
 			if baseURL == "" {
 				s.logf("audio stream session %s missing base URL", s.id)
@@ -438,8 +718,8 @@ func (s *AudioStreamSession) run() {
 
 			chunk := AudioStreamChunk{
 				SessionID: s.id,
-				Sequence:  atomic.AddUint64(&s.sequence, 1),
-				Timestamp: time.Now().UTC().Format(time.RFC3339Nano),
+				Sequence:  sequence,
+				Timestamp: capturedAt.Format(time.RFC3339Nano),
 				Format:    s.format,
 				Data:      base64.StdEncoding.EncodeToString(data),
 			}
@@ -493,6 +773,8 @@ func (s *AudioStreamSession) stop() {
 	if s.stopped.Swap(true) {
 		return
 	}
+
+	s.clearTransport()
 
 	if s.runCancel != nil {
 		s.runCancel()
