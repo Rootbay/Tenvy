@@ -297,7 +297,7 @@ func TestRemoteDesktopModuleDelegatesCommandsToEngine(t *testing.T) {
 	burstErr := module.HandleInputBurst(ctx, protocol.RemoteDesktopInputBurst{
 		SessionID: "session-1",
 		Events: []protocol.RemoteDesktopInputEvent{{
-			Type:   string(remotedesktop.RemoteInputMouseMove),
+			Type:   protocol.RemoteDesktopInputType(remotedesktop.RemoteInputMouseMove),
 			X:      1,
 			Y:      2,
 			Repeat: false,

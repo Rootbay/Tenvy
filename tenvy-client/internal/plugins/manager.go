@@ -28,6 +28,7 @@ type Manager struct {
 	logger    *log.Logger
 	verifyMu  sync.RWMutex
 	verifyOpt manifest.VerifyOptions
+	stageMu   sync.Mutex
 }
 
 // NewManager creates a plugin manager rooted at the provided directory.
@@ -68,7 +69,20 @@ func (m *Manager) Snapshot() *manifest.SyncPayload {
 
 		manifestData, err := os.ReadFile(manifestPath)
 		if err != nil {
-			if !errors.Is(err, fs.ErrNotExist) {
+			if status := loadInstallationStatus(pluginDir); status != nil {
+				telemetry := manifest.InstallationTelemetry{
+					PluginID: status.PluginID(entry.Name()),
+					Version:  status.Version,
+					Status:   status.Status,
+				}
+				if status.Error != "" {
+					telemetry.Error = status.Error
+				}
+				if ts := status.LastCheckedAt; ts != "" {
+					telemetry.LastCheckedAt = &ts
+				}
+				payload.Installations = append(payload.Installations, telemetry)
+			} else if !errors.Is(err, fs.ErrNotExist) {
 				m.logger.Printf("plugin %s missing manifest: %v", entry.Name(), err)
 			}
 			continue
@@ -147,6 +161,22 @@ func (m *Manager) Snapshot() *manifest.SyncPayload {
 		}
 
 		installation.LastCheckedAt = &now
+
+		if status := loadInstallationStatus(pluginDir); status != nil {
+			if status.Status != "" {
+				installation.Status = status.Status
+			}
+			if status.Error != "" {
+				installation.Error = status.Error
+			}
+			if ts := status.LastCheckedAt; ts != "" {
+				installation.LastCheckedAt = &ts
+			}
+			if version := status.Version; version != "" {
+				installation.Version = version
+			}
+		}
+
 		payload.Installations = append(payload.Installations, installation)
 	}
 
@@ -155,6 +185,14 @@ func (m *Manager) Snapshot() *manifest.SyncPayload {
 	}
 
 	return &payload
+}
+
+// Root returns the plugin root directory managed by this instance.
+func (m *Manager) Root() string {
+	if m == nil {
+		return ""
+	}
+	return m.root
 }
 
 func fileHash(path string) (string, error) {
