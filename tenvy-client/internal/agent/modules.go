@@ -564,15 +564,18 @@ func (m *remoteDesktopModule) currentEngine() remotedesktop.Engine {
 }
 
 func defaultRemoteDesktopEngineFactory(ctx context.Context, runtime ModuleRuntime, cfg remotedesktop.Config) (remotedesktop.Engine, string, error) {
-	base := remotedesktop.NewRemoteDesktopStreamer(cfg)
-
 	manager := runtime.Plugins
 	client := runtime.HTTPClient
 	baseURL := strings.TrimSpace(runtime.BaseURL)
 	agentID := strings.TrimSpace(runtime.AgentID)
 
+	fallback := func() (remotedesktop.Engine, string, error) {
+		engine := remotedesktop.NewRemoteDesktopStreamer(cfg)
+		return engine, "", nil
+	}
+
 	if manager == nil || client == nil || baseURL == "" || agentID == "" {
-		return base, "", nil
+		return fallback()
 	}
 
 	stageCtx := ctx
@@ -588,17 +591,12 @@ func defaultRemoteDesktopEngineFactory(ctx context.Context, runtime ModuleRuntim
 		if runtime.Logger != nil {
 			runtime.Logger.Printf("remote desktop: engine staging failed: %v", err)
 		}
-		return base, "", nil
+		return fallback()
 	}
 
 	version := strings.TrimSpace(result.Manifest.Version)
-	cfg.PluginVersion = version
-	if err := base.Configure(cfg); err != nil {
-		return base, "", err
-	}
-
-	managed := remotedesktop.NewManagedRemoteDesktopEngine(base, result.EntryPath, version, manager, runtime.Logger)
-	return managed, version, nil
+	engine := remotedesktop.NewManagedRemoteDesktopEngine(result.EntryPath, version, manager, runtime.Logger)
+	return engine, version, nil
 }
 
 type audioModule struct {

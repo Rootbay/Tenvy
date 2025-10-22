@@ -3,6 +3,7 @@ package remotedesktopengine
 import (
 	"bufio"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -16,87 +17,138 @@ import (
 	manifest "github.com/rootbay/tenvy-client/shared/pluginmanifest"
 )
 
-type managedEngine struct {
-	inner   Engine
+const (
+	methodConfigure     = "configure"
+	methodStartSession  = "startSession"
+	methodStopSession   = "stopSession"
+	methodUpdateSession = "updateSession"
+	methodHandleInput   = "handleInput"
+	methodDeliverFrame  = "deliverFrame"
+	methodShutdown      = "shutdown"
+)
+
+type ipcRequest struct {
+	ID     uint64          `json:"id"`
+	Method string          `json:"method"`
+	Params json.RawMessage `json:"params,omitempty"`
+}
+
+type ipcResponse struct {
+	ID     uint64          `json:"id"`
+	Result json.RawMessage `json:"result,omitempty"`
+	Error  *ipcError       `json:"error,omitempty"`
+}
+
+type ipcError struct {
+	Message string `json:"message"`
+}
+
+type stopSessionRequest struct {
+	SessionID string `json:"sessionId"`
+}
+
+type configEnvelope struct {
+	AgentID          string                         `json:"agentId"`
+	BaseURL          string                         `json:"baseUrl"`
+	AuthKey          string                         `json:"authKey"`
+	PluginVersion    string                         `json:"pluginVersion,omitempty"`
+	UserAgent        string                         `json:"userAgent,omitempty"`
+	RequestTimeout   time.Duration                  `json:"requestTimeout,omitempty"`
+	WebRTCICEServers []RemoteDesktopWebRTCICEServer `json:"webrtcIceServers,omitempty"`
+	QUICInput        QUICInputConfig                `json:"quicInput"`
+}
+
+func newConfigEnvelope(cfg Config) configEnvelope {
+	return configEnvelope{
+		AgentID:          cfg.AgentID,
+		BaseURL:          cfg.BaseURL,
+		AuthKey:          cfg.AuthKey,
+		PluginVersion:    cfg.PluginVersion,
+		UserAgent:        cfg.UserAgent,
+		RequestTimeout:   cfg.RequestTimeout,
+		WebRTCICEServers: append([]RemoteDesktopWebRTCICEServer(nil), cfg.WebRTCICEServers...),
+		QUICInput:        cfg.QUICInput,
+	}
+}
+
+func (e configEnvelope) toConfig(logger Logger) Config {
+	cfg := Config{
+		AgentID:          e.AgentID,
+		BaseURL:          e.BaseURL,
+		AuthKey:          e.AuthKey,
+		PluginVersion:    e.PluginVersion,
+		UserAgent:        e.UserAgent,
+		RequestTimeout:   e.RequestTimeout,
+		WebRTCICEServers: append([]RemoteDesktopWebRTCICEServer(nil), e.WebRTCICEServers...),
+		QUICInput:        e.QUICInput,
+		Logger:           logger,
+	}
+	if cfg.RequestTimeout < 0 {
+		cfg.RequestTimeout = 0
+	}
+	return cfg
+}
+
+type remoteDesktopIPCClient struct {
 	process *engineProcess
 }
 
-// NewManagedRemoteDesktopEngine wraps the provided engine implementation with a
-// lifecycle manager that ensures the external remote desktop engine binary is
-// launched when sessions start and torn down when they conclude. If the plugin
-// entry path is empty or the manager is nil, the underlying engine is returned
-// unchanged.
-func NewManagedRemoteDesktopEngine(inner Engine, entryPath, version string, manager *plugins.Manager, logger Logger) Engine {
-	entryPath = strings.TrimSpace(entryPath)
-	if entryPath == "" || manager == nil {
-		return inner
-	}
+// NewManagedRemoteDesktopEngine returns an Engine implementation backed by the
+// external remote desktop plugin. The returned engine communicates with the
+// plugin over the IPC channel exposed by the plugin binary. If the entry path is
+// empty, the returned engine will emit initialization errors when invoked.
+func NewManagedRemoteDesktopEngine(entryPath, version string, manager *plugins.Manager, logger Logger) Engine {
 	process := newEngineProcess(entryPath, version, manager, logger)
-	return &managedEngine{inner: inner, process: process}
+	return &remoteDesktopIPCClient{process: process}
 }
 
-func (e *managedEngine) Configure(cfg Config) error {
-	if e == nil || e.inner == nil {
+func (e *remoteDesktopIPCClient) Configure(cfg Config) error {
+	if e == nil || e.process == nil {
 		return errors.New("remote desktop subsystem not initialized")
 	}
-	return e.inner.Configure(cfg)
+	envelope := newConfigEnvelope(cfg)
+	return e.process.call(context.Background(), methodConfigure, envelope, nil)
 }
 
-func (e *managedEngine) StartSession(ctx context.Context, payload RemoteDesktopCommandPayload) error {
-	if e == nil || e.inner == nil {
+func (e *remoteDesktopIPCClient) StartSession(ctx context.Context, payload RemoteDesktopCommandPayload) error {
+	if e == nil || e.process == nil {
 		return errors.New("remote desktop subsystem not initialized")
 	}
-	if err := e.process.start(payload.SessionID); err != nil {
-		return err
-	}
-	if err := e.inner.StartSession(ctx, payload); err != nil {
-		_ = e.process.stop()
-		return err
-	}
-	return nil
+	return e.process.call(ctx, methodStartSession, payload, nil)
 }
 
-func (e *managedEngine) StopSession(sessionID string) error {
-	if e == nil || e.inner == nil {
+func (e *remoteDesktopIPCClient) StopSession(sessionID string) error {
+	if e == nil || e.process == nil {
 		return errors.New("remote desktop subsystem not initialized")
 	}
-	var stopErr error
-	if err := e.inner.StopSession(sessionID); err != nil {
-		stopErr = err
-	}
-	if err := e.process.stop(); err != nil && stopErr == nil {
-		stopErr = err
-	}
-	return stopErr
+	request := stopSessionRequest{SessionID: strings.TrimSpace(sessionID)}
+	return e.process.call(context.Background(), methodStopSession, request, nil)
 }
 
-func (e *managedEngine) UpdateSession(payload RemoteDesktopCommandPayload) error {
-	if e == nil || e.inner == nil {
+func (e *remoteDesktopIPCClient) UpdateSession(payload RemoteDesktopCommandPayload) error {
+	if e == nil || e.process == nil {
 		return errors.New("remote desktop subsystem not initialized")
 	}
-	return e.inner.UpdateSession(payload)
+	return e.process.call(context.Background(), methodUpdateSession, payload, nil)
 }
 
-func (e *managedEngine) HandleInput(ctx context.Context, payload RemoteDesktopCommandPayload) error {
-	if e == nil || e.inner == nil {
+func (e *remoteDesktopIPCClient) HandleInput(ctx context.Context, payload RemoteDesktopCommandPayload) error {
+	if e == nil || e.process == nil {
 		return errors.New("remote desktop subsystem not initialized")
 	}
-	return e.inner.HandleInput(ctx, payload)
+	return e.process.call(ctx, methodHandleInput, payload, nil)
 }
 
-func (e *managedEngine) DeliverFrame(ctx context.Context, frame RemoteDesktopFramePacket) error {
-	if e == nil || e.inner == nil {
+func (e *remoteDesktopIPCClient) DeliverFrame(ctx context.Context, frame RemoteDesktopFramePacket) error {
+	if e == nil || e.process == nil {
 		return errors.New("remote desktop subsystem not initialized")
 	}
-	return e.inner.DeliverFrame(ctx, frame)
+	return e.process.call(ctx, methodDeliverFrame, frame, nil)
 }
 
-func (e *managedEngine) Shutdown() {
-	if e == nil {
+func (e *remoteDesktopIPCClient) Shutdown() {
+	if e == nil || e.process == nil {
 		return
-	}
-	if e.inner != nil {
-		e.inner.Shutdown()
 	}
 	e.process.shutdown()
 }
@@ -113,6 +165,13 @@ type engineProcess struct {
 	done     chan processExit
 	stopping bool
 	output   *processOutputBuffer
+
+	stdin   io.WriteCloser
+	stdout  io.ReadCloser
+	writer  *bufio.Writer
+	encoder *json.Encoder
+	decoder *json.Decoder
+	nextID  uint64
 }
 
 type processExit struct {
@@ -129,14 +188,85 @@ func newEngineProcess(path, version string, manager *plugins.Manager, logger Log
 	}
 }
 
-func (p *engineProcess) start(sessionID string) error {
+func (p *engineProcess) call(ctx context.Context, method string, payload interface{}, result interface{}) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
+	if method == methodShutdown {
+		if p.cmd == nil {
+			return nil
+		}
+	} else {
+		if err := p.ensureStartedLocked(); err != nil {
+			return err
+		}
+	}
+
+	if ctx.Err() != nil {
+		return ctx.Err()
+	}
+
+	p.nextID++
+	req := ipcRequest{ID: p.nextID, Method: method}
+	if payload != nil {
+		data, err := json.Marshal(payload)
+		if err != nil {
+			return fmt.Errorf("encode %s payload: %w", method, err)
+		}
+		req.Params = data
+	}
+
+	if p.encoder == nil || p.decoder == nil {
+		return errors.New("remote desktop engine ipc channel unavailable")
+	}
+
+	if err := p.encoder.Encode(&req); err != nil {
+		p.resetLocked()
+		return fmt.Errorf("send %s request: %w", method, err)
+	}
+	if p.writer != nil {
+		if err := p.writer.Flush(); err != nil {
+			p.resetLocked()
+			return fmt.Errorf("flush %s request: %w", method, err)
+		}
+	}
+
+	var resp ipcResponse
+	if err := p.decoder.Decode(&resp); err != nil {
+		p.resetLocked()
+		return fmt.Errorf("receive %s response: %w", method, err)
+	}
+
+	if resp.ID != req.ID {
+		return fmt.Errorf("unexpected response id: got %d, want %d", resp.ID, req.ID)
+	}
+	if resp.Error != nil {
+		return errors.New(resp.Error.Message)
+	}
+	if result != nil && len(resp.Result) > 0 {
+		if err := json.Unmarshal(resp.Result, result); err != nil {
+			return fmt.Errorf("decode %s result: %w", method, err)
+		}
+	}
+	return nil
+}
+
+func (p *engineProcess) ensureStartedLocked() error {
 	if p.cmd != nil {
 		if p.done != nil {
 			select {
-			case <-p.done:
+			case exit := <-p.done:
+				if !exit.stopping {
+					if exit.err != nil {
+						p.logf("engine exited: %v", exit.err)
+					} else {
+						p.logf("engine exited unexpectedly")
+					}
+				}
 				p.resetLocked()
 			default:
 				return nil
@@ -152,11 +282,13 @@ func (p *engineProcess) start(sessionID string) error {
 		return errors.New(message)
 	}
 
-	if info, err := os.Stat(p.path); err != nil {
+	info, err := os.Stat(p.path)
+	if err != nil {
 		message := fmt.Sprintf("engine binary unavailable: %v", err)
 		plugins.RecordInstallStatus(p.manager, plugins.RemoteDesktopEnginePluginID, p.version, manifest.InstallFailed, message)
 		return errors.New(message)
-	} else if info.IsDir() {
+	}
+	if info.IsDir() {
 		message := "engine entry path resolves to a directory"
 		plugins.RecordInstallStatus(p.manager, plugins.RemoteDesktopEnginePluginID, p.version, manifest.InstallFailed, message)
 		return errors.New(message)
@@ -164,10 +296,17 @@ func (p *engineProcess) start(sessionID string) error {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	cmd := exec.CommandContext(ctx, p.path)
-	cmd.Env = append(os.Environ(), fmt.Sprintf("TENVY_REMOTE_DESKTOP_SESSION_ID=%s", strings.TrimSpace(sessionID)))
 
+	stdin, err := cmd.StdinPipe()
+	if err != nil {
+		cancel()
+		message := fmt.Sprintf("engine stdin pipe: %v", err)
+		plugins.RecordInstallStatus(p.manager, plugins.RemoteDesktopEnginePluginID, p.version, manifest.InstallFailed, message)
+		return errors.New(message)
+	}
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
+		stdin.Close()
 		cancel()
 		message := fmt.Sprintf("engine stdout pipe: %v", err)
 		plugins.RecordInstallStatus(p.manager, plugins.RemoteDesktopEnginePluginID, p.version, manifest.InstallFailed, message)
@@ -175,6 +314,7 @@ func (p *engineProcess) start(sessionID string) error {
 	}
 	stderr, err := cmd.StderrPipe()
 	if err != nil {
+		stdin.Close()
 		stdout.Close()
 		cancel()
 		message := fmt.Sprintf("engine stderr pipe: %v", err)
@@ -183,6 +323,7 @@ func (p *engineProcess) start(sessionID string) error {
 	}
 
 	if err := cmd.Start(); err != nil {
+		stdin.Close()
 		stdout.Close()
 		stderr.Close()
 		cancel()
@@ -198,11 +339,15 @@ func (p *engineProcess) start(sessionID string) error {
 	p.done = make(chan processExit, 1)
 	p.stopping = false
 	p.output = newProcessOutputBuffer(4096)
+	p.stdin = stdin
+	p.stdout = stdout
+	p.writer = bufio.NewWriter(stdin)
+	p.encoder = json.NewEncoder(p.writer)
+	p.decoder = json.NewDecoder(stdout)
+	p.nextID = 0
 
-	go p.captureStream("stdout", stdout)
 	go p.captureStream("stderr", stderr)
 	go p.wait(cmd)
-
 	return nil
 }
 
@@ -223,34 +368,28 @@ func (p *engineProcess) stop() error {
 	}
 
 	var waitErr error
-	var stopping bool
 	if done != nil {
 		select {
 		case exit := <-done:
 			waitErr = exit.err
-			stopping = exit.stopping
 		case <-time.After(5 * time.Second):
 			p.mu.Lock()
 			if p.cmd != nil && p.cmd.Process != nil {
 				_ = p.cmd.Process.Kill()
 			}
 			p.mu.Unlock()
-			if done != nil {
-				exit := <-done
+			if exit := <-done; exit.err != nil {
 				waitErr = exit.err
-				stopping = exit.stopping
 			}
 		}
 	}
 
 	plugins.ClearInstallStatus(p.manager, plugins.RemoteDesktopEnginePluginID)
-	if stopping {
-		return nil
-	}
 	return waitErr
 }
 
 func (p *engineProcess) shutdown() {
+	_ = p.call(context.Background(), methodShutdown, nil, nil)
 	_ = p.stop()
 }
 
@@ -311,11 +450,30 @@ func (p *engineProcess) captureStream(stream string, reader io.Reader) {
 }
 
 func (p *engineProcess) resetLocked() {
+	if p.stdin != nil {
+		p.stdin.Close()
+	}
+	if p.stdout != nil {
+		p.stdout.Close()
+	}
 	p.cmd = nil
 	p.cancel = nil
 	p.done = nil
 	p.output = nil
 	p.stopping = false
+	p.stdin = nil
+	p.stdout = nil
+	p.writer = nil
+	p.encoder = nil
+	p.decoder = nil
+	p.nextID = 0
+}
+
+func (p *engineProcess) logf(format string, args ...interface{}) {
+	if p.logger == nil {
+		return
+	}
+	p.logger.Printf(format, args...)
 }
 
 type processOutputBuffer struct {

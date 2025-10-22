@@ -1,9 +1,13 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
+	"log"
+	"net/http"
 	"os"
+	"time"
 
 	engine "github.com/rootbay/tenvy-client/internal/plugins/engines/remotedesktop"
 )
@@ -17,10 +21,25 @@ func main() {
 		return
 	}
 
-	// Instantiate an engine instance to ensure all capture and encoding
-	// dependencies are linked into the standalone binary. Runtime
-	// configuration is provided by the host process when executed.
-	_ = engine.NewRemoteDesktopStreamer(engine.Config{})
+	logger := log.New(os.Stderr, "remote-desktop-engine: ", log.LstdFlags|log.Lmicroseconds)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 
-	fmt.Fprintln(os.Stderr, "remote-desktop-engine plugin build artifact")
+	streamer := engine.NewRemoteDesktopStreamer(engine.Config{Logger: logger})
+
+	// The plugin hosts the remote desktop engine and exposes it over a JSON
+	// message channel transported through stdio. An HTTP client is
+	// constructed on demand when configuration payloads are received.
+	httpFactory := func(timeout time.Duration) *http.Client {
+		client := &http.Client{}
+		if timeout > 0 {
+			client.Timeout = timeout
+		}
+		return client
+	}
+
+	if err := engine.ServeEngineIPC(ctx, streamer, os.Stdin, os.Stdout, logger, httpFactory); err != nil {
+		fmt.Fprintf(os.Stderr, "remote-desktop-engine: ipc server error: %v\n", err)
+		os.Exit(1)
+	}
 }
