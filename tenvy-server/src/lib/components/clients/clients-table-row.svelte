@@ -46,7 +46,8 @@
 		getAgentTags,
 		formatPing,
 		formatDate,
-		ipLocations
+		ipLocations,
+		layout = 'table'
 	} = $props<{
 		agent: AgentSnapshot;
 		openSection: (section: SectionKey, agent: AgentSnapshot) => void;
@@ -58,6 +59,7 @@
 		formatPing: (agent: AgentSnapshot) => string;
 		formatDate: (value: string) => string;
 		ipLocations: Record<string, GeoLookupPayload>;
+		layout?: 'table' | 'card';
 	}>();
 
 	function toResolvedLocation(base: { label: string; flag: string }): ResolvedLocation {
@@ -185,9 +187,17 @@
 </script>
 
 {#snippet TriggerChild({ props }: TriggerChildProps)}
-	{@const className = cn(
+	{@const { class: providedClass, ...restProps } = (props ?? {}) as {
+		class?: string;
+		[key: string]: unknown;
+	}}
+	{@const tableClassName = cn(
 		'cursor-context-menu border-b transition-colors hover:bg-muted/50 data-[state=selected]:bg-muted',
-		(props as { class?: string }).class
+		providedClass
+	)}
+	{@const cardClassName = cn(
+		'group cursor-context-menu rounded-lg border border-border/60 bg-background/80 p-4 transition-colors hover:border-border hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background data-[state=selected]:border-ring data-[state=selected]:bg-muted',
+		providedClass
 	)}
 	{@const tags = getAgentTags(agent)}
 	{@const statusMeta = buildStatusMeta(agent)}
@@ -195,126 +205,294 @@
 	{@const publicIpDisplay = publicIpValue || 'Unknown'}
 	{@const usernameValue = resolveUsernameValue(agent)}
 	{@const usernameDisplay = usernameValue || 'Unknown'}
-	<tr {...props} class={className} tabindex={0} data-slot="table-row">
-		<TableCell>
-			<div class="flex items-center gap-2">
-				{#if locationDisplay.flagUrl}
-					<img
-						src={locationDisplay.flagUrl}
-						alt=""
-						class="h-4 w-6 rounded-sm border border-border/60 object-cover"
-						loading="lazy"
-					/>
-				{:else}
-					<span class="text-xl" aria-hidden="true">{locationDisplay.flagEmoji}</span>
-				{/if}
-				<span class="text-sm font-medium text-foreground">{locationDisplay.label}</span>
-				{#if locationDisplay.isVpn}
-					<Tooltip>
-						<TooltipTrigger>
-							{#snippet child({ props })}
-								<span {...props}>
-									<Badge variant="outline" class="border-amber-500 bg-amber-500/10 text-amber-500">
-										VPN
-									</Badge>
-								</span>
-							{/snippet}
-						</TooltipTrigger>
-						<TooltipContent side="top" align="center" class="max-w-[18rem] text-xs">
-							Flagged as a proxy, VPN, or Tor exit node.
-						</TooltipContent>
-					</Tooltip>
-				{/if}
-			</div>
-		</TableCell>
-		<TableCell class="text-center">
-			<button
-				type="button"
-				class="inline-flex w-full cursor-pointer items-center justify-center truncate rounded-md px-2 py-1 text-sm text-muted-foreground transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background focus-visible:outline-none"
-				onclick={(event) => handleCopyValue(event, publicIpValue, 'Public IP')}
-				title={publicIpDisplay === 'Unknown' ? 'Public IP unavailable' : `Copy ${publicIpDisplay}`}
-				aria-label={publicIpDisplay === 'Unknown'
-					? 'Public IP unavailable'
-					: `Copy public IP ${publicIpDisplay}`}
-			>
-				<span class="truncate">{publicIpDisplay}</span>
-			</button>
-		</TableCell>
-		<TableCell class="text-center">
-			<button
-				type="button"
-				class="inline-flex w-full cursor-pointer items-center justify-center truncate rounded-md px-2 py-1 text-sm text-muted-foreground transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background focus-visible:outline-none"
-				onclick={(event) => handleCopyValue(event, usernameValue, 'Username')}
-				title={usernameDisplay === 'Unknown' ? 'Username unavailable' : `Copy ${usernameDisplay}`}
-				aria-label={usernameDisplay === 'Unknown'
-					? 'Username unavailable'
-					: `Copy username ${usernameDisplay}`}
-			>
-				<span class="truncate">{usernameDisplay}</span>
-			</button>
-		</TableCell>
-		<TableCell class="text-center">
-			{#if tags.length > 0}
-				<div class="flex flex-wrap items-center justify-center gap-1">
-					{#each tags as tag (tag)}
-						<button
-							type="button"
-							class="group cursor-pointer rounded-md focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background focus-visible:outline-none"
-							onclick={(event) => {
-								event.stopPropagation();
-								onTagClick(tag);
-							}}
-							aria-label={`Filter by ${tag}`}
-						>
-							<Badge
-								variant="secondary"
-								class="px-2 py-0.5 text-xs font-medium transition-colors group-focus-visible:ring-2 group-focus-visible:ring-ring"
-							>
-								{tag}
-							</Badge>
-						</button>
-					{/each}
+	{#if layout === 'card'}
+		<div {...restProps} class={cardClassName} tabindex={0} data-slot="table-row" data-mobile="true">
+			<div class="flex flex-wrap items-start justify-between gap-3">
+				<div class="flex min-w-0 items-center gap-2">
+					{#if locationDisplay.flagUrl}
+						<img
+							src={locationDisplay.flagUrl}
+							alt=""
+							class="h-4 w-6 shrink-0 rounded-sm border border-border/60 object-cover"
+							loading="lazy"
+						/>
+					{:else}
+						<span class="shrink-0 text-xl" aria-hidden="true">{locationDisplay.flagEmoji}</span>
+					{/if}
+					<div class="min-w-0">
+						<p class="truncate text-sm font-medium text-foreground">{locationDisplay.label}</p>
+						{#if locationDisplay.isVpn}
+							<Tooltip>
+								<TooltipTrigger>
+									{#snippet child({ props })}
+										<span {...props}>
+											<Badge
+												variant="outline"
+												class="mt-1 inline-flex border-amber-500 bg-amber-500/10 px-2 py-0.5 text-[0.65rem] font-medium tracking-wide text-amber-500 uppercase"
+											>
+												VPN
+											</Badge>
+										</span>
+									{/snippet}
+								</TooltipTrigger>
+								<TooltipContent side="top" align="center" class="max-w-[18rem] text-xs">
+									Flagged as a proxy, VPN, or Tor exit node.
+								</TooltipContent>
+							</Tooltip>
+						{/if}
+					</div>
 				</div>
-			{:else}
-				<Badge variant="outline" class="border-dashed px-2 py-0.5 text-xs text-muted-foreground">
-					Untagged
-				</Badge>
-			{/if}
-		</TableCell>
-		<TableCell class="text-center">
-			<OsLogo os={agent.metadata.os} />
-		</TableCell>
-		<TableCell class="text-center text-sm text-muted-foreground">
-			{formatPing(agent)}
-		</TableCell>
-		<TableCell class="text-center text-sm text-muted-foreground">
-			{agent.metadata.version ?? 'N/A'}
-		</TableCell>
-		<TableCell class="text-center">
-			<Tooltip>
-				<TooltipTrigger>
-					{#snippet child({ props })}
-						<span
-							{...props}
-							class={cn(
-								'inline-flex w-full items-center justify-center gap-2 text-sm font-medium',
-								statusMeta.className
-							)}
+				<Tooltip>
+					<TooltipTrigger>
+						{#snippet child({ props })}
+							<span
+								{...props}
+								class={cn(
+									'inline-flex items-center gap-2 rounded-full px-3 py-1 text-sm font-medium',
+									statusMeta.className,
+									'bg-muted/60'
+								)}
+							>
+								<span
+									class={cn('h-2 w-2 rounded-full', statusMeta.indicatorClass)}
+									aria-hidden="true"
+								></span>
+								{statusMeta.label}
+							</span>
+						{/snippet}
+					</TooltipTrigger>
+					<TooltipContent side="top" align="end" class="max-w-[18rem] text-xs">
+						{statusMeta.tooltip}
+					</TooltipContent>
+				</Tooltip>
+			</div>
+			<div class="mt-4 grid gap-3">
+				<div class="flex flex-col gap-1">
+					<span class="text-xs font-medium tracking-wide text-muted-foreground uppercase"
+						>Public IP</span
+					>
+					<button
+						type="button"
+						class="inline-flex w-full cursor-pointer items-center justify-between gap-2 rounded-md border border-transparent bg-muted/40 px-3 py-1 text-sm text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background focus-visible:outline-none"
+						onclick={(event) => handleCopyValue(event, publicIpValue, 'Public IP')}
+						title={publicIpDisplay === 'Unknown'
+							? 'Public IP unavailable'
+							: `Copy ${publicIpDisplay}`}
+						aria-label={publicIpDisplay === 'Unknown'
+							? 'Public IP unavailable'
+							: `Copy public IP ${publicIpDisplay}`}
+					>
+						<span class="truncate">{publicIpDisplay}</span>
+					</button>
+				</div>
+				<div class="flex flex-col gap-1">
+					<span class="text-xs font-medium tracking-wide text-muted-foreground uppercase"
+						>Username</span
+					>
+					<button
+						type="button"
+						class="inline-flex w-full cursor-pointer items-center justify-between gap-2 rounded-md border border-transparent bg-muted/40 px-3 py-1 text-sm text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background focus-visible:outline-none"
+						onclick={(event) => handleCopyValue(event, usernameValue, 'Username')}
+						title={usernameDisplay === 'Unknown'
+							? 'Username unavailable'
+							: `Copy ${usernameDisplay}`}
+						aria-label={usernameDisplay === 'Unknown'
+							? 'Username unavailable'
+							: `Copy username ${usernameDisplay}`}
+					>
+						<span class="truncate">{usernameDisplay}</span>
+					</button>
+				</div>
+				<div class="flex flex-col gap-1">
+					<span class="text-xs font-medium tracking-wide text-muted-foreground uppercase">Tags</span
+					>
+					{#if tags.length > 0}
+						<div class="flex flex-wrap gap-1">
+							{#each tags as tag (tag)}
+								<button
+									type="button"
+									class="group cursor-pointer rounded-md focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background focus-visible:outline-none"
+									onclick={(event) => {
+										event.stopPropagation();
+										onTagClick(tag);
+									}}
+									aria-label={`Filter by ${tag}`}
+								>
+									<Badge
+										variant="secondary"
+										class="px-2 py-0.5 text-xs font-medium transition-colors group-focus-visible:ring-2 group-focus-visible:ring-ring"
+									>
+										{tag}
+									</Badge>
+								</button>
+							{/each}
+						</div>
+					{:else}
+						<Badge
+							variant="outline"
+							class="w-fit border-dashed px-2 py-0.5 text-xs text-muted-foreground"
 						>
-							<span class={cn('h-2 w-2 rounded-full', statusMeta.indicatorClass)} aria-hidden="true"
-							></span>
-							{statusMeta.label}
+							Untagged
+						</Badge>
+					{/if}
+				</div>
+				<div class="grid grid-cols-2 gap-3 text-sm text-muted-foreground">
+					<div class="flex flex-col gap-1">
+						<span class="text-xs font-medium tracking-wide text-muted-foreground uppercase"
+							>Ping</span
+						>
+						<span>{formatPing(agent)}</span>
+					</div>
+					<div class="flex flex-col gap-1">
+						<span class="text-xs font-medium tracking-wide text-muted-foreground uppercase"
+							>Version</span
+						>
+						<span>{agent.metadata.version ?? 'N/A'}</span>
+					</div>
+					<div class="flex flex-col gap-1">
+						<span class="text-xs font-medium tracking-wide text-muted-foreground uppercase">OS</span
+						>
+						<span class="flex items-center gap-2 text-foreground">
+							<OsLogo os={agent.metadata.os} />
 						</span>
-					{/snippet}
-				</TooltipTrigger>
-				<TooltipContent side="top" align="center" class="max-w-[18rem] text-xs">
-					{statusMeta.tooltip}
-				</TooltipContent>
-			</Tooltip>
-		</TableCell>
-	</tr>
+					</div>
+				</div>
+			</div>
+		</div>
+	{:else}
+		<tr
+			{...restProps}
+			class={tableClassName}
+			tabindex={0}
+			data-slot="table-row"
+			data-mobile="false"
+		>
+			<TableCell>
+				<div class="flex items-center gap-2">
+					{#if locationDisplay.flagUrl}
+						<img
+							src={locationDisplay.flagUrl}
+							alt=""
+							class="h-4 w-6 rounded-sm border border-border/60 object-cover"
+							loading="lazy"
+						/>
+					{:else}
+						<span class="text-xl" aria-hidden="true">{locationDisplay.flagEmoji}</span>
+					{/if}
+					<span class="text-sm font-medium text-foreground">{locationDisplay.label}</span>
+					{#if locationDisplay.isVpn}
+						<Tooltip>
+							<TooltipTrigger>
+								{#snippet child({ props })}
+									<span {...props}>
+										<Badge
+											variant="outline"
+											class="border-amber-500 bg-amber-500/10 text-amber-500"
+										>
+											VPN
+										</Badge>
+									</span>
+								{/snippet}
+							</TooltipTrigger>
+							<TooltipContent side="top" align="center" class="max-w-[18rem] text-xs">
+								Flagged as a proxy, VPN, or Tor exit node.
+							</TooltipContent>
+						</Tooltip>
+					{/if}
+				</div>
+			</TableCell>
+			<TableCell class="text-center">
+				<button
+					type="button"
+					class="inline-flex w-full cursor-pointer items-center justify-center truncate rounded-md px-2 py-1 text-sm text-muted-foreground transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background focus-visible:outline-none"
+					onclick={(event) => handleCopyValue(event, publicIpValue, 'Public IP')}
+					title={publicIpDisplay === 'Unknown'
+						? 'Public IP unavailable'
+						: `Copy ${publicIpDisplay}`}
+					aria-label={publicIpDisplay === 'Unknown'
+						? 'Public IP unavailable'
+						: `Copy public IP ${publicIpDisplay}`}
+				>
+					<span class="truncate">{publicIpDisplay}</span>
+				</button>
+			</TableCell>
+			<TableCell class="text-center">
+				<button
+					type="button"
+					class="inline-flex w-full cursor-pointer items-center justify-center truncate rounded-md px-2 py-1 text-sm text-muted-foreground transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background focus-visible:outline-none"
+					onclick={(event) => handleCopyValue(event, usernameValue, 'Username')}
+					title={usernameDisplay === 'Unknown' ? 'Username unavailable' : `Copy ${usernameDisplay}`}
+					aria-label={usernameDisplay === 'Unknown'
+						? 'Username unavailable'
+						: `Copy username ${usernameDisplay}`}
+				>
+					<span class="truncate">{usernameDisplay}</span>
+				</button>
+			</TableCell>
+			<TableCell class="text-center">
+				{#if tags.length > 0}
+					<div class="flex flex-wrap items-center justify-center gap-1">
+						{#each tags as tag (tag)}
+							<button
+								type="button"
+								class="group cursor-pointer rounded-md focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background focus-visible:outline-none"
+								onclick={(event) => {
+									event.stopPropagation();
+									onTagClick(tag);
+								}}
+								aria-label={`Filter by ${tag}`}
+							>
+								<Badge
+									variant="secondary"
+									class="px-2 py-0.5 text-xs font-medium transition-colors group-focus-visible:ring-2 group-focus-visible:ring-ring"
+								>
+									{tag}
+								</Badge>
+							</button>
+						{/each}
+					</div>
+				{:else}
+					<Badge variant="outline" class="border-dashed px-2 py-0.5 text-xs text-muted-foreground">
+						Untagged
+					</Badge>
+				{/if}
+			</TableCell>
+			<TableCell class="text-center">
+				<OsLogo os={agent.metadata.os} />
+			</TableCell>
+			<TableCell class="text-center text-sm text-muted-foreground">
+				{formatPing(agent)}
+			</TableCell>
+			<TableCell class="text-center text-sm text-muted-foreground">
+				{agent.metadata.version ?? 'N/A'}
+			</TableCell>
+			<TableCell class="text-center">
+				<Tooltip>
+					<TooltipTrigger>
+						{#snippet child({ props })}
+							<span
+								{...props}
+								class={cn(
+									'inline-flex w-full items-center justify-center gap-2 text-sm font-medium',
+									statusMeta.className
+								)}
+							>
+								<span
+									class={cn('h-2 w-2 rounded-full', statusMeta.indicatorClass)}
+									aria-hidden="true"
+								></span>
+								{statusMeta.label}
+							</span>
+						{/snippet}
+					</TooltipTrigger>
+					<TooltipContent side="top" align="center" class="max-w-[18rem] text-xs">
+						{statusMeta.tooltip}
+					</TooltipContent>
+				</Tooltip>
+			</TableCell>
+		</tr>
+	{/if}
 {/snippet}
-
 <ContextMenu>
 	<ContextMenuTrigger child={TriggerChild} />
 	<ContextMenuContent class="w-56">

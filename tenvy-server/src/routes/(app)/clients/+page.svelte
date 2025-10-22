@@ -856,8 +856,8 @@
 
 	<div class="space-y-4">
 		<TooltipProvider delayDuration={100}>
-			<ScrollArea class="rounded-lg border border-border/60">
-				<div class="min-w-[960px]">
+			<ScrollArea class="hidden rounded-lg border border-border/60 md:block">
+				<div class="min-w-0 md:min-w-[clamp(48rem,80vw,64rem)] xl:min-w-[70rem]">
 					<Table>
 						<TableHeader>
 							<TableRow>
@@ -1025,9 +1025,41 @@
 					</Table>
 				</div>
 			</ScrollArea>
+			<div class="space-y-3 md:hidden">
+				{#if $clientsTable.paginatedAgents.length === 0}
+					<div
+						class="rounded-lg border border-border/60 bg-background/80 p-6 text-center text-sm text-muted-foreground"
+					>
+						{#if $clientsTable.agents.length === 0}
+							No agents connected yet.
+							<Button type="button" class="mt-3" onclick={() => (deployDialogOpen = true)}>
+								View deployment guide
+							</Button>
+						{:else}
+							No agents match your current filters.
+						{/if}
+					</div>
+				{:else}
+					{#each $clientsTable.paginatedAgents as agent (agent.id)}
+						<ClientsTableRow
+							layout="card"
+							{agent}
+							{formatDate}
+							{formatPing}
+							{getAgentTags}
+							{getAgentLocation}
+							ipLocations={$ipLocationStore}
+							openManageTags={openManageTagsDialog}
+							onTagClick={handleTagFilter}
+							{openSection}
+							{copyAgentId}
+						/>
+					{/each}
+				{/if}
+			</div>
 		</TooltipProvider>
 
-		<div class="px-4 text-sm text-muted-foreground">
+		<div class="px-1 text-sm text-muted-foreground md:px-4">
 			{#if $clientsTable.filteredAgents.length === 0}
 				No agents to display.
 			{:else}
