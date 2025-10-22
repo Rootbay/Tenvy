@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 import MarketplaceGrid from './MarketplaceGrid.svelte';
 import { formatSignatureTime, marketplaceStatusStyles, signatureBadge } from './utils.js';
-import type { MarketplaceEntitlement, MarketplaceListing } from './types.js';
+import type { MarketplaceEntitlement, MarketplaceListing } from '$lib/data/marketplace.js';
 import type { Plugin } from '$lib/data/plugin-view.js';
 
 const signatureState: Plugin['signature'] = {

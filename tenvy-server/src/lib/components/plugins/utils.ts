@@ -7,7 +7,7 @@ import {
 } from '$lib/data/plugin-view.js';
 import { ShieldAlert, ShieldCheck } from '@lucide/svelte';
 
-import type { MarketplaceStatus } from './types.js';
+import type { MarketplaceStatus } from '$lib/data/marketplace.js';
 
 type SignatureMeta = {
 	label: string;
