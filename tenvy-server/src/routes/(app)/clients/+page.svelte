@@ -77,7 +77,7 @@
 		'shutdown' | 'restart' | 'sleep' | 'logoff'
 	>;
 
-	const powerToolIds = new Set<ClientToolId>(['shutdown', 'restart', 'sleep', 'logoff']);
+        const powerToolIds = new Set<ClientToolId>(['shutdown', 'restart', 'sleep', 'logoff']);
 
         const powerActionMeta: Record<PowerAction, { label: string; noun: string }> = {
                 shutdown: { label: 'Shutdown', noun: 'shutdown' },
@@ -87,6 +87,28 @@
         };
 
         const relativeTimeFormatter = new Intl.RelativeTimeFormat(undefined, { numeric: 'auto' });
+
+        const desktopMediaQuery = '(min-width: 768px)';
+        let isDesktop = $state(false);
+
+        if (browser) {
+                const mediaQuery = window.matchMedia(desktopMediaQuery);
+                const applyMatch = (matches: boolean) => {
+                        isDesktop = matches;
+                };
+
+                applyMatch(mediaQuery.matches);
+
+                const handleChange = (event: MediaQueryListEvent) => {
+                        applyMatch(event.matches);
+                };
+
+                mediaQuery.addEventListener('change', handleChange);
+
+                onDestroy(() => {
+                        mediaQuery.removeEventListener('change', handleChange);
+                });
+        }
 
 	let { data } = $props<{ data: { agents: AgentSnapshot[] } }>();
 
@@ -858,11 +880,12 @@
 
 	<div class="space-y-4">
 		<TooltipProvider delayDuration={100}>
-			<ScrollArea class="hidden rounded-lg border border-border/60 md:block">
-				<div class="min-w-0 md:min-w-[clamp(48rem,80vw,64rem)] xl:min-w-[70rem]">
-					<Table>
-						<TableHeader>
-							<TableRow>
+                        {#if isDesktop}
+                                <ScrollArea class="rounded-lg border border-border/60">
+                                        <div class="min-w-0 md:min-w-[clamp(48rem,80vw,64rem)] xl:min-w-[70rem]">
+                                                <Table>
+                                                        <TableHeader>
+                                                                <TableRow>
 								<TableHead class="w-[16rem]">
 									<Tooltip>
 										<TooltipTrigger>
@@ -991,75 +1014,77 @@
 										</TooltipContent>
 									</Tooltip>
 								</TableHead>
-							</TableRow>
-						</TableHeader>
-						<TableBody>
-							{#if $clientsTable.paginatedAgents.length === 0}
-								<TableRow>
-									<TableCell colspan={8} class="py-12 text-center text-sm text-muted-foreground">
-										{#if $clientsTable.agents.length === 0}
-											No agents connected yet.
-											<Button type="button" class="ml-2" onclick={() => (deployDialogOpen = true)}>
-												View deployment guide
-											</Button>
-										{:else}
-											No agents match your current filters.
-										{/if}
-									</TableCell>
-								</TableRow>
-							{:else}
-								{#each $clientsTable.paginatedAgents as agent (agent.id)}
-									<ClientsTableRow
-										{agent}
-										{formatDate}
-										{formatPing}
-										{getAgentTags}
-										{getAgentLocation}
-										ipLocations={$ipLocationStore}
-										openManageTags={openManageTagsDialog}
-										onTagClick={handleTagFilter}
-										{openSection}
-										{copyAgentId}
-									/>
-								{/each}
-							{/if}
-						</TableBody>
-					</Table>
-				</div>
-			</ScrollArea>
-			<div class="space-y-3 md:hidden">
-				{#if $clientsTable.paginatedAgents.length === 0}
-					<div
-						class="rounded-lg border border-border/60 bg-background/80 p-6 text-center text-sm text-muted-foreground"
-					>
-						{#if $clientsTable.agents.length === 0}
-							No agents connected yet.
-							<Button type="button" class="mt-3" onclick={() => (deployDialogOpen = true)}>
-								View deployment guide
-							</Button>
-						{:else}
-							No agents match your current filters.
-						{/if}
-					</div>
-				{:else}
-					{#each $clientsTable.paginatedAgents as agent (agent.id)}
-						<ClientsTableRow
-							layout="card"
-							{agent}
-							{formatDate}
-							{formatPing}
-							{getAgentTags}
-							{getAgentLocation}
-							ipLocations={$ipLocationStore}
-							openManageTags={openManageTagsDialog}
-							onTagClick={handleTagFilter}
-							{openSection}
-							{copyAgentId}
-						/>
-					{/each}
-				{/if}
-			</div>
-		</TooltipProvider>
+                                                                </TableRow>
+                                                        </TableHeader>
+                                                        <TableBody>
+                                                                {#if $clientsTable.paginatedAgents.length === 0}
+                                                                        <TableRow>
+                                                                                <TableCell colspan={8} class="py-12 text-center text-sm text-muted-foreground">
+                                                                                        {#if $clientsTable.agents.length === 0}
+                                                                                                No agents connected yet.
+                                                                                                <Button type="button" class="ml-2" onclick={() => (deployDialogOpen = true)}>
+                                                                                                        View deployment guide
+                                                                                                </Button>
+                                                                                        {:else}
+                                                                                                No agents match your current filters.
+                                                                                        {/if}
+                                                                                </TableCell>
+                                                                        </TableRow>
+                                                                {:else}
+                                                                        {#each $clientsTable.paginatedAgents as agent (agent.id)}
+                                                                                <ClientsTableRow
+                                                                                        {agent}
+                                                                                        {formatDate}
+                                                                                        {formatPing}
+                                                                                        {getAgentTags}
+                                                                                        {getAgentLocation}
+                                                                                        ipLocations={$ipLocationStore}
+                                                                                        openManageTags={openManageTagsDialog}
+                                                                                        onTagClick={handleTagFilter}
+                                                                                        {openSection}
+                                                                                        {copyAgentId}
+                                                                                />
+                                                                        {/each}
+                                                                {/if}
+                                                        </TableBody>
+                                                </Table>
+                                        </div>
+                                </ScrollArea>
+                        {:else}
+                                <div class="space-y-3">
+                                        {#if $clientsTable.paginatedAgents.length === 0}
+                                                <div
+                                                        class="rounded-lg border border-border/60 bg-background/80 p-6 text-center text-sm text-muted-foreground"
+                                                >
+                                                        {#if $clientsTable.agents.length === 0}
+                                                                No agents connected yet.
+                                                                <Button type="button" class="mt-3" onclick={() => (deployDialogOpen = true)}>
+                                                                        View deployment guide
+                                                                </Button>
+                                                        {:else}
+                                                                No agents match your current filters.
+                                                        {/if}
+                                                </div>
+                                        {:else}
+                                                {#each $clientsTable.paginatedAgents as agent (agent.id)}
+                                                        <ClientsTableRow
+                                                                layout="card"
+                                                                {agent}
+                                                                {formatDate}
+                                                                {formatPing}
+                                                                {getAgentTags}
+                                                                {getAgentLocation}
+                                                                ipLocations={$ipLocationStore}
+                                                                openManageTags={openManageTagsDialog}
+                                                                onTagClick={handleTagFilter}
+                                                                {openSection}
+                                                                {copyAgentId}
+                                                        />
+                                                {/each}
+                                        {/if}
+                                </div>
+                        {/if}
+                </TooltipProvider>
 
 		<div class="px-1 text-sm text-muted-foreground md:px-4">
 			{#if $clientsTable.filteredAgents.length === 0}
