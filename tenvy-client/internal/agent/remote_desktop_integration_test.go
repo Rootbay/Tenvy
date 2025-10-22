@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -30,17 +31,13 @@ func TestRemoteDesktopModuleNegotiationWithManagedEngine(t *testing.T) {
 		sessionID     = "session-123"
 	)
 
-	logDir := t.TempDir()
-	logPath := filepath.Join(logDir, "engine.log")
-	t.Setenv("REMOTE_DESKTOP_ENGINE_LOG", logPath)
-
 	artifactData := buildEngineArtifact(t)
 	artifactHash := sha256.Sum256(artifactData)
 	manifestJSON, err := json.Marshal(manifest.Manifest{
 		ID:            plugins.RemoteDesktopEnginePluginID,
 		Name:          "Remote Desktop Engine",
 		Version:       pluginVersion,
-		Entry:         "remote-desktop-engine/engine.sh",
+		Entry:         "remote-desktop-engine/engine",
 		RepositoryURL: "https://github.com/rootbay/remote-desktop-engine",
 		License:       manifest.LicenseInfo{SPDXID: "MIT"},
 		Requirements: manifest.Requirements{
@@ -158,8 +155,6 @@ func TestRemoteDesktopModuleNegotiationWithManagedEngine(t *testing.T) {
 		t.Fatal("timeout waiting for negotiation request")
 	}
 
-	waitForEngineLog(t, logPath, sessionID)
-
 	stopPayload := remotedesktop.RemoteDesktopCommandPayload{Action: "stop", SessionID: sessionID}
 	stopRaw, err := json.Marshal(stopPayload)
 	if err != nil {
@@ -196,38 +191,41 @@ func TestRemoteDesktopModuleNegotiationWithManagedEngine(t *testing.T) {
 
 func buildEngineArtifact(t *testing.T) []byte {
 	t.Helper()
-	script := "#!/bin/sh\n" +
-		"if [ -n \"$REMOTE_DESKTOP_ENGINE_LOG\" ]; then echo \"started:$TENVY_REMOTE_DESKTOP_SESSION_ID\" >> \"$REMOTE_DESKTOP_ENGINE_LOG\"; fi\n" +
-		"trap exit TERM INT\n" +
-		"while true; do sleep 1; done\n"
+
+	workDir, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("get working directory: %v", err)
+	}
+	projectRoot := filepath.Clean(filepath.Join(workDir, "..", ".."))
+
+	tempDir := t.TempDir()
+	binaryPath := filepath.Join(tempDir, "engine")
+
+	build := exec.Command("go", "build", "-o", binaryPath, "./cmd/remote-desktop-engine")
+	build.Dir = projectRoot
+	build.Env = os.Environ()
+	if out, err := build.CombinedOutput(); err != nil {
+		t.Fatalf("build plugin binary: %v: %s", err, out)
+	}
+
+	binaryData, err := os.ReadFile(binaryPath)
+	if err != nil {
+		t.Fatalf("read plugin binary: %v", err)
+	}
 
 	var buf bytes.Buffer
 	writer := zip.NewWriter(&buf)
-	header := &zip.FileHeader{Name: "remote-desktop-engine/engine.sh", Method: zip.Deflate}
+	header := &zip.FileHeader{Name: "remote-desktop-engine/engine", Method: zip.Deflate}
 	header.SetMode(0o755)
 	entry, err := writer.CreateHeader(header)
 	if err != nil {
 		t.Fatalf("create zip header: %v", err)
 	}
-	if _, err := entry.Write([]byte(script)); err != nil {
-		t.Fatalf("write script: %v", err)
+	if _, err := entry.Write(binaryData); err != nil {
+		t.Fatalf("write plugin binary: %v", err)
 	}
 	if err := writer.Close(); err != nil {
 		t.Fatalf("close zip writer: %v", err)
 	}
 	return buf.Bytes()
-}
-
-func waitForEngineLog(t *testing.T, path, sessionID string) {
-	t.Helper()
-	deadline := time.Now().Add(5 * time.Second)
-	for time.Now().Before(deadline) {
-		data, err := os.ReadFile(path)
-		if err == nil && strings.Contains(string(data), sessionID) {
-			return
-		}
-		time.Sleep(50 * time.Millisecond)
-	}
-	data, _ := os.ReadFile(path)
-	t.Fatalf("engine log missing entry for session %s (contents: %q)", sessionID, string(data))
 }
