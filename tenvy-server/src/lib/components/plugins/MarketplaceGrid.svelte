@@ -70,11 +70,11 @@
 		{:else}
 			<div class="grid gap-4 lg:grid-cols-2 xl:grid-cols-3">
 				{#each listings as listing (listing.id)}
+					{@const listingSignature = signatureBadge(listing.signature)}
 					<div
 						class="flex flex-col justify-between rounded-lg border border-border bg-card p-4 shadow-sm"
 					>
 						<div class="space-y-3">
-							{@const listingSignature = signatureBadge(listing.signature)}
 							<div class="flex items-start justify-between gap-3">
 								<div class="space-y-1">
 									<h3 class="text-base leading-tight font-semibold">{listing.name}</h3>

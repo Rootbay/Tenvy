@@ -1,0 +1,8 @@
+{
+  "name": "@tenvy/shared",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "tweetnacl": "^1.0.3"
+  }
+}

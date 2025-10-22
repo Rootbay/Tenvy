@@ -26,18 +26,21 @@
 		distributionNotice as defaultDistributionNotice,
 		formatSignatureTime,
 		signatureBadge,
-		statusSeverity
-	} from './utils.js';
+	statusSeverity
+} from './utils.js';
 
-	let {
-		plugin,
-		updatePlugin,
-		distributionNotice = defaultDistributionNotice
-	}: {
-		plugin: Plugin;
-		updatePlugin: (id: string, patch: PluginUpdatePayload) => void | Promise<void>;
-		distributionNotice?: (plugin: Plugin) => string;
-	} = $props();
+let {
+	plugin,
+	updatePlugin,
+	distributionNotice = defaultDistributionNotice
+}: {
+	plugin: Plugin;
+	updatePlugin: (id: string, patch: PluginUpdatePayload) => void | Promise<void>;
+	distributionNotice?: (plugin: Plugin) => string;
+} = $props();
+
+type SignatureBadge = ReturnType<typeof signatureBadge>;
+const pluginSignatureBadge: SignatureBadge = $derived(signatureBadge(plugin.signature));
 </script>
 
 <Card
@@ -61,13 +64,15 @@
 				>
 					{pluginStatusLabels[plugin.status]}
 				</Badge>
-				{@const sigBadge = signatureBadge(plugin.signature)}
 				<Badge
 					variant="outline"
-					class={cn('flex items-center gap-1 px-2.5 py-1 text-xs font-medium', sigBadge.class)}
+					class={cn(
+						'flex items-center gap-1 px-2.5 py-1 text-xs font-medium',
+						pluginSignatureBadge.class
+					)}
 				>
-					<svelte:component this={sigBadge.icon} class="h-3.5 w-3.5" />
-					{sigBadge.label}
+					<svelte:component this={pluginSignatureBadge.icon} class="h-3.5 w-3.5" />
+					{pluginSignatureBadge.label}
 				</Badge>
 			</div>
 			<CardDescription class="max-w-2xl text-sm text-muted-foreground"
@@ -111,10 +116,9 @@
 		<div class="grid gap-4 text-sm text-muted-foreground md:grid-cols-2 xl:grid-cols-3">
 			<div class="space-y-1 rounded-md border border-border/60 px-3 py-2">
 				<span class="text-xs tracking-wide uppercase">Signature</span>
-				{@const sig = signatureBadge(plugin.signature)}
 				<p class="flex items-center gap-2 text-sm font-semibold text-foreground">
-					<svelte:component this={sig.icon} class="h-4 w-4" />
-					{sig.label}
+					<svelte:component this={pluginSignatureBadge.icon} class="h-4 w-4" />
+					{pluginSignatureBadge.label}
 				</p>
 				{#if plugin.signature.error}
 					<p class="text-xs text-muted-foreground">{plugin.signature.error}</p>

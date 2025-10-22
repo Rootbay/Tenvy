@@ -2,12 +2,19 @@
         "version": "5",
         "dialect": "sqlite",
         "entries": [
-                {
-                        "idx": 0,
-                        "version": "5",
-                        "when": 1760897870,
-                        "tag": "0000_add_roles_and_audit",
-                        "breakpoints": true
-                }
+		{
+			"idx": 0,
+			"version": "5",
+			"when": 1760897870,
+			"tag": "0000_add_roles_and_audit",
+			"breakpoints": true
+		},
+		{
+			"idx": 1,
+			"version": "5",
+			"when": 1761155275,
+			"tag": "0001_add_plugin_signature_fields",
+			"breakpoints": true
+		}
         ]
 }
