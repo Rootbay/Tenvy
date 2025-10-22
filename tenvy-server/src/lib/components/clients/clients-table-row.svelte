@@ -16,13 +16,18 @@
 	import { TableCell } from '$lib/components/ui/table/index.js';
 	import OsLogo from '$lib/components/os-logo.svelte';
 	import { cn } from '$lib/utils.js';
-        import { toast } from 'svelte-sonner';
-        import { countryCodeToFlag } from '$lib/utils/location';
-        import { isLikelyPrivateIp } from '$lib/utils/ip';
+	import { toast } from 'svelte-sonner';
+	import { countryCodeToFlag } from '$lib/utils/location';
 	import type { AgentSnapshot } from '../../../../../shared/types/agent';
 	import type { SectionKey } from '$lib/client-sections';
 
 	type TriggerChildProps = Parameters<NonNullable<ContextMenuPrimitive.TriggerProps['child']>>[0];
+
+	type GeoLookupPayload = {
+		countryName: string | null;
+		countryCode: string | null;
+		isProxy: boolean;
+	};
 
 	type ResolvedLocation = {
 		label: string;
@@ -40,7 +45,8 @@
 		getAgentLocation,
 		getAgentTags,
 		formatPing,
-		formatDate
+		formatDate,
+		ipLocations
 	} = $props<{
 		agent: AgentSnapshot;
 		openSection: (section: SectionKey, agent: AgentSnapshot) => void;
@@ -51,23 +57,8 @@
 		getAgentTags: (agent: AgentSnapshot) => string[];
 		formatPing: (agent: AgentSnapshot) => string;
 		formatDate: (value: string) => string;
+		ipLocations: Record<string, GeoLookupPayload>;
 	}>();
-
-	const globalRegistry = globalThis as Record<string, unknown>;
-
-	if (!globalRegistry.__tenvyIpLocationCache) {
-		globalRegistry.__tenvyIpLocationCache = new Map<string, ResolvedLocation>();
-	}
-
-	if (!globalRegistry.__tenvyIpLocationPromises) {
-		globalRegistry.__tenvyIpLocationPromises = new Map<string, Promise<ResolvedLocation>>();
-	}
-
-	const ipLocationCache = globalRegistry.__tenvyIpLocationCache as Map<string, ResolvedLocation>;
-	const ipLocationPromises = globalRegistry.__tenvyIpLocationPromises as Map<
-		string,
-		Promise<ResolvedLocation>
-	>;
 
 	function toResolvedLocation(base: { label: string; flag: string }): ResolvedLocation {
 		return {
@@ -84,29 +75,29 @@
 		const baseLocation = toResolvedLocation(getAgentLocation(agent));
 		locationDisplay = baseLocation;
 
-		const ip = agent.metadata.publicIpAddress?.trim();
-		if (!ip || isLikelyPrivateIp(ip)) {
+		const normalizedIp = normalizeIp(agent.metadata.publicIpAddress);
+		if (!normalizedIp) {
 			return;
 		}
 
-		const cached = ipLocationCache.get(ip);
-		if (cached) {
-			locationDisplay = { ...cached };
+		const lookup = ipLocations[normalizedIp];
+		if (!lookup) {
 			return;
 		}
 
-		if (!browser) {
-			return;
-		}
+		const countryName = lookup.countryName?.trim() || baseLocation.label;
+		const countryCode = lookup.countryCode?.trim()?.toUpperCase() ?? '';
+		const flagEmoji = countryCode ? countryCodeToFlag(countryCode) : baseLocation.flagEmoji;
+		const flagUrl = countryCode
+			? `https://flagcdn.com/${countryCode.toLowerCase()}.svg`
+			: baseLocation.flagUrl;
 
-		const existingPromise = ipLocationPromises.get(ip);
-		if (existingPromise) {
-			return attachLocationPromise(ip, existingPromise, baseLocation);
-		}
-
-		const lookupPromise = fetchIpLocation(ip, baseLocation);
-		ipLocationPromises.set(ip, lookupPromise);
-		return attachLocationPromise(ip, lookupPromise, baseLocation);
+		locationDisplay = {
+			label: countryName,
+			flagEmoji: flagEmoji || baseLocation.flagEmoji,
+			flagUrl,
+			isVpn: lookup.isProxy === true
+		};
 	});
 
 	function resolvePublicIpValue(agent: AgentSnapshot): string {
@@ -182,73 +173,15 @@
 		};
 	}
 
-	function attachLocationPromise(
-		ip: string,
-		promise: Promise<ResolvedLocation>,
-		baseLocation: ResolvedLocation
-	): () => void {
-		let disposed = false;
+	function normalizeIp(rawValue: string | null | undefined): string {
+		const raw = (rawValue ?? '').trim();
+		if (!raw) {
+			return '';
+		}
 
-		promise
-			.then((result) => {
-				const resolved = { ...result };
-				ipLocationCache.set(ip, resolved);
-				if (!disposed && agent.metadata.publicIpAddress?.trim() === ip) {
-					locationDisplay = resolved;
-				}
-			})
-			.catch(() => {
-				if (!disposed && agent.metadata.publicIpAddress?.trim() === ip) {
-					locationDisplay = { ...baseLocation };
-				}
-			})
-			.finally(() => {
-				if (ipLocationPromises.get(ip) === promise) {
-					ipLocationPromises.delete(ip);
-				}
-			});
-
-		return () => {
-			disposed = true;
-		};
+		const withoutBrackets = raw.startsWith('[') && raw.endsWith(']') ? raw.slice(1, -1) : raw;
+		return withoutBrackets.toLowerCase();
 	}
-
-        async function fetchIpLocation(
-                ip: string,
-                baseLocation: ResolvedLocation
-        ): Promise<ResolvedLocation> {
-                const response = await fetch(`/api/geo/${encodeURIComponent(ip)}`, {
-                        headers: { Accept: 'application/json' }
-                });
-
-                if (!response.ok) {
-                        throw new Error('Failed to resolve IP location');
-                }
-
-                const data = (await response.json()) as {
-                        countryName?: string | null;
-                        countryCode?: string | null;
-                        isProxy?: boolean;
-                };
-
-                const countryName = data.countryName?.trim() || baseLocation.label;
-                const countryCode = data.countryCode?.trim();
-                const flagEmoji =
-                        countryCode && countryCode.length > 0
-                                ? countryCodeToFlag(countryCode)
-                                : baseLocation.flagEmoji;
-                const flagUrl =
-			countryCode && countryCode.length > 0
-				? `https://flagcdn.com/${countryCode.toLowerCase()}.svg`
-				: baseLocation.flagUrl;
-
-		return {
-                        label: countryName,
-                        flagEmoji: flagEmoji || baseLocation.flagEmoji,
-                        flagUrl,
-                        isVpn: data.isProxy === true
-                };
-        }
 </script>
 
 {#snippet TriggerChild({ props }: TriggerChildProps)}

@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { browser } from '$app/environment';
-        import { goto, invalidate } from '$app/navigation';
+	import { goto, invalidate } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import { Alert, AlertDescription, AlertTitle } from '$lib/components/ui/alert/index.js';
@@ -40,11 +40,12 @@
 		type ClientToolId,
 		type DialogToolId
 	} from '$lib/data/client-tools';
-        import { buildLocationDisplay } from '$lib/utils/location';
-        import { formatAgentLatency } from '$lib/utils/agent-latency';
+	import { buildLocationDisplay } from '$lib/utils/location';
+	import { isLikelyPrivateIp } from '$lib/utils/ip';
+	import { formatAgentLatency } from '$lib/utils/agent-latency';
 	import { toast } from 'svelte-sonner';
 	import type { Client } from '$lib/data/clients';
-	import { get } from 'svelte/store';
+	import { get, writable } from 'svelte/store';
 	import { onDestroy } from 'svelte';
 	import ChevronLeft from '@lucide/svelte/icons/chevron-left';
 	import ChevronRight from '@lucide/svelte/icons/chevron-right';
@@ -88,12 +89,20 @@
 	let { data } = $props<{ data: { agents: AgentSnapshot[] } }>();
 
 	const clientsTable = createClientsTableStore(data.agents ?? []);
+	const ipLocationStore = writable<Record<string, GeoLookupPayload>>({});
+	const inFlightLookups = new Set<string>();
 
 	$effect(() => {
 		clientsTable.setAgents(data.agents ?? []);
 	});
 
 	const perPageOptions = [10, 25, 50];
+
+	type GeoLookupPayload = {
+		countryName: string | null;
+		countryCode: string | null;
+		isProxy: boolean;
+	};
 
 	let toolDialog = $state<{ agentId: string; toolId: DialogToolId } | null>(null);
 	let toolDialogAgent = $state<AgentSnapshot | null | undefined>(undefined);
@@ -127,7 +136,7 @@
 	let commandErrors = $state<Record<string, string | null>>({});
 	let commandSuccess = $state<Record<string, string | null>>({});
 	let commandPending = $state<Record<string, boolean>>({});
-        let deployDialogOpen = $state(false);
+	let deployDialogOpen = $state(false);
 	let tagsDialogAgentId = $state<string | null>(null);
 	let tagsAgent = $state<AgentSnapshot | null>(null);
 	let tagsDialogPending = $state(false);
@@ -202,6 +211,80 @@
 		return 'just now';
 	}
 
+	function normalizeIpAddress(rawValue: string | null | undefined): string {
+		const raw = (rawValue ?? '').trim();
+		if (!raw) {
+			return '';
+		}
+
+		const withoutBrackets = raw.startsWith('[') && raw.endsWith(']') ? raw.slice(1, -1) : raw;
+		return withoutBrackets.toLowerCase();
+	}
+
+	async function fetchGeoLocations(ips: string[]): Promise<void> {
+		if (!browser || ips.length === 0) {
+			for (const ip of ips) {
+				inFlightLookups.delete(ip);
+			}
+			return;
+		}
+
+		try {
+			const response = await fetch('/api/geo', {
+				method: 'POST',
+				headers: {
+					Accept: 'application/json',
+					'Content-Type': 'application/json'
+				},
+				body: JSON.stringify(ips)
+			});
+
+			if (response.ok) {
+				const payload = (await response.json()) as Record<string, GeoLookupPayload>;
+				ipLocationStore.update((current) => ({ ...current, ...payload }));
+			}
+		} catch (err) {
+			console.error('Failed to fetch geo locations', err);
+		} finally {
+			for (const ip of ips) {
+				inFlightLookups.delete(ip);
+			}
+		}
+	}
+
+	$effect(() => {
+		if (!browser) {
+			return;
+		}
+
+		const agents = $clientsTable.agents;
+		const knownLookups = $ipLocationStore;
+		const pending = new Set<string>();
+
+		for (const agent of agents) {
+			const normalized = normalizeIpAddress(agent.metadata.publicIpAddress);
+			if (!normalized || isLikelyPrivateIp(normalized)) {
+				continue;
+			}
+
+			if (knownLookups[normalized] || inFlightLookups.has(normalized)) {
+				continue;
+			}
+
+			pending.add(normalized);
+		}
+
+		if (pending.size === 0) {
+			return;
+		}
+
+		for (const ip of pending) {
+			inFlightLookups.add(ip);
+		}
+
+		void fetchGeoLocations(Array.from(pending));
+	});
+
 	function getAgentLocation(agent: AgentSnapshot): { label: string; flag: string } {
 		return buildLocationDisplay(agent.metadata.location);
 	}
@@ -221,9 +304,9 @@
 		return fallback ? [fallback] : [];
 	}
 
-        function formatPing(agent: AgentSnapshot): string {
-                return formatAgentLatency(agent);
-        }
+	function formatPing(agent: AgentSnapshot): string {
+		return formatAgentLatency(agent);
+	}
 
 	function handleTagFilter(tag: string) {
 		if (!tag || tag.trim().length === 0) {
@@ -278,7 +361,7 @@
 				current.map((item) => (item.id === updatedAgent.id ? updatedAgent : item))
 			);
 
-                        await invalidate('/api/agents');
+			await invalidate('/api/agents');
 
 			tagsDialogAgentId = null;
 			tagsAgent = null;
@@ -337,7 +420,7 @@
 			const successMessage = delivery === 'session' ? messages.session : messages.queued;
 
 			commandSuccess = updateRecord(commandSuccess, key, successMessage);
-                        await invalidate('/api/agents');
+			await invalidate('/api/agents');
 			return true;
 		} catch (err) {
 			commandErrors = updateRecord(
@@ -374,7 +457,7 @@
 				return false;
 			}
 
-                        await invalidate('/api/agents');
+			await invalidate('/api/agents');
 
 			const titles: Record<AgentConnectionAction, string> = {
 				disconnect: 'Agent disconnected',
@@ -450,7 +533,7 @@
 					? `${agentLabel} received the ${noun} command immediately.`
 					: `Forced ${noun} command queued for ${agentLabel}.`;
 
-                        await invalidate('/api/agents');
+			await invalidate('/api/agents');
 
 			toast.success(`${label} command sent`, {
 				description,
@@ -868,8 +951,8 @@
 											{/snippet}
 										</TooltipTrigger>
 										<TooltipContent side="top" align="center" class="max-w-[18rem] text-xs">
-                                                                                        Latest round-trip latency reported by the agent during sync. Displays
-                                                                                        N/A when the agent has not provided latency metrics.
+											Latest round-trip latency reported by the agent during sync. Displays N/A when
+											the agent has not provided latency metrics.
 										</TooltipContent>
 									</Tooltip>
 								</TableHead>
@@ -930,6 +1013,7 @@
 										{formatPing}
 										{getAgentTags}
 										{getAgentLocation}
+										ipLocations={$ipLocationStore}
 										openManageTags={openManageTagsDialog}
 										onTagClick={handleTagFilter}
 										{openSection}
