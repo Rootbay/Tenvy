@@ -2,6 +2,7 @@ import { page } from '@vitest/browser/context';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { render } from 'vitest-browser-svelte';
 import { tick } from 'svelte';
+import type { BuildRequest } from '../../../../shared/types/build';
 
 vi.mock('$app/environment', () => ({ browser: true }));
 
@@ -12,6 +13,10 @@ const toast = Object.assign(vi.fn(), {
 });
 
 vi.mock('svelte-sonner', () => ({ toast }));
+
+const prepareBuildRequest = vi.fn();
+
+vi.mock('./lib/build-request.js', () => ({ prepareBuildRequest }));
 
 import BuildPage from './+page.svelte';
 
@@ -24,6 +29,31 @@ describe('build page port validation', () => {
                 toast.success.mockClear();
                 toast.error.mockClear();
                 toast.dismiss.mockClear();
+                prepareBuildRequest.mockReset();
+                prepareBuildRequest.mockImplementation((input) => {
+                        const port = input.port.trim();
+                        if (port === '70000') {
+                                return { ok: false, error: 'Port must be between 1 and 65535.' } as const;
+                        }
+
+                        const pollInterval = input.pollIntervalMs.trim();
+                        if (pollInterval === '1000.5') {
+                                return { ok: false, error: 'Poll interval must be a positive integer.' } as const;
+                        }
+
+                        return {
+                                ok: true,
+                                payload: ({
+                                        host: input.host,
+                                        port: input.port.trim() || '2332',
+                                        outputFilename: input.effectiveOutputFilename,
+                                        outputExtension: input.outputExtension,
+                                        targetOS: input.targetOS,
+                                        targetArch: input.targetArch
+                                }) satisfies BuildRequest,
+                                warnings: []
+                        } as const;
+                });
         });
 
         afterEach(() => {
