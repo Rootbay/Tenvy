@@ -8,7 +8,12 @@ import {
 	agentResult as agentResultTable,
 	auditEvent as auditEventTable
 } from '$lib/server/db/schema';
-import { defaultAgentConfig, type AgentConfig } from '../../../../../shared/types/config';
+import {
+        defaultAgentConfig,
+        type AgentConfig,
+        type AgentPluginConfig,
+        type AgentPluginSignaturePolicy
+} from '../../../../../shared/types/config';
 import type { NoteEnvelope } from '../../../../../shared/types/notes';
 import type { AgentRegistryEvent } from '../../../../../shared/types/registry-events';
 import { COMMAND_STREAM_SUBPROTOCOL } from '../../../../../shared/constants/protocol';
@@ -214,10 +219,47 @@ function parseNumeric(value: unknown): number | null {
 	return null;
 }
 
+function cloneSignaturePolicy(
+        policy: AgentPluginSignaturePolicy | undefined
+): AgentPluginSignaturePolicy | undefined {
+        if (!policy) {
+                return undefined;
+        }
+
+        const cloned: AgentPluginSignaturePolicy = { ...policy };
+
+        if (Array.isArray(policy.sha256AllowList)) {
+                cloned.sha256AllowList = [...policy.sha256AllowList];
+        }
+
+        if (policy.ed25519PublicKeys) {
+                cloned.ed25519PublicKeys = { ...policy.ed25519PublicKeys };
+        }
+
+        return cloned;
+}
+
+function clonePluginConfig(config?: AgentPluginConfig | null): AgentPluginConfig | undefined {
+        if (!config || typeof config !== 'object') {
+                return undefined;
+        }
+
+        const clone: AgentPluginConfig = {};
+
+        for (const [key, value] of Object.entries(config)) {
+                if (key === 'signaturePolicy') {
+                        continue;
+                }
+                (clone as Record<string, unknown>)[key] = value;
+        }
+
+        return clone;
+}
+
 function normalizeConfig(config?: Partial<AgentConfig> | null): AgentConfig {
-	const normalized: AgentConfig = {
-		...defaultAgentConfig
-	};
+        const normalized: AgentConfig = {
+                ...defaultAgentConfig
+        };
 
 	if (!config) {
 		return normalized;
@@ -238,10 +280,22 @@ function normalizeConfig(config?: Partial<AgentConfig> | null): AgentConfig {
 		normalized.jitterRatio = jitter;
 	}
 
-	const signaturePolicy = getAgentSignaturePolicy();
-	normalized.plugins = { signaturePolicy };
+        const pluginConfig = clonePluginConfig(config?.plugins);
+        const signaturePolicy = cloneSignaturePolicy(getAgentSignaturePolicy());
 
-	return normalized;
+        const mergedPluginConfig: AgentPluginConfig = {
+                ...(pluginConfig ?? {})
+        };
+
+        if (signaturePolicy) {
+                mergedPluginConfig.signaturePolicy = signaturePolicy;
+        }
+
+        if (Object.keys(mergedPluginConfig).length > 0) {
+                normalized.plugins = mergedPluginConfig;
+        }
+
+        return normalized;
 }
 
 function cloneMetadata(metadata: AgentMetadata): AgentMetadata {
