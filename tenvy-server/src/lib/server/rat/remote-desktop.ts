@@ -1,4 +1,6 @@
 import { randomUUID } from 'crypto';
+import type { PluginManifest } from '../../../../../shared/types/plugin-manifest.js';
+import remoteDesktopEngineManifestJson from '../../../../../shared/pluginmanifest/remote-desktop-engine.json';
 import type {
 	RemoteDesktopEncoder,
 	RemoteDesktopFrameMetrics,
@@ -23,6 +25,12 @@ import { registry } from './store';
 import { WebRTCPipeline } from '$lib/streams/webrtc';
 import { remoteDesktopInputService } from './remote-desktop-input';
 import { Buffer } from 'node:buffer';
+
+const remoteDesktopPluginManifest = remoteDesktopEngineManifestJson as PluginManifest;
+export const remoteDesktopEnginePluginId =
+        remoteDesktopPluginManifest?.id?.trim() || 'remote-desktop-engine';
+export const requiredRemoteDesktopPluginVersion =
+        remoteDesktopPluginManifest?.version?.trim() || '';
 
 const encoder = new TextEncoder();
 const HEARTBEAT_INTERVAL_MS = 15_000;
@@ -962,26 +970,41 @@ export class RemoteDesktopManager {
 		return { delivered, sequence };
 	}
 
-	async negotiateTransport(
-		agentId: string,
-		request: RemoteDesktopSessionNegotiationRequest
-	): Promise<RemoteDesktopSessionNegotiationResponse> {
-		const record = this.sessions.get(agentId);
+        async negotiateTransport(
+                agentId: string,
+                request: RemoteDesktopSessionNegotiationRequest
+        ): Promise<RemoteDesktopSessionNegotiationResponse> {
+                const record = this.sessions.get(agentId);
 		if (!record || !record.active) {
 			throw new RemoteDesktopError('No active remote desktop session', 404);
 		}
 		if (request.sessionId !== record.id) {
 			throw new RemoteDesktopError('Session identifier mismatch', 409);
 		}
-		if (!Array.isArray(request.transports) || request.transports.length === 0) {
-			throw new RemoteDesktopError('No transport capabilities provided', 400);
-		}
+                if (!Array.isArray(request.transports) || request.transports.length === 0) {
+                        throw new RemoteDesktopError('No transport capabilities provided', 400);
+                }
 
-		const capabilities = request.transports.filter((cap): cap is RemoteDesktopTransportCapability =>
-			Boolean(
-				cap &&
-					typeof cap.transport === 'string' &&
-					transports.has(cap.transport as RemoteDesktopTransport)
+                const requestedVersion = request.pluginVersion?.trim() ?? '';
+                if (
+                        requiredRemoteDesktopPluginVersion &&
+                        requestedVersion !== requiredRemoteDesktopPluginVersion
+                ) {
+                        const reason = requestedVersion
+                                ? `Remote desktop engine plugin version ${requiredRemoteDesktopPluginVersion} required (received ${requestedVersion})`
+                                : `Remote desktop engine plugin version ${requiredRemoteDesktopPluginVersion} required`;
+                        return {
+                                accepted: false,
+                                reason,
+                                requiredPluginVersion: requiredRemoteDesktopPluginVersion
+                        } satisfies RemoteDesktopSessionNegotiationResponse;
+                }
+
+                const capabilities = request.transports.filter((cap): cap is RemoteDesktopTransportCapability =>
+                        Boolean(
+                                cap &&
+                                        typeof cap.transport === 'string' &&
+                                        transports.has(cap.transport as RemoteDesktopTransport)
 			)
 		);
 
@@ -1043,12 +1066,13 @@ export class RemoteDesktopManager {
 		this.replaceTransportHandle(record, handle, pipeline);
 		this.broadcastSession(agentId);
 
-		const response: RemoteDesktopSessionNegotiationResponse = {
-			accepted: true,
-			transport: selectedTransport,
-			codec: selectedCodec ?? undefined,
-			intraRefresh
-		};
+                const response: RemoteDesktopSessionNegotiationResponse = {
+                        accepted: true,
+                        transport: selectedTransport,
+                        codec: selectedCodec ?? undefined,
+                        intraRefresh,
+                        requiredPluginVersion: requiredRemoteDesktopPluginVersion || undefined
+                };
 		const inputNegotiation = remoteDesktopInputService.describe();
 		if (inputNegotiation.quic?.enabled) {
 			response.input = inputNegotiation;

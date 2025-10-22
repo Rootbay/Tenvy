@@ -35,6 +35,7 @@ type Config struct {
 	AgentID          string
 	BaseURL          string
 	AuthKey          string
+	PluginVersion    string
 	Client           HTTPDoer
 	Logger           Logger
 	UserAgent        string
@@ -269,22 +270,24 @@ type RemoteDesktopInputNegotiation struct {
 }
 
 type RemoteDesktopSessionNegotiationRequest struct {
-	SessionID    string                             `json:"sessionId"`
-	Transports   []RemoteDesktopTransportCapability `json:"transports"`
-	Codecs       []RemoteDesktopEncoder             `json:"codecs,omitempty"`
-	IntraRefresh bool                               `json:"intraRefresh,omitempty"`
-	WebRTC       *RemoteDesktopWebRTCOffer          `json:"webrtc,omitempty"`
+	SessionID     string                             `json:"sessionId"`
+	Transports    []RemoteDesktopTransportCapability `json:"transports"`
+	Codecs        []RemoteDesktopEncoder             `json:"codecs,omitempty"`
+	IntraRefresh  bool                               `json:"intraRefresh,omitempty"`
+	PluginVersion string                             `json:"pluginVersion,omitempty"`
+	WebRTC        *RemoteDesktopWebRTCOffer          `json:"webrtc,omitempty"`
 }
 
 type RemoteDesktopSessionNegotiationResponse struct {
-	Accepted     bool                           `json:"accepted"`
-	Transport    RemoteDesktopTransport         `json:"transport,omitempty"`
-	Codec        RemoteDesktopEncoder           `json:"codec,omitempty"`
-	IntraRefresh bool                           `json:"intraRefresh,omitempty"`
-	Features     map[string]bool                `json:"features,omitempty"`
-	Reason       string                         `json:"reason,omitempty"`
-	WebRTC       *RemoteDesktopWebRTCAnswer     `json:"webrtc,omitempty"`
-	Input        *RemoteDesktopInputNegotiation `json:"input,omitempty"`
+	Accepted              bool                           `json:"accepted"`
+	Transport             RemoteDesktopTransport         `json:"transport,omitempty"`
+	Codec                 RemoteDesktopEncoder           `json:"codec,omitempty"`
+	IntraRefresh          bool                           `json:"intraRefresh,omitempty"`
+	Features              map[string]bool                `json:"features,omitempty"`
+	Reason                string                         `json:"reason,omitempty"`
+	RequiredPluginVersion string                         `json:"requiredPluginVersion,omitempty"`
+	WebRTC                *RemoteDesktopWebRTCAnswer     `json:"webrtc,omitempty"`
+	Input                 *RemoteDesktopInputNegotiation `json:"input,omitempty"`
 }
 
 type RemoteDesktopWebRTCOffer struct {

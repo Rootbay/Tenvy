@@ -168,11 +168,11 @@ export class PluginTelemetryStore {
 		this.manifestDirectory = options.manifestDirectory;
 	}
 
-	async syncAgent(
-		agentId: string,
-		metadata: AgentMetadata,
-		installations: PluginInstallationTelemetry[]
-	): Promise<void> {
+        async syncAgent(
+                agentId: string,
+                metadata: AgentMetadata,
+                installations: PluginInstallationTelemetry[]
+        ): Promise<void> {
 		if (installations.length === 0) {
 			return;
 		}
@@ -288,16 +288,63 @@ export class PluginTelemetryStore {
 			processed.add(installation.pluginId);
 		}
 
-		for (const pluginId of processed) {
-			await this.refreshAggregates(pluginId);
-		}
-	}
+                for (const pluginId of processed) {
+                        await this.refreshAggregates(pluginId);
+                }
+        }
 
-	async listAgentPlugins(agentId: string): Promise<AgentPluginRecord[]> {
-		await this.ensureManifestIndex();
-		const rows = await db
-			.select({
-				pluginId: pluginInstallationTable.pluginId,
+        async getAgentPlugin(agentId: string, pluginId: string): Promise<AgentPluginRecord | null> {
+                await this.ensureManifestIndex();
+                const [row] = await db
+                        .select({
+                                pluginId: pluginInstallationTable.pluginId,
+                                agentId: pluginInstallationTable.agentId,
+                                status: pluginInstallationTable.status,
+                                version: pluginInstallationTable.version,
+                                hash: pluginInstallationTable.hash,
+                                enabled: pluginInstallationTable.enabled,
+                                error: pluginInstallationTable.error,
+                                lastDeployedAt: pluginInstallationTable.lastDeployedAt,
+                                lastCheckedAt: pluginInstallationTable.lastCheckedAt,
+                                approvalStatus: pluginTable.approvalStatus,
+                                approvalNote: pluginTable.approvalNote,
+                                approvedAt: pluginTable.approvedAt
+                        })
+                        .from(pluginInstallationTable)
+                        .innerJoin(pluginTable, eq(pluginInstallationTable.pluginId, pluginTable.id))
+                        .where(
+                                and(
+                                        eq(pluginInstallationTable.agentId, agentId),
+                                        eq(pluginInstallationTable.pluginId, pluginId)
+                                )
+                        )
+                        .limit(1);
+
+                if (!row) {
+                        return null;
+                }
+
+                return {
+                        pluginId: row.pluginId,
+                        agentId: row.agentId,
+                        status: row.status,
+                        version: row.version,
+                        hash: row.hash ?? null,
+                        enabled: Boolean(row.enabled),
+                        error: row.error ?? null,
+                        lastDeployedAt: row.lastDeployedAt ?? null,
+                        lastCheckedAt: row.lastCheckedAt ?? null,
+                        approvalStatus: row.approvalStatus,
+                        approvalNote: row.approvalNote ?? null,
+                        approvedAt: row.approvedAt ?? null
+                } satisfies AgentPluginRecord;
+        }
+
+        async listAgentPlugins(agentId: string): Promise<AgentPluginRecord[]> {
+                await this.ensureManifestIndex();
+                const rows = await db
+                        .select({
+                                pluginId: pluginInstallationTable.pluginId,
 				agentId: pluginInstallationTable.agentId,
 				status: pluginInstallationTable.status,
 				version: pluginInstallationTable.version,

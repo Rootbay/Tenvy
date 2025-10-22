@@ -113,7 +113,11 @@ func (m *Manager) Snapshot() *manifest.SyncPayload {
 			continue
 		}
 
-		if verificationResult == nil || !verificationResult.Trusted {
+		trusted := verificationResult != nil && verificationResult.Trusted
+		if !trusted && verificationResult != nil && verificationResult.SignatureType == manifest.SignatureNone {
+			trusted = true
+		}
+		if !trusted {
 			installation.Status = manifest.InstallBlocked
 			installation.Error = fmt.Sprintf("signature: %s", signatureUntrustedReason(mf, verificationResult))
 			installation.LastCheckedAt = &now

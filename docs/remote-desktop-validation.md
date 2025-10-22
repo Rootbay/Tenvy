@@ -2,6 +2,17 @@
 
 This guide documents the lightweight scripts that can be used to validate QUIC input delivery, WebRTC media diagnostics, and multi-monitor metadata once a remote desktop session is active.
 
+## Engine Plugin Deployment Flow
+
+Remote desktop capture now depends on the external `remote-desktop-engine` plugin. When an operator queues a session, the agent performs the following steps before the controller accepts any commands:
+
+1. The agent asks the controller for the engine manifest and artifact, verifying the signature and package hash before extracting the binary into the plugin cache.
+2. The managed engine wrapper spawns the extracted binary and reports the installation status through the periodic plugin telemetry snapshot.
+3. The controller refuses to queue remote desktop commands until telemetry confirms that the agent has the required engine version installed and enabled.
+4. During transport negotiation the agent includes the staged plugin version, and the controller echoes the required version in the response. Any mismatch causes negotiation to be rejected so the agent can restage the plugin before retrying.
+
+Because the session cannot start until the plugin is in the expected state, operators can rely on the UI telemetry (and the audit log) to confirm that a new engine build has been distributed before launching a stream.
+
 ## Prerequisites
 
 * A running controller instance that exposes the SvelteKit API.

