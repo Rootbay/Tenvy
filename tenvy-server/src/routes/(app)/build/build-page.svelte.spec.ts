@@ -62,6 +62,33 @@ describe('build page port validation', () => {
                 component.$destroy();
         });
 
+        it('blocks builds when the poll interval is not a positive integer', async () => {
+                const { component } = render(BuildPage);
+
+                const pollIntervalInput = document.getElementById('poll-interval') as HTMLInputElement | null;
+                expect(pollIntervalInput).toBeTruthy();
+                if (!pollIntervalInput) {
+                        throw new Error('Poll interval input not found');
+                }
+
+                pollIntervalInput.value = '1000.5';
+                pollIntervalInput.dispatchEvent(new Event('input', { bubbles: true }));
+
+                const buildButton = page.getByRole('button', { name: 'Build Agent' });
+                buildButton.click();
+
+                await tick();
+                await tick();
+
+                expect(globalThis.fetch).not.toHaveBeenCalled();
+                expect(toast.error).toHaveBeenCalledWith(
+                        'Poll interval must be a positive integer.',
+                        expect.objectContaining({ position: 'bottom-right' })
+                );
+
+                component.$destroy();
+        });
+
         it('generates sanitized mutex names when requested', async () => {
                 const { component } = render(BuildPage);
 

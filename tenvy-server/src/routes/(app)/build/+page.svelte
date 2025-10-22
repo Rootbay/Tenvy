@@ -481,33 +481,54 @@
                                 return;
                         }
                 }
-		if (trimmedPollInterval) {
-			const pollValue = Number(trimmedPollInterval);
-			if (!Number.isFinite(pollValue) || pollValue < 1000 || pollValue > 3_600_000) {
-				buildError = 'Poll interval must be between 1,000 and 3,600,000 milliseconds.';
-				pushProgress(buildError, 'error');
-				buildStatus = 'error';
-				return;
-			}
-		}
-		if (trimmedMaxBackoff) {
-			const backoffValue = Number(trimmedMaxBackoff);
-			if (!Number.isFinite(backoffValue) || backoffValue < 1000 || backoffValue > 86_400_000) {
-				buildError = 'Max backoff must be between 1,000 and 86,400,000 milliseconds.';
-				pushProgress(buildError, 'error');
-				buildStatus = 'error';
-				return;
-			}
-		}
-		if (trimmedShellTimeout) {
-			const timeoutValue = Number(trimmedShellTimeout);
-			if (!Number.isFinite(timeoutValue) || timeoutValue < 5 || timeoutValue > 7_200) {
-				buildError = 'Shell timeout must be between 5 and 7,200 seconds.';
-				pushProgress(buildError, 'error');
-				buildStatus = 'error';
-				return;
-			}
-		}
+                if (trimmedPollInterval) {
+                        if (!/^\d+$/.test(trimmedPollInterval)) {
+                                buildError = 'Poll interval must be a positive integer.';
+                                pushProgress(buildError, 'error');
+                                buildStatus = 'error';
+                                return;
+                        }
+
+                        const pollValue = Number.parseInt(trimmedPollInterval, 10);
+                        if (Number.isNaN(pollValue) || pollValue < 1000 || pollValue > 3_600_000) {
+                                buildError = 'Poll interval must be between 1,000 and 3,600,000 milliseconds.';
+                                pushProgress(buildError, 'error');
+                                buildStatus = 'error';
+                                return;
+                        }
+                }
+                if (trimmedMaxBackoff) {
+                        if (!/^\d+$/.test(trimmedMaxBackoff)) {
+                                buildError = 'Max backoff must be a positive integer.';
+                                pushProgress(buildError, 'error');
+                                buildStatus = 'error';
+                                return;
+                        }
+
+                        const backoffValue = Number.parseInt(trimmedMaxBackoff, 10);
+                        if (Number.isNaN(backoffValue) || backoffValue < 1000 || backoffValue > 86_400_000) {
+                                buildError = 'Max backoff must be between 1,000 and 86,400,000 milliseconds.';
+                                pushProgress(buildError, 'error');
+                                buildStatus = 'error';
+                                return;
+                        }
+                }
+                if (trimmedShellTimeout) {
+                        if (!/^\d+$/.test(trimmedShellTimeout)) {
+                                buildError = 'Shell timeout must be a positive integer.';
+                                pushProgress(buildError, 'error');
+                                buildStatus = 'error';
+                                return;
+                        }
+
+                        const timeoutValue = Number.parseInt(trimmedShellTimeout, 10);
+                        if (Number.isNaN(timeoutValue) || timeoutValue < 5 || timeoutValue > 7_200) {
+                                buildError = 'Shell timeout must be between 5 and 7,200 seconds.';
+                                pushProgress(buildError, 'error');
+                                buildStatus = 'error';
+                                return;
+                        }
+                }
 
 		const sanitizedHeaders = customHeaders
 			.map((header) => ({
