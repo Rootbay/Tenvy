@@ -16,8 +16,9 @@
 	import { TableCell } from '$lib/components/ui/table/index.js';
 	import OsLogo from '$lib/components/os-logo.svelte';
 	import { cn } from '$lib/utils.js';
-	import { toast } from 'svelte-sonner';
-	import { countryCodeToFlag } from '$lib/utils/location';
+        import { toast } from 'svelte-sonner';
+        import { countryCodeToFlag } from '$lib/utils/location';
+        import { isLikelyPrivateIp } from '$lib/utils/ip';
 	import type { AgentSnapshot } from '../../../../../shared/types/agent';
 	import type { SectionKey } from '$lib/client-sections';
 
@@ -212,70 +213,42 @@
 		};
 	}
 
-	function isLikelyPrivateIp(ip: string): boolean {
-		const normalized = ip.toLowerCase();
-		if (
-			normalized === '::1' ||
-			normalized.startsWith('fe80:') ||
-			normalized.startsWith('fc') ||
-			normalized.startsWith('fd')
-		) {
-			return true;
-		}
-		const ipv4Candidate = normalized.startsWith('::ffff:') ? normalized.slice(7) : normalized;
-		return (
-			ipv4Candidate.startsWith('10.') ||
-			ipv4Candidate.startsWith('192.168.') ||
-			/^172\.(1[6-9]|2\d|3[0-1])\./.test(ipv4Candidate) ||
-			ipv4Candidate.startsWith('127.')
-		);
-	}
+        async function fetchIpLocation(
+                ip: string,
+                baseLocation: ResolvedLocation
+        ): Promise<ResolvedLocation> {
+                const response = await fetch(`/api/geo/${encodeURIComponent(ip)}`, {
+                        headers: { Accept: 'application/json' }
+                });
 
-	async function fetchIpLocation(
-		ip: string,
-		baseLocation: ResolvedLocation
-	): Promise<ResolvedLocation> {
-		const url = new URL(`http://ip-api.com/json/${encodeURIComponent(ip)}`);
-		url.searchParams.set('fields', 'status,message,country,countryCode,proxy,query');
+                if (!response.ok) {
+                        throw new Error('Failed to resolve IP location');
+                }
 
-		const response = await fetch(url.toString(), {
-			headers: { Accept: 'application/json' }
-		});
+                const data = (await response.json()) as {
+                        countryName?: string | null;
+                        countryCode?: string | null;
+                        isProxy?: boolean;
+                };
 
-		if (!response.ok) {
-			throw new Error('Failed to resolve IP location');
-		}
-
-		const data = (await response.json()) as {
-			status?: 'success' | 'fail';
-			message?: string;
-			country?: string;
-			countryCode?: string;
-			proxy?: boolean;
-		};
-
-		if (data.status !== 'success') {
-			throw new Error(data.message ?? 'Lookup error');
-		}
-
-		const countryName = data.country?.trim() || baseLocation.label;
-		const countryCode = data.countryCode?.trim();
-		const flagEmoji =
-			countryCode && countryCode.length > 0
-				? countryCodeToFlag(countryCode)
-				: baseLocation.flagEmoji;
-		const flagUrl =
+                const countryName = data.countryName?.trim() || baseLocation.label;
+                const countryCode = data.countryCode?.trim();
+                const flagEmoji =
+                        countryCode && countryCode.length > 0
+                                ? countryCodeToFlag(countryCode)
+                                : baseLocation.flagEmoji;
+                const flagUrl =
 			countryCode && countryCode.length > 0
 				? `https://flagcdn.com/${countryCode.toLowerCase()}.svg`
 				: baseLocation.flagUrl;
 
 		return {
-			label: countryName,
-			flagEmoji: flagEmoji || baseLocation.flagEmoji,
-			flagUrl,
-			isVpn: data.proxy === true
-		};
-	}
+                        label: countryName,
+                        flagEmoji: flagEmoji || baseLocation.flagEmoji,
+                        flagUrl,
+                        isVpn: data.isProxy === true
+                };
+        }
 </script>
 
 {#snippet TriggerChild({ props }: TriggerChildProps)}
