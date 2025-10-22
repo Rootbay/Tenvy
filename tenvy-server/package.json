@@ -33,6 +33,7 @@
 		"@sveltejs/kit": "^2.47.0",
 		"@sveltejs/vite-plugin-svelte": "^6.2.1",
 		"@tailwindcss/vite": "^4.1.14",
+		"@testing-library/svelte": "^5.2.0",
 		"@types/better-sqlite3": "^7.6.13",
 		"@types/d3-geo": "^3.1.0",
 		"@types/d3-selection": "^3.0.11",
@@ -72,8 +73,8 @@
 		"vitest-browser-svelte": "^1.1.0"
 	},
 	"dependencies": {
-                "@koush/wrtc": "^0.5.3",
-                "@msgpack/msgpack": "^3.0.0",
+		"@koush/wrtc": "^0.5.3",
+		"@msgpack/msgpack": "^3.0.0",
 		"@lucia-auth/adapter-drizzle": "^1.1.0",
 		"@motionone/dom": "^10.18.0",
 		"@node-rs/argon2": "^2.0.2",
