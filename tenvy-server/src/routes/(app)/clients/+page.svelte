@@ -66,11 +66,11 @@
 		CommandQueueResponse
 	} from '../../../../../shared/types/messages';
 
-	const statusLabels: Record<AgentSnapshot['status'], string> = {
-		online: 'Online',
-		offline: 'Offline',
-		error: 'Error'
-	};
+        const statusLabels: Record<AgentSnapshot['status'], string> = {
+                online: 'Online',
+                offline: 'Offline',
+                error: 'Error'
+        };
 
 	type PowerAction = Extract<
 		AgentControlCommandPayload['action'],
@@ -79,12 +79,14 @@
 
 	const powerToolIds = new Set<ClientToolId>(['shutdown', 'restart', 'sleep', 'logoff']);
 
-	const powerActionMeta: Record<PowerAction, { label: string; noun: string }> = {
-		shutdown: { label: 'Shutdown', noun: 'shutdown' },
-		restart: { label: 'Restart', noun: 'restart' },
-		sleep: { label: 'Sleep', noun: 'sleep' },
-		logoff: { label: 'Logoff', noun: 'log off' }
-	};
+        const powerActionMeta: Record<PowerAction, { label: string; noun: string }> = {
+                shutdown: { label: 'Shutdown', noun: 'shutdown' },
+                restart: { label: 'Restart', noun: 'restart' },
+                sleep: { label: 'Sleep', noun: 'sleep' },
+                logoff: { label: 'Logoff', noun: 'log off' }
+        };
+
+        const relativeTimeFormatter = new Intl.RelativeTimeFormat(undefined, { numeric: 'auto' });
 
 	let { data } = $props<{ data: { agents: AgentSnapshot[] } }>();
 
@@ -204,10 +206,10 @@
 		];
 		for (const [unit, seconds] of units) {
 			if (diffSeconds >= seconds || unit === 'second') {
-				const value = Math.floor(diffSeconds / seconds) * -1;
-				return new Intl.RelativeTimeFormat(undefined, { numeric: 'auto' }).format(value, unit);
-			}
-		}
+                                const value = Math.floor(diffSeconds / seconds) * -1;
+                                return relativeTimeFormatter.format(value, unit);
+                        }
+                }
 		return 'just now';
 	}
 
