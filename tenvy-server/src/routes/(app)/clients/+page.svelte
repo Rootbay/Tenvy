@@ -232,69 +232,107 @@
 		return 'N/A';
 	}
 
-	$effect(() => {
-		if (!browser) {
-			return;
-		}
+        $effect(() => {
+                if (!browser) {
+                        return;
+                }
 
-		let disposed = false;
-		let timeoutId: number | undefined;
-		let activeController: AbortController | null = null;
+                let disposed = false;
+                let timeoutId: number | undefined;
+                let activeController: AbortController | null = null;
+                let pollingPaused = false;
 
-		const scheduleNext = () => {
-			if (disposed) {
-				return;
-			}
-			timeoutId = window.setTimeout(measureLatency, controllerPingIntervalMs);
-		};
+                const clearScheduled = () => {
+                        if (timeoutId !== undefined) {
+                                window.clearTimeout(timeoutId);
+                                timeoutId = undefined;
+                        }
+                };
 
-		async function measureLatency() {
-			const controller = new AbortController();
-			activeController = controller;
-			const startedAt = performance.now();
+                const scheduleNext = () => {
+                        if (disposed || pollingPaused) {
+                                return;
+                        }
+                        timeoutId = window.setTimeout(measureLatency, controllerPingIntervalMs);
+                };
 
-			try {
-				const response = await fetch(controllerPingEndpoint, {
-					method: 'GET',
-					cache: 'no-store',
-					signal: controller.signal
-				});
+                async function measureLatency() {
+                        if (disposed || pollingPaused) {
+                                return;
+                        }
 
-				if (!response.ok) {
-					throw new Error(`Ping failed with status ${response.status}`);
-				}
+                        const controller = new AbortController();
+                        activeController = controller;
+                        const startedAt = performance.now();
 
-				await response.text();
+                        try {
+                                const response = await fetch(controllerPingEndpoint, {
+                                        method: 'GET',
+                                        cache: 'no-store',
+                                        signal: controller.signal
+                                });
 
-				if (!disposed) {
-					const duration = Math.max(0, Math.round(performance.now() - startedAt));
-					controllerPingLatency = duration;
-				}
-			} catch (error) {
-				if (disposed) {
-					return;
-				}
+                                if (!response.ok) {
+                                        throw new Error(`Ping failed with status ${response.status}`);
+                                }
 
-				if (error instanceof DOMException && error.name === 'AbortError') {
-					return;
-				}
+                                await response.text();
 
-				console.error('Failed to measure controller latency', error);
-			} finally {
-				scheduleNext();
-			}
-		}
+                                if (!disposed && !pollingPaused) {
+                                        const duration = Math.max(0, Math.round(performance.now() - startedAt));
+                                        controllerPingLatency = duration;
+                                }
+                        } catch (error) {
+                                if (disposed || pollingPaused) {
+                                        return;
+                                }
 
-		measureLatency();
+                                if (error instanceof DOMException && error.name === 'AbortError') {
+                                        return;
+                                }
 
-		return () => {
-			disposed = true;
-			if (timeoutId !== undefined) {
-				window.clearTimeout(timeoutId);
-			}
-			activeController?.abort();
-		};
-	});
+                                console.error('Failed to measure controller latency', error);
+                        } finally {
+                                activeController = null;
+                                scheduleNext();
+                        }
+                }
+
+                const handleVisibilityChange = () => {
+                        if (document.visibilityState === 'hidden') {
+                                pollingPaused = true;
+                                clearScheduled();
+                                activeController?.abort();
+                                activeController = null;
+                                return;
+                        }
+
+                        if (disposed) {
+                                return;
+                        }
+
+                        if (pollingPaused) {
+                                pollingPaused = false;
+                                clearScheduled();
+                                measureLatency();
+                        }
+                };
+
+                pollingPaused = document.visibilityState === 'hidden';
+
+                if (!pollingPaused) {
+                        measureLatency();
+                }
+
+                document.addEventListener('visibilitychange', handleVisibilityChange);
+
+                return () => {
+                        disposed = true;
+                        document.removeEventListener('visibilitychange', handleVisibilityChange);
+                        clearScheduled();
+                        activeController?.abort();
+                };
+        });
 
 	function handleTagFilter(tag: string) {
 		if (!tag || tag.trim().length === 0) {
