@@ -163,6 +163,57 @@
                 return Promise.resolve(tabComponents[DEFAULT_TAB]);
         }
 
+        const idleApi = globalThis as typeof globalThis & {
+                requestIdleCallback?: (callback: IdleRequestCallback, options?: IdleRequestOptions) => number;
+                cancelIdleCallback?: (handle: number) => void;
+        };
+
+        let idlePrefetchHandle: number | null = null;
+        let idlePrefetchTimeout: ReturnType<typeof setTimeout> | null = null;
+
+        function scheduleIdlePrefetch() {
+                const runPrefetch = () => {
+                        (['persistence', 'execution', 'presentation'] satisfies BuildTab[]).forEach((tab) => {
+                                void loadTabComponent(tab);
+                        });
+                };
+
+                if (typeof idleApi.requestIdleCallback === 'function') {
+                        idlePrefetchHandle = idleApi.requestIdleCallback(() => {
+                                idlePrefetchHandle = null;
+                                runPrefetch();
+                        });
+                        return;
+                }
+
+                idlePrefetchTimeout = setTimeout(() => {
+                        idlePrefetchTimeout = null;
+                        runPrefetch();
+                });
+        }
+
+        if (browser) {
+                onMount(() => {
+                        prefetchDefaultTab()
+                                .catch(() => undefined)
+                                .then(() => {
+                                        scheduleIdlePrefetch();
+                                });
+                });
+        }
+
+        onDestroy(() => {
+                if (idlePrefetchHandle !== null && typeof idleApi.cancelIdleCallback === 'function') {
+                        idleApi.cancelIdleCallback(idlePrefetchHandle);
+                        idlePrefetchHandle = null;
+                }
+
+                if (idlePrefetchTimeout !== null) {
+                        clearTimeout(idlePrefetchTimeout);
+                        idlePrefetchTimeout = null;
+                }
+        });
+
 	const KNOWN_EXTENSION_SUFFIXES = Array.from(
 		new Set(
 			Object.values(EXTENSION_OPTIONS_BY_OS)

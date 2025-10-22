@@ -4,6 +4,10 @@ import { render } from 'vitest-browser-svelte';
 import { tick } from 'svelte';
 import type { BuildRequest } from '../../../../shared/types/build';
 
+const persistenceImportSpy = vi.hoisted(() => vi.fn());
+const executionImportSpy = vi.hoisted(() => vi.fn());
+const presentationImportSpy = vi.hoisted(() => vi.fn());
+
 vi.mock('$app/environment', () => ({ browser: true }));
 
 const toast = Object.assign(vi.fn(), {
@@ -13,6 +17,27 @@ const toast = Object.assign(vi.fn(), {
 });
 
 vi.mock('svelte-sonner', () => ({ toast }));
+
+vi.mock('./components/PersistenceTab.svelte', async () => {
+        persistenceImportSpy();
+        return await vi.importActual<typeof import('./components/PersistenceTab.svelte')>(
+                './components/PersistenceTab.svelte'
+        );
+});
+
+vi.mock('./components/ExecutionTab.svelte', async () => {
+        executionImportSpy();
+        return await vi.importActual<typeof import('./components/ExecutionTab.svelte')>(
+                './components/ExecutionTab.svelte'
+        );
+});
+
+vi.mock('./components/PresentationTab.svelte', async () => {
+        presentationImportSpy();
+        return await vi.importActual<typeof import('./components/PresentationTab.svelte')>(
+                './components/PresentationTab.svelte'
+        );
+});
 
 const prepareBuildRequest = vi.fn();
 
@@ -177,5 +202,52 @@ describe('build page port validation', () => {
                 expect(installationPathInput).toBeTruthy();
 
                 component.$destroy();
+        });
+
+        it('prefetches additional tabs during idle time', async () => {
+                const originalRequestIdleCallback = globalThis.requestIdleCallback;
+                const originalCancelIdleCallback = globalThis.cancelIdleCallback;
+
+                const idleTasks: IdleRequestCallback[] = [];
+                const idleCallback = vi.fn<(callback: IdleRequestCallback) => number>((callback) => {
+                        idleTasks.push(callback);
+                        return idleTasks.length;
+                });
+
+                globalThis.requestIdleCallback = idleCallback;
+                globalThis.cancelIdleCallback = vi.fn();
+
+                const { component } = render(BuildPage);
+
+                try {
+                        await tick();
+                        await tick();
+
+                        expect(idleCallback).toHaveBeenCalledTimes(1);
+                        expect(idleTasks).toHaveLength(1);
+
+                        idleTasks[0]!({ didTimeout: false, timeRemaining: () => 1 });
+
+                        expect(persistenceImportSpy).toHaveBeenCalledTimes(1);
+                        expect(executionImportSpy).toHaveBeenCalledTimes(1);
+                        expect(presentationImportSpy).toHaveBeenCalledTimes(1);
+                } finally {
+                        component.$destroy();
+
+                        if (originalRequestIdleCallback) {
+                                globalThis.requestIdleCallback = originalRequestIdleCallback;
+                        } else {
+                                // @ts-expect-error - cleanup test shim
+                                delete globalThis.requestIdleCallback;
+                        }
+
+                        if (originalCancelIdleCallback) {
+                                globalThis.cancelIdleCallback = originalCancelIdleCallback;
+                        } else {
+                                // @ts-expect-error - cleanup test shim
+                                delete globalThis.cancelIdleCallback;
+                        }
+                }
+
         });
 });
