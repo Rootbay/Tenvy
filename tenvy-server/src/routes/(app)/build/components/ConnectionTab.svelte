@@ -262,25 +262,39 @@
 				Custom headers
 			</p>
 			<div class="space-y-3">
-				{#each customHeaders as header, index (index)}
-					<div class="grid gap-2 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] md:items-center">
-						<input
-							class={INPUT_FIELD_CLASSES}
-							placeholder="Header name"
-							value={header.key}
-							oninput={(event) => updateCustomHeader(index, 'key', inputValueFromEvent(event))}
-						/>
-						<input
-							class={INPUT_FIELD_CLASSES}
-							placeholder="Header value"
-							value={header.value}
-							oninput={(event) => updateCustomHeader(index, 'value', inputValueFromEvent(event))}
-						/>
-						<Button
-							type="button"
-							variant="ghost"
-							size="sm"
-							class="text-destructive hover:text-destructive"
+                                {#each customHeaders as header, index (index)}
+                                        {@const headerKeyId = `custom-header-${index}-key`}
+                                        {@const headerValueId = `custom-header-${index}-value`}
+                                        <div class="grid gap-2 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] md:items-center">
+                                                <div class="grid gap-1">
+                                                        <Label class="sr-only" for={headerKeyId}>
+                                                                Header name
+                                                        </Label>
+                                                        <input
+                                                                id={headerKeyId}
+                                                                class={INPUT_FIELD_CLASSES}
+                                                                placeholder="Header name"
+                                                                value={header.key}
+                                                                oninput={(event) => updateCustomHeader(index, 'key', inputValueFromEvent(event))}
+                                                        />
+                                                </div>
+                                                <div class="grid gap-1">
+                                                        <Label class="sr-only" for={headerValueId}>
+                                                                Header value
+                                                        </Label>
+                                                        <input
+                                                                id={headerValueId}
+                                                                class={INPUT_FIELD_CLASSES}
+                                                                placeholder="Header value"
+                                                                value={header.value}
+                                                                oninput={(event) => updateCustomHeader(index, 'value', inputValueFromEvent(event))}
+                                                        />
+                                                </div>
+                                                <Button
+                                                        type="button"
+                                                        variant="ghost"
+                                                        size="sm"
+                                                        class="text-destructive hover:text-destructive"
 							onclick={() => removeCustomHeader(index)}
 						>
 							<Trash2 class="h-4 w-4" />
@@ -305,24 +319,38 @@
 				Custom cookies
 			</p>
 			<div class="space-y-3">
-				{#each customCookies as cookie, index (index)}
-					<div class="grid gap-2 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] md:items-center">
-						<input
-							class={INPUT_FIELD_CLASSES}
-							placeholder="Cookie name"
-							value={cookie.name}
-							oninput={(event) => updateCustomCookie(index, 'name', inputValueFromEvent(event))}
-						/>
-						<input
-							class={INPUT_FIELD_CLASSES}
-							placeholder="Cookie value"
-							value={cookie.value}
-							oninput={(event) => updateCustomCookie(index, 'value', inputValueFromEvent(event))}
-						/>
-						<Button
-							type="button"
-							variant="ghost"
-							size="sm"
+                                {#each customCookies as cookie, index (index)}
+                                        {@const cookieNameId = `custom-cookie-${index}-name`}
+                                        {@const cookieValueId = `custom-cookie-${index}-value`}
+                                        <div class="grid gap-2 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] md:items-center">
+                                                <div class="grid gap-1">
+                                                        <Label class="sr-only" for={cookieNameId}>
+                                                                Cookie name
+                                                        </Label>
+                                                        <input
+                                                                id={cookieNameId}
+                                                                class={INPUT_FIELD_CLASSES}
+                                                                placeholder="Cookie name"
+                                                                value={cookie.name}
+                                                                oninput={(event) => updateCustomCookie(index, 'name', inputValueFromEvent(event))}
+                                                        />
+                                                </div>
+                                                <div class="grid gap-1">
+                                                        <Label class="sr-only" for={cookieValueId}>
+                                                                Cookie value
+                                                        </Label>
+                                                        <input
+                                                                id={cookieValueId}
+                                                                class={INPUT_FIELD_CLASSES}
+                                                                placeholder="Cookie value"
+                                                                value={cookie.value}
+                                                                oninput={(event) => updateCustomCookie(index, 'value', inputValueFromEvent(event))}
+                                                        />
+                                                </div>
+                                                <Button
+                                                        type="button"
+                                                        variant="ghost"
+                                                        size="sm"
 							class="text-destructive hover:text-destructive"
 							onclick={() => removeCustomCookie(index)}
 						>
