@@ -1,9 +1,12 @@
 import {
-	DEFAULT_FILE_INFORMATION,
-	EXTENSION_SPOOF_PRESETS,
-	type CookieKV,
-	type HeaderKV
+        DEFAULT_FILE_INFORMATION,
+        EXTENSION_SPOOF_PRESETS,
+        type CookieKV,
+        type HeaderKV
 } from './constants';
+
+const mutexSanitizer = /[^A-Za-z0-9._-]/g;
+const maxMutexLength = 120;
 
 export function normalizeSpoofExtension(value: string): string | null {
 	const trimmed = value.trim();
@@ -96,9 +99,9 @@ export function toIsoDateTime(value: string): string | null {
 }
 
 export function generateMutexName(length = 16): string {
-	const charset = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
-	let result = '';
-	const cryptoObject: Crypto | undefined = typeof crypto !== 'undefined' ? crypto : undefined;
+        const charset = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+        let result = '';
+        const cryptoObject: Crypto | undefined = typeof crypto !== 'undefined' ? crypto : undefined;
 
 	if (cryptoObject?.getRandomValues) {
 		const values = new Uint32Array(length);
@@ -114,7 +117,21 @@ export function generateMutexName(length = 16): string {
 		result += charset[randomIndex];
 	}
 
-	return result;
+        return result;
+}
+
+export function sanitizeMutexName(value: string): string {
+        if (!value) {
+                return '';
+        }
+
+        const trimmed = value.trim();
+        if (!trimmed) {
+                return '';
+        }
+
+        const sanitized = trimmed.replace(mutexSanitizer, '_');
+        return sanitized.slice(0, maxMutexLength);
 }
 
 export function withPresetSpoofExtension(
