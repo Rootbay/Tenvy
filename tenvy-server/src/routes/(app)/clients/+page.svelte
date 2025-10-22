@@ -40,7 +40,8 @@
 		type ClientToolId,
 		type DialogToolId
 	} from '$lib/data/client-tools';
-	import { buildLocationDisplay } from '$lib/utils/location';
+        import { buildLocationDisplay } from '$lib/utils/location';
+        import { formatAgentLatency } from '$lib/utils/agent-latency';
 	import { toast } from 'svelte-sonner';
 	import type { Client } from '$lib/data/clients';
 	import { get } from 'svelte/store';
@@ -126,10 +127,7 @@
 	let commandErrors = $state<Record<string, string | null>>({});
 	let commandSuccess = $state<Record<string, string | null>>({});
 	let commandPending = $state<Record<string, boolean>>({});
-	const controllerPingEndpoint = '/api/ping';
-	const controllerPingIntervalMs = 15_000;
-	let controllerPingLatency = $state<number | null>(null);
-	let deployDialogOpen = $state(false);
+        let deployDialogOpen = $state(false);
 	let tagsDialogAgentId = $state<string | null>(null);
 	let tagsAgent = $state<AgentSnapshot | null>(null);
 	let tagsDialogPending = $state(false);
@@ -223,116 +221,9 @@
 		return fallback ? [fallback] : [];
 	}
 
-	function formatPing(agent: AgentSnapshot): string {
-		void agent;
-		const latency = controllerPingLatency;
-		if (typeof latency === 'number' && Number.isFinite(latency) && latency >= 0) {
-			return `${Math.round(latency)} ms`;
-		}
-		return 'N/A';
-	}
-
-        $effect(() => {
-                if (!browser) {
-                        return;
-                }
-
-                let disposed = false;
-                let timeoutId: number | undefined;
-                let activeController: AbortController | null = null;
-                let pollingPaused = false;
-
-                const clearScheduled = () => {
-                        if (timeoutId !== undefined) {
-                                window.clearTimeout(timeoutId);
-                                timeoutId = undefined;
-                        }
-                };
-
-                const scheduleNext = () => {
-                        if (disposed || pollingPaused) {
-                                return;
-                        }
-                        timeoutId = window.setTimeout(measureLatency, controllerPingIntervalMs);
-                };
-
-                async function measureLatency() {
-                        if (disposed || pollingPaused) {
-                                return;
-                        }
-
-                        const controller = new AbortController();
-                        activeController = controller;
-                        const startedAt = performance.now();
-
-                        try {
-                                const response = await fetch(controllerPingEndpoint, {
-                                        method: 'GET',
-                                        cache: 'no-store',
-                                        signal: controller.signal
-                                });
-
-                                if (!response.ok) {
-                                        throw new Error(`Ping failed with status ${response.status}`);
-                                }
-
-                                await response.text();
-
-                                if (!disposed && !pollingPaused) {
-                                        const duration = Math.max(0, Math.round(performance.now() - startedAt));
-                                        controllerPingLatency = duration;
-                                }
-                        } catch (error) {
-                                if (disposed || pollingPaused) {
-                                        return;
-                                }
-
-                                if (error instanceof DOMException && error.name === 'AbortError') {
-                                        return;
-                                }
-
-                                console.error('Failed to measure controller latency', error);
-                        } finally {
-                                activeController = null;
-                                scheduleNext();
-                        }
-                }
-
-                const handleVisibilityChange = () => {
-                        if (document.visibilityState === 'hidden') {
-                                pollingPaused = true;
-                                clearScheduled();
-                                activeController?.abort();
-                                activeController = null;
-                                return;
-                        }
-
-                        if (disposed) {
-                                return;
-                        }
-
-                        if (pollingPaused) {
-                                pollingPaused = false;
-                                clearScheduled();
-                                measureLatency();
-                        }
-                };
-
-                pollingPaused = document.visibilityState === 'hidden';
-
-                if (!pollingPaused) {
-                        measureLatency();
-                }
-
-                document.addEventListener('visibilitychange', handleVisibilityChange);
-
-                return () => {
-                        disposed = true;
-                        document.removeEventListener('visibilitychange', handleVisibilityChange);
-                        clearScheduled();
-                        activeController?.abort();
-                };
-        });
+        function formatPing(agent: AgentSnapshot): string {
+                return formatAgentLatency(agent);
+        }
 
 	function handleTagFilter(tag: string) {
 		if (!tag || tag.trim().length === 0) {
@@ -977,7 +868,8 @@
 											{/snippet}
 										</TooltipTrigger>
 										<TooltipContent side="top" align="center" class="max-w-[18rem] text-xs">
-											Most recent round-trip latency measured between controller and agent.
+                                                                                        Latest round-trip latency reported by the agent during sync. Displays
+                                                                                        N/A when the agent has not provided latency metrics.
 										</TooltipContent>
 									</Tooltip>
 								</TableHead>
