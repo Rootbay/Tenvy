@@ -314,7 +314,7 @@
 	<section
 		class="grid h-full min-h-0 flex-1 auto-rows-[minmax(0,1fr)] gap-6 overflow-hidden lg:grid-cols-7"
 	>
-		<Card class="flex h-[32rem] flex-col border-border/60 lg:col-span-5">
+                <Card class="flex h-[min(26rem,65vh)] flex-col border-border/60 lg:col-span-5 lg:h-[32rem]">
 			<CardContent class="relative flex min-h-0 flex-1 flex-col gap-4 overflow-hidden">
 				<div class="pointer-events-none absolute top-4 right-4 z-10">
 					<Popover>
@@ -405,8 +405,8 @@
 				{/if}
 			</CardContent>
 		</Card>
-		<Card class="flex h-[32rem] flex-col border-border/60 lg:col-span-2">
-			<CardContent class="flex-1 overflow-hidden p-0">
+                <Card class="flex h-[min(26rem,65vh)] flex-col border-border/60 lg:col-span-2 lg:h-[32rem]">
+                        <CardContent class="min-h-0 flex-1 overflow-hidden p-0">
 				<div class="h-full flex-1 overflow-y-auto">
 					<div class="divide-y divide-border/60">
 						{#each countryStats as country (country.countryCode)}
