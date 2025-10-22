@@ -1,6 +1,7 @@
 import { error } from '@sveltejs/kit';
 import type { PageLoad } from './$types';
 import type { AgentListResponse } from '../../../../../shared/types/agent';
+import { normalizeAgentLatency } from '$lib/utils/agent-latency';
 
 export const load: PageLoad = async ({ fetch }) => {
 	const response = await fetch('/api/agents');
@@ -8,6 +9,6 @@ export const load: PageLoad = async ({ fetch }) => {
 		throw error(response.status, 'Failed to load agents');
 	}
 
-	const data = (await response.json()) as AgentListResponse;
-	return { agents: data.agents };
+        const data = (await response.json()) as AgentListResponse;
+        return { agents: data.agents.map((agent) => normalizeAgentLatency(agent)) };
 };
