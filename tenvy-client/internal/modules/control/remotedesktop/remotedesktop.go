@@ -75,7 +75,8 @@ const (
 )
 
 var (
-	SetClipEncoderProfiler   = engine.SetClipEncoderProfiler
-	NewRemoteDesktopStreamer = engine.NewRemoteDesktopStreamer
-	DecodeCommandPayload     = engine.DecodeCommandPayload
+	SetClipEncoderProfiler        = engine.SetClipEncoderProfiler
+	NewRemoteDesktopStreamer      = engine.NewRemoteDesktopStreamer
+	NewManagedRemoteDesktopEngine = engine.NewManagedRemoteDesktopEngine
+	DecodeCommandPayload          = engine.DecodeCommandPayload
 )

@@ -187,6 +187,85 @@ func TestSnapshotBlocksInvalidSignature(t *testing.T) {
 	}
 }
 
+func TestSnapshotAppliesRecordedStatus(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	pluginDir := filepath.Join(root, "remote-desktop-engine")
+	artifactPath := filepath.Join(pluginDir, "engine.bin")
+
+	payload := []byte("payload")
+	writeFile(t, artifactPath, payload)
+	hash := sha256.Sum256(payload)
+	hashHex := fmt.Sprintf("%x", hash[:])
+
+	writeFile(t, filepath.Join(pluginDir, "manifest.json"), []byte(fmt.Sprintf(`{
+                "id": "remote-desktop-engine",
+                "name": "Remote Desktop Engine",
+                "version": "1.0.0",
+                "entry": "engine.bin",
+                "repositoryUrl": "https://github.com/rootbay/tenvy",
+                "license": { "spdxId": "MIT" },
+                "requirements": {},
+                "distribution": {"defaultMode": "automatic", "autoUpdate": true, "signature": {"type": "sha256", "hash": "%[1]s", "signature": "%[1]s"}},
+                "package": {"artifact": "engine.bin", "hash": "%[1]s"}
+        }`, hashHex)))
+
+	opts := manifest.VerifyOptions{SHA256AllowList: []string{hashHex}}
+	manager, err := plugins.NewManager(root, log.New(io.Discard, "", 0), opts)
+	if err != nil {
+		t.Fatalf("new manager: %v", err)
+	}
+
+	if err := plugins.RecordInstallStatus(manager, "remote-desktop-engine", "1.0.0", manifest.InstallFailed, "download failed"); err != nil {
+		t.Fatalf("record status: %v", err)
+	}
+
+	snapshot := manager.Snapshot()
+	if snapshot == nil || len(snapshot.Installations) != 1 {
+		t.Fatalf("expected single installation, got %#v", snapshot)
+	}
+	install := snapshot.Installations[0]
+	if install.Status != manifest.InstallFailed {
+		t.Fatalf("expected failed status, got %s", install.Status)
+	}
+	if install.Error != "download failed" {
+		t.Fatalf("expected error message propagated, got %q", install.Error)
+	}
+}
+
+func TestSnapshotWithoutManifestUsesStatus(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+
+	opts := manifest.VerifyOptions{AllowUnsigned: true}
+	manager, err := plugins.NewManager(root, log.New(io.Discard, "", 0), opts)
+	if err != nil {
+		t.Fatalf("new manager: %v", err)
+	}
+
+	if err := plugins.RecordInstallStatus(manager, "remote-desktop-engine", "1.2.3", manifest.InstallFailed, "network error"); err != nil {
+		t.Fatalf("record status: %v", err)
+	}
+
+	snapshot := manager.Snapshot()
+	if snapshot == nil || len(snapshot.Installations) != 1 {
+		t.Fatalf("expected snapshot entry, got %#v", snapshot)
+	}
+	install := snapshot.Installations[0]
+	if install.PluginID != "remote-desktop-engine" {
+		t.Fatalf("unexpected plugin id %s", install.PluginID)
+	}
+	if install.Version != "1.2.3" {
+		t.Fatalf("unexpected version %s", install.Version)
+	}
+	if install.Status != manifest.InstallFailed {
+		t.Fatalf("expected failed status, got %s", install.Status)
+	}
+	if install.Error != "network error" {
+		t.Fatalf("expected error propagated, got %q", install.Error)
+	}
+}
+
 func sha256SumHex(data []byte) string {
 	sum := sha256.Sum256(data)
 	return hex.EncodeToString(sum[:])
