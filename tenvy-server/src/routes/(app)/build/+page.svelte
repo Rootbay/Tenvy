@@ -2,17 +2,18 @@
 	import { browser } from '$app/environment';
 	import { Badge } from '$lib/components/ui/badge/index.js';
 	import { Button } from '$lib/components/ui/button/index.js';
-	import {
-		Card,
-		CardContent,
-		CardDescription,
-		CardHeader,
-		CardTitle
-	} from '$lib/components/ui/card/index.js';
-	import { Tabs, TabsContent, TabsList, TabsTrigger } from '$lib/components/ui/tabs/index.js';
+        import {
+                Card,
+                CardContent,
+                CardDescription,
+                CardHeader,
+                CardTitle
+        } from '$lib/components/ui/card/index.js';
+        import { Tabs, TabsContent, TabsList, TabsTrigger } from '$lib/components/ui/tabs/index.js';
         import { onDestroy, onMount, tick } from 'svelte';
         import { SvelteSet } from 'svelte/reactivity';
         import { toast } from 'svelte-sonner';
+        import ConnectionTab from './components/ConnectionTab.svelte';
         import {
                 ANTI_TAMPER_BADGES,
                 ARCHITECTURE_OPTIONS_BY_OS,
@@ -99,17 +100,19 @@
         const DEFAULT_TAB: BuildTab = 'connection';
         let activeTab = $state<BuildTab>(DEFAULT_TAB);
 
-        type TabComponent = typeof import('./components/ConnectionTab.svelte').default;
+        type TabComponent = typeof ConnectionTab;
         type TabLoader = () => Promise<{ default: TabComponent }>;
 
         const TAB_COMPONENT_LOADERS: Record<BuildTab, TabLoader> = {
-                connection: () => import('./components/ConnectionTab.svelte'),
+                connection: async () => ({ default: ConnectionTab }),
                 persistence: () => import('./components/PersistenceTab.svelte'),
                 execution: () => import('./components/ExecutionTab.svelte'),
                 presentation: () => import('./components/PresentationTab.svelte')
         };
 
-        let tabComponents = $state<Partial<Record<BuildTab, TabComponent>>>({});
+        let tabComponents = $state<Partial<Record<BuildTab, TabComponent>>>({
+                connection: ConnectionTab
+        });
         let tabLoading = $state<Record<BuildTab, boolean>>({
                 connection: false,
                 persistence: false,
@@ -153,7 +156,11 @@
         }
 
         function prefetchDefaultTab() {
-                return loadTabComponent(DEFAULT_TAB);
+                if (!tabComponents[DEFAULT_TAB]) {
+                        return loadTabComponent(DEFAULT_TAB);
+                }
+
+                return Promise.resolve(tabComponents[DEFAULT_TAB]);
         }
 
 	const KNOWN_EXTENSION_SUFFIXES = Array.from(
