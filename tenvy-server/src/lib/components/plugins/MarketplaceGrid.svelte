@@ -13,7 +13,11 @@
 	import type { Plugin } from '$lib/data/plugin-view.js';
 	import { GitFork, Info, ShieldCheck } from '@lucide/svelte';
 
-	import type { MarketplaceEntitlement, MarketplaceListing, MarketplaceStatus } from './types.js';
+	import type {
+		MarketplaceEntitlement,
+		MarketplaceListing,
+		MarketplaceStatus
+	} from '$lib/data/marketplace.js';
 
 	let {
 		listings,

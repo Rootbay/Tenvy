@@ -8,19 +8,19 @@
 		formatSignatureTime,
 		signatureBadge
 	} from '$lib/components/plugins/utils.js';
-        import { Badge } from '$lib/components/ui/badge/index.js';
-        import { Button } from '$lib/components/ui/button/index.js';
-        import {
-                Card,
-                CardContent,
-                CardDescription,
-                CardFooter,
-                CardHeader,
-                CardTitle
-        } from '$lib/components/ui/card/index.js';
-        import { Input } from '$lib/components/ui/input/index.js';
-        import { Separator } from '$lib/components/ui/separator/index.js';
-        import { Switch } from '$lib/components/ui/switch/index.js';
+	import { Badge } from '$lib/components/ui/badge/index.js';
+	import { Button } from '$lib/components/ui/button/index.js';
+	import {
+		Card,
+		CardContent,
+		CardDescription,
+		CardFooter,
+		CardHeader,
+		CardTitle
+	} from '$lib/components/ui/card/index.js';
+	import { Input } from '$lib/components/ui/input/index.js';
+	import { Separator } from '$lib/components/ui/separator/index.js';
+	import { Switch } from '$lib/components/ui/switch/index.js';
 	import {
 		pluginCategories,
 		pluginCategoryLabels,
@@ -31,11 +31,8 @@
 		type PluginStatus,
 		type PluginUpdatePayload
 	} from '$lib/data/plugin-view.js';
-	import type {
-		AuthenticatedUser,
-		MarketplaceEntitlement,
-		MarketplaceListing
-	} from '$lib/components/plugins/types.js';
+	import type { MarketplaceEntitlement, MarketplaceListing } from '$lib/data/marketplace.js';
+	import type { AuthenticatedUser } from '$lib/components/plugins/types.js';
 	import { Check, Info, RefreshCcw, Search, SlidersHorizontal } from '@lucide/svelte';
 
 	let {
