@@ -10,17 +10,13 @@
 		CardTitle
 	} from '$lib/components/ui/card/index.js';
 	import { Tabs, TabsContent, TabsList, TabsTrigger } from '$lib/components/ui/tabs/index.js';
-	import { onDestroy, tick } from 'svelte';
-	import { SvelteSet } from 'svelte/reactivity';
-	import { toast } from 'svelte-sonner';
-	import ConnectionTab from './components/ConnectionTab.svelte';
-	import PersistenceTab from './components/PersistenceTab.svelte';
-	import ExecutionTab from './components/ExecutionTab.svelte';
-	import PresentationTab from './components/PresentationTab.svelte';
-	import {
-		ANTI_TAMPER_BADGES,
-		ARCHITECTURE_OPTIONS_BY_OS,
-		DEFAULT_FILE_INFORMATION,
+        import { onDestroy, onMount, tick } from 'svelte';
+        import { SvelteSet } from 'svelte/reactivity';
+        import { toast } from 'svelte-sonner';
+        import {
+                ANTI_TAMPER_BADGES,
+                ARCHITECTURE_OPTIONS_BY_OS,
+                DEFAULT_FILE_INFORMATION,
 		EXTENSION_OPTIONS_BY_OS,
 		EXTENSION_SPOOF_PRESETS,
 		FILE_PUMPER_UNIT_TO_BYTES,
@@ -103,8 +99,67 @@
 	let customHeaders = $state<HeaderKV[]>([{ key: '', value: '' }]);
 	let customCookies = $state<CookieKV[]>([{ name: '', value: '' }]);
 	let audioStreamingEnabled = $state(false);
-	let audioStreamingTouched = $state(false);
-	let activeTab = $state<'connection' | 'persistence' | 'execution' | 'presentation'>('connection');
+        let audioStreamingTouched = $state(false);
+        type BuildTab = 'connection' | 'persistence' | 'execution' | 'presentation';
+        const DEFAULT_TAB: BuildTab = 'connection';
+        let activeTab = $state<BuildTab>(DEFAULT_TAB);
+
+        type TabComponent = typeof import('./components/ConnectionTab.svelte').default;
+        type TabLoader = () => Promise<{ default: TabComponent }>;
+
+        const TAB_COMPONENT_LOADERS: Record<BuildTab, TabLoader> = {
+                connection: () => import('./components/ConnectionTab.svelte'),
+                persistence: () => import('./components/PersistenceTab.svelte'),
+                execution: () => import('./components/ExecutionTab.svelte'),
+                presentation: () => import('./components/PresentationTab.svelte')
+        };
+
+        let tabComponents = $state<Partial<Record<BuildTab, TabComponent>>>({});
+        let tabLoading = $state<Record<BuildTab, boolean>>({
+                connection: false,
+                persistence: false,
+                execution: false,
+                presentation: false
+        });
+        let tabErrors = $state<Record<BuildTab, string | null>>({
+                connection: null,
+                persistence: null,
+                execution: null,
+                presentation: null
+        });
+
+        async function loadTabComponent(tab: BuildTab) {
+                if (tabComponents[tab]) {
+                        tabErrors = { ...tabErrors, [tab]: null };
+                        return tabComponents[tab];
+                }
+
+                if (tabLoading[tab]) {
+                        return;
+                }
+
+                tabLoading = { ...tabLoading, [tab]: true };
+                tabErrors = { ...tabErrors, [tab]: null };
+
+                try {
+                        const module = await TAB_COMPONENT_LOADERS[tab]();
+                        tabComponents = { ...tabComponents, [tab]: module.default };
+                        return module.default;
+                } catch (error) {
+                        console.error('Failed to load tab component', tab, error);
+                        const message =
+                                error instanceof Error
+                                        ? error.message
+                                        : 'Failed to load tab. Please try again.';
+                        tabErrors = { ...tabErrors, [tab]: message };
+                } finally {
+                        tabLoading = { ...tabLoading, [tab]: false };
+                }
+        }
+
+        function prefetchDefaultTab() {
+                return loadTabComponent(DEFAULT_TAB);
+        }
 
 	const KNOWN_EXTENSION_SUFFIXES = Array.from(
 		new Set(
@@ -189,9 +244,21 @@
 
 	let isBuilding = $derived(buildStatus === 'running');
 
-	const markAudioStreamingTouched = () => {
-		audioStreamingTouched = true;
-	};
+        if (browser) {
+                onMount(() => {
+                        void prefetchDefaultTab();
+                });
+        } else {
+                void prefetchDefaultTab();
+        }
+
+        $effect(() => {
+                void loadTabComponent(activeTab);
+        });
+
+        const markAudioStreamingTouched = () => {
+                audioStreamingTouched = true;
+        };
 
 	$effect(() => {
 		const allowedExtensions = EXTENSION_OPTIONS_BY_OS[targetOS] ?? EXTENSION_OPTIONS_BY_OS.windows;
@@ -848,75 +915,119 @@
 							>
 						</TabsList>
 
-						<TabsContent value="connection" class="space-y-6">
-							<ConnectionTab
-								bind:host
-								bind:port
-								bind:outputFilename
-								{effectiveOutputFilename}
-								bind:targetOS
-								bind:targetArch
-								bind:outputExtension
-								bind:extensionSpoofingEnabled
-								bind:extensionSpoofPreset
-								bind:extensionSpoofCustom
-								{extensionSpoofError}
-								bind:pollIntervalMs
-								bind:maxBackoffMs
-								bind:shellTimeoutSeconds
-								{customHeaders}
-								{customCookies}
-								bind:audioStreamingEnabled
-								{audioStreamingTouched}
-								{markAudioStreamingTouched}
-								{addCustomHeader}
-								{updateCustomHeader}
-								{removeCustomHeader}
-								{addCustomCookie}
-								{updateCustomCookie}
-								{removeCustomCookie}
-							/>
-						</TabsContent>
-						<TabsContent value="persistence" class="space-y-6">
-							<PersistenceTab
-								bind:installationPath
-								bind:mutexName
-								bind:meltAfterRun
-								bind:startupOnBoot
-								bind:developerMode
-								bind:compressBinary
-								bind:forceAdmin
-								bind:watchdogEnabled
-								bind:watchdogIntervalSeconds
-								bind:enableFilePumper
-								bind:filePumperTargetSize
-								bind:filePumperUnit
-								{applyInstallationPreset}
-								{assignMutexName}
-							/>
-						</TabsContent>
-						<TabsContent value="execution" class="space-y-6">
-							<ExecutionTab
-								bind:executionDelaySeconds
-								bind:executionMinUptimeMinutes
-								bind:executionAllowedUsernames
-								bind:executionAllowedLocales
-								bind:executionStartDate
-								bind:executionEndDate
-								bind:executionRequireInternet
-							/>
-						</TabsContent>
-						<TabsContent value="presentation" class="space-y-6">
-							<PresentationTab
-								{fileIconName}
-								{fileIconError}
-								{handleIconSelection}
-								{clearIconSelection}
-								{isWindowsTarget}
-								bind:fileInformationOpen
-								{fileInformation}
-							/>
-						</TabsContent>
+                                                <TabsContent value="connection" class="space-y-6">
+                                                        {#if tabComponents.connection}
+                                                                <svelte:component
+                                                                        this={tabComponents.connection}
+                                                                        bind:host
+                                                                        bind:port
+                                                                        bind:outputFilename
+                                                                        {effectiveOutputFilename}
+                                                                        bind:targetOS
+                                                                        bind:targetArch
+                                                                        bind:outputExtension
+                                                                        bind:extensionSpoofingEnabled
+                                                                        bind:extensionSpoofPreset
+                                                                        bind:extensionSpoofCustom
+                                                                        {extensionSpoofError}
+                                                                        bind:pollIntervalMs
+                                                                        bind:maxBackoffMs
+                                                                        bind:shellTimeoutSeconds
+                                                                        {customHeaders}
+                                                                        {customCookies}
+                                                                        bind:audioStreamingEnabled
+                                                                        {audioStreamingTouched}
+                                                                        {markAudioStreamingTouched}
+                                                                        {addCustomHeader}
+                                                                        {updateCustomHeader}
+                                                                        {removeCustomHeader}
+                                                                        {addCustomCookie}
+                                                                        {updateCustomCookie}
+                                                                        {removeCustomCookie}
+                                                                />
+                                                        {:else if tabErrors.connection}
+                                                                <p class="text-sm text-destructive">
+                                                                        {tabErrors.connection}
+                                                                </p>
+                                                        {:else}
+                                                                <p class="text-xs text-muted-foreground">
+                                                                        Loading connection options…
+                                                                </p>
+                                                        {/if}
+                                                </TabsContent>
+                                                <TabsContent value="persistence" class="space-y-6">
+                                                        {#if tabComponents.persistence}
+                                                                <svelte:component
+                                                                        this={tabComponents.persistence}
+                                                                        bind:installationPath
+                                                                        bind:mutexName
+                                                                        bind:meltAfterRun
+                                                                        bind:startupOnBoot
+                                                                        bind:developerMode
+                                                                        bind:compressBinary
+                                                                        bind:forceAdmin
+                                                                        bind:watchdogEnabled
+                                                                        bind:watchdogIntervalSeconds
+                                                                        bind:enableFilePumper
+                                                                        bind:filePumperTargetSize
+                                                                        bind:filePumperUnit
+                                                                        {applyInstallationPreset}
+                                                                        {assignMutexName}
+                                                                />
+                                                        {:else if tabErrors.persistence}
+                                                                <p class="text-sm text-destructive">
+                                                                        {tabErrors.persistence}
+                                                                </p>
+                                                        {:else}
+                                                                <p class="text-xs text-muted-foreground">
+                                                                        Loading persistence options…
+                                                                </p>
+                                                        {/if}
+                                                </TabsContent>
+                                                <TabsContent value="execution" class="space-y-6">
+                                                        {#if tabComponents.execution}
+                                                                <svelte:component
+                                                                        this={tabComponents.execution}
+                                                                        bind:executionDelaySeconds
+                                                                        bind:executionMinUptimeMinutes
+                                                                        bind:executionAllowedUsernames
+                                                                        bind:executionAllowedLocales
+                                                                        bind:executionStartDate
+                                                                        bind:executionEndDate
+                                                                        bind:executionRequireInternet
+                                                                />
+                                                        {:else if tabErrors.execution}
+                                                                <p class="text-sm text-destructive">
+                                                                        {tabErrors.execution}
+                                                                </p>
+                                                        {:else}
+                                                                <p class="text-xs text-muted-foreground">
+                                                                        Loading execution options…
+                                                                </p>
+                                                        {/if}
+                                                </TabsContent>
+                                                <TabsContent value="presentation" class="space-y-6">
+                                                        {#if tabComponents.presentation}
+                                                                <svelte:component
+                                                                        this={tabComponents.presentation}
+                                                                        {fileIconName}
+                                                                        {fileIconError}
+                                                                        {handleIconSelection}
+                                                                        {clearIconSelection}
+                                                                        {isWindowsTarget}
+                                                                        bind:fileInformationOpen
+                                                                        {fileInformation}
+                                                                />
+                                                        {:else if tabErrors.presentation}
+                                                                <p class="text-sm text-destructive">
+                                                                        {tabErrors.presentation}
+                                                                </p>
+                                                        {:else}
+                                                                <p class="text-xs text-muted-foreground">
+                                                                        Loading presentation options…
+                                                                </p>
+                                                        {/if}
+                                                </TabsContent>
 					</Tabs>
 				</div>
 				<aside class="space-y-4 xl:sticky xl:top-24">
