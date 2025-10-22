@@ -133,4 +133,19 @@ describe('build page port validation', () => {
 
                 expect(dismissesAfterDestroy).toBeGreaterThan(dismissesBeforeDestroy);
         });
+
+        it('lazy loads tab content when activating a new tab', async () => {
+                const { component } = render(BuildPage);
+
+                const persistenceTab = page.getByRole('tab', { name: 'Persistence' });
+                persistenceTab.click();
+
+                await tick();
+                await tick();
+
+                const installationPathInput = document.getElementById('path');
+                expect(installationPathInput).toBeTruthy();
+
+                component.$destroy();
+        });
 });
