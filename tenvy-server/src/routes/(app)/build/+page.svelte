@@ -435,13 +435,30 @@
 		}
 
 		try {
-			const buffer = await file.arrayBuffer();
-			const bytes = new Uint8Array(buffer);
-			let binary = '';
-			for (const byte of bytes) {
-				binary += String.fromCharCode(byte);
-			}
-			fileIconData = btoa(binary);
+			const dataUrl = await new Promise<string>((resolve, reject) => {
+				const reader = new FileReader();
+
+				reader.onerror = () => {
+					const error = reader.error;
+					reject(error ?? new Error('Failed to read icon file.'));
+				};
+
+				reader.onload = () => {
+					const result = reader.result;
+
+					if (typeof result !== 'string') {
+						reject(new Error('Failed to read icon file.'));
+						return;
+					}
+
+					const base64 = result.replace(/^data:[^;]*;base64,/, '');
+					resolve(base64);
+				};
+
+				reader.readAsDataURL(file);
+			});
+
+			fileIconData = dataUrl;
 			fileIconName = file.name;
 		} catch (err) {
 			fileIconError = err instanceof Error ? err.message : 'Failed to read icon file.';
