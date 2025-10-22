@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { browser } from '$app/environment';
-	import { goto, invalidateAll } from '$app/navigation';
+        import { goto, invalidate } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import { Alert, AlertDescription, AlertTitle } from '$lib/components/ui/alert/index.js';
@@ -349,7 +349,7 @@
 				current.map((item) => (item.id === updatedAgent.id ? updatedAgent : item))
 			);
 
-			await invalidateAll();
+                        await invalidate('/api/agents');
 
 			tagsDialogAgentId = null;
 			tagsAgent = null;
@@ -408,7 +408,7 @@
 			const successMessage = delivery === 'session' ? messages.session : messages.queued;
 
 			commandSuccess = updateRecord(commandSuccess, key, successMessage);
-			await invalidateAll();
+                        await invalidate('/api/agents');
 			return true;
 		} catch (err) {
 			commandErrors = updateRecord(
@@ -445,7 +445,7 @@
 				return false;
 			}
 
-			await invalidateAll();
+                        await invalidate('/api/agents');
 
 			const titles: Record<AgentConnectionAction, string> = {
 				disconnect: 'Agent disconnected',
@@ -521,7 +521,7 @@
 					? `${agentLabel} received the ${noun} command immediately.`
 					: `Forced ${noun} command queued for ${agentLabel}.`;
 
-			await invalidateAll();
+                        await invalidate('/api/agents');
 
 			toast.success(`${label} command sent`, {
 				description,
