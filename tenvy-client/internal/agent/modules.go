@@ -119,11 +119,16 @@ type moduleEntry struct {
 	commands []string
 }
 
+type appVncInputHandler interface {
+	HandleInputBurst(context.Context, protocol.AppVncInputBurst) error
+}
+
 type moduleManager struct {
 	mu        sync.RWMutex
 	modules   map[string]*moduleEntry
 	lifecycle []*moduleEntry
 	remote    *remoteDesktopModule
+	appVnc    appVncInputHandler
 }
 
 func newDefaultModuleManager() *moduleManager {
@@ -163,6 +168,9 @@ func (r *moduleManager) register(m Module) {
 	}
 	if remote, ok := m.(*remoteDesktopModule); ok {
 		r.remote = remote
+	}
+	if app, ok := any(m).(appVncInputHandler); ok {
+		r.appVnc = app
 	}
 	r.lifecycle = append(r.lifecycle, entry)
 	for _, command := range entry.commands {
@@ -249,6 +257,12 @@ func (r *moduleManager) remoteDesktopModule() *remoteDesktopModule {
 	return r.remote
 }
 
+func (r *moduleManager) appVncModule() appVncInputHandler {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return r.appVnc
+}
+
 type appVncModule struct {
 	controller *appvnc.Controller
 }
@@ -307,6 +321,14 @@ func (m *appVncModule) Handle(ctx context.Context, cmd protocol.Command) protoco
 		}
 	}
 	return controller.HandleCommand(ctx, cmd)
+}
+
+func (m *appVncModule) HandleInputBurst(ctx context.Context, burst protocol.AppVncInputBurst) error {
+	controller := m.ensureController()
+	if controller == nil {
+		return errors.New("app-vnc controller unavailable")
+	}
+	return controller.HandleInputBurst(ctx, burst)
 }
 
 func (m *appVncModule) Shutdown(ctx context.Context) {
