@@ -110,9 +110,14 @@ type engineProcess struct {
 	mu       sync.Mutex
 	cmd      *exec.Cmd
 	cancel   context.CancelFunc
-	done     chan error
+	done     chan processExit
 	stopping bool
 	output   *processOutputBuffer
+}
+
+type processExit struct {
+	err      error
+	stopping bool
 }
 
 func newEngineProcess(path, version string, manager *plugins.Manager, logger Logger) *engineProcess {
@@ -190,7 +195,7 @@ func (p *engineProcess) start(sessionID string) error {
 
 	p.cmd = cmd
 	p.cancel = cancel
-	p.done = make(chan error, 1)
+	p.done = make(chan processExit, 1)
 	p.stopping = false
 	p.output = newProcessOutputBuffer(4096)
 
@@ -218,9 +223,12 @@ func (p *engineProcess) stop() error {
 	}
 
 	var waitErr error
+	var stopping bool
 	if done != nil {
 		select {
-		case waitErr = <-done:
+		case exit := <-done:
+			waitErr = exit.err
+			stopping = exit.stopping
 		case <-time.After(5 * time.Second):
 			p.mu.Lock()
 			if p.cmd != nil && p.cmd.Process != nil {
@@ -228,12 +236,17 @@ func (p *engineProcess) stop() error {
 			}
 			p.mu.Unlock()
 			if done != nil {
-				waitErr = <-done
+				exit := <-done
+				waitErr = exit.err
+				stopping = exit.stopping
 			}
 		}
 	}
 
 	plugins.ClearInstallStatus(p.manager, plugins.RemoteDesktopEnginePluginID)
+	if stopping {
+		return nil
+	}
 	return waitErr
 }
 
@@ -254,7 +267,7 @@ func (p *engineProcess) wait(cmd *exec.Cmd) {
 	p.mu.Unlock()
 
 	if done != nil {
-		done <- err
+		done <- processExit{err: err, stopping: stopping}
 	}
 
 	if stopping {

@@ -85,7 +85,11 @@ func StageRemoteDesktopEngine(
 		manager.recordInstallStatusLocked(RemoteDesktopEnginePluginID, mf.Version, manifest.InstallBlocked, message)
 		return result, fmt.Errorf(message)
 	}
-	if verificationResult == nil || !verificationResult.Trusted {
+	trusted := verificationResult != nil && verificationResult.Trusted
+	if !trusted && verificationResult != nil && verificationResult.SignatureType == manifest.SignatureNone {
+		trusted = true
+	}
+	if !trusted {
 		message := fmt.Sprintf("signature not trusted: %s", signatureUntrustedReason(mf, verificationResult))
 		manager.recordInstallStatusLocked(RemoteDesktopEnginePluginID, mf.Version, manifest.InstallBlocked, message)
 		return result, errors.New(message)

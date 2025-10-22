@@ -330,13 +330,14 @@ func (a *Agent) moduleRuntime() ModuleRuntime {
 	}
 }
 
-type remoteDesktopEngineFactory func(context.Context, ModuleRuntime, remotedesktop.Config) (remotedesktop.Engine, error)
+type remoteDesktopEngineFactory func(context.Context, ModuleRuntime, remotedesktop.Config) (remotedesktop.Engine, string, error)
 
 type remoteDesktopModule struct {
-	mu           sync.Mutex
-	engine       remotedesktop.Engine
-	engineConfig remotedesktop.Config
-	factory      remoteDesktopEngineFactory
+	mu              sync.Mutex
+	engine          remotedesktop.Engine
+	engineConfig    remotedesktop.Config
+	factory         remoteDesktopEngineFactory
+	requiredVersion string
 }
 
 func newRemoteDesktopModule(engine remotedesktop.Engine) *remoteDesktopModule {
@@ -414,26 +415,47 @@ func (m *remoteDesktopModule) configure(ctx context.Context, runtime ModuleRunti
 	cfg.QUICInput.PinnedSPKIHashes = append(cfg.QUICInput.PinnedSPKIHashes, envList("TENVY_REMOTE_DESKTOP_QUIC_SPKI_HASHES")...)
 	cfg.QUICInput.PinnedSPKIHashes = append(cfg.QUICInput.PinnedSPKIHashes, envList("TENVY_REMOTE_DESKTOP_QUIC_PINNED_SPKI_HASHES")...)
 	m.mu.Lock()
-	m.engineConfig = cfg
 	factory := m.factory
 	engine := m.engine
+	version := strings.TrimSpace(m.requiredVersion)
 	m.mu.Unlock()
+
+	if version != "" {
+		cfg.PluginVersion = version
+	}
 
 	if engine == nil {
 		if factory == nil {
 			factory = defaultRemoteDesktopEngineFactory
 		}
-		created, err := factory(ctx, runtime, cfg)
+		created, stagedVersion, err := factory(ctx, runtime, cfg)
 		if err != nil {
+			return err
+		}
+		stagedVersion = strings.TrimSpace(stagedVersion)
+		if stagedVersion != "" {
+			cfg.PluginVersion = stagedVersion
+		}
+		if err := created.Configure(cfg); err != nil {
 			return err
 		}
 		m.mu.Lock()
 		m.engine = created
+		m.engineConfig = cfg
+		if stagedVersion != "" {
+			m.requiredVersion = stagedVersion
+		}
 		m.mu.Unlock()
 		return nil
 	}
 
-	return engine.Configure(cfg)
+	if err := engine.Configure(cfg); err != nil {
+		return err
+	}
+	m.mu.Lock()
+	m.engineConfig = cfg
+	m.mu.Unlock()
+	return nil
 }
 
 func (m *remoteDesktopModule) Handle(ctx context.Context, cmd protocol.Command) protocol.CommandResult {
@@ -541,7 +563,7 @@ func (m *remoteDesktopModule) currentEngine() remotedesktop.Engine {
 	return m.engine
 }
 
-func defaultRemoteDesktopEngineFactory(ctx context.Context, runtime ModuleRuntime, cfg remotedesktop.Config) (remotedesktop.Engine, error) {
+func defaultRemoteDesktopEngineFactory(ctx context.Context, runtime ModuleRuntime, cfg remotedesktop.Config) (remotedesktop.Engine, string, error) {
 	base := remotedesktop.NewRemoteDesktopStreamer(cfg)
 
 	manager := runtime.Plugins
@@ -550,7 +572,7 @@ func defaultRemoteDesktopEngineFactory(ctx context.Context, runtime ModuleRuntim
 	agentID := strings.TrimSpace(runtime.AgentID)
 
 	if manager == nil || client == nil || baseURL == "" || agentID == "" {
-		return base, nil
+		return base, "", nil
 	}
 
 	stageCtx := ctx
@@ -566,10 +588,17 @@ func defaultRemoteDesktopEngineFactory(ctx context.Context, runtime ModuleRuntim
 		if runtime.Logger != nil {
 			runtime.Logger.Printf("remote desktop: engine staging failed: %v", err)
 		}
-		return base, nil
+		return base, "", nil
 	}
 
-	return remotedesktop.NewManagedRemoteDesktopEngine(base, result.EntryPath, result.Manifest.Version, manager, runtime.Logger), nil
+	version := strings.TrimSpace(result.Manifest.Version)
+	cfg.PluginVersion = version
+	if err := base.Configure(cfg); err != nil {
+		return base, "", err
+	}
+
+	managed := remotedesktop.NewManagedRemoteDesktopEngine(base, result.EntryPath, version, manager, runtime.Logger)
+	return managed, version, nil
 }
 
 type audioModule struct {

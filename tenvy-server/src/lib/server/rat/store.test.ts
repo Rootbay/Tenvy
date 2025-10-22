@@ -1,17 +1,25 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { AgentRegistry, MAX_PENDING_COMMANDS } from './store';
 import { db } from '$lib/server/db';
 import {
-	agent as agentTable,
-	agentCommand as agentCommandTable,
-	agentNote as agentNoteTable,
-	agentResult as agentResultTable,
-	auditEvent as auditEventTable,
-	user as userTable,
-	voucher as voucherTable
+        agent as agentTable,
+        agentCommand as agentCommandTable,
+        agentNote as agentNoteTable,
+        agentResult as agentResultTable,
+        auditEvent as auditEventTable,
+        user as userTable,
+        voucher as voucherTable,
+        plugin as pluginTable,
+        pluginInstallation as pluginInstallationTable
 } from '$lib/server/db/schema';
 import type { AgentRegistryEvent } from '../../../../../shared/types/registry-events';
+import remoteDesktopEngineManifestJson from '../../../../../shared/pluginmanifest/remote-desktop-engine.json';
+import type { PluginManifest } from '../../../../../shared/types/plugin-manifest';
+import {
+        remoteDesktopEnginePluginId,
+        requiredRemoteDesktopPluginVersion
+} from './remote-desktop';
 
 vi.mock('$env/dynamic/private', () => import('../../../../tests/mocks/env-dynamic-private'));
 
@@ -23,13 +31,15 @@ const baseMetadata = {
 };
 
 async function clearRegistryTables() {
-	await db.delete(agentNoteTable);
-	await db.delete(agentCommandTable);
-	await db.delete(agentResultTable);
-	await db.delete(auditEventTable);
-	await db.delete(agentTable);
-	await db.delete(userTable);
-	await db.delete(voucherTable);
+        await db.delete(agentNoteTable);
+        await db.delete(agentCommandTable);
+        await db.delete(agentResultTable);
+        await db.delete(auditEventTable);
+        await db.delete(pluginInstallationTable);
+        await db.delete(pluginTable);
+        await db.delete(agentTable);
+        await db.delete(userTable);
+        await db.delete(voucherTable);
 }
 
 describe('AgentRegistry database integration', () => {
@@ -90,11 +100,11 @@ describe('AgentRegistry database integration', () => {
 		expect(restoredNotes[0]?.id).toBe('note-1');
 	});
 
-	it('records audit events for queued and executed commands', async () => {
-		const registry = new AgentRegistry();
-		const registration = registry.registerAgent({ metadata: baseMetadata });
+        it('records audit events for queued and executed commands', async () => {
+                const registry = new AgentRegistry();
+                const registration = registry.registerAgent({ metadata: baseMetadata });
 
-		db.insert(voucherTable)
+                db.insert(voucherTable)
 			.values({ id: 'voucher-audit', codeHash: 'hash', createdAt: new Date() })
 			.run();
 		db.insert(userTable)
@@ -149,12 +159,105 @@ describe('AgentRegistry database integration', () => {
 
 		const parsed = finalAudit?.result ? JSON.parse(finalAudit.result) : null;
 		expect(parsed?.success).toBe(false);
-		expect(parsed?.error).toContain('Command rejected');
-	});
+                expect(parsed?.error).toContain('Command rejected');
+        });
 
-	it('rolls back partial persistence when a transactional error occurs', async () => {
-		const registry = new AgentRegistry();
-		const registration = registry.registerAgent({ metadata: baseMetadata });
+        it('rejects remote desktop sessions when the engine plugin is missing', async () => {
+                const registry = new AgentRegistry();
+                const registration = registry.registerAgent({ metadata: baseMetadata });
+
+                await expect(
+                        registry.requireAgentPluginVersion(
+                                registration.agentId,
+                                remoteDesktopEnginePluginId,
+                                requiredRemoteDesktopPluginVersion
+                        )
+                ).rejects.toThrowError('plugin is not installed');
+        });
+
+        it('validates the remote desktop engine plugin version', async () => {
+                const registry = new AgentRegistry();
+                const registration = registry.registerAgent({ metadata: baseMetadata });
+
+                const manifest = remoteDesktopEngineManifestJson as PluginManifest;
+                const expectedHash = manifest.package?.hash ?? '';
+                const timestamp = new Date().toISOString();
+
+                await registry.syncAgent(registration.agentId, registration.agentKey, {
+                        status: 'online',
+                        timestamp,
+                        plugins: {
+                                installations: [
+                                        {
+                                                pluginId: remoteDesktopEnginePluginId,
+                                                version: '0.0.1',
+                                                status: 'installed',
+                                                hash: expectedHash,
+                                                lastCheckedAt: timestamp,
+                                                lastDeployedAt: timestamp,
+                                                error: null
+                                        }
+                                ]
+                        }
+                });
+
+                await db
+                        .update(pluginTable)
+                        .set({ approvalStatus: 'approved', approvedAt: new Date(), updatedAt: new Date() })
+                        .where(eq(pluginTable.id, remoteDesktopEnginePluginId));
+
+                await db
+                        .update(pluginInstallationTable)
+                        .set({
+                                status: 'installed',
+                                error: null,
+                                enabled: true,
+                                updatedAt: new Date(),
+                                version: '0.0.1'
+                        })
+                        .where(
+                                and(
+                                        eq(pluginInstallationTable.agentId, registration.agentId),
+                                        eq(pluginInstallationTable.pluginId, remoteDesktopEnginePluginId)
+                                )
+                        );
+
+                await expect(
+                        registry.requireAgentPluginVersion(
+                                registration.agentId,
+                                remoteDesktopEnginePluginId,
+                                requiredRemoteDesktopPluginVersion
+                        )
+                ).rejects.toThrowError(`version ${requiredRemoteDesktopPluginVersion} required`);
+
+                await db
+                        .update(pluginInstallationTable)
+                        .set({
+                                status: 'installed',
+                                error: null,
+                                enabled: true,
+                                updatedAt: new Date(),
+                                version: requiredRemoteDesktopPluginVersion
+                        })
+                        .where(
+                                and(
+                                        eq(pluginInstallationTable.agentId, registration.agentId),
+                                        eq(pluginInstallationTable.pluginId, remoteDesktopEnginePluginId)
+                                )
+                        );
+
+                await expect(
+                        registry.requireAgentPluginVersion(
+                                registration.agentId,
+                                remoteDesktopEnginePluginId,
+                                requiredRemoteDesktopPluginVersion
+                        )
+                ).resolves.toBeUndefined();
+        });
+
+        it('rolls back partial persistence when a transactional error occurs', async () => {
+                const registry = new AgentRegistry();
+                const registration = registry.registerAgent({ metadata: baseMetadata });
 
 		const queued = registry.queueCommand(registration.agentId, {
 			name: 'ping',

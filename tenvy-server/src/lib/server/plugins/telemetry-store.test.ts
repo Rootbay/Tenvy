@@ -158,19 +158,19 @@ describe('PluginTelemetryStore', () => {
 	});
 
         it('blocks mismatched hashes and records audit events', async () => {
-        const runtimeStore = createPluginRuntimeStore();
-        const [record] = await loadPluginManifests({ directory: manifestDir });
-        expect(record).toBeDefined();
-        await runtimeStore.ensure(record!);
-        await runtimeStore.update(record!.manifest.id, {
-                approvalStatus: 'approved',
-                approvedAt: new Date()
-        });
+                const runtimeStore = createPluginRuntimeStore();
+                const [record] = await loadPluginManifests({ directory: manifestDir });
+                expect(record).toBeDefined();
+                await runtimeStore.ensure(record!);
+                await runtimeStore.update(record!.manifest.id, {
+                        approvalStatus: 'approved',
+                        approvedAt: new Date()
+                });
 
-        const store = new PluginTelemetryStore({
-                runtimeStore,
-                manifestDirectory: manifestDir
-        });
+                const store = new PluginTelemetryStore({
+                        runtimeStore,
+                        manifestDirectory: manifestDir
+                });
 		const now = new Date().toISOString();
 
 		await store.syncAgent('agent-2', baseMetadata, [
@@ -189,12 +189,49 @@ describe('PluginTelemetryStore', () => {
 		expect(installations[0]?.status).toBe('blocked');
 		expect(installations[0]?.error).toContain('hash mismatch');
 
-		const audits = await db
-			.select()
-			.from(auditEventTable)
-			.where(
-				and(eq(auditEventTable.agentId, 'agent-2'), eq(auditEventTable.commandName, 'plugin-sync'))
-			);
-		expect(audits.length).toBeGreaterThan(0);
-	});
+                const audits = await db
+                        .select()
+                        .from(auditEventTable)
+                        .where(
+                                and(eq(auditEventTable.agentId, 'agent-2'), eq(auditEventTable.commandName, 'plugin-sync'))
+                        );
+                expect(audits.length).toBeGreaterThan(0);
+        });
+
+        it('retrieves individual plugin telemetry records', async () => {
+                const runtimeStore = createPluginRuntimeStore();
+                const [record] = await loadPluginManifests({ directory: manifestDir });
+                expect(record).toBeDefined();
+                await runtimeStore.ensure(record!);
+                await runtimeStore.update(record!.manifest.id, {
+                        approvalStatus: 'approved',
+                        approvedAt: new Date()
+                });
+
+                const store = new PluginTelemetryStore({
+                        runtimeStore,
+                        manifestDirectory: manifestDir
+                });
+
+                const now = new Date().toISOString();
+                await store.syncAgent('agent-1', baseMetadata, [
+                        {
+                                pluginId: 'test-plugin',
+                                version: '1.0.0',
+                                status: 'installed',
+                                hash: 'abc123',
+                                lastDeployedAt: now,
+                                lastCheckedAt: now,
+                                error: null
+                        }
+                ]);
+
+                const telemetry = await store.getAgentPlugin('agent-1', 'test-plugin');
+                expect(telemetry).not.toBeNull();
+                expect(telemetry?.status).toBe('installed');
+                expect(telemetry?.version).toBe('1.0.0');
+
+                const missing = await store.getAgentPlugin('agent-1', 'missing-plugin');
+                expect(missing).toBeNull();
+        });
 });

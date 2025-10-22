@@ -336,6 +336,9 @@ func (c *remoteDesktopSessionController) initializeTransport(ctx context.Context
 		Codecs:       append([]RemoteDesktopEncoder(nil), codecs...),
 		IntraRefresh: supportsIntra,
 	}
+	if version := strings.TrimSpace(cfg.PluginVersion); version != "" {
+		request.PluginVersion = version
+	}
 	if offerHandle != nil {
 		request.WebRTC = &RemoteDesktopWebRTCOffer{
 			Offer:       offerHandle.Offer(),
@@ -367,6 +370,7 @@ func (c *remoteDesktopSessionController) initializeTransport(ctx context.Context
 		return err
 	}
 
+	requiredVersion := strings.TrimSpace(response.RequiredPluginVersion)
 	if response.Accepted {
 		if response.Transport != "" {
 			selectedTransport = response.Transport
@@ -400,6 +404,8 @@ func (c *remoteDesktopSessionController) initializeTransport(ctx context.Context
 		reason := strings.TrimSpace(response.Reason)
 		if reason != "" {
 			err = errors.New(reason)
+		} else if requiredVersion != "" {
+			err = fmt.Errorf("remote desktop engine plugin version %s required", requiredVersion)
 		} else {
 			err = errors.New("remote desktop negotiation rejected")
 		}
@@ -422,6 +428,9 @@ func (c *remoteDesktopSessionController) initializeTransport(ctx context.Context
 	}
 	c.assignSessionTransport(session, selectedTransport, sender, selectedCodec, selectedIntra, selectedFeatures)
 	c.configureInputBridge(session, response.Input)
+	if requiredVersion != "" && !strings.EqualFold(requiredVersion, strings.TrimSpace(cfg.PluginVersion)) {
+		c.logf("remote desktop engine plugin requires version %s (current %s)", requiredVersion, strings.TrimSpace(cfg.PluginVersion))
+	}
 	if selectedTransport == RemoteTransportWebRTC && sender == nil {
 		if err != nil {
 			return err
@@ -1326,6 +1335,7 @@ func sanitizeConfig(cfg Config) Config {
 	cfg.AgentID = strings.TrimSpace(cfg.AgentID)
 	cfg.BaseURL = normalizeBaseURL(strings.TrimSpace(cfg.BaseURL))
 	cfg.AuthKey = strings.TrimSpace(cfg.AuthKey)
+	cfg.PluginVersion = strings.TrimSpace(cfg.PluginVersion)
 	cfg.Client = secureHTTPClient(cfg.Client)
 	cfg.RequestTimeout = normalizeRequestTimeout(cfg.RequestTimeout)
 	cfg.WebRTCICEServers = normalizeICEServers(cfg.WebRTCICEServers)

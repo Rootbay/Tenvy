@@ -63,6 +63,7 @@ export interface RemoteDesktopSessionNegotiationRequest {
   transports: RemoteDesktopTransportCapability[];
   codecs?: RemoteDesktopEncoder[];
   intraRefresh?: boolean;
+  pluginVersion?: string;
   webrtc?: {
     offer?: string;
     dataChannel?: string;
@@ -79,6 +80,7 @@ export interface RemoteDesktopSessionNegotiationResponse {
     binaryFrames?: boolean;
   };
   reason?: string;
+  requiredPluginVersion?: string;
   webrtc?: {
     answer?: string;
     dataChannel?: string;

@@ -1146,18 +1146,59 @@ export class AgentRegistry {
 			this.clampPendingCommands(record, 'front');
 		}
 
-		this.schedulePersist();
+                this.schedulePersist();
 
-		const delivery: CommandDeliveryMode = delivered ? 'session' : 'queued';
-		this.notifyCommand(record, command, delivery);
-		this.notifyAgentUpdate(record);
-		return { command, delivery };
-	}
+                const delivery: CommandDeliveryMode = delivered ? 'session' : 'queued';
+                this.notifyCommand(record, command, delivery);
+                this.notifyAgentUpdate(record);
+                return { command, delivery };
+        }
 
-	sendRemoteDesktopInput(id: string, burst: RemoteDesktopInputBurst): boolean {
-		const record = this.agents.get(id);
-		if (!record) {
-			throw new RegistryError('Agent not found', 404);
+        async requireAgentPluginVersion(agentId: string, pluginId: string, version: string): Promise<void> {
+                const trimmedPluginId = pluginId.trim();
+                if (trimmedPluginId.length === 0) {
+                        return;
+                }
+
+                const record = await this.pluginTelemetry.getAgentPlugin(agentId, trimmedPluginId);
+                if (!record) {
+                        throw new RegistryError('Remote desktop engine plugin is not installed', 409);
+                }
+
+                if (!record.enabled) {
+                        throw new RegistryError('Remote desktop engine plugin is disabled', 409);
+                }
+
+                if (record.status !== 'installed') {
+                        const reason = record.error?.trim();
+                        if (reason && reason.length > 0) {
+                                throw new RegistryError(`Remote desktop engine plugin unavailable: ${reason}`, 409);
+                        }
+                        throw new RegistryError(
+                                `Remote desktop engine plugin status ${record.status.toLowerCase()}`,
+                                409
+                        );
+                }
+
+                const requiredVersion = version.trim();
+                if (requiredVersion.length === 0) {
+                        return;
+                }
+
+                const reportedVersion = record.version?.trim() ?? '';
+                if (!reportedVersion || reportedVersion !== requiredVersion) {
+                        const detail = reportedVersion ? ` (reported ${reportedVersion})` : '';
+                        throw new RegistryError(
+                                `Remote desktop engine plugin version ${requiredVersion} required${detail}`,
+                                409
+                        );
+                }
+        }
+
+        sendRemoteDesktopInput(id: string, burst: RemoteDesktopInputBurst): boolean {
+                const record = this.agents.get(id);
+                if (!record) {
+                        throw new RegistryError('Agent not found', 404);
 		}
 
 		const session = record.session;
