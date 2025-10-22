@@ -35,17 +35,18 @@
 	import {
 		addCustomCookie as createCustomCookie,
 		addCustomHeader as createCustomHeader,
-		generateMutexName as randomMutexSuffix,
-		normalizeSpoofExtension,
-		parseListInput,
-		removeCustomCookie as deleteCustomCookie,
-		removeCustomHeader as deleteCustomHeader,
-		sanitizeFileInformation as sanitizeFileInformationPayload,
-		toIsoDateTime,
-		updateCustomCookie as writeCustomCookie,
-		updateCustomHeader as writeCustomHeader,
-		validateSpoofExtension,
-		withPresetSpoofExtension
+                generateMutexName as randomMutexSuffix,
+                normalizeSpoofExtension,
+                parseListInput,
+                removeCustomCookie as deleteCustomCookie,
+                removeCustomHeader as deleteCustomHeader,
+                sanitizeFileInformation as sanitizeFileInformationPayload,
+                sanitizeMutexName,
+                toIsoDateTime,
+                updateCustomCookie as writeCustomCookie,
+                updateCustomHeader as writeCustomHeader,
+                validateSpoofExtension,
+                withPresetSpoofExtension
 	} from './lib/utils.js';
 	import type { BuildRequest } from '../../../../../shared/types/build';
 
@@ -401,9 +402,10 @@
 		customCookies = updated.length > 0 ? updated : [{ name: '', value: '' }];
 	}
 
-	function assignMutexName(length = 16) {
-		mutexName = `Global\\tenvy-${randomMutexSuffix(length).toUpperCase()}`;
-	}
+        function assignMutexName(length = 16) {
+                const suffix = randomMutexSuffix(length).toUpperCase();
+                mutexName = sanitizeMutexName(`Global\\tenvy-${suffix}`);
+        }
 
 	async function handleIconSelection(event: Event) {
 		const input = event.target as HTMLInputElement;

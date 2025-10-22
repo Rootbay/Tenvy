@@ -61,4 +61,24 @@ describe('build page port validation', () => {
 
                 component.$destroy();
         });
+
+        it('generates sanitized mutex names when requested', async () => {
+                const { component } = render(BuildPage);
+
+                const generateButton = page.getByRole('button', { name: /generate/i });
+                generateButton.click();
+
+                await tick();
+
+                const mutexInput = document.getElementById('mutex') as HTMLInputElement | null;
+                expect(mutexInput).toBeTruthy();
+                if (!mutexInput) {
+                        throw new Error('Mutex input not found');
+                }
+
+                expect(mutexInput.value).not.toBe('');
+                expect(mutexInput.value).toMatch(/^[A-Za-z0-9._-]+$/);
+
+                component.$destroy();
+        });
 });
