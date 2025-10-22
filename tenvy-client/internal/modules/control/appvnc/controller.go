@@ -45,14 +45,16 @@ type Controller struct {
 }
 
 type sessionState struct {
-	id          string
-	workspace   string
-	process     *exec.Cmd
-	application *protocol.AppVncApplicationDescriptor
-	plan        *protocol.AppVncVirtualizationPlan
-	settings    protocol.AppVncSessionSettings
-	startedAt   time.Time
-	lastBeat    time.Time
+	id           string
+	workspace    string
+	process      *exec.Cmd
+	application  *protocol.AppVncApplicationDescriptor
+	plan         *protocol.AppVncVirtualizationPlan
+	settings     protocol.AppVncSessionSettings
+	startedAt    time.Time
+	lastBeat     time.Time
+	lastSequence int64
+	inputQueue   []protocol.AppVncInputBurst
 }
 
 // NewController constructs a controller with default configuration.
@@ -296,11 +298,11 @@ func (c *Controller) configure(payload protocol.AppVncCommandPayload) error {
 }
 
 func (c *Controller) handleInput(payload protocol.AppVncCommandPayload) error {
-	if len(payload.Events) == 0 {
-		return nil
+	burst := protocol.AppVncInputBurst{
+		SessionID: strings.TrimSpace(payload.SessionID),
+		Events:    append([]protocol.AppVncInputEvent(nil), payload.Events...),
 	}
-	c.logf("app-vnc: received %d input events", len(payload.Events))
-	return nil
+	return c.HandleInputBurst(context.Background(), burst)
 }
 
 func (c *Controller) heartbeat(payload protocol.AppVncCommandPayload) error {
@@ -313,6 +315,41 @@ func (c *Controller) heartbeat(payload protocol.AppVncCommandPayload) error {
 		return errors.New("session identifier mismatch")
 	}
 	c.session.lastBeat = time.Now()
+	return nil
+}
+
+// HandleInputBurst validates the session and enqueues the burst for downstream processing.
+func (c *Controller) HandleInputBurst(ctx context.Context, burst protocol.AppVncInputBurst) error {
+	_ = ctx
+	if len(burst.Events) == 0 {
+		return nil
+	}
+
+	sessionID := strings.TrimSpace(burst.SessionID)
+	if sessionID == "" {
+		return errors.New("missing session identifier")
+	}
+
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if c.session == nil {
+		return errors.New("no active session")
+	}
+	if sessionID != c.session.id {
+		return errors.New("session identifier mismatch")
+	}
+
+	events := append([]protocol.AppVncInputEvent(nil), burst.Events...)
+	queued := protocol.AppVncInputBurst{
+		SessionID: c.session.id,
+		Events:    events,
+		Sequence:  burst.Sequence,
+	}
+
+	c.session.lastSequence = burst.Sequence
+	c.session.inputQueue = append(c.session.inputQueue, queued)
+	c.logf("app-vnc: queued %d input events", len(events))
 	return nil
 }
 

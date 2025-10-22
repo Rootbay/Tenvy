@@ -3,6 +3,7 @@ package protocol
 import (
 	"encoding/json"
 	"errors"
+	"strings"
 
 	manifest "github.com/rootbay/tenvy-client/shared/pluginmanifest"
 )
@@ -48,9 +49,109 @@ type Command struct {
 }
 
 type CommandEnvelope struct {
-	Type    string                   `json:"type"`
-	Command *Command                 `json:"command,omitempty"`
-	Input   *RemoteDesktopInputBurst `json:"input,omitempty"`
+	Type        string                   `json:"type"`
+	Command     *Command                 `json:"command,omitempty"`
+	Input       *RemoteDesktopInputBurst `json:"-"`
+	AppVncInput *AppVncInputBurst        `json:"-"`
+}
+
+type commandEnvelopeAlias struct {
+	Type    string          `json:"type"`
+	Command *Command        `json:"command,omitempty"`
+	Input   json.RawMessage `json:"input,omitempty"`
+}
+
+func (e CommandEnvelope) MarshalJSON() ([]byte, error) {
+	alias := commandEnvelopeAlias{
+		Type:    e.Type,
+		Command: e.Command,
+	}
+
+	switch strings.ToLower(strings.TrimSpace(e.Type)) {
+	case "remote-desktop-input":
+		if e.Input != nil {
+			data, err := json.Marshal(e.Input)
+			if err != nil {
+				return nil, err
+			}
+			alias.Input = data
+		}
+	case "app-vnc-input":
+		if e.AppVncInput != nil {
+			data, err := json.Marshal(e.AppVncInput)
+			if err != nil {
+				return nil, err
+			}
+			alias.Input = data
+		}
+	default:
+		switch {
+		case e.Input != nil:
+			data, err := json.Marshal(e.Input)
+			if err != nil {
+				return nil, err
+			}
+			alias.Input = data
+		case e.AppVncInput != nil:
+			data, err := json.Marshal(e.AppVncInput)
+			if err != nil {
+				return nil, err
+			}
+			alias.Input = data
+		}
+	}
+
+	return json.Marshal(alias)
+}
+
+func (e *CommandEnvelope) UnmarshalJSON(data []byte) error {
+	if e == nil {
+		return errors.New("command envelope not initialized")
+	}
+
+	var alias commandEnvelopeAlias
+	if err := json.Unmarshal(data, &alias); err != nil {
+		return err
+	}
+
+	e.Type = alias.Type
+	e.Command = alias.Command
+	e.Input = nil
+	e.AppVncInput = nil
+
+	if len(alias.Input) == 0 {
+		return nil
+	}
+
+	switch strings.ToLower(strings.TrimSpace(alias.Type)) {
+	case "remote-desktop-input":
+		var burst RemoteDesktopInputBurst
+		if err := json.Unmarshal(alias.Input, &burst); err != nil {
+			return err
+		}
+		e.Input = &burst
+	case "app-vnc-input":
+		var burst AppVncInputBurst
+		if err := json.Unmarshal(alias.Input, &burst); err != nil {
+			return err
+		}
+		e.AppVncInput = &burst
+	default:
+		// Attempt remote desktop decoding first for backwards compatibility.
+		var remote RemoteDesktopInputBurst
+		if err := json.Unmarshal(alias.Input, &remote); err == nil {
+			e.Input = &remote
+			return nil
+		}
+		var appBurst AppVncInputBurst
+		if err := json.Unmarshal(alias.Input, &appBurst); err == nil {
+			e.AppVncInput = &appBurst
+			return nil
+		}
+		return errors.New("unrecognized command envelope input payload")
+	}
+
+	return nil
 }
 
 type CommandResult struct {
@@ -96,6 +197,12 @@ type RemoteDesktopInputBurst struct {
 	SessionID string                    `json:"sessionId"`
 	Sequence  int64                     `json:"sequence,omitempty"`
 	Events    []RemoteDesktopInputEvent `json:"events"`
+}
+
+type AppVncInputBurst struct {
+	SessionID string             `json:"sessionId"`
+	Events    []AppVncInputEvent `json:"events"`
+	Sequence  int64              `json:"sequence,omitempty"`
 }
 
 type AppVncQuality string

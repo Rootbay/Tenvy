@@ -314,6 +314,11 @@ func (a *Agent) consumeCommandStream(ctx context.Context, conn *websocket.Conn) 
 				continue
 			}
 			a.handleRemoteDesktopInput(ctx, *envelope.Input)
+		case "app-vnc-input":
+			if envelope.AppVncInput == nil {
+				continue
+			}
+			a.handleAppVncInput(ctx, *envelope.AppVncInput)
 		default:
 			continue
 		}
@@ -417,6 +422,29 @@ func (a *Agent) remoteDesktopInputWorker(queue <-chan remoteDesktopInputTask, st
 					a.logger.Printf("remote desktop input error: %v", err)
 				}
 			}
+		}
+	}
+}
+
+func (a *Agent) handleAppVncInput(ctx context.Context, burst protocol.AppVncInputBurst) {
+	if a == nil || len(burst.Events) == 0 {
+		return
+	}
+	if a.modules == nil {
+		return
+	}
+
+	module := a.modules.appVncModule()
+	if module == nil {
+		if a.logger != nil {
+			a.logger.Printf("app-vnc input ignored: module unavailable")
+		}
+		return
+	}
+
+	if err := module.HandleInputBurst(ctx, burst); err != nil {
+		if a.logger != nil {
+			a.logger.Printf("app-vnc input failed: %v", err)
 		}
 	}
 }
