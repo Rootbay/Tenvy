@@ -16,7 +16,7 @@
 		SelectItem,
 		SelectTrigger
 	} from '$lib/components/ui/select/index.js';
-	import ClientPresenceMap from '$lib/components/dashboard/client-presence-map.svelte';
+        import ClientPresenceMap from '$lib/components/dashboard/client-presence-map.lazy.svelte';
 	import { countryCodeToFlag } from '$lib/utils/location';
 	import { derived, writable } from 'svelte/store';
 	import {
