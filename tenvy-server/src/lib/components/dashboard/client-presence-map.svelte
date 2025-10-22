@@ -15,7 +15,7 @@
 		Objects,
 		Topology
 	} from 'topojson-specification';
-	import world from 'world-atlas/countries-110m.json';
+        import world from 'world-atlas/countries-50m.json';
 
 	type MarkerStyle = { dot: string; halo: string; stroke: string };
 	type Marker = {
