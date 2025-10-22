@@ -172,8 +172,17 @@
 	let downloadUrl = $state<string | null>(null);
 	let outputPath = $state<string | null>(null);
 
-	const BUILD_STATUS_TOAST_ID = 'build-status-toast';
-	const BUILD_PROGRESS_TOAST_ID = 'build-progress-toast';
+        const BUILD_STATUS_TOAST_ID = 'build-status-toast';
+        const BUILD_PROGRESS_TOAST_ID = 'build-progress-toast';
+
+        function clearBuildToasts() {
+                if (!browser) {
+                        return;
+                }
+
+                toast.dismiss(BUILD_STATUS_TOAST_ID);
+                toast.dismiss(BUILD_PROGRESS_TOAST_ID);
+        }
 
 	let lastToastedStatus: BuildStatus = 'idle';
 	let lastWarningSignature = '';
@@ -308,15 +317,15 @@
 		lastWarningSignature = signature;
 	});
 
-	function resetProgress() {
-		buildStatus = 'idle';
-		buildError = null;
-		downloadUrl = null;
-		outputPath = null;
-		buildWarnings = [];
-		fileIconError = null;
-		toast.dismiss(BUILD_PROGRESS_TOAST_ID);
-	}
+        function resetProgress() {
+                buildStatus = 'idle';
+                buildError = null;
+                downloadUrl = null;
+                outputPath = null;
+                buildWarnings = [];
+                fileIconError = null;
+                clearBuildToasts();
+        }
 
 	function pushProgress(text: string, tone: 'info' | 'success' | 'error' = 'info') {
 		if (!browser) {
@@ -776,9 +785,9 @@
 		}
 	}
 
-	onDestroy(() => {
-		toast.dismiss(BUILD_STATUS_TOAST_ID);
-	});
+        onDestroy(() => {
+                clearBuildToasts();
+        });
 </script>
 
 <div class="mx-auto w-full space-y-6 px-4 pb-10">

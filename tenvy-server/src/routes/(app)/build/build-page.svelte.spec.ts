@@ -108,4 +108,29 @@ describe('build page port validation', () => {
 
                 component.$destroy();
         });
+
+        it('dismisses the progress toast when the component is destroyed mid-build', async () => {
+                const pendingFetch = new Promise<never>(() => {});
+                globalThis.fetch = vi.fn(() => pendingFetch as unknown as Promise<Response>);
+
+                const { component } = render(BuildPage);
+
+                const buildButton = page.getByRole('button', { name: 'Build Agent' });
+                buildButton.click();
+
+                await tick();
+                await tick();
+
+                const dismissesBeforeDestroy = toast.dismiss.mock.calls.filter(
+                        ([id]) => id === 'build-progress-toast'
+                ).length;
+
+                component.$destroy();
+
+                const dismissesAfterDestroy = toast.dismiss.mock.calls.filter(
+                        ([id]) => id === 'build-progress-toast'
+                ).length;
+
+                expect(dismissesAfterDestroy).toBeGreaterThan(dismissesBeforeDestroy);
+        });
 });
