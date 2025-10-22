@@ -62,7 +62,25 @@
 		}))
 	] satisfies { label: string; value: 'all' | PluginCategory }[];
 
-	let registry = $state<Plugin[]>(data.plugins.map((plugin) => ({ ...plugin })));
+        function buildPluginSearchKey(plugin: Plugin): string {
+                return [
+                        plugin.name ?? '',
+                        plugin.description ?? '',
+                        plugin.author ?? '',
+                        plugin.version ?? '',
+                        ...plugin.capabilities,
+                        ...plugin.requiredModules.map((module) => module.title)
+                ]
+                        .join(' ')
+                        .toLowerCase();
+        }
+
+        const initialRegistry = data.plugins.map((plugin) => ({ ...plugin }));
+
+        let registry = $state<Plugin[]>(initialRegistry);
+        let pluginSearchKeys = $state<Map<string, string>>(
+                new Map(initialRegistry.map((plugin) => [plugin.id, buildPluginSearchKey(plugin)]))
+        );
 	let marketplaceListings = $state<MarketplaceListing[]>(
 		data.listings.map((listing) => ({ ...listing }))
 	);
@@ -76,12 +94,12 @@
 	let autoUpdateOnly = $state(false);
 	let filtersOpen = $state(false);
 
-	function mergePluginPatch(plugin: Plugin, patch: PluginUpdatePayload): Plugin {
-		const next: Plugin = { ...plugin };
+        function mergePluginPatch(plugin: Plugin, patch: PluginUpdatePayload): Plugin {
+                const next: Plugin = { ...plugin };
 
-		if (patch.status !== undefined) next.status = patch.status;
-		if (patch.enabled !== undefined) next.enabled = patch.enabled;
-		if (patch.autoUpdate !== undefined) next.autoUpdate = patch.autoUpdate;
+                if (patch.status !== undefined) next.status = patch.status;
+                if (patch.enabled !== undefined) next.enabled = patch.enabled;
+                if (patch.autoUpdate !== undefined) next.autoUpdate = patch.autoUpdate;
 		if (patch.installations !== undefined) next.installations = patch.installations;
 
 		if (patch.distribution) {
@@ -91,14 +109,22 @@
 			};
 		}
 
-		return next;
-	}
+                return next;
+        }
+
+        function applyRegistryUpdate(next: Plugin[]) {
+                registry = next;
+                pluginSearchKeys = new Map(
+                        next.map((plugin) => [plugin.id, buildPluginSearchKey(plugin)])
+                );
+        }
 
 	async function updatePlugin(id: string, patch: PluginUpdatePayload) {
-		const previous = registry;
-		registry = registry.map((plugin: Plugin) =>
-			plugin.id === id ? mergePluginPatch(plugin, patch) : plugin
-		);
+                const previous = registry;
+                const optimistic = registry.map((plugin: Plugin) =>
+                        plugin.id === id ? mergePluginPatch(plugin, patch) : plugin
+                );
+                applyRegistryUpdate(optimistic);
 
 		try {
 			const response = await fetch(`/api/plugins/${id}`, {
@@ -114,13 +140,16 @@
 				throw new Error(message || `Failed to update plugin ${id}`);
 			}
 
-			const payload = (await response.json()) as { plugin: Plugin };
-			registry = registry.map((plugin: Plugin) => (plugin.id === id ? payload.plugin : plugin));
-		} catch (err) {
-			console.error('Failed to update plugin', err);
-			registry = previous;
-		}
-	}
+                        const payload = (await response.json()) as { plugin: Plugin };
+                        const patched = registry.map((plugin: Plugin) =>
+                                plugin.id === id ? payload.plugin : plugin
+                        );
+                        applyRegistryUpdate(patched);
+                } catch (err) {
+                        console.error('Failed to update plugin', err);
+                        applyRegistryUpdate(previous);
+                }
+        }
 
 	function resetFilters() {
 		searchTerm = '';
@@ -133,20 +162,10 @@
 
 	const filteredPlugins: Plugin[] = $derived.by(() => {
 		const term = normalizedSearch;
-		return registry.filter((plugin: Plugin) => {
-			const matchesSearch =
-				term.length === 0 ||
-				[
-					plugin.name,
-					plugin.description,
-					plugin.author,
-					plugin.version,
-					...plugin.capabilities,
-					...plugin.requiredModules.map((module) => module.title)
-				]
-					.join(' ')
-					.toLowerCase()
-					.includes(term);
+                return registry.filter((plugin: Plugin) => {
+                        const matchesSearch =
+                                term.length === 0 ||
+                                (pluginSearchKeys.get(plugin.id) ?? '').includes(term);
 
 			const matchesStatus = statusFilter === 'all' || plugin.status === statusFilter;
 			const matchesCategory = categoryFilter === 'all' || plugin.category === categoryFilter;
