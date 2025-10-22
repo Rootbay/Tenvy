@@ -1,8 +1,8 @@
 import { agentModuleIndex } from '../../../../shared/modules/index.js';
 import type {
-        PluginManifest,
-        PluginSignatureStatus,
-        PluginSignatureType
+	PluginManifest,
+	PluginSignatureStatus,
+	PluginSignatureType
 } from '../../../../shared/types/plugin-manifest.js';
 import { loadPluginManifests, type LoadedPluginManifest } from './plugin-manifests.js';
 import {
@@ -66,10 +66,10 @@ export type PluginRepositoryUpdate = PluginUpdatePayload & {
 };
 
 type PluginRuntimeSnapshot = {
-        status: PluginStatus;
-        enabled: boolean;
-        autoUpdate: boolean;
-        installations: number;
+	status: PluginStatus;
+	enabled: boolean;
+	autoUpdate: boolean;
+	installations: number;
 	manualTargets: number;
 	autoTargets: number;
 	defaultDeliveryMode: PluginDeliveryMode;
@@ -78,23 +78,23 @@ type PluginRuntimeSnapshot = {
 	lastManualPushAt: Date | null;
 	lastAutoSyncAt: Date | null;
 	lastDeployedAt: Date | null;
-        lastCheckedAt: Date | null;
-        approvalStatus: PluginApprovalStatus;
-        approvedAt: Date | null;
-        approvalNote: string | null;
-        signature: {
-                status: PluginSignatureStatus;
-                trusted: boolean;
-                type: PluginSignatureType;
-                hash: string | null;
-                signer: string | null;
-                publicKey: string | null;
-                checkedAt: Date | null;
-                signedAt: Date | null;
-                error: string | null;
-                errorCode: string | null;
-                certificateChain: string[] | null;
-        };
+	lastCheckedAt: Date | null;
+	approvalStatus: PluginApprovalStatus;
+	approvedAt: Date | null;
+	approvalNote: string | null;
+	signature: {
+		status: PluginSignatureStatus;
+		trusted: boolean;
+		type: PluginSignatureType;
+		hash: string | null;
+		signer: string | null;
+		publicKey: string | null;
+		checkedAt: Date | null;
+		signedAt: Date | null;
+		error: string | null;
+		errorCode: string | null;
+		certificateChain: string[] | null;
+	};
 };
 
 const manifestCategory = (manifest: PluginManifest): PluginCategory => {
@@ -110,46 +110,46 @@ const mapRequiredModules = (manifest: PluginManifest) =>
 		.map((module) => ({ id: module.id, title: module.title }));
 
 const toPluginView = (record: LoadedPluginManifest, runtime: PluginRuntimeSnapshot): Plugin => ({
-        id: record.manifest.id,
-        name: record.manifest.name,
-        description: record.manifest.description ?? '',
-        version: record.manifest.version,
-        author: record.manifest.author ?? 'Unknown',
-        category: manifestCategory(record.manifest),
-        status: runtime.status,
-        enabled: runtime.enabled,
-        autoUpdate: runtime.autoUpdate,
-        installations: runtime.installations,
-        lastDeployed: formatRelativeTime(runtime.lastDeployedAt),
-        lastChecked: formatRelativeTime(runtime.lastCheckedAt),
-        size: formatFileSize(record.manifest.package.sizeBytes),
-        capabilities: record.manifest.capabilities?.map((capability) => capability.name) ?? [],
-        artifact: record.manifest.package.artifact,
-        distribution: {
-                defaultMode: runtime.defaultDeliveryMode,
-                allowManualPush: runtime.allowManualPush,
-                allowAutoSync: runtime.allowAutoSync,
-                manualTargets: runtime.manualTargets,
-                autoTargets: runtime.autoTargets,
-                lastManualPush: formatRelativeTime(runtime.lastManualPushAt),
-                lastAutoSync: formatRelativeTime(runtime.lastAutoSyncAt)
-        },
-        requiredModules: mapRequiredModules(record.manifest),
-        approvalStatus: runtime.approvalStatus,
-        approvedAt: runtime.approvedAt ? runtime.approvedAt.toISOString() : undefined,
-        signature: {
-                status: runtime.signature.status,
-                trusted: runtime.signature.trusted,
-                type: runtime.signature.type,
-                hash: runtime.signature.hash,
-                signer: runtime.signature.signer,
-                publicKey: runtime.signature.publicKey,
-                signedAt: runtime.signature.signedAt ? runtime.signature.signedAt.toISOString() : null,
-                checkedAt: runtime.signature.checkedAt ? runtime.signature.checkedAt.toISOString() : null,
-                error: runtime.signature.error,
-                errorCode: runtime.signature.errorCode,
-                certificateChain: runtime.signature.certificateChain
-        }
+	id: record.manifest.id,
+	name: record.manifest.name,
+	description: record.manifest.description ?? '',
+	version: record.manifest.version,
+	author: record.manifest.author ?? 'Unknown',
+	category: manifestCategory(record.manifest),
+	status: runtime.status,
+	enabled: runtime.enabled,
+	autoUpdate: runtime.autoUpdate,
+	installations: runtime.installations,
+	lastDeployed: formatRelativeTime(runtime.lastDeployedAt),
+	lastChecked: formatRelativeTime(runtime.lastCheckedAt),
+	size: formatFileSize(record.manifest.package.sizeBytes),
+	capabilities: record.manifest.capabilities?.map((capability) => capability.name) ?? [],
+	artifact: record.manifest.package.artifact,
+	distribution: {
+		defaultMode: runtime.defaultDeliveryMode,
+		allowManualPush: runtime.allowManualPush,
+		allowAutoSync: runtime.allowAutoSync,
+		manualTargets: runtime.manualTargets,
+		autoTargets: runtime.autoTargets,
+		lastManualPush: formatRelativeTime(runtime.lastManualPushAt),
+		lastAutoSync: formatRelativeTime(runtime.lastAutoSyncAt)
+	},
+	requiredModules: mapRequiredModules(record.manifest),
+	approvalStatus: runtime.approvalStatus,
+	approvedAt: runtime.approvedAt ? runtime.approvedAt.toISOString() : undefined,
+	signature: {
+		status: runtime.signature.status,
+		trusted: runtime.signature.trusted,
+		type: runtime.signature.type,
+		hash: runtime.signature.hash,
+		signer: runtime.signature.signer,
+		publicKey: runtime.signature.publicKey,
+		signedAt: runtime.signature.signedAt ? runtime.signature.signedAt.toISOString() : null,
+		checkedAt: runtime.signature.checkedAt ? runtime.signature.checkedAt.toISOString() : null,
+		error: runtime.signature.error,
+		errorCode: runtime.signature.errorCode,
+		certificateChain: runtime.signature.certificateChain
+	}
 });
 
 const toRuntimePatch = (update: PluginRepositoryUpdate): PluginRuntimePatch => {
@@ -184,10 +184,10 @@ const toRuntimePatch = (update: PluginRepositoryUpdate): PluginRuntimePatch => {
 };
 
 const snapshotFromRow = (row: PluginRuntimeRow): PluginRuntimeSnapshot => ({
-        status: row.status as PluginStatus,
-        enabled: row.enabled,
-        autoUpdate: row.autoUpdate,
-        installations: row.installations,
+	status: row.status as PluginStatus,
+	enabled: row.enabled,
+	autoUpdate: row.autoUpdate,
+	installations: row.installations,
 	manualTargets: row.manualTargets,
 	autoTargets: row.autoTargets,
 	defaultDeliveryMode: row.defaultDeliveryMode as PluginDeliveryMode,
@@ -196,33 +196,33 @@ const snapshotFromRow = (row: PluginRuntimeRow): PluginRuntimeSnapshot => ({
 	lastManualPushAt: row.lastManualPushAt ?? null,
 	lastAutoSyncAt: row.lastAutoSyncAt ?? null,
 	lastDeployedAt: row.lastDeployedAt ?? null,
-        lastCheckedAt: row.lastCheckedAt ?? null,
-        approvalStatus: row.approvalStatus as PluginApprovalStatus,
-        approvedAt: row.approvedAt ?? null,
-        approvalNote: row.approvalNote ?? null,
-        signature: {
-                status: row.signatureStatus as PluginSignatureStatus,
-                trusted: Boolean(row.signatureTrusted),
-                type: row.signatureType as PluginSignatureType,
-                hash: row.signatureHash ?? null,
-                signer: row.signatureSigner ?? null,
-                publicKey: row.signaturePublicKey ?? null,
-                checkedAt: row.signatureCheckedAt ?? null,
-                signedAt: row.signatureSignedAt ?? null,
-                error: row.signatureError ?? null,
-                errorCode: row.signatureErrorCode ?? null,
-                certificateChain: (() => {
-                        if (!row.signatureChain) return null;
-                        try {
-                                const parsed = JSON.parse(row.signatureChain);
-                                return Array.isArray(parsed)
-                                        ? parsed.filter((value): value is string => typeof value === 'string')
-                                        : null;
-                        } catch {
-                                return null;
-                        }
-                })()
-        }
+	lastCheckedAt: row.lastCheckedAt ?? null,
+	approvalStatus: row.approvalStatus as PluginApprovalStatus,
+	approvedAt: row.approvedAt ?? null,
+	approvalNote: row.approvalNote ?? null,
+	signature: {
+		status: row.signatureStatus as PluginSignatureStatus,
+		trusted: Boolean(row.signatureTrusted),
+		type: row.signatureType as PluginSignatureType,
+		hash: row.signatureHash ?? null,
+		signer: row.signatureSigner ?? null,
+		publicKey: row.signaturePublicKey ?? null,
+		checkedAt: row.signatureCheckedAt ?? null,
+		signedAt: row.signatureSignedAt ?? null,
+		error: row.signatureError ?? null,
+		errorCode: row.signatureErrorCode ?? null,
+		certificateChain: (() => {
+			if (!row.signatureChain) return null;
+			try {
+				const parsed = JSON.parse(row.signatureChain);
+				return Array.isArray(parsed)
+					? parsed.filter((value): value is string => typeof value === 'string')
+					: null;
+			} catch {
+				return null;
+			}
+		})()
+	}
 });
 
 export const createPluginRepository = (
@@ -249,30 +249,28 @@ export const createPluginRepository = (
 		return record;
 	};
 
-        return {
-                async list() {
-                        const records = await loadManifests();
-                        if (records.length === 0) return [];
+	return {
+		async list() {
+			const records = await loadManifests();
+			if (records.length === 0) return [];
 
-                        const runtimeRows = await Promise.all(
-                                records.map((record) => runtimeStore.ensure(record))
-                        );
+			const runtimeRows = await Promise.all(records.map((record) => runtimeStore.ensure(record)));
 
-                        return records.map((record, index) =>
-                                toPluginView(record, snapshotFromRow(runtimeRows[index]!))
-                        );
-                },
-                async get(id: string) {
-                        const record = await getManifest(id);
-                        const runtimeRow = await runtimeStore.ensure(record);
-                        return toPluginView(record, snapshotFromRow(runtimeRow));
-                },
-                async update(id: string, update) {
-                        const record = await getManifest(id);
-                        await runtimeStore.ensure(record);
+			return records.map((record, index) =>
+				toPluginView(record, snapshotFromRow(runtimeRows[index]!))
+			);
+		},
+		async get(id: string) {
+			const record = await getManifest(id);
+			const runtimeRow = await runtimeStore.ensure(record);
+			return toPluginView(record, snapshotFromRow(runtimeRow));
+		},
+		async update(id: string, update) {
+			const record = await getManifest(id);
+			await runtimeStore.ensure(record);
 
-                        const runtimeRow = await runtimeStore.update(id, toRuntimePatch(update));
-                        return toPluginView(record, snapshotFromRow(runtimeRow));
-                }
-        };
+			const runtimeRow = await runtimeStore.update(id, toRuntimePatch(update));
+			return toPluginView(record, snapshotFromRow(runtimeRow));
+		}
+	};
 };

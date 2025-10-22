@@ -74,53 +74,53 @@ describe('RemoteDesktopManager WebRTC negotiation', () => {
 		delete process.env.TENVY_REMOTE_DESKTOP_ICE_SERVERS;
 	});
 
-        async function createManager() {
-                process.env.TENVY_REMOTE_DESKTOP_ICE_SERVERS = JSON.stringify([
-                        {
-                                urls: ['turn:turn.example.com:3478?transport=tcp'],
-                                username: 'turn-user',
-                                credential: 'turn-pass',
-                                credentialType: 'password'
-                        }
-                ]);
-                const module = await import('./remote-desktop');
-                requiredPluginVersion = module.requiredRemoteDesktopPluginVersion;
-                return new module.RemoteDesktopManager();
-        }
+	async function createManager() {
+		process.env.TENVY_REMOTE_DESKTOP_ICE_SERVERS = JSON.stringify([
+			{
+				urls: ['turn:turn.example.com:3478?transport=tcp'],
+				username: 'turn-user',
+				credential: 'turn-pass',
+				credentialType: 'password'
+			}
+		]);
+		const module = await import('./remote-desktop');
+		requiredPluginVersion = module.requiredRemoteDesktopPluginVersion;
+		return new module.RemoteDesktopManager();
+	}
 
 	it('negotiates WebRTC using TURN-only ICE servers and streams frames', async () => {
 		const manager = await createManager();
 		const session = manager.createSession('agent-1');
 
 		const offerSdp = 'mock-offer';
-                const request: RemoteDesktopSessionNegotiationRequest = {
-                        sessionId: session.sessionId,
-                        transports: [
-                                {
-                                        transport: 'webrtc',
-                                        codecs: ['hevc'],
-                                        features: { intraRefresh: true, binaryFrames: true }
-                                },
-                                { transport: 'http', codecs: ['hevc', 'avc'] }
-                        ],
-                        codecs: ['hevc', 'avc'],
-                        intraRefresh: true,
-                        pluginVersion: requiredPluginVersion,
-                        webrtc: {
-                                offer: Buffer.from(offerSdp, 'utf8').toString('base64'),
-                                dataChannel: 'remote-desktop-frames'
-                        }
-                };
+		const request: RemoteDesktopSessionNegotiationRequest = {
+			sessionId: session.sessionId,
+			transports: [
+				{
+					transport: 'webrtc',
+					codecs: ['hevc'],
+					features: { intraRefresh: true, binaryFrames: true }
+				},
+				{ transport: 'http', codecs: ['hevc', 'avc'] }
+			],
+			codecs: ['hevc', 'avc'],
+			intraRefresh: true,
+			pluginVersion: requiredPluginVersion,
+			webrtc: {
+				offer: Buffer.from(offerSdp, 'utf8').toString('base64'),
+				dataChannel: 'remote-desktop-frames'
+			}
+		};
 
 		const response = await manager.negotiateTransport('agent-1', request);
 
-                expect(response.accepted).toBe(true);
-                expect(response.transport).toBe('webrtc');
-                expect(response.features?.binaryFrames).toBe(true);
-                expect(response.webrtc?.answer).toBeDefined();
-                expect(response.webrtc?.iceServers?.[0]?.urls[0]).toContain('turn:turn.example.com');
-                expect(response.requiredPluginVersion).toBe(requiredPluginVersion);
-                expect(createdPipelines).toHaveLength(1);
+		expect(response.accepted).toBe(true);
+		expect(response.transport).toBe('webrtc');
+		expect(response.features?.binaryFrames).toBe(true);
+		expect(response.webrtc?.answer).toBeDefined();
+		expect(response.webrtc?.iceServers?.[0]?.urls[0]).toContain('turn:turn.example.com');
+		expect(response.requiredPluginVersion).toBe(requiredPluginVersion);
+		expect(createdPipelines).toHaveLength(1);
 		const pipelineRecord = createdPipelines[0];
 		expect(pipelineRecord?.options.dataChannel).toBe('remote-desktop-frames');
 
@@ -146,28 +146,28 @@ describe('RemoteDesktopManager WebRTC negotiation', () => {
 		const manager = await createManager();
 		const session = manager.createSession('agent-1');
 
-                const request: RemoteDesktopSessionNegotiationRequest = {
-                        sessionId: session.sessionId,
-                        transports: [
-                                {
-                                        transport: 'webrtc',
-                                        codecs: ['hevc'],
-                                        features: { intraRefresh: true, binaryFrames: true }
-                                }
-                        ],
-                        codecs: ['hevc'],
-                        pluginVersion: requiredPluginVersion,
-                        webrtc: {
-                                offer: Buffer.from('mock-offer', 'utf8').toString('base64'),
-                                dataChannel: 'remote-desktop-frames'
-                        }
-                };
+		const request: RemoteDesktopSessionNegotiationRequest = {
+			sessionId: session.sessionId,
+			transports: [
+				{
+					transport: 'webrtc',
+					codecs: ['hevc'],
+					features: { intraRefresh: true, binaryFrames: true }
+				}
+			],
+			codecs: ['hevc'],
+			pluginVersion: requiredPluginVersion,
+			webrtc: {
+				offer: Buffer.from('mock-offer', 'utf8').toString('base64'),
+				dataChannel: 'remote-desktop-frames'
+			}
+		};
 
 		await manager.negotiateTransport('agent-1', request);
 
-                expect(createdPipelines).toHaveLength(1);
-                const pipelineRecord = createdPipelines[0];
-                expect(pipelineRecord).toBeDefined();
+		expect(createdPipelines).toHaveLength(1);
+		const pipelineRecord = createdPipelines[0];
+		expect(pipelineRecord).toBeDefined();
 
 		const broadcastSpy = vi.spyOn(
 			manager as unknown as {
@@ -189,18 +189,18 @@ describe('RemoteDesktopManager WebRTC negotiation', () => {
 
 		pipelineRecord?.options.onMessage?.(samples);
 
-                expect(broadcastSpy).toHaveBeenCalledWith(
-                        'agent-1',
-                        'media',
-                        expect.objectContaining({
-                                sessionId: session.sessionId,
-                                media: expect.arrayContaining([expect.objectContaining({ codec: 'pcm', kind: 'audio' })])
+		expect(broadcastSpy).toHaveBeenCalledWith(
+			'agent-1',
+			'media',
+			expect.objectContaining({
+				sessionId: session.sessionId,
+				media: expect.arrayContaining([expect.objectContaining({ codec: 'pcm', kind: 'audio' })])
 			})
 		);
 
-                const record = (
-                        manager as unknown as { sessions: Map<string, { history: unknown[] }> }
-                ).sessions.get('agent-1');
+		const record = (
+			manager as unknown as { sessions: Map<string, { history: unknown[] }> }
+		).sessions.get('agent-1');
 		const historyEntry = record?.history.at(-1) as
 			| { type: string; media?: RemoteDesktopMediaSample[] }
 			| undefined;
@@ -208,22 +208,22 @@ describe('RemoteDesktopManager WebRTC negotiation', () => {
 		expect(historyEntry?.media).toHaveLength(1);
 		expect(historyEntry?.media?.[0]?.codec).toBe('pcm');
 		broadcastSpy.mockRestore();
-        });
+	});
 
-        it('rejects negotiation when plugin version mismatches', async () => {
-                const manager = await createManager();
-                const session = manager.createSession('agent-1');
+	it('rejects negotiation when plugin version mismatches', async () => {
+		const manager = await createManager();
+		const session = manager.createSession('agent-1');
 
-                const response = await manager.negotiateTransport('agent-1', {
-                        sessionId: session.sessionId,
-                        transports: [{ transport: 'http', codecs: ['jpeg'] }],
-                        pluginVersion: '0.0.1'
-                });
+		const response = await manager.negotiateTransport('agent-1', {
+			sessionId: session.sessionId,
+			transports: [{ transport: 'http', codecs: ['jpeg'] }],
+			pluginVersion: '0.0.1'
+		});
 
-                expect(response.accepted).toBe(false);
-                expect(response.requiredPluginVersion).toBe(requiredPluginVersion);
-                expect(response.reason).toContain('version');
-        });
+		expect(response.accepted).toBe(false);
+		expect(response.requiredPluginVersion).toBe(requiredPluginVersion);
+		expect(response.reason).toContain('version');
+	});
 
 	it('ingests binary msgpack frames and reports reduced payload size', async () => {
 		const manager = await createManager();

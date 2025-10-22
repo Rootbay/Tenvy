@@ -9,10 +9,10 @@ import { createPluginRuntimeStore } from './runtime-store.js';
 import { loadPluginManifests } from '$lib/data/plugin-manifests.js';
 import { db } from '$lib/server/db/index.js';
 import {
-        agent as agentTable,
-        plugin as pluginTable,
-        pluginInstallation as pluginInstallationTable,
-        auditEvent as auditEventTable
+	agent as agentTable,
+	plugin as pluginTable,
+	pluginInstallation as pluginInstallationTable,
+	auditEvent as auditEventTable
 } from '$lib/server/db/schema.js';
 import type { AgentMetadata } from '../../../../../shared/types/agent.js';
 import type { PluginManifest } from '../../../../../shared/types/plugin-manifest.js';
@@ -36,113 +36,113 @@ let manifestDir: string;
 let policyPath: string;
 
 function createManifest(hash: string): PluginManifest {
-        return {
-                id: 'test-plugin',
-                name: 'Test Plugin',
-                version: '1.0.0',
-                entry: 'plugin.dll',
-                repositoryUrl: 'https://github.com/rootbay/test-plugin',
-                license: {
-                        spdxId: 'MIT',
-                        name: 'MIT License'
-                },
-                distribution: {
-                        defaultMode: 'automatic',
-                        autoUpdate: true,
-                        signature: { type: 'sha256', hash, signature: 'signed' }
-                },
-                requirements: {
-                        platforms: ['windows'],
-                        architectures: ['x86_64'],
+	return {
+		id: 'test-plugin',
+		name: 'Test Plugin',
+		version: '1.0.0',
+		entry: 'plugin.dll',
+		repositoryUrl: 'https://github.com/rootbay/test-plugin',
+		license: {
+			spdxId: 'MIT',
+			name: 'MIT License'
+		},
+		distribution: {
+			defaultMode: 'automatic',
+			autoUpdate: true,
+			signature: { type: 'sha256', hash, signature: 'signed' }
+		},
+		requirements: {
+			platforms: ['windows'],
+			architectures: ['x86_64'],
 			requiredModules: []
 		},
-                package: {
-                        artifact: 'plugin.dll',
-                        sizeBytes: 1024,
-                        hash
-                }
-        };
+		package: {
+			artifact: 'plugin.dll',
+			sizeBytes: 1024,
+			hash
+		}
+	};
 }
 
 beforeEach(async () => {
-        process.env.DATABASE_URL = ':memory:';
-        manifestDir = mkdtempSync(join(tmpdir(), 'tenvy-plugin-manifests-'));
-        writeFileSync(join(manifestDir, 'test-plugin.json'), JSON.stringify(createManifest('abc123')));
+	process.env.DATABASE_URL = ':memory:';
+	manifestDir = mkdtempSync(join(tmpdir(), 'tenvy-plugin-manifests-'));
+	writeFileSync(join(manifestDir, 'test-plugin.json'), JSON.stringify(createManifest('abc123')));
 
-        policyPath = join(manifestDir, 'trust.json');
-        writeFileSync(
-                policyPath,
-                JSON.stringify({
-                        sha256AllowList: ['abc123']
-                })
-        );
-        process.env.TENVY_PLUGIN_TRUST_CONFIG = policyPath;
-        refreshSignaturePolicy();
+	policyPath = join(manifestDir, 'trust.json');
+	writeFileSync(
+		policyPath,
+		JSON.stringify({
+			sha256AllowList: ['abc123']
+		})
+	);
+	process.env.TENVY_PLUGIN_TRUST_CONFIG = policyPath;
+	refreshSignaturePolicy();
 
-        const now = new Date();
-        await db.insert(agentTable).values([
-                {
-                        id: 'agent-1',
-                        keyHash: 'hash-agent-1',
-                        metadata: JSON.stringify(baseMetadata),
-                        status: 'online',
-                        connectedAt: now,
-                        lastSeen: now,
-                        metrics: JSON.stringify({}),
-                        config: JSON.stringify({}),
-                        fingerprint: 'fingerprint-agent-1',
-                        createdAt: now,
-                        updatedAt: now
-                },
-                {
-                        id: 'agent-2',
-                        keyHash: 'hash-agent-2',
-                        metadata: JSON.stringify(baseMetadata),
-                        status: 'online',
-                        connectedAt: now,
-                        lastSeen: now,
-                        metrics: JSON.stringify({}),
-                        config: JSON.stringify({}),
-                        fingerprint: 'fingerprint-agent-2',
-                        createdAt: now,
-                        updatedAt: now
-                }
-        ]);
+	const now = new Date();
+	await db.insert(agentTable).values([
+		{
+			id: 'agent-1',
+			keyHash: 'hash-agent-1',
+			metadata: JSON.stringify(baseMetadata),
+			status: 'online',
+			connectedAt: now,
+			lastSeen: now,
+			metrics: JSON.stringify({}),
+			config: JSON.stringify({}),
+			fingerprint: 'fingerprint-agent-1',
+			createdAt: now,
+			updatedAt: now
+		},
+		{
+			id: 'agent-2',
+			keyHash: 'hash-agent-2',
+			metadata: JSON.stringify(baseMetadata),
+			status: 'online',
+			connectedAt: now,
+			lastSeen: now,
+			metrics: JSON.stringify({}),
+			config: JSON.stringify({}),
+			fingerprint: 'fingerprint-agent-2',
+			createdAt: now,
+			updatedAt: now
+		}
+	]);
 });
 
 afterEach(async () => {
-        await db.delete(pluginInstallationTable);
-        await db.delete(pluginTable);
-        await db.delete(auditEventTable);
-        await db.delete(agentTable);
-        rmSync(manifestDir, { recursive: true, force: true });
-        delete process.env.TENVY_PLUGIN_TRUST_CONFIG;
-        refreshSignaturePolicy();
+	await db.delete(pluginInstallationTable);
+	await db.delete(pluginTable);
+	await db.delete(auditEventTable);
+	await db.delete(agentTable);
+	rmSync(manifestDir, { recursive: true, force: true });
+	delete process.env.TENVY_PLUGIN_TRUST_CONFIG;
+	refreshSignaturePolicy();
 });
 
 describe('PluginTelemetryStore', () => {
-        it('records successful installation telemetry', async () => {
-        const runtimeStore = createPluginRuntimeStore();
-        const [record] = await loadPluginManifests({ directory: manifestDir });
-        expect(record).toBeDefined();
-        await runtimeStore.ensure(record!);
-        await runtimeStore.update(record!.manifest.id, {
-                approvalStatus: 'approved',
-                approvedAt: new Date()
-        });
+	it('records successful installation telemetry', async () => {
+		const runtimeStore = createPluginRuntimeStore();
+		const [record] = await loadPluginManifests({ directory: manifestDir });
+		expect(record).toBeDefined();
+		await runtimeStore.ensure(record!);
+		await runtimeStore.update(record!.manifest.id, {
+			approvalStatus: 'approved',
+			approvedAt: new Date()
+		});
 
-        const store = new PluginTelemetryStore({
-                runtimeStore,
-                manifestDirectory: manifestDir
-        });
+		const store = new PluginTelemetryStore({
+			runtimeStore,
+			manifestDirectory: manifestDir
+		});
 
 		const now = new Date().toISOString();
-                await store.syncAgent('agent-1', baseMetadata, [
-                        {
-                                pluginId: 'test-plugin',
-                                version: '1.0.0',
-                                status: 'installed',
-                                hash: 'abc123',
+		await store.syncAgent('agent-1', baseMetadata, [
+			{
+				pluginId: 'test-plugin',
+				version: '1.0.0',
+				status: 'installed',
+				hash: 'abc123',
 				lastDeployedAt: now,
 				lastCheckedAt: now,
 				error: null
@@ -157,20 +157,20 @@ describe('PluginTelemetryStore', () => {
 		expect(runtime.installations).toBe(1);
 	});
 
-        it('blocks mismatched hashes and records audit events', async () => {
-                const runtimeStore = createPluginRuntimeStore();
-                const [record] = await loadPluginManifests({ directory: manifestDir });
-                expect(record).toBeDefined();
-                await runtimeStore.ensure(record!);
-                await runtimeStore.update(record!.manifest.id, {
-                        approvalStatus: 'approved',
-                        approvedAt: new Date()
-                });
+	it('blocks mismatched hashes and records audit events', async () => {
+		const runtimeStore = createPluginRuntimeStore();
+		const [record] = await loadPluginManifests({ directory: manifestDir });
+		expect(record).toBeDefined();
+		await runtimeStore.ensure(record!);
+		await runtimeStore.update(record!.manifest.id, {
+			approvalStatus: 'approved',
+			approvedAt: new Date()
+		});
 
-                const store = new PluginTelemetryStore({
-                        runtimeStore,
-                        manifestDirectory: manifestDir
-                });
+		const store = new PluginTelemetryStore({
+			runtimeStore,
+			manifestDirectory: manifestDir
+		});
 		const now = new Date().toISOString();
 
 		await store.syncAgent('agent-2', baseMetadata, [
@@ -189,49 +189,49 @@ describe('PluginTelemetryStore', () => {
 		expect(installations[0]?.status).toBe('blocked');
 		expect(installations[0]?.error).toContain('hash mismatch');
 
-                const audits = await db
-                        .select()
-                        .from(auditEventTable)
-                        .where(
-                                and(eq(auditEventTable.agentId, 'agent-2'), eq(auditEventTable.commandName, 'plugin-sync'))
-                        );
-                expect(audits.length).toBeGreaterThan(0);
-        });
+		const audits = await db
+			.select()
+			.from(auditEventTable)
+			.where(
+				and(eq(auditEventTable.agentId, 'agent-2'), eq(auditEventTable.commandName, 'plugin-sync'))
+			);
+		expect(audits.length).toBeGreaterThan(0);
+	});
 
-        it('retrieves individual plugin telemetry records', async () => {
-                const runtimeStore = createPluginRuntimeStore();
-                const [record] = await loadPluginManifests({ directory: manifestDir });
-                expect(record).toBeDefined();
-                await runtimeStore.ensure(record!);
-                await runtimeStore.update(record!.manifest.id, {
-                        approvalStatus: 'approved',
-                        approvedAt: new Date()
-                });
+	it('retrieves individual plugin telemetry records', async () => {
+		const runtimeStore = createPluginRuntimeStore();
+		const [record] = await loadPluginManifests({ directory: manifestDir });
+		expect(record).toBeDefined();
+		await runtimeStore.ensure(record!);
+		await runtimeStore.update(record!.manifest.id, {
+			approvalStatus: 'approved',
+			approvedAt: new Date()
+		});
 
-                const store = new PluginTelemetryStore({
-                        runtimeStore,
-                        manifestDirectory: manifestDir
-                });
+		const store = new PluginTelemetryStore({
+			runtimeStore,
+			manifestDirectory: manifestDir
+		});
 
-                const now = new Date().toISOString();
-                await store.syncAgent('agent-1', baseMetadata, [
-                        {
-                                pluginId: 'test-plugin',
-                                version: '1.0.0',
-                                status: 'installed',
-                                hash: 'abc123',
-                                lastDeployedAt: now,
-                                lastCheckedAt: now,
-                                error: null
-                        }
-                ]);
+		const now = new Date().toISOString();
+		await store.syncAgent('agent-1', baseMetadata, [
+			{
+				pluginId: 'test-plugin',
+				version: '1.0.0',
+				status: 'installed',
+				hash: 'abc123',
+				lastDeployedAt: now,
+				lastCheckedAt: now,
+				error: null
+			}
+		]);
 
-                const telemetry = await store.getAgentPlugin('agent-1', 'test-plugin');
-                expect(telemetry).not.toBeNull();
-                expect(telemetry?.status).toBe('installed');
-                expect(telemetry?.version).toBe('1.0.0');
+		const telemetry = await store.getAgentPlugin('agent-1', 'test-plugin');
+		expect(telemetry).not.toBeNull();
+		expect(telemetry?.status).toBe('installed');
+		expect(telemetry?.version).toBe('1.0.0');
 
-                const missing = await store.getAgentPlugin('agent-1', 'missing-plugin');
-                expect(missing).toBeNull();
-        });
+		const missing = await store.getAgentPlugin('agent-1', 'missing-plugin');
+		expect(missing).toBeNull();
+	});
 });

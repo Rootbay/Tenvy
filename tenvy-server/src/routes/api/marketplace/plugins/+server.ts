@@ -95,12 +95,12 @@ const ensureRepositoryMetadata = async (manifest: PluginManifest) => {
 };
 
 const serializeListing = (listing: MarketplaceListing) => {
-        const { manifestObject, ...rest } = listing;
-        return {
-                ...rest,
-                manifest: manifestObject,
-                signature: listing.signature
-        };
+	const { manifestObject, ...rest } = listing;
+	return {
+		...rest,
+		manifest: manifestObject,
+		signature: listing.signature
+	};
 };
 
 export const GET: RequestHandler = async ({ url, locals }) => {

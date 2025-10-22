@@ -9,41 +9,41 @@ import { createPluginRuntimeStore } from '../src/lib/server/plugins/runtime-stor
 import { plugin as pluginTable } from '../src/lib/server/db/schema.js';
 
 const manifestFixture = {
-        id: 'clipboard-sync',
-        name: 'Clipboard Sync',
-        version: '1.4.2',
-        description: 'Synchronize clipboard activity across operator sessions.',
-        entry: 'clipboard-sync.dll',
-        author: 'Tenvy Labs',
-        repositoryUrl: 'https://github.com/rootbay/tenvy-clipboard-sync',
-        license: {
-                spdxId: 'MIT',
-                name: 'MIT License',
-                url: 'https://opensource.org/license/mit'
-        },
-        categories: ['collection'],
-        capabilities: [
-                {
-                        name: 'clipboard.capture',
-                        module: 'clipboard',
-                        description: 'Capture remote clipboard history and relay updates in real time.'
-                }
-        ],
-        requirements: {
-                minAgentVersion: '1.2.0',
-                platforms: ['windows'],
-                architectures: ['x86_64'],
-                requiredModules: ['clipboard']
-        },
-        distribution: {
-                defaultMode: 'automatic',
-                autoUpdate: true,
-                signature: { type: 'none' }
-        },
-        package: {
-                artifact: 'clipboard-sync-1.4.2.dll',
-                sizeBytes: 18_743_296
-        }
+	id: 'clipboard-sync',
+	name: 'Clipboard Sync',
+	version: '1.4.2',
+	description: 'Synchronize clipboard activity across operator sessions.',
+	entry: 'clipboard-sync.dll',
+	author: 'Tenvy Labs',
+	repositoryUrl: 'https://github.com/rootbay/tenvy-clipboard-sync',
+	license: {
+		spdxId: 'MIT',
+		name: 'MIT License',
+		url: 'https://opensource.org/license/mit'
+	},
+	categories: ['collection'],
+	capabilities: [
+		{
+			name: 'clipboard.capture',
+			module: 'clipboard',
+			description: 'Capture remote clipboard history and relay updates in real time.'
+		}
+	],
+	requirements: {
+		minAgentVersion: '1.2.0',
+		platforms: ['windows'],
+		architectures: ['x86_64'],
+		requiredModules: ['clipboard']
+	},
+	distribution: {
+		defaultMode: 'automatic',
+		autoUpdate: true,
+		signature: { type: 'none' }
+	},
+	package: {
+		artifact: 'clipboard-sync-1.4.2.dll',
+		sizeBytes: 18_743_296
+	}
 };
 
 const PLUGIN_TABLE_DDL = `
@@ -86,106 +86,96 @@ let dbPath: string;
 let manifestDir: string;
 
 const openRepository = () => {
-        const sqlite = new Database(dbPath);
-        sqlite.exec(PLUGIN_TABLE_DDL);
-        const drizzleDb = drizzle(sqlite, { schema: { plugin: pluginTable } });
-        const runtimeStore = createPluginRuntimeStore(drizzleDb);
-        const repository = createPluginRepository({ runtimeStore, directory: manifestDir });
-        return { repository, runtimeStore, sqlite };
+	const sqlite = new Database(dbPath);
+	sqlite.exec(PLUGIN_TABLE_DDL);
+	const drizzleDb = drizzle(sqlite, { schema: { plugin: pluginTable } });
+	const runtimeStore = createPluginRuntimeStore(drizzleDb);
+	const repository = createPluginRepository({ runtimeStore, directory: manifestDir });
+	return { repository, runtimeStore, sqlite };
 };
 
 beforeEach(() => {
-        tempDir = mkdtempSync(join(tmpdir(), 'tenvy-plugin-repo-'));
-        dbPath = join(tempDir, 'runtime.sqlite');
-        manifestDir = join(tempDir, 'manifests');
-        mkdirSync(manifestDir, { recursive: true });
-        writeFileSync(join(manifestDir, `${manifestFixture.id}.json`), JSON.stringify(manifestFixture));
+	tempDir = mkdtempSync(join(tmpdir(), 'tenvy-plugin-repo-'));
+	dbPath = join(tempDir, 'runtime.sqlite');
+	manifestDir = join(tempDir, 'manifests');
+	mkdirSync(manifestDir, { recursive: true });
+	writeFileSync(join(manifestDir, `${manifestFixture.id}.json`), JSON.stringify(manifestFixture));
 });
 
 afterEach(() => {
-        rmSync(tempDir, { recursive: true, force: true });
+	rmSync(tempDir, { recursive: true, force: true });
 });
 
 describe('plugin repository', () => {
-        it('derives plugin views from manifests and runtime state', async () => {
-                const { repository, sqlite } = openRepository();
+	it('derives plugin views from manifests and runtime state', async () => {
+		const { repository, sqlite } = openRepository();
 
-                try {
-                        const plugins = await repository.list();
-                        expect(plugins.length).toBeGreaterThan(0);
+		try {
+			const plugins = await repository.list();
+			expect(plugins.length).toBeGreaterThan(0);
 
-                        const clipboard = plugins.find((plugin) => plugin.id === 'clipboard-sync');
-                        expect(clipboard?.name).toBe('Clipboard Sync');
-                        expect(clipboard?.artifact).toContain('clipboard');
-                        expect(clipboard?.distribution.defaultMode).toBe('automatic');
-                        expect(clipboard?.distribution.allowAutoSync).toBe(true);
-                        expect(clipboard?.requiredModules.map((module) => module.id)).toContain(
-                                'clipboard'
-                        );
-                        expect(clipboard?.signature.status).toBe('unsigned');
-                        expect(clipboard?.signature.trusted).toBe(false);
-                } finally {
-                        sqlite.close();
-                }
-        });
+			const clipboard = plugins.find((plugin) => plugin.id === 'clipboard-sync');
+			expect(clipboard?.name).toBe('Clipboard Sync');
+			expect(clipboard?.artifact).toContain('clipboard');
+			expect(clipboard?.distribution.defaultMode).toBe('automatic');
+			expect(clipboard?.distribution.allowAutoSync).toBe(true);
+			expect(clipboard?.requiredModules.map((module) => module.id)).toContain('clipboard');
+			expect(clipboard?.signature.status).toBe('unsigned');
+			expect(clipboard?.signature.trusted).toBe(false);
+		} finally {
+			sqlite.close();
+		}
+	});
 
-        it('persists runtime updates across repository instances', async () => {
-                const first = openRepository();
-                const timestamp = new Date('2024-05-18T10:30:00.000Z');
+	it('persists runtime updates across repository instances', async () => {
+		const first = openRepository();
+		const timestamp = new Date('2024-05-18T10:30:00.000Z');
 
-                try {
-                        await first.repository.update('clipboard-sync', {
-                                status: 'disabled',
-                                enabled: false,
-                                autoUpdate: false,
-                                lastDeployedAt: timestamp,
-                                lastCheckedAt: timestamp,
-                                approvalStatus: 'approved',
-                                approvedAt: timestamp,
-                                approvalNote: 'ship it',
-                                distribution: {
-                                        defaultMode: 'manual',
-                                        allowManualPush: false,
-                                        allowAutoSync: false,
-                                        manualTargets: 3,
-                                        autoTargets: 1,
-                                        lastManualPushAt: timestamp,
-                                        lastAutoSyncAt: timestamp
-                                }
-                        });
-                } finally {
-                        first.sqlite.close();
-                }
+		try {
+			await first.repository.update('clipboard-sync', {
+				status: 'disabled',
+				enabled: false,
+				autoUpdate: false,
+				lastDeployedAt: timestamp,
+				lastCheckedAt: timestamp,
+				approvalStatus: 'approved',
+				approvedAt: timestamp,
+				approvalNote: 'ship it',
+				distribution: {
+					defaultMode: 'manual',
+					allowManualPush: false,
+					allowAutoSync: false,
+					manualTargets: 3,
+					autoTargets: 1,
+					lastManualPushAt: timestamp,
+					lastAutoSyncAt: timestamp
+				}
+			});
+		} finally {
+			first.sqlite.close();
+		}
 
-                const second = openRepository();
+		const second = openRepository();
 
-                try {
-                        const plugin = await second.repository.get('clipboard-sync');
-                        expect(plugin.status).toBe('disabled');
-                        expect(plugin.enabled).toBe(false);
-                        expect(plugin.distribution.allowAutoSync).toBe(false);
-                        expect(plugin.distribution.allowManualPush).toBe(false);
-                        expect(plugin.distribution.manualTargets).toBe(3);
-                        expect(plugin.distribution.autoTargets).toBe(1);
-                        expect(plugin.approvalStatus).toBe('approved');
-                        expect(plugin.approvedAt).toBe(timestamp.toISOString());
+		try {
+			const plugin = await second.repository.get('clipboard-sync');
+			expect(plugin.status).toBe('disabled');
+			expect(plugin.enabled).toBe(false);
+			expect(plugin.distribution.allowAutoSync).toBe(false);
+			expect(plugin.distribution.allowManualPush).toBe(false);
+			expect(plugin.distribution.manualTargets).toBe(3);
+			expect(plugin.distribution.autoTargets).toBe(1);
+			expect(plugin.approvalStatus).toBe('approved');
+			expect(plugin.approvedAt).toBe(timestamp.toISOString());
 
-                        const runtimeRow = await second.runtimeStore.find('clipboard-sync');
-                        expect(runtimeRow?.lastManualPushAt?.toISOString()).toBe(
-                                timestamp.toISOString()
-                        );
-                        expect(runtimeRow?.lastAutoSyncAt?.toISOString()).toBe(
-                                timestamp.toISOString()
-                        );
-                        expect(runtimeRow?.lastDeployedAt?.toISOString()).toBe(
-                                timestamp.toISOString()
-                        );
-                        expect(runtimeRow?.lastCheckedAt?.toISOString()).toBe(
-                                timestamp.toISOString()
-                        );
-                        expect(runtimeRow?.approvalNote).toBe('ship it');
-                } finally {
-                        second.sqlite.close();
-                }
-        });
+			const runtimeRow = await second.runtimeStore.find('clipboard-sync');
+			expect(runtimeRow?.lastManualPushAt?.toISOString()).toBe(timestamp.toISOString());
+			expect(runtimeRow?.lastAutoSyncAt?.toISOString()).toBe(timestamp.toISOString());
+			expect(runtimeRow?.lastDeployedAt?.toISOString()).toBe(timestamp.toISOString());
+			expect(runtimeRow?.lastCheckedAt?.toISOString()).toBe(timestamp.toISOString());
+			expect(runtimeRow?.approvalNote).toBe('ship it');
+		} finally {
+			second.sqlite.close();
+		}
+	});
 });

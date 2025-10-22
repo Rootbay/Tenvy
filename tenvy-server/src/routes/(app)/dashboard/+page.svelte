@@ -1,36 +1,34 @@
 <script lang="ts">
-        import DashboardCountryList from '$lib/components/dashboard/dashboard-country-list.svelte';
-        import DashboardOperationsPanel from '$lib/components/dashboard/dashboard-operations-panel.svelte';
-        import DashboardSummaryCard from '$lib/components/dashboard/dashboard-summary-card.svelte';
-        import { writable } from 'svelte/store';
-        import type { PageData } from './$types';
+	import DashboardCountryList from '$lib/components/dashboard/dashboard-country-list.svelte';
+	import DashboardOperationsPanel from '$lib/components/dashboard/dashboard-operations-panel.svelte';
+	import DashboardSummaryCard from '$lib/components/dashboard/dashboard-summary-card.svelte';
+	import { writable } from 'svelte/store';
+	import type { PageData } from './$types';
 
-        let { data } = $props<{ data: PageData }>();
+	let { data } = $props<{ data: PageData }>();
 
-        const percentageFormatter = new Intl.NumberFormat('en-US', { maximumFractionDigits: 1 });
-        const selectedCountry = writable<string | null>(null);
+	const percentageFormatter = new Intl.NumberFormat('en-US', { maximumFractionDigits: 1 });
+	const selectedCountry = writable<string | null>(null);
 </script>
 
 <div class="flex h-full min-h-0 flex-1 flex-col gap-6 overflow-hidden">
-        <DashboardSummaryCard
-                totals={data.totals}
-                newClients={data.newClients}
-                bandwidth={data.bandwidth}
-                latency={data.latency}
-                percentageFormatter={percentageFormatter}
-        />
+	<DashboardSummaryCard
+		totals={data.totals}
+		newClients={data.newClients}
+		bandwidth={data.bandwidth}
+		latency={data.latency}
+		{percentageFormatter}
+	/>
 
-        <section class="grid h-full min-h-0 flex-1 auto-rows-[minmax(0,1fr)] gap-6 overflow-hidden lg:grid-cols-7">
-                <DashboardOperationsPanel
-                        clients={data.clients}
-                        logs={data.logs}
-                        generatedAt={data.generatedAt}
-                        selectedCountry={selectedCountry}
-                />
-                <DashboardCountryList
-                        countries={data.countries}
-                        selectedCountry={selectedCountry}
-                        percentageFormatter={percentageFormatter}
-                />
-        </section>
+	<section
+		class="grid h-full min-h-0 flex-1 auto-rows-[minmax(0,1fr)] gap-6 overflow-hidden lg:grid-cols-7"
+	>
+		<DashboardOperationsPanel
+			clients={data.clients}
+			logs={data.logs}
+			generatedAt={data.generatedAt}
+			{selectedCountry}
+		/>
+		<DashboardCountryList countries={data.countries} {selectedCountry} {percentageFormatter} />
+	</section>
 </div>

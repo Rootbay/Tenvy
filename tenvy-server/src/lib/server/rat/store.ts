@@ -215,9 +215,9 @@ function parseNumeric(value: unknown): number | null {
 }
 
 function normalizeConfig(config?: Partial<AgentConfig> | null): AgentConfig {
-        const normalized: AgentConfig = {
-                ...defaultAgentConfig
-        };
+	const normalized: AgentConfig = {
+		...defaultAgentConfig
+	};
 
 	if (!config) {
 		return normalized;
@@ -234,14 +234,14 @@ function normalizeConfig(config?: Partial<AgentConfig> | null): AgentConfig {
 	}
 
 	const jitter = parseNumeric(config.jitterRatio);
-        if (jitter !== null && jitter >= 0 && jitter <= 1) {
-                normalized.jitterRatio = jitter;
-        }
+	if (jitter !== null && jitter >= 0 && jitter <= 1) {
+		normalized.jitterRatio = jitter;
+	}
 
-        const signaturePolicy = getAgentSignaturePolicy();
-        normalized.plugins = { signaturePolicy };
+	const signaturePolicy = getAgentSignaturePolicy();
+	normalized.plugins = { signaturePolicy };
 
-        return normalized;
+	return normalized;
 }
 
 function cloneMetadata(metadata: AgentMetadata): AgentMetadata {
@@ -1146,59 +1146,63 @@ export class AgentRegistry {
 			this.clampPendingCommands(record, 'front');
 		}
 
-                this.schedulePersist();
+		this.schedulePersist();
 
-                const delivery: CommandDeliveryMode = delivered ? 'session' : 'queued';
-                this.notifyCommand(record, command, delivery);
-                this.notifyAgentUpdate(record);
-                return { command, delivery };
-        }
+		const delivery: CommandDeliveryMode = delivered ? 'session' : 'queued';
+		this.notifyCommand(record, command, delivery);
+		this.notifyAgentUpdate(record);
+		return { command, delivery };
+	}
 
-        async requireAgentPluginVersion(agentId: string, pluginId: string, version: string): Promise<void> {
-                const trimmedPluginId = pluginId.trim();
-                if (trimmedPluginId.length === 0) {
-                        return;
-                }
+	async requireAgentPluginVersion(
+		agentId: string,
+		pluginId: string,
+		version: string
+	): Promise<void> {
+		const trimmedPluginId = pluginId.trim();
+		if (trimmedPluginId.length === 0) {
+			return;
+		}
 
-                const record = await this.pluginTelemetry.getAgentPlugin(agentId, trimmedPluginId);
-                if (!record) {
-                        throw new RegistryError('Remote desktop engine plugin is not installed', 409);
-                }
+		const record = await this.pluginTelemetry.getAgentPlugin(agentId, trimmedPluginId);
+		if (!record) {
+			throw new RegistryError('Remote desktop engine plugin is not installed', 409);
+		}
 
-                if (!record.enabled) {
-                        throw new RegistryError('Remote desktop engine plugin is disabled', 409);
-                }
+		if (!record.enabled) {
+			throw new RegistryError('Remote desktop engine plugin is disabled', 409);
+		}
 
-                if (record.status !== 'installed') {
-                        const reason = record.error?.trim();
-                        if (reason && reason.length > 0) {
-                                throw new RegistryError(`Remote desktop engine plugin unavailable: ${reason}`, 409);
-                        }
-                        throw new RegistryError(
-                                `Remote desktop engine plugin status ${record.status.toLowerCase()}`,
-                                409
-                        );
-                }
+		if (record.status !== 'installed') {
+			const reason = record.error?.trim();
+			if (reason && reason.length > 0) {
+				throw new RegistryError(`Remote desktop engine plugin unavailable: ${reason}`, 409);
+			}
+			throw new RegistryError(
+				`Remote desktop engine plugin status ${record.status.toLowerCase()}`,
+				409
+			);
+		}
 
-                const requiredVersion = version.trim();
-                if (requiredVersion.length === 0) {
-                        return;
-                }
+		const requiredVersion = version.trim();
+		if (requiredVersion.length === 0) {
+			return;
+		}
 
-                const reportedVersion = record.version?.trim() ?? '';
-                if (!reportedVersion || reportedVersion !== requiredVersion) {
-                        const detail = reportedVersion ? ` (reported ${reportedVersion})` : '';
-                        throw new RegistryError(
-                                `Remote desktop engine plugin version ${requiredVersion} required${detail}`,
-                                409
-                        );
-                }
-        }
+		const reportedVersion = record.version?.trim() ?? '';
+		if (!reportedVersion || reportedVersion !== requiredVersion) {
+			const detail = reportedVersion ? ` (reported ${reportedVersion})` : '';
+			throw new RegistryError(
+				`Remote desktop engine plugin version ${requiredVersion} required${detail}`,
+				409
+			);
+		}
+	}
 
-        sendRemoteDesktopInput(id: string, burst: RemoteDesktopInputBurst): boolean {
-                const record = this.agents.get(id);
-                if (!record) {
-                        throw new RegistryError('Agent not found', 404);
+	sendRemoteDesktopInput(id: string, burst: RemoteDesktopInputBurst): boolean {
+		const record = this.agents.get(id);
+		if (!record) {
+			throw new RegistryError('Agent not found', 404);
 		}
 
 		const session = record.session;

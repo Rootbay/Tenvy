@@ -9,6 +9,6 @@ export const load: PageLoad = async ({ fetch }) => {
 		throw error(response.status, 'Failed to load agents');
 	}
 
-        const data = (await response.json()) as AgentListResponse;
-        return { agents: data.agents.map((agent) => normalizeAgentLatency(agent)) };
+	const data = (await response.json()) as AgentListResponse;
+	return { agents: data.agents.map((agent) => normalizeAgentLatency(agent)) };
 };

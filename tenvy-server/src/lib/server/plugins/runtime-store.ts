@@ -3,9 +3,7 @@ import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
 import type { PluginDeliveryMode, PluginStatus } from '$lib/data/plugin-view.js';
 import { db } from '$lib/server/db/index.js';
 import { plugin } from '$lib/server/db/schema.js';
-import type {
-        PluginApprovalStatus
-} from '../../../../shared/types/plugin-manifest.js';
+import type { PluginApprovalStatus } from '../../../../shared/types/plugin-manifest.js';
 import type { LoadedPluginManifest } from '$lib/data/plugin-manifests.js';
 
 type PluginTable = typeof plugin;
@@ -35,46 +33,46 @@ export type PluginRuntimePatch = Partial<{
 }>;
 
 export interface PluginRuntimeStore {
-        ensure(record: LoadedPluginManifest): Promise<PluginRuntimeRow>;
-        find(id: string): Promise<PluginRuntimeRow | null>;
-        update(id: string, patch: PluginRuntimePatch): Promise<PluginRuntimeRow>;
+	ensure(record: LoadedPluginManifest): Promise<PluginRuntimeRow>;
+	find(id: string): Promise<PluginRuntimeRow | null>;
+	update(id: string, patch: PluginRuntimePatch): Promise<PluginRuntimeRow>;
 }
 
 const ensureDefaults = (record: LoadedPluginManifest): PluginInsert => {
-        const { manifest, verification } = record;
-        return {
-                id: manifest.id,
-                status: 'active',
-                enabled: true,
-                autoUpdate: manifest.distribution.autoUpdate,
-                installations: 0,
-                manualTargets: 0,
-                autoTargets: 0,
-                defaultDeliveryMode: manifest.distribution.defaultMode,
-                allowManualPush: true,
-                allowAutoSync:
-                        manifest.distribution.defaultMode === 'automatic' || manifest.distribution.autoUpdate,
-                lastManualPushAt: null,
-                lastAutoSyncAt: null,
-                lastDeployedAt: null,
-                lastCheckedAt: null,
-                signatureStatus: verification.status,
-                signatureTrusted: verification.trusted,
-                signatureType: verification.signatureType,
-                signatureHash: verification.hash ?? null,
-                signatureSigner: verification.signer ?? null,
-                signaturePublicKey: verification.publicKey ?? null,
-                signatureCheckedAt: verification.checkedAt,
-                signatureSignedAt: verification.signedAt ?? null,
-                signatureError: verification.error ?? null,
-                signatureErrorCode: verification.errorCode ?? null,
-                signatureChain: verification.certificateChain?.length
-                        ? JSON.stringify(verification.certificateChain)
-                        : null,
-                approvalStatus: 'pending',
-                approvedAt: null,
-                approvalNote: null
-        };
+	const { manifest, verification } = record;
+	return {
+		id: manifest.id,
+		status: 'active',
+		enabled: true,
+		autoUpdate: manifest.distribution.autoUpdate,
+		installations: 0,
+		manualTargets: 0,
+		autoTargets: 0,
+		defaultDeliveryMode: manifest.distribution.defaultMode,
+		allowManualPush: true,
+		allowAutoSync:
+			manifest.distribution.defaultMode === 'automatic' || manifest.distribution.autoUpdate,
+		lastManualPushAt: null,
+		lastAutoSyncAt: null,
+		lastDeployedAt: null,
+		lastCheckedAt: null,
+		signatureStatus: verification.status,
+		signatureTrusted: verification.trusted,
+		signatureType: verification.signatureType,
+		signatureHash: verification.hash ?? null,
+		signatureSigner: verification.signer ?? null,
+		signaturePublicKey: verification.publicKey ?? null,
+		signatureCheckedAt: verification.checkedAt,
+		signatureSignedAt: verification.signedAt ?? null,
+		signatureError: verification.error ?? null,
+		signatureErrorCode: verification.errorCode ?? null,
+		signatureChain: verification.certificateChain?.length
+			? JSON.stringify(verification.certificateChain)
+			: null,
+		approvalStatus: 'pending',
+		approvedAt: null,
+		approvalNote: null
+	};
 };
 
 const normalizePatch = (patch: PluginRuntimePatch): Partial<PluginInsert> => {
@@ -107,37 +105,37 @@ export function createPluginRuntimeStore(database: DatabaseClient = db): PluginR
 		return row ?? null;
 	};
 
-        const ensure = async (record: LoadedPluginManifest): Promise<PluginRuntimeRow> => {
-                const manifest = record.manifest;
-                const defaults = ensureDefaults(record);
+	const ensure = async (record: LoadedPluginManifest): Promise<PluginRuntimeRow> => {
+		const manifest = record.manifest;
+		const defaults = ensureDefaults(record);
 
-                await database.insert(plugin).values(defaults).onConflictDoNothing();
+		await database.insert(plugin).values(defaults).onConflictDoNothing();
 
-                await database
-                        .update(plugin)
-                        .set({
-                                signatureStatus: defaults.signatureStatus,
-                                signatureTrusted: defaults.signatureTrusted,
-                                signatureType: defaults.signatureType,
-                                signatureHash: defaults.signatureHash,
-                                signatureSigner: defaults.signatureSigner,
-                                signaturePublicKey: defaults.signaturePublicKey,
-                                signatureCheckedAt: defaults.signatureCheckedAt,
-                                signatureSignedAt: defaults.signatureSignedAt,
-                                signatureError: defaults.signatureError,
-                                signatureErrorCode: defaults.signatureErrorCode,
-                                signatureChain: defaults.signatureChain,
-                                updatedAt: new Date()
-                        })
-                        .where(eq(plugin.id, manifest.id));
+		await database
+			.update(plugin)
+			.set({
+				signatureStatus: defaults.signatureStatus,
+				signatureTrusted: defaults.signatureTrusted,
+				signatureType: defaults.signatureType,
+				signatureHash: defaults.signatureHash,
+				signatureSigner: defaults.signatureSigner,
+				signaturePublicKey: defaults.signaturePublicKey,
+				signatureCheckedAt: defaults.signatureCheckedAt,
+				signatureSignedAt: defaults.signatureSignedAt,
+				signatureError: defaults.signatureError,
+				signatureErrorCode: defaults.signatureErrorCode,
+				signatureChain: defaults.signatureChain,
+				updatedAt: new Date()
+			})
+			.where(eq(plugin.id, manifest.id));
 
-                const inserted = await find(manifest.id);
-                if (!inserted) {
-                        throw new Error(`Failed to persist runtime state for plugin ${manifest.id}`);
-                }
+		const inserted = await find(manifest.id);
+		if (!inserted) {
+			throw new Error(`Failed to persist runtime state for plugin ${manifest.id}`);
+		}
 
-                return inserted;
-        };
+		return inserted;
+	};
 
 	const update = async (id: string, patch: PluginRuntimePatch): Promise<PluginRuntimeRow> => {
 		const updateValues = normalizePatch(patch);

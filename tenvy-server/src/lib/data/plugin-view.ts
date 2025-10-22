@@ -66,40 +66,40 @@ export type PluginDistributionView = {
 };
 
 export type Plugin = {
-        id: string;
-        name: string;
-        description: string;
-        version: string;
-        author: string;
-        category: PluginCategory;
-        status: PluginStatus;
-        enabled: boolean;
-        autoUpdate: boolean;
-        installations: number;
-        lastDeployed: string;
-        lastChecked: string;
-        size: string;
-        capabilities: string[];
-        artifact: string;
-        distribution: PluginDistributionView;
-        requiredModules: { id: string; title: string }[];
-        approvalStatus: PluginApprovalStatus;
-        approvedAt?: string;
-        signature: PluginSignatureState;
+	id: string;
+	name: string;
+	description: string;
+	version: string;
+	author: string;
+	category: PluginCategory;
+	status: PluginStatus;
+	enabled: boolean;
+	autoUpdate: boolean;
+	installations: number;
+	lastDeployed: string;
+	lastChecked: string;
+	size: string;
+	capabilities: string[];
+	artifact: string;
+	distribution: PluginDistributionView;
+	requiredModules: { id: string; title: string }[];
+	approvalStatus: PluginApprovalStatus;
+	approvedAt?: string;
+	signature: PluginSignatureState;
 };
 
 export type PluginSignatureState = {
-        status: PluginSignatureStatus;
-        trusted: boolean;
-        type: PluginSignatureType;
-        hash?: string | null;
-        signer?: string | null;
-        publicKey?: string | null;
-        signedAt?: string | null;
-        checkedAt?: string | null;
-        error?: string | null;
-        errorCode?: string | null;
-        certificateChain?: string[] | null;
+	status: PluginSignatureStatus;
+	trusted: boolean;
+	type: PluginSignatureType;
+	hash?: string | null;
+	signer?: string | null;
+	publicKey?: string | null;
+	signedAt?: string | null;
+	checkedAt?: string | null;
+	error?: string | null;
+	errorCode?: string | null;
+	certificateChain?: string[] | null;
 };
 
 export type PluginUpdatePayload = {
@@ -180,6 +180,6 @@ export function formatRelativeTime(input?: Date | null): string {
 	return input.toISOString();
 }
 import type {
-        PluginSignatureStatus,
-        PluginSignatureType
+	PluginSignatureStatus,
+	PluginSignatureType
 } from '../../../../shared/types/plugin-manifest.js';

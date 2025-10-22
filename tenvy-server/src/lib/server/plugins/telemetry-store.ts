@@ -2,11 +2,11 @@ import { createHash, randomUUID } from 'crypto';
 import { and, eq, sql } from 'drizzle-orm';
 import type { AgentMetadata } from '../../../../../shared/types/agent.js';
 import {
-        pluginInstallStatuses,
-        type PluginInstallationTelemetry,
-        type PluginManifest,
-        type PluginPlatform,
-        type PluginArchitecture
+	pluginInstallStatuses,
+	type PluginInstallationTelemetry,
+	type PluginManifest,
+	type PluginPlatform,
+	type PluginArchitecture
 } from '../../../../../shared/types/plugin-manifest.js';
 import { loadPluginManifests, type LoadedPluginManifest } from '$lib/data/plugin-manifests.js';
 import { db } from '$lib/server/db/index.js';
@@ -118,49 +118,49 @@ function isArchitectureCompatible(
 }
 
 function buildAuditPayload(details: Record<string, unknown>): {
-        payloadHash: string;
-        result: string;
+	payloadHash: string;
+	result: string;
 } {
-        const serialized = JSON.stringify(details);
-        const hash = createHash('sha256').update(serialized, 'utf8').digest('hex');
-        return { payloadHash: hash, result: serialized };
+	const serialized = JSON.stringify(details);
+	const hash = createHash('sha256').update(serialized, 'utf8').digest('hex');
+	return { payloadHash: hash, result: serialized };
 }
 
 function verificationBlockReason(record: LoadedPluginManifest): string | null {
-        const { verification, manifest } = record;
-        if (!verification || verification.status === 'trusted') {
-                return null;
-        }
+	const { verification, manifest } = record;
+	if (!verification || verification.status === 'trusted') {
+		return null;
+	}
 
-        let message: string;
-        switch (verification.status) {
-        case 'unsigned':
-                message = 'plugin manifest is unsigned';
-                break;
-        case 'untrusted':
-                message = 'plugin signature is not trusted';
-                if (verification.signer) {
-                        message += ` (${verification.signer})`;
-                } else if (manifest.distribution.signature.publicKey) {
-                        message += ` (${manifest.distribution.signature.publicKey})`;
-                }
-                break;
-        case 'invalid':
-        default:
-                message = 'plugin signature verification failed';
-                break;
-        }
+	let message: string;
+	switch (verification.status) {
+		case 'unsigned':
+			message = 'plugin manifest is unsigned';
+			break;
+		case 'untrusted':
+			message = 'plugin signature is not trusted';
+			if (verification.signer) {
+				message += ` (${verification.signer})`;
+			} else if (manifest.distribution.signature.publicKey) {
+				message += ` (${manifest.distribution.signature.publicKey})`;
+			}
+			break;
+		case 'invalid':
+		default:
+			message = 'plugin signature verification failed';
+			break;
+	}
 
-        if (verification.error) {
-                message = `${message}: ${verification.error}`;
-        }
-        return message;
+	if (verification.error) {
+		message = `${message}: ${verification.error}`;
+	}
+	return message;
 }
 
 export class PluginTelemetryStore {
 	private readonly runtimeStore: PluginRuntimeStore;
 	private readonly manifestDirectory?: string;
-        private manifestCache = new Map<string, LoadedPluginManifest>();
+	private manifestCache = new Map<string, LoadedPluginManifest>();
 	private manifestLoadedAt = 0;
 
 	constructor(options: PluginTelemetryStoreOptions = {}) {
@@ -168,11 +168,11 @@ export class PluginTelemetryStore {
 		this.manifestDirectory = options.manifestDirectory;
 	}
 
-        async syncAgent(
-                agentId: string,
-                metadata: AgentMetadata,
-                installations: PluginInstallationTelemetry[]
-        ): Promise<void> {
+	async syncAgent(
+		agentId: string,
+		metadata: AgentMetadata,
+		installations: PluginInstallationTelemetry[]
+	): Promise<void> {
 		if (installations.length === 0) {
 			return;
 		}
@@ -182,14 +182,14 @@ export class PluginTelemetryStore {
 		const processed = new Set<string>();
 
 		for (const installation of installations) {
-                        const record = this.manifestCache.get(installation.pluginId);
-                        if (!record) {
-                                console.warn(`agent ${agentId} reported unknown plugin ${installation.pluginId}`);
-                                continue;
-                        }
+			const record = this.manifestCache.get(installation.pluginId);
+			if (!record) {
+				console.warn(`agent ${agentId} reported unknown plugin ${installation.pluginId}`);
+				continue;
+			}
 
-                        const runtimeRow = await this.runtimeStore.ensure(record);
-                        const manifest = record.manifest;
+			const runtimeRow = await this.runtimeStore.ensure(record);
+			const manifest = record.manifest;
 
 			const current = await db
 				.select()
@@ -219,20 +219,20 @@ export class PluginTelemetryStore {
 					manifest.requirements.maxAgentVersion
 				);
 
-                        const signatureReason = verificationBlockReason(record);
+			const signatureReason = verificationBlockReason(record);
 
-                        const signedHash = manifest.package.hash?.toLowerCase();
-                        const observedHash = installation.hash?.toLowerCase();
+			const signedHash = manifest.package.hash?.toLowerCase();
+			const observedHash = installation.hash?.toLowerCase();
 
-                        if (signatureReason) {
-                                status = 'blocked';
-                                reason = signatureReason;
-                        } else if (approvalStatus !== 'approved') {
-                                status = 'blocked';
-                                reason = reason ?? 'awaiting approval';
-                        } else if (!compatible) {
-                                status = 'blocked';
-                                reason = reason ?? 'agent incompatible with plugin requirements';
+			if (signatureReason) {
+				status = 'blocked';
+				reason = signatureReason;
+			} else if (approvalStatus !== 'approved') {
+				status = 'blocked';
+				reason = reason ?? 'awaiting approval';
+			} else if (!compatible) {
+				status = 'blocked';
+				reason = reason ?? 'agent incompatible with plugin requirements';
 			} else if (manifest.distribution.signature.type !== 'none') {
 				if (!observedHash) {
 					status = 'blocked';
@@ -288,63 +288,63 @@ export class PluginTelemetryStore {
 			processed.add(installation.pluginId);
 		}
 
-                for (const pluginId of processed) {
-                        await this.refreshAggregates(pluginId);
-                }
-        }
+		for (const pluginId of processed) {
+			await this.refreshAggregates(pluginId);
+		}
+	}
 
-        async getAgentPlugin(agentId: string, pluginId: string): Promise<AgentPluginRecord | null> {
-                await this.ensureManifestIndex();
-                const [row] = await db
-                        .select({
-                                pluginId: pluginInstallationTable.pluginId,
-                                agentId: pluginInstallationTable.agentId,
-                                status: pluginInstallationTable.status,
-                                version: pluginInstallationTable.version,
-                                hash: pluginInstallationTable.hash,
-                                enabled: pluginInstallationTable.enabled,
-                                error: pluginInstallationTable.error,
-                                lastDeployedAt: pluginInstallationTable.lastDeployedAt,
-                                lastCheckedAt: pluginInstallationTable.lastCheckedAt,
-                                approvalStatus: pluginTable.approvalStatus,
-                                approvalNote: pluginTable.approvalNote,
-                                approvedAt: pluginTable.approvedAt
-                        })
-                        .from(pluginInstallationTable)
-                        .innerJoin(pluginTable, eq(pluginInstallationTable.pluginId, pluginTable.id))
-                        .where(
-                                and(
-                                        eq(pluginInstallationTable.agentId, agentId),
-                                        eq(pluginInstallationTable.pluginId, pluginId)
-                                )
-                        )
-                        .limit(1);
+	async getAgentPlugin(agentId: string, pluginId: string): Promise<AgentPluginRecord | null> {
+		await this.ensureManifestIndex();
+		const [row] = await db
+			.select({
+				pluginId: pluginInstallationTable.pluginId,
+				agentId: pluginInstallationTable.agentId,
+				status: pluginInstallationTable.status,
+				version: pluginInstallationTable.version,
+				hash: pluginInstallationTable.hash,
+				enabled: pluginInstallationTable.enabled,
+				error: pluginInstallationTable.error,
+				lastDeployedAt: pluginInstallationTable.lastDeployedAt,
+				lastCheckedAt: pluginInstallationTable.lastCheckedAt,
+				approvalStatus: pluginTable.approvalStatus,
+				approvalNote: pluginTable.approvalNote,
+				approvedAt: pluginTable.approvedAt
+			})
+			.from(pluginInstallationTable)
+			.innerJoin(pluginTable, eq(pluginInstallationTable.pluginId, pluginTable.id))
+			.where(
+				and(
+					eq(pluginInstallationTable.agentId, agentId),
+					eq(pluginInstallationTable.pluginId, pluginId)
+				)
+			)
+			.limit(1);
 
-                if (!row) {
-                        return null;
-                }
+		if (!row) {
+			return null;
+		}
 
-                return {
-                        pluginId: row.pluginId,
-                        agentId: row.agentId,
-                        status: row.status,
-                        version: row.version,
-                        hash: row.hash ?? null,
-                        enabled: Boolean(row.enabled),
-                        error: row.error ?? null,
-                        lastDeployedAt: row.lastDeployedAt ?? null,
-                        lastCheckedAt: row.lastCheckedAt ?? null,
-                        approvalStatus: row.approvalStatus,
-                        approvalNote: row.approvalNote ?? null,
-                        approvedAt: row.approvedAt ?? null
-                } satisfies AgentPluginRecord;
-        }
+		return {
+			pluginId: row.pluginId,
+			agentId: row.agentId,
+			status: row.status,
+			version: row.version,
+			hash: row.hash ?? null,
+			enabled: Boolean(row.enabled),
+			error: row.error ?? null,
+			lastDeployedAt: row.lastDeployedAt ?? null,
+			lastCheckedAt: row.lastCheckedAt ?? null,
+			approvalStatus: row.approvalStatus,
+			approvalNote: row.approvalNote ?? null,
+			approvedAt: row.approvedAt ?? null
+		} satisfies AgentPluginRecord;
+	}
 
-        async listAgentPlugins(agentId: string): Promise<AgentPluginRecord[]> {
-                await this.ensureManifestIndex();
-                const rows = await db
-                        .select({
-                                pluginId: pluginInstallationTable.pluginId,
+	async listAgentPlugins(agentId: string): Promise<AgentPluginRecord[]> {
+		await this.ensureManifestIndex();
+		const rows = await db
+			.select({
+				pluginId: pluginInstallationTable.pluginId,
 				agentId: pluginInstallationTable.agentId,
 				status: pluginInstallationTable.status,
 				version: pluginInstallationTable.version,
@@ -423,13 +423,13 @@ export class PluginTelemetryStore {
 		}
 
 		const records = await loadPluginManifests({ directory: this.manifestDirectory });
-                const index = new Map<string, LoadedPluginManifest>();
-                for (const record of records) {
-                        index.set(record.manifest.id, record);
-                }
-                this.manifestCache = index;
-                this.manifestLoadedAt = now;
-        }
+		const index = new Map<string, LoadedPluginManifest>();
+		for (const record of records) {
+			index.set(record.manifest.id, record);
+		}
+		this.manifestCache = index;
+		this.manifestLoadedAt = now;
+	}
 
 	private async refreshAggregates(pluginId: string): Promise<void> {
 		const [row] = await db
