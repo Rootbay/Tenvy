@@ -77,17 +77,18 @@ var (
 )
 
 type Manager struct {
-	mu           sync.RWMutex
-	path         string
-	localKey     []byte
-	sharedKey    []byte
-	notes        map[string]storedNote
-	dirty        bool
-	lastSync     time.Time
-	syncInterval time.Duration
+	mu             sync.RWMutex
+	path           string
+	localKey       []byte
+	sharedKey      []byte
+	legacyLocalKey []byte
+	notes          map[string]storedNote
+	dirty          bool
+	lastSync       time.Time
+	syncInterval   time.Duration
 }
 
-func NewManager(path, localKeyMaterial, sharedKeyMaterial string) (*Manager, error) {
+func NewManager(path, localKeyMaterial, sharedKeyMaterial, legacyLocalKeyMaterial string) (*Manager, error) {
 	if strings.TrimSpace(path) == "" {
 		return nil, errors.New("notes path is required")
 	}
@@ -103,6 +104,10 @@ func NewManager(path, localKeyMaterial, sharedKeyMaterial string) (*Manager, err
 		sharedKey:    deriveKey(sharedKeyMaterial),
 		notes:        make(map[string]storedNote),
 		syncInterval: 2 * time.Minute,
+	}
+
+	if strings.TrimSpace(legacyLocalKeyMaterial) != "" {
+		manager.legacyLocalKey = deriveKey(legacyLocalKeyMaterial)
 	}
 
 	if err := manager.loadFromDisk(); err != nil {
@@ -182,6 +187,34 @@ func (m *Manager) keyFor(shared bool) []byte {
 		return m.sharedKey
 	}
 	return m.localKey
+}
+
+func (m *Manager) decryptStoredLocked(stored storedNote) (noteContent, bool, error) {
+	content, err := decryptNote(m.keyFor(stored.Shared), stored)
+	if err == nil {
+		return content, false, nil
+	}
+
+	if stored.Shared || len(m.legacyLocalKey) == 0 {
+		return noteContent{}, false, err
+	}
+
+	legacyContent, legacyErr := decryptNote(m.legacyLocalKey, stored)
+	if legacyErr != nil {
+		return noteContent{}, false, err
+	}
+
+	ciphertext, nonce, digest, encErr := encryptNote(m.localKey, legacyContent)
+	if encErr != nil {
+		return noteContent{}, false, encErr
+	}
+
+	stored.Ciphertext = ciphertext
+	stored.Nonce = nonce
+	stored.Digest = digest
+	m.notes[stored.ID] = stored
+
+	return legacyContent, true, nil
 }
 
 func encryptNote(key []byte, content noteContent) (ciphertext, nonce, digest string, err error) {
@@ -327,8 +360,8 @@ func (m *Manager) SaveNote(input Note, expectedVersion int) (Note, error) {
 }
 
 func (m *Manager) ListNotes() ([]Note, error) {
-	m.mu.RLock()
-	defer m.mu.RUnlock()
+	m.mu.Lock()
+	defer m.mu.Unlock()
 
 	notes := make([]Note, 0, len(m.notes))
 	ids := make([]string, 0, len(m.notes))
@@ -337,11 +370,15 @@ func (m *Manager) ListNotes() ([]Note, error) {
 	}
 	sort.Strings(ids)
 
+	migrated := false
 	for _, id := range ids {
 		stored := m.notes[id]
-		content, err := decryptNote(m.keyFor(stored.Shared), stored)
+		content, migratedNote, err := m.decryptStoredLocked(stored)
 		if err != nil {
 			continue
+		}
+		if migratedNote {
+			migrated = true
 		}
 		notes = append(notes, Note{
 			ID:        stored.ID,
@@ -351,6 +388,12 @@ func (m *Manager) ListNotes() ([]Note, error) {
 			Version:   stored.Version,
 			UpdatedAt: stored.UpdatedAt,
 		})
+	}
+
+	if migrated {
+		if err := m.persistLocked(); err != nil {
+			return nil, err
+		}
 	}
 
 	return notes, nil
