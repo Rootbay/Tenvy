@@ -3,6 +3,7 @@ module github.com/rootbay/tenvy-client
 go 1.22
 
 require (
+	github.com/blackjack/webcam v0.6.1
 	github.com/cespare/xxhash/v2 v2.2.0
 	github.com/gen2brain/malgo v0.11.24
 	github.com/jezek/xgb v1.1.1
@@ -48,9 +49,9 @@ require (
 	github.com/stretchr/testify v1.9.0 // indirect
 	github.com/tklauser/go-sysconf v0.3.12 // indirect
 	github.com/tklauser/numcpus v0.6.1 // indirect
-	github.com/vmihailenco/msgpack/v5 v5.4.1 // indirect
+	github.com/vmihailenco/msgpack/v5 v5.4.1
 	github.com/vmihailenco/tagparser/v2 v2.0.0 // indirect
-	github.com/yusufpapurcu/wmi v1.2.4 // indirect
+	github.com/yusufpapurcu/wmi v1.2.4
 	go.uber.org/mock v0.4.0 // indirect
 	golang.org/x/crypto v0.23.0 // indirect
 	golang.org/x/exp v0.0.0-20240506185415-9bf2ced13842 // indirect
