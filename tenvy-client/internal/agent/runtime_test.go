@@ -27,6 +27,16 @@ func TestCanonicalizeServerURL(t *testing.T) {
 			want:  "https://controller.example.com",
 		},
 		{
+			name:  "ipv6 without port",
+			input: "https://[2001:db8::1]",
+			want:  "https://[2001:db8::1]",
+		},
+		{
+			name:  "ipv6 with port",
+			input: "https://[2001:db8::1]:8443",
+			want:  "https://[2001:db8::1]:8443",
+		},
+		{
 			name:    "http disallowed",
 			input:   "http://[::1]:8080",
 			wantErr: true,

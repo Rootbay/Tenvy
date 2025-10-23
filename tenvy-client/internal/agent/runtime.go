@@ -237,7 +237,11 @@ func canonicalizeServerURL(raw string) (string, error) {
 	if port != "" {
 		parsed.Host = net.JoinHostPort(host, port)
 	} else {
-		parsed.Host = host
+		if strings.Contains(host, ":") {
+			parsed.Host = "[" + host + "]"
+		} else {
+			parsed.Host = host
+		}
 	}
 
 	return parsed.String(), nil
