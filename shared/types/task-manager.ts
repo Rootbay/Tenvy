@@ -60,3 +60,42 @@ export interface ProcessActionResponse {
         status: 'ok';
         message?: string;
 }
+
+export type TaskManagerOperation = 'list' | 'detail' | 'start' | 'action';
+
+export interface TaskManagerListCommandRequest {
+        operation: 'list';
+}
+
+export interface TaskManagerDetailCommandRequest {
+        operation: 'detail';
+        pid: number;
+}
+
+export interface TaskManagerStartCommandRequest {
+        operation: 'start';
+        payload: StartProcessRequest;
+}
+
+export interface TaskManagerActionCommandRequest {
+        operation: 'action';
+        pid: number;
+        action: ProcessAction;
+}
+
+export type TaskManagerCommandRequest =
+        | TaskManagerListCommandRequest
+        | TaskManagerDetailCommandRequest
+        | TaskManagerStartCommandRequest
+        | TaskManagerActionCommandRequest;
+
+export interface TaskManagerCommandPayload {
+        request: TaskManagerCommandRequest;
+}
+
+export type TaskManagerCommandResponse =
+        | { operation: 'list'; status: 'ok'; result: ProcessListResponse }
+        | { operation: 'detail'; status: 'ok'; result: ProcessDetail }
+        | { operation: 'start'; status: 'ok'; result: StartProcessResponse }
+        | { operation: 'action'; status: 'ok'; result: ProcessActionResponse }
+        | { operation: TaskManagerOperation; status: 'error'; error: string; code?: string; details?: unknown };

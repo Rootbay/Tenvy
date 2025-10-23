@@ -14,6 +14,7 @@ import type { TcpConnectionsCommandPayload } from "./tcp-connections";
 import type { ClientChatCommandPayload } from "./client-chat";
 import type { ToolActivationCommandPayload } from "./tool-activation";
 import type { WebcamCommandPayload } from "./webcam";
+import type { TaskManagerCommandPayload } from "./task-manager";
 
 export type CommandName =
   | "ping"
@@ -30,7 +31,8 @@ export type CommandName =
   | "tcp-connections"
   | "client-chat"
   | "tool-activation"
-  | "webcam-control";
+  | "webcam-control"
+  | "task-manager";
 
 export interface PingCommandPayload {
   message?: string;
@@ -82,7 +84,8 @@ export type CommandPayload =
   | TcpConnectionsCommandPayload
   | ClientChatCommandPayload
   | ToolActivationCommandPayload
-  | WebcamCommandPayload;
+  | WebcamCommandPayload
+  | TaskManagerCommandPayload;
 
 export interface CommandInput {
   name: CommandName;
