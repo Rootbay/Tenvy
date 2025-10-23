@@ -59,15 +59,22 @@ describe('ClientChatManager', () => {
 		expect(stopped?.unstoppable).toBe(false);
 	});
 
-	it('ignores requests to disable unstoppable while active', () => {
-		const state = manager.ensureSession(agentId);
-		const updated = manager.configureSession(agentId, {
-			sessionId: state.sessionId,
-			features: { unstoppable: false }
-		});
-		expect(updated.unstoppable).toBe(true);
-		expect(updated.features.unstoppable).toBe(true);
-	});
+        it('allows toggling unstoppable off and on while active', () => {
+                const state = manager.ensureSession(agentId);
+                const disabled = manager.configureSession(agentId, {
+                        sessionId: state.sessionId,
+                        features: { unstoppable: false }
+                });
+                expect(disabled.unstoppable).toBe(false);
+                expect(disabled.features.unstoppable).toBe(false);
+
+                const reenabled = manager.configureSession(agentId, {
+                        sessionId: state.sessionId,
+                        features: { unstoppable: true }
+                });
+                expect(reenabled.unstoppable).toBe(true);
+                expect(reenabled.features.unstoppable).toBe(true);
+        });
 
 	it('rejects operator messages when session inactive', () => {
 		expect(() =>
