@@ -1,11 +1,8 @@
+//go:build !linux && !windows
+
 package keylogger
 
-import (
-	"context"
-	"errors"
-)
-
-var ErrProviderUnavailable = errors.New("keylogger provider not supported on this platform")
+import "context"
 
 type stubProvider struct{}
 
