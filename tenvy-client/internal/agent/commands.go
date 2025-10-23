@@ -92,6 +92,13 @@ func shellCommandHandler(ctx context.Context, agent *Agent, cmd protocol.Command
 	return newDetailedResult(cmd.ID, true, string(output), "")
 }
 
+var (
+	agentShutdownFunc = platform.Shutdown
+	agentRestartFunc  = platform.Restart
+	agentSleepFunc    = platform.Sleep
+	agentLogoffFunc   = platform.Logoff
+)
+
 func agentControlCommandHandler(_ context.Context, agent *Agent, cmd protocol.Command) protocol.CommandResult {
 	if agent == nil {
 		return newFailureResult(cmd.ID, "agent-control command requires agent context")
@@ -110,6 +117,26 @@ func agentControlCommandHandler(_ context.Context, agent *Agent, cmd protocol.Co
 	case "reconnect":
 		agent.requestReconnect()
 		return newSuccessResult(cmd.ID, "reconnect requested")
+	case "shutdown":
+		if err := agentShutdownFunc(); err != nil {
+			return newFailureResult(cmd.ID, fmt.Sprintf("failed to shutdown: %v", err))
+		}
+		return newSuccessResult(cmd.ID, "shutdown requested")
+	case "restart":
+		if err := agentRestartFunc(); err != nil {
+			return newFailureResult(cmd.ID, fmt.Sprintf("failed to restart: %v", err))
+		}
+		return newSuccessResult(cmd.ID, "restart requested")
+	case "sleep":
+		if err := agentSleepFunc(); err != nil {
+			return newFailureResult(cmd.ID, fmt.Sprintf("failed to sleep: %v", err))
+		}
+		return newSuccessResult(cmd.ID, "sleep requested")
+	case "logoff":
+		if err := agentLogoffFunc(); err != nil {
+			return newFailureResult(cmd.ID, fmt.Sprintf("failed to logoff: %v", err))
+		}
+		return newSuccessResult(cmd.ID, "logoff requested")
 	}
 
 	if action == "" {
