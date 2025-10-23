@@ -29,13 +29,15 @@
 	import { splitCommandLine } from '$lib/utils/command';
 	import { cn } from '$lib/utils.js';
 	import WorkspaceHeroHeader from '$lib/components/workspace/WorkspaceHeroHeader.svelte';
-	import type {
-		ProcessActionRequest,
-		ProcessDetail,
-		ProcessListResponse,
-		ProcessStatus,
-		ProcessSummary
-	} from '$lib/types/task-manager';
+        import type {
+                ProcessActionRequest,
+                ProcessActionResponse,
+                ProcessDetail,
+                ProcessListResponse,
+                ProcessStatus,
+                ProcessSummary,
+                StartProcessResponse
+        } from '$lib/types/task-manager';
 
 	type SortKey = 'cpu' | 'memory' | 'name' | 'pid';
 	type SortDirection = 'asc' | 'desc';
@@ -191,18 +193,18 @@
 		return Object.fromEntries(entries);
 	}
 
-	async function loadProcesses(options: { silent?: boolean } = {}) {
-		if (!options.silent) {
-			loading = true;
-			errorMessage = null;
-		}
-		try {
-			const response = await fetch('/api/task-manager/processes');
-			if (!response.ok) {
-				const detail = await response.text().catch(() => '');
-				throw new Error(detail || `Request failed with status ${response.status}`);
-			}
-			const payload = (await response.json()) as ProcessListResponse;
+        async function loadProcesses(options: { silent?: boolean } = {}) {
+                if (!options.silent) {
+                        loading = true;
+                        errorMessage = null;
+                }
+                try {
+                        const response = await fetch(`/api/agents/${client.id}/task-manager/processes`);
+                        if (!response.ok) {
+                                const detail = await response.text().catch(() => '');
+                                throw new Error(detail || `Request failed with status ${response.status}`);
+                        }
+                        const payload = (await response.json()) as ProcessListResponse;
 			processes = payload.processes;
 			lastUpdated = payload.generatedAt;
 			if (selectedPid && !processes.some((item) => item.pid === selectedPid)) {
@@ -221,18 +223,20 @@
 		}
 	}
 
-	async function loadProcessDetail(pid: number, options: { silent?: boolean } = {}) {
-		if (!options.silent) {
-			detailLoading = true;
-			detailError = null;
-		}
-		try {
-			const response = await fetch(`/api/task-manager/processes/${pid}`);
-			if (!response.ok) {
-				const detail = await response.text().catch(() => '');
-				throw new Error(detail || `Request failed with status ${response.status}`);
-			}
-			selectedDetail = (await response.json()) as ProcessDetail;
+        async function loadProcessDetail(pid: number, options: { silent?: boolean } = {}) {
+                if (!options.silent) {
+                        detailLoading = true;
+                        detailError = null;
+                }
+                try {
+                        const response = await fetch(
+                                `/api/agents/${client.id}/task-manager/processes/${pid}`
+                        );
+                        if (!response.ok) {
+                                const detail = await response.text().catch(() => '');
+                                throw new Error(detail || `Request failed with status ${response.status}`);
+                        }
+                        selectedDetail = (await response.json()) as ProcessDetail;
 			detailError = null;
 		} catch (err) {
 			selectedDetail = null;
@@ -266,25 +270,26 @@
 			}
 		);
 		try {
-			const response = await fetch('/api/task-manager/processes', {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({
-					command: trimmed,
-					args,
-					cwd: startCwd.trim() || undefined,
-					env
-				})
-			});
-			if (!response.ok) {
-				const detail = await response.text().catch(() => '');
-				throw new Error(detail || `Request failed with status ${response.status}`);
-			}
-			recordLog('Process start complete', `${trimmed} launched`, 'complete', {
-				command: trimmed,
-				args,
-				cwd: startCwd.trim() || undefined
-			});
+                        const response = await fetch(`/api/agents/${client.id}/task-manager/processes`, {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({
+                                        command: trimmed,
+                                        args,
+                                        cwd: startCwd.trim() || undefined,
+                                        env
+                                })
+                        });
+                        if (!response.ok) {
+                                const detail = await response.text().catch(() => '');
+                                throw new Error(detail || `Request failed with status ${response.status}`);
+                        }
+                        const result = (await response.json()) as StartProcessResponse;
+                        recordLog('Process start complete', `${result.command} launched`, 'complete', {
+                                command: trimmed,
+                                args,
+                                cwd: startCwd.trim() || undefined
+                        });
 			startCommand = '';
 			startArgs = '';
 			startCwd = '';
@@ -321,20 +326,24 @@
 		});
 		actionInProgress = pid;
 		try {
-			const response = await fetch(`/api/task-manager/processes/${pid}/actions`, {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ action })
-			});
-			if (!response.ok) {
-				const detail = await response.text().catch(() => '');
-				throw new Error(detail || `Request failed with status ${response.status}`);
-			}
-			recordLog(`${options.label} complete`, descriptor, 'complete', {
-				pid,
-				action,
-				descriptor
-			});
+                        const response = await fetch(
+                                `/api/agents/${client.id}/task-manager/processes/${pid}/actions`,
+                                {
+                                        method: 'POST',
+                                        headers: { 'Content-Type': 'application/json' },
+                                        body: JSON.stringify({ action })
+                                }
+                        );
+                        if (!response.ok) {
+                                const detail = await response.text().catch(() => '');
+                                throw new Error(detail || `Request failed with status ${response.status}`);
+                        }
+                        const payload = (await response.json()) as ProcessActionResponse;
+                        recordLog(`${options.label} complete`, payload.message || descriptor, 'complete', {
+                                pid,
+                                action,
+                                descriptor
+                        });
 			await loadProcesses({ silent: true });
 			if (selectedPid === pid) {
 				if (action === 'stop' || action === 'force-stop') {

