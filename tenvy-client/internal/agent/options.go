@@ -27,20 +27,21 @@ const (
 // RuntimeOptions defines the dependencies and configuration required to run an
 // agent instance.
 type RuntimeOptions struct {
-	Logger         *log.Logger
-	HTTPClient     *http.Client
-	ServerURL      string
-	SharedSecret   string
-	Preferences    BuildPreferences
-	Metadata       protocol.AgentMetadata
-	BuildVersion   string
-	ShutdownGrace  time.Duration
-	TimingOverride TimingOverride
-	ResultStore    ResultStoreOptions
-	Watchdog       WatchdogConfig
-	Execution      ExecutionGates
-	CustomHeaders  []CustomHeader
-	CustomCookies  []CustomCookie
+	Logger            *log.Logger
+	HTTPClient        *http.Client
+	ServerURL         string
+	SharedSecret      string
+	Preferences       BuildPreferences
+	Metadata          protocol.AgentMetadata
+	BuildVersion      string
+	UserAgentOverride string
+	ShutdownGrace     time.Duration
+	TimingOverride    TimingOverride
+	ResultStore       ResultStoreOptions
+	Watchdog          WatchdogConfig
+	Execution         ExecutionGates
+	CustomHeaders     []CustomHeader
+	CustomCookies     []CustomCookie
 }
 
 // TimingOverride allows build-time or environment overrides for default

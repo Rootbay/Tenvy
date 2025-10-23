@@ -112,6 +112,7 @@ func runAgentOnce(ctx context.Context, opts RuntimeOptions) error {
 		opts.maxBackoffOverride(),
 		opts.CustomHeaders,
 		opts.CustomCookies,
+		opts.UserAgentOverride,
 	)
 	if err != nil {
 		return fmt.Errorf("failed to register agent: %w", err)
@@ -125,24 +126,25 @@ func runAgentOnce(ctx context.Context, opts RuntimeOptions) error {
 	scriptDir := defaultScriptDirectory(opts.Preferences)
 
 	agent := &Agent{
-		id:              registration.AgentID,
-		key:             registration.AgentKey,
-		baseURL:         opts.ServerURL,
-		client:          client,
-		config:          registration.Config,
-		logger:          opts.Logger,
-		pendingResults:  make([]protocol.CommandResult, 0, opts.ResultStore.HotCache),
-		resultStore:     store,
-		resultCacheSize: opts.ResultStore.HotCache,
-		startTime:       time.Now(),
-		metadata:        metadata,
-		sharedSecret:    opts.SharedSecret,
-		preferences:     opts.Preferences,
-		buildVersion:    opts.BuildVersion,
-		timing:          opts.TimingOverride,
-		requestHeaders:  opts.CustomHeaders,
-		requestCookies:  opts.CustomCookies,
-		options:         options.NewManager(options.ManagerOptions{ScriptDirectory: scriptDir}),
+		id:                registration.AgentID,
+		key:               registration.AgentKey,
+		baseURL:           opts.ServerURL,
+		client:            client,
+		config:            registration.Config,
+		logger:            opts.Logger,
+		pendingResults:    make([]protocol.CommandResult, 0, opts.ResultStore.HotCache),
+		resultStore:       store,
+		resultCacheSize:   opts.ResultStore.HotCache,
+		startTime:         time.Now(),
+		metadata:          metadata,
+		sharedSecret:      opts.SharedSecret,
+		preferences:       opts.Preferences,
+		buildVersion:      opts.BuildVersion,
+		userAgentOverride: opts.UserAgentOverride,
+		timing:            opts.TimingOverride,
+		requestHeaders:    opts.CustomHeaders,
+		requestCookies:    opts.CustomCookies,
+		options:           options.NewManager(options.ManagerOptions{ScriptDirectory: scriptDir}),
 	}
 
 	agent.reloadResultCache()
