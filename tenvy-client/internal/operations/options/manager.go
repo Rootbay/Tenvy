@@ -1,16 +1,35 @@
 package options
 
 import (
+	"context"
+	"crypto/sha256"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
 )
 
 type ScriptFile struct {
+	Name     string
+	Size     int64
+	Type     string
+	Path     string
+	Checksum string
+}
+
+type ScriptPayload struct {
+	Data []byte
 	Name string
 	Size int64
 	Type string
+}
+
+type ScriptFetcher func(ctx context.Context, token string) (*ScriptPayload, error)
+
+type ManagerOptions struct {
+	ScriptDirectory string
 }
 
 type ScriptConfig struct {
@@ -37,12 +56,20 @@ type State struct {
 }
 
 type Manager struct {
-	mu    sync.RWMutex
-	state State
+	mu        sync.RWMutex
+	state     State
+	scriptDir string
 }
 
-func NewManager() *Manager {
+func NewManager(opts ManagerOptions) *Manager {
+	dir := strings.TrimSpace(opts.ScriptDirectory)
+	if dir == "" {
+		dir = filepath.Join(os.TempDir(), "tenvy", "scripts")
+	}
+	dir = filepath.Clean(dir)
+
 	return &Manager{
+		scriptDir: dir,
 		state: State{
 			VisualDistortion:  "None",
 			ScreenOrientation: "Normal",
@@ -68,7 +95,7 @@ func (m *Manager) Snapshot() State {
 	return m.state
 }
 
-func (m *Manager) ApplyOperation(rawOperation string, metadata map[string]any) (string, error) {
+func (m *Manager) ApplyOperation(ctx context.Context, rawOperation string, metadata map[string]any, fetcher ScriptFetcher) (string, error) {
 	if m == nil {
 		return "", fmt.Errorf("options manager not initialized")
 	}
@@ -197,9 +224,125 @@ func (m *Manager) ApplyOperation(rawOperation string, metadata map[string]any) (
 		if fileTypeErr != nil {
 			return "", fileTypeErr
 		}
+		checksum, hasChecksum, checksumErr := optionalString(metadata, "sha256")
+		if checksumErr != nil {
+			return "", checksumErr
+		}
+		token, hasToken, tokenErr := optionalString(metadata, "stagingToken")
+		if tokenErr != nil {
+			return "", tokenErr
+		}
+
+		finalType := strings.TrimSpace(fileType)
+		finalSize := size
+		finalChecksum := strings.TrimSpace(checksum)
+		storedPath := ""
+
+		if hasToken {
+			if fetcher == nil {
+				return "", fmt.Errorf("script staging token provided but fetcher unavailable")
+			}
+			payload, err := fetcher(ctx, token)
+			if err != nil {
+				return "", err
+			}
+			if payload == nil || len(payload.Data) == 0 {
+				return "", fmt.Errorf("staged script payload empty")
+			}
+			if trimmed := strings.TrimSpace(payload.Name); trimmed != "" {
+				fileName = trimmed
+			}
+			if trimmed := strings.TrimSpace(payload.Type); trimmed != "" {
+				finalType = trimmed
+			}
+			if payload.Size > 0 {
+				finalSize = payload.Size
+			} else {
+				finalSize = int64(len(payload.Data))
+			}
+
+			hash := sha256.Sum256(payload.Data)
+			computedChecksum := fmt.Sprintf("%x", hash[:])
+			if hasChecksum && !strings.EqualFold(finalChecksum, computedChecksum) {
+				return "", fmt.Errorf("script checksum mismatch")
+			}
+			finalChecksum = computedChecksum
+
+			if err := os.MkdirAll(m.scriptDir, 0o755); err != nil {
+				return "", fmt.Errorf("prepare script directory: %w", err)
+			}
+
+			sanitizedToken := sanitizeComponent(token)
+			if sanitizedToken == "" {
+				sanitizedToken = "staged"
+			}
+			sanitizedName := sanitizeComponent(fileName)
+			if sanitizedName == "" {
+				sanitizedName = "script"
+			}
+			storedName := sanitizedToken + "-" + sanitizedName
+			if len(storedName) > 240 {
+				storedName = storedName[:240]
+			}
+			path := filepath.Join(m.scriptDir, storedName)
+
+			tmp, err := os.CreateTemp(m.scriptDir, "script-*.tmp")
+			if err != nil {
+				return "", fmt.Errorf("create temporary script file: %w", err)
+			}
+			tmpName := tmp.Name()
+			if _, err := tmp.Write(payload.Data); err != nil {
+				tmp.Close()
+				os.Remove(tmpName)
+				return "", fmt.Errorf("write script file: %w", err)
+			}
+			if err := tmp.Close(); err != nil {
+				os.Remove(tmpName)
+				return "", fmt.Errorf("finalize script file: %w", err)
+			}
+			if err := os.Rename(tmpName, path); err != nil {
+				os.Remove(tmpName)
+				return "", fmt.Errorf("persist script file: %w", err)
+			}
+			storedPath = path
+			finalSize = int64(len(payload.Data))
+		} else {
+			m.mu.RLock()
+			if existing := m.state.Script.File; existing != nil {
+				if storedPath == "" {
+					storedPath = existing.Path
+				}
+				if finalChecksum == "" {
+					finalChecksum = existing.Checksum
+				}
+				if finalSize <= 0 {
+					finalSize = existing.Size
+				}
+				if strings.TrimSpace(finalType) == "" {
+					finalType = existing.Type
+				}
+			}
+			m.mu.RUnlock()
+		}
+
 		m.mu.Lock()
-		m.state.Script.File = &ScriptFile{Name: fileName, Size: size, Type: fileType}
+		var previousPath string
+		if hasToken && m.state.Script.File != nil {
+			previousPath = m.state.Script.File.Path
+		}
+		m.state.Script.File = &ScriptFile{
+			Name:     fileName,
+			Size:     finalSize,
+			Type:     finalType,
+			Path:     storedPath,
+			Checksum: finalChecksum,
+		}
 		m.mu.Unlock()
+
+		if hasToken && previousPath != "" && previousPath != storedPath {
+			_ = os.Remove(previousPath)
+		}
+
 		return fmt.Sprintf("Script %s staged", fileName), nil
 
 	case "script-mode":
@@ -373,6 +516,39 @@ func optionalString(metadata map[string]any, key string) (string, bool, error) {
 		return "", false, err
 	}
 	return coerced, true, nil
+}
+
+func sanitizeComponent(value string) string {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" {
+		return ""
+	}
+
+	var builder strings.Builder
+	for _, r := range trimmed {
+		switch {
+		case r >= 'a' && r <= 'z':
+			builder.WriteRune(r)
+		case r >= 'A' && r <= 'Z':
+			builder.WriteRune(r)
+		case r >= '0' && r <= '9':
+			builder.WriteRune(r)
+		case r == '-', r == '_', r == '.':
+			builder.WriteRune(r)
+		default:
+			builder.WriteRune('-')
+		}
+	}
+
+	sanitized := builder.String()
+	sanitized = strings.Trim(sanitized, "-")
+	for strings.Contains(sanitized, "--") {
+		sanitized = strings.ReplaceAll(sanitized, "--", "-")
+	}
+	if len(sanitized) > 128 {
+		sanitized = sanitized[:128]
+	}
+	return sanitized
 }
 
 func coerceString(value any) (string, error) {

@@ -256,18 +256,63 @@
                 const file = files[0];
                 scriptFile = file;
 
-                const success = await dispatchOptionChange({
-                        action: 'script-file',
-                        metadata: {
-                                fileName: file.name,
-                                size: file.size,
-                                type: file.type
-                        },
-                        successTitle: `Script ${file.name} staged`,
-                        failureTitle: 'Failed to stage script file'
-                });
+                try {
+                        const formData = new FormData();
+                        formData.append('script', file);
 
-                if (!success) {
+                        const response = await fetch(`/api/agents/${client.id}/options/script`, {
+                                method: 'POST',
+                                body: formData
+                        });
+
+                        if (!response.ok) {
+                                const detail = (await response.text().catch(() => ''))?.trim();
+                                throw new Error(detail || 'Failed to stage script file.');
+                        }
+
+                        const payload = (await response.json()) as {
+                                stagingToken: string;
+                                fileName?: string;
+                                size?: number;
+                                type?: string;
+                                sha256?: string;
+                        };
+
+                        if (!payload?.stagingToken) {
+                                throw new Error('Staging token missing from response.');
+                        }
+
+                        const metadata: Record<string, unknown> = {
+                                stagingToken: payload.stagingToken,
+                                fileName: payload.fileName ?? file.name,
+                                size: payload.size ?? file.size,
+                                type: payload.type ?? file.type
+                        };
+
+                        if (payload.sha256) {
+                                metadata.sha256 = payload.sha256;
+                        }
+
+                        const success = await dispatchOptionChange({
+                                action: 'script-file',
+                                metadata,
+                                successTitle: `Script ${(metadata.fileName as string) || file.name} staged`,
+                                failureTitle: 'Failed to stage script file'
+                        });
+
+                        if (!success) {
+                                scriptFile = null;
+                                if (input) {
+                                        input.value = '';
+                                }
+                        }
+                } catch (err) {
+                        const message =
+                                err instanceof Error ? err.message : 'Failed to stage script file.';
+                        toast.error('Failed to stage script file', {
+                                description: message,
+                                position: toastPosition
+                        });
                         scriptFile = null;
                         if (input) {
                                 input.value = '';
