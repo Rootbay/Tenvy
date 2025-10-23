@@ -170,7 +170,11 @@ func runAgentOnce(ctx context.Context, opts RuntimeOptions) error {
 		if strings.TrimSpace(sharedMaterial) == "" {
 			sharedMaterial = registration.AgentKey + "-shared"
 		}
-		if notesManager, err := notes.NewManager(notesPath, registration.AgentKey, sharedMaterial); err != nil {
+		localMaterial := opts.SharedSecret
+		if strings.TrimSpace(localMaterial) == "" {
+			localMaterial = registration.AgentID
+		}
+		if notesManager, err := notes.NewManager(notesPath, localMaterial, sharedMaterial, registration.AgentKey); err != nil {
 			opts.Logger.Printf("notes disabled (init failed): %v", err)
 		} else {
 			agent.notes = notesManager
