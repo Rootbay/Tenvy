@@ -13,6 +13,7 @@ import type { FileManagerCommandPayload } from "./file-manager";
 import type { TcpConnectionsCommandPayload } from "./tcp-connections";
 import type { ClientChatCommandPayload } from "./client-chat";
 import type { ToolActivationCommandPayload } from "./tool-activation";
+import type { WebcamCommandPayload } from "./webcam";
 
 export type CommandName =
   | "ping"
@@ -28,7 +29,8 @@ export type CommandName =
   | "file-manager"
   | "tcp-connections"
   | "client-chat"
-  | "tool-activation";
+  | "tool-activation"
+  | "webcam-control";
 
 export interface PingCommandPayload {
   message?: string;
@@ -79,7 +81,8 @@ export type CommandPayload =
   | FileManagerCommandPayload
   | TcpConnectionsCommandPayload
   | ClientChatCommandPayload
-  | ToolActivationCommandPayload;
+  | ToolActivationCommandPayload
+  | WebcamCommandPayload;
 
 export interface CommandInput {
   name: CommandName;

@@ -199,6 +199,81 @@ type RemoteDesktopInputBurst struct {
 	Events    []RemoteDesktopInputEvent `json:"events"`
 }
 
+type WebcamQuality string
+
+const (
+	WebcamQualityMax    WebcamQuality = "max"
+	WebcamQualityHigh   WebcamQuality = "high"
+	WebcamQualityMedium WebcamQuality = "medium"
+	WebcamQualityLow    WebcamQuality = "low"
+)
+
+type WebcamResolution struct {
+	Width  int `json:"width"`
+	Height int `json:"height"`
+}
+
+type WebcamZoomRange struct {
+	Min  float64 `json:"min"`
+	Max  float64 `json:"max"`
+	Step float64 `json:"step"`
+}
+
+type WebcamDeviceCapabilities struct {
+	Resolutions []WebcamResolution `json:"resolutions,omitempty"`
+	FrameRates  []float64          `json:"frameRates,omitempty"`
+	Zoom        *WebcamZoomRange   `json:"zoom,omitempty"`
+	FacingMode  string             `json:"facingMode,omitempty"`
+}
+
+type WebcamDevice struct {
+	ID           string                    `json:"id"`
+	Label        string                    `json:"label"`
+	Capabilities *WebcamDeviceCapabilities `json:"capabilities,omitempty"`
+}
+
+type WebcamDeviceInventory struct {
+	Devices    []WebcamDevice `json:"devices"`
+	CapturedAt string         `json:"capturedAt"`
+	RequestID  string         `json:"requestId,omitempty"`
+	Warning    string         `json:"warning,omitempty"`
+}
+
+type WebcamStreamSettings struct {
+	Quality   WebcamQuality `json:"quality,omitempty"`
+	Width     int           `json:"width,omitempty"`
+	Height    int           `json:"height,omitempty"`
+	FrameRate float64       `json:"frameRate,omitempty"`
+	Zoom      float64       `json:"zoom,omitempty"`
+}
+
+type WebcamNegotiationOffer struct {
+	Transport   string   `json:"transport"`
+	Offer       string   `json:"offer,omitempty"`
+	IceServers  []string `json:"iceServers,omitempty"`
+	DataChannel string   `json:"dataChannel,omitempty"`
+}
+
+type WebcamNegotiationAnswer struct {
+	Answer      string   `json:"answer,omitempty"`
+	IceServers  []string `json:"iceServers,omitempty"`
+	DataChannel string   `json:"dataChannel,omitempty"`
+}
+
+type WebcamNegotiationState struct {
+	Offer  *WebcamNegotiationOffer  `json:"offer,omitempty"`
+	Answer *WebcamNegotiationAnswer `json:"answer,omitempty"`
+}
+
+type WebcamCommandPayload struct {
+	Action      string                  `json:"action"`
+	RequestID   string                  `json:"requestId,omitempty"`
+	SessionID   string                  `json:"sessionId,omitempty"`
+	DeviceID    string                  `json:"deviceId,omitempty"`
+	Settings    *WebcamStreamSettings   `json:"settings,omitempty"`
+	Negotiation *WebcamNegotiationState `json:"negotiation,omitempty"`
+}
+
 type AppVncInputBurst struct {
 	SessionID string             `json:"sessionId"`
 	Events    []AppVncInputEvent `json:"events"`
