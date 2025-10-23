@@ -1,6 +1,7 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
-import { createQuicTokenMatcher, parseQuicTokenConfiguration } from './remote-desktop-input';
+import { createQuicTokenMatcher, parseQuicTokenConfiguration, RemoteDesktopQuicInputService } from './remote-desktop-input';
+import type { RemoteDesktopInputEvent } from '$lib/types/remote-desktop';
 
 describe('parseQuicTokenConfiguration', () => {
 	it('returns an empty array for falsy values', () => {
@@ -44,4 +45,96 @@ describe('createQuicTokenMatcher', () => {
 		const matcher = createQuicTokenMatcher(['trim-me']);
 		expect(matcher(' trim-me ')).toBe(true);
 	});
+});
+
+describe('RemoteDesktopQuicInputService.send', () => {
+        const createEvents = (count: number): RemoteDesktopInputEvent[] => {
+                return Array.from({ length: count }, (_, index) => ({
+                        type: 'mouse-move',
+                        capturedAt: index,
+                        x: index,
+                        y: index,
+                        normalized: false
+                } satisfies RemoteDesktopInputEvent));
+        };
+
+        const registerConnection = (
+                service: RemoteDesktopQuicInputService,
+                agentId: string,
+                sessionId: string,
+                stream: Record<string, unknown>
+        ) => {
+                const connection = { agentId, sessionId, session: {}, stream };
+                (service as unknown as { connections: Map<string, typeof connection> }).connections.set(
+                        agentId,
+                        connection
+                );
+        };
+
+        it('sends bursts larger than the maximum batch size across multiple chunks', () => {
+                const service = new RemoteDesktopQuicInputService();
+                const agentId = 'agent-quic-chunk';
+                const sessionId = 'session-quic-chunk';
+                const write = vi.fn(() => true);
+                registerConnection(service, agentId, sessionId, { write });
+
+                const events = createEvents(600);
+
+                const result = service.send(agentId, sessionId, {
+                        sessionId,
+                        events,
+                        sequence: 101
+                });
+
+                expect(result.deliveredAll).toBe(true);
+                expect(result.deliveredAny).toBe(true);
+                expect(result.deliveredEvents).toBe(events.length);
+                expect(result.sequence).toBe(101);
+
+                // three event chunks (256 + 256 + 88)
+                expect(write).toHaveBeenCalledTimes(3);
+
+                const payloads = write.mock.calls.map(([chunk]) =>
+                        JSON.parse((chunk as string).trim()) as { events: RemoteDesktopInputEvent[] }
+                );
+                const delivered = payloads.flatMap((entry) => entry.events);
+                expect(delivered).toHaveLength(events.length);
+                expect(delivered[0]).toEqual(events[0]);
+                expect(delivered[delivered.length - 1]).toEqual(events[events.length - 1]);
+        });
+
+        it('stops sending additional chunks when a write fails', () => {
+                const service = new RemoteDesktopQuicInputService();
+                const agentId = 'agent-quic-fail';
+                const sessionId = 'session-quic-fail';
+                const write = vi
+                        .fn<unknown[], unknown>()
+                        .mockImplementationOnce(() => true)
+                        .mockImplementationOnce(() => false)
+                        .mockImplementation(() => true);
+                registerConnection(service, agentId, sessionId, { write });
+
+                const events = createEvents(300);
+
+                const result = service.send(agentId, sessionId, {
+                        sessionId,
+                        events,
+                        sequence: 77
+                });
+
+                expect(result.deliveredAll).toBe(false);
+                expect(result.deliveredAny).toBe(true);
+                expect(result.sequence).toBe(77);
+
+                const firstPayload = JSON.parse((write.mock.calls[0][0] as string).trim()) as {
+                        events: RemoteDesktopInputEvent[];
+                };
+                expect(result.deliveredEvents).toBe(firstPayload.events.length);
+
+                // first chunk, second chunk failure, close notification
+                expect(write).toHaveBeenCalledTimes(3);
+                expect((service as unknown as { connections: Map<string, unknown> }).connections.has(agentId)).toBe(
+                        false
+                );
+        });
 });
