@@ -240,11 +240,13 @@ type WebcamDeviceInventory struct {
 }
 
 type WebcamStreamSettings struct {
-	Quality   WebcamQuality `json:"quality,omitempty"`
-	Width     int           `json:"width,omitempty"`
-	Height    int           `json:"height,omitempty"`
-	FrameRate float64       `json:"frameRate,omitempty"`
-	Zoom      float64       `json:"zoom,omitempty"`
+	Quality     WebcamQuality `json:"quality,omitempty"`
+	Width       int           `json:"width,omitempty"`
+	Height      int           `json:"height,omitempty"`
+	FrameRate   float64       `json:"frameRate,omitempty"`
+	Zoom        float64       `json:"zoom,omitempty"`
+	MimeType    string        `json:"mimeType,omitempty"`
+	PixelFormat string        `json:"pixelFormat,omitempty"`
 }
 
 type WebcamNegotiationOffer struct {

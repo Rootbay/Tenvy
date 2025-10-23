@@ -42,6 +42,8 @@ export interface WebcamStreamSettings {
   height?: number;
   frameRate?: number;
   zoom?: number;
+  mimeType?: string;
+  pixelFormat?: string;
 }
 
 export interface WebcamNegotiationOffer {

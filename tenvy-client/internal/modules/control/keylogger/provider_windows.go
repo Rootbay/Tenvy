@@ -22,13 +22,69 @@ type windowsHookSession struct {
 	cancel    context.CancelFunc
 	stream    *channelEventStream
 	modifiers *windowsModifierState
-	hook      win.HHOOK
+	hook      windowsHookHandle
 }
 
 var (
 	windowsSessionMu sync.Mutex
 	windowsSession   *windowsHookSession
 )
+
+type windowsHookHandle uintptr
+
+const (
+	whKeyboardLL = 13
+	hcAction     = 0
+)
+
+var (
+	user32                  = syscall.NewLazyDLL("user32.dll")
+	procSetWindowsHookExW   = user32.NewProc("SetWindowsHookExW")
+	procCallNextHookEx      = user32.NewProc("CallNextHookEx")
+	procUnhookWindowsHookEx = user32.NewProc("UnhookWindowsHookEx")
+	procPostThreadMessageW  = user32.NewProc("PostThreadMessageW")
+)
+
+func setWindowsHookEx(idHook int32, callback uintptr, module win.HINSTANCE, threadID uint32) (windowsHookHandle, error) {
+	ret, _, err := procSetWindowsHookExW.Call(
+		uintptr(idHook),
+		callback,
+		uintptr(module),
+		uintptr(threadID),
+	)
+	if ret == 0 {
+		if err == syscall.Errno(0) {
+			err = syscall.EINVAL
+		}
+		return 0, err
+	}
+	return windowsHookHandle(ret), nil
+}
+
+func callNextHookEx(h windowsHookHandle, nCode int32, wParam, lParam uintptr) uintptr {
+	ret, _, _ := procCallNextHookEx.Call(
+		uintptr(h),
+		uintptr(nCode),
+		wParam,
+		lParam,
+	)
+	return ret
+}
+
+func unhookWindowsHookEx(h windowsHookHandle) bool {
+	ret, _, _ := procUnhookWindowsHookEx.Call(uintptr(h))
+	return ret != 0
+}
+
+func postThreadMessage(threadID uint32, msg uint32, wParam, lParam uintptr) bool {
+	ret, _, _ := procPostThreadMessageW.Call(
+		uintptr(threadID),
+		uintptr(msg),
+		wParam,
+		lParam,
+	)
+	return ret != 0
+}
 
 func defaultProviderFactory() func() Provider {
 	return func() Provider {
@@ -98,7 +154,7 @@ type kbdLLHook struct {
 }
 
 var keyboardProc = syscall.NewCallback(func(nCode int32, wParam uintptr, lParam uintptr) uintptr {
-	if nCode == win.HC_ACTION {
+	if nCode == hcAction {
 		windowsSessionMu.Lock()
 		session := windowsSession
 		windowsSessionMu.Unlock()
@@ -111,7 +167,7 @@ var keyboardProc = syscall.NewCallback(func(nCode int32, wParam uintptr, lParam 
 			}
 		}
 	}
-	return win.CallNextHookEx(0, int32(nCode), wParam, lParam)
+	return callNextHookEx(0, int32(nCode), wParam, lParam)
 })
 
 func (s *windowsHookSession) run(ready chan<- error) {
@@ -120,8 +176,9 @@ func (s *windowsHookSession) run(ready chan<- error) {
 	defer s.cancel()
 
 	threadID := win.GetCurrentThreadId()
-	hook := win.SetWindowsHookEx(win.WH_KEYBOARD_LL, keyboardProc, win.GetModuleHandle(nil), 0)
-	if hook == 0 {
+	module := win.GetModuleHandle(nil)
+	hook, err := setWindowsHookEx(whKeyboardLL, keyboardProc, module, 0)
+	if err != nil || hook == 0 {
 		ready <- ErrProviderUnavailable
 		return
 	}
@@ -132,7 +189,7 @@ func (s *windowsHookSession) run(ready chan<- error) {
 	go func() {
 		select {
 		case <-s.ctx.Done():
-			win.PostThreadMessage(threadID, win.WM_QUIT, 0, 0)
+			postThreadMessage(threadID, win.WM_QUIT, 0, 0)
 		case <-quit:
 		}
 	}()
@@ -150,7 +207,7 @@ func (s *windowsHookSession) run(ready chan<- error) {
 	close(quit)
 
 	if s.hook != 0 {
-		win.UnhookWindowsHookEx(s.hook)
+		unhookWindowsHookEx(s.hook)
 	}
 }
 

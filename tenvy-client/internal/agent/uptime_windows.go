@@ -3,11 +3,11 @@
 package agent
 
 import (
-	"syscall"
 	"time"
+
+	"golang.org/x/sys/windows"
 )
 
 func systemUptime() (time.Duration, error) {
-	ticks := syscall.GetTickCount64()
-	return time.Duration(ticks) * time.Millisecond, nil
+	return windows.DurationSinceBoot(), nil
 }
