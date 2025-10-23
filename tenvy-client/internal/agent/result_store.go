@@ -401,9 +401,6 @@ func defaultResultStorePath(pref BuildPreferences) string {
 		}
 		return filepath.Join(filepath.Dir(cleaned), "results")
 	}
-	if exe, err := os.Executable(); err == nil {
-		base := filepath.Dir(exe)
-		return filepath.Join(base, "results")
-	}
-	return filepath.Join(os.TempDir(), "tenvy", "results")
+	baseDir := dataDirectory(pref)
+	return filepath.Join(baseDir, "results")
 }

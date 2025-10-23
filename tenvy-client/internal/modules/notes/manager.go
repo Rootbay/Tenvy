@@ -16,7 +16,6 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
-	"runtime"
 	"sort"
 	"strings"
 	"sync"
@@ -527,16 +526,14 @@ func (m *Manager) SyncShared(ctx context.Context, client *http.Client, baseURL, 
 	return nil
 }
 
-func DefaultPath() (string, error) {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return "", err
+func DefaultPath(baseDir string) (string, error) {
+	trimmed := strings.TrimSpace(baseDir)
+	if trimmed == "" {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return "", err
+		}
+		trimmed = filepath.Join(home, ".config", "tenvy")
 	}
-	var configDir string
-	if runtime.GOOS == "windows" {
-		configDir = filepath.Join(home, "AppData", "Roaming", "Tenvy")
-	} else {
-		configDir = filepath.Join(home, ".config", "tenvy")
-	}
-	return filepath.Join(configDir, "notes.json"), nil
+	return filepath.Join(trimmed, "notes.json"), nil
 }

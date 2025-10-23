@@ -6,7 +6,9 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 
@@ -92,6 +94,63 @@ type BuildPreferences struct {
 	StartupOnBoot bool
 	MutexKey      string
 	ForceAdmin    bool
+	Persistence   PersistenceBranding
+}
+
+// PersistenceBranding controls how persistence mechanisms are branded on disk.
+type PersistenceBranding struct {
+	RunKeyName         string
+	ServiceName        string
+	ServiceDescription string
+	LaunchAgentLabel   string
+	CronFilename       string
+	BaseDataDir        string
+}
+
+func (p BuildPreferences) persistenceBranding() PersistenceBranding {
+	branding := p.Persistence
+	if strings.TrimSpace(branding.RunKeyName) == "" {
+		branding.RunKeyName = "TenvyAgent"
+	}
+	if strings.TrimSpace(branding.ServiceName) == "" {
+		branding.ServiceName = "tenvy-agent.service"
+	}
+	if strings.TrimSpace(branding.ServiceDescription) == "" {
+		branding.ServiceDescription = "Tenvy Agent"
+	}
+	if strings.TrimSpace(branding.LaunchAgentLabel) == "" {
+		branding.LaunchAgentLabel = "com.tenvy.agent"
+	}
+	if strings.TrimSpace(branding.CronFilename) == "" {
+		branding.CronFilename = "tenvy-agent.cron"
+	}
+	branding.BaseDataDir = strings.TrimSpace(branding.BaseDataDir)
+	return branding
+}
+
+func (p PersistenceBranding) baseDirectory() string {
+	dir := strings.TrimSpace(p.BaseDataDir)
+	if dir == "" {
+		if runtime.GOOS == "windows" {
+			dir = filepath.Join("AppData", "Roaming", "Tenvy")
+		} else {
+			dir = filepath.Join(".config", "tenvy")
+		}
+	}
+
+	if filepath.IsAbs(dir) {
+		return dir
+	}
+
+	if home, err := os.UserHomeDir(); err == nil && strings.TrimSpace(home) != "" {
+		return filepath.Join(home, dir)
+	}
+
+	return filepath.Join(os.TempDir(), dir)
+}
+
+func dataDirectory(pref BuildPreferences) string {
+	return pref.persistenceBranding().baseDirectory()
 }
 
 // ResultStoreOptions defines configuration for persisting command results.
