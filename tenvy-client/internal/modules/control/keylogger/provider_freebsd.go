@@ -1,9 +1,8 @@
-//go:build linux
+//go:build freebsd
 
 package keylogger
 
 import (
-	"bufio"
 	"context"
 	"encoding/binary"
 	"fmt"
@@ -16,28 +15,28 @@ import (
 )
 
 const (
-	linuxEventKey = 0x01
+	freebsdEventKey = 0x01
 )
 
-type linuxInputEvent = evdevInputEvent
+type freebsdInputEvent = evdevInputEvent
 
-type linuxProvider struct {
+type freebsdProvider struct {
 	findDevices func() ([]string, error)
 	openDevice  func(string) (io.ReadCloser, error)
 }
 
-func newLinuxProvider() *linuxProvider {
-	finder := linuxDeviceFinder
+func newFreeBSDProvider() *freebsdProvider {
+	finder := freebsdDeviceFinder
 	if finder == nil {
-		finder = detectKeyboardDevices
+		finder = detectFreeBSDKeyboardDevices
 	}
-	opener := linuxDeviceOpener
+	opener := freebsdDeviceOpener
 	if opener == nil {
 		opener = func(path string) (io.ReadCloser, error) {
 			return os.Open(path)
 		}
 	}
-	return &linuxProvider{
+	return &freebsdProvider{
 		findDevices: finder,
 		openDevice:  opener,
 	}
@@ -45,11 +44,11 @@ func newLinuxProvider() *linuxProvider {
 
 func defaultProviderFactory() func() Provider {
 	return func() Provider {
-		return newLinuxProvider()
+		return newFreeBSDProvider()
 	}
 }
 
-func (p *linuxProvider) Start(ctx context.Context, cfg StartConfig) (EventStream, error) {
+func (p *freebsdProvider) Start(ctx context.Context, cfg StartConfig) (EventStream, error) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -98,7 +97,7 @@ func (p *linuxProvider) Start(ctx context.Context, cfg StartConfig) (EventStream
 	return stream, nil
 }
 
-func (p *linuxProvider) readEvents(ctx context.Context, r io.Reader, stream *channelEventStream, modifiers *modifierState) {
+func (p *freebsdProvider) readEvents(ctx context.Context, r io.Reader, stream *channelEventStream, modifiers *modifierState) {
 	decoder := binary.LittleEndian
 	for {
 		select {
@@ -107,11 +106,11 @@ func (p *linuxProvider) readEvents(ctx context.Context, r io.Reader, stream *cha
 		default:
 		}
 
-		var ev linuxInputEvent
+		var ev freebsdInputEvent
 		if err := binary.Read(r, decoder, &ev); err != nil {
 			return
 		}
-		if ev.Type != linuxEventKey {
+		if ev.Type != freebsdEventKey {
 			continue
 		}
 
@@ -151,45 +150,32 @@ func (p *linuxProvider) readEvents(ctx context.Context, r io.Reader, stream *cha
 	}
 }
 
-var linuxDeviceFinder = detectKeyboardDevices
+var freebsdDeviceFinder = detectFreeBSDKeyboardDevices
 
-func detectKeyboardDevices() ([]string, error) {
-	file, err := os.Open("/proc/bus/input/devices")
+func detectFreeBSDKeyboardDevices() ([]string, error) {
+	matches, err := filepath.Glob("/dev/input/event*")
 	if err != nil {
 		return nil, err
 	}
-	defer file.Close()
 
-	scanner := bufio.NewScanner(file)
 	var devices []string
-	for scanner.Scan() {
-		line := scanner.Text()
-		if !strings.HasPrefix(line, "H: Handlers=") {
+	for _, path := range matches {
+		info, statErr := os.Stat(path)
+		if statErr != nil {
 			continue
 		}
-		handlers := strings.Fields(strings.TrimPrefix(line, "H: Handlers="))
-		hasKeyboard := false
-		var eventNames []string
-		for _, handler := range handlers {
-			if handler == "kbd" || strings.Contains(strings.ToLower(handler), "keyboard") {
-				hasKeyboard = true
-			}
-			if strings.HasPrefix(handler, "event") {
-				eventNames = append(eventNames, handler)
-			}
-		}
-		if hasKeyboard {
-			for _, name := range eventNames {
-				devices = append(devices, filepath.Join("/dev/input", name))
-			}
+		if info.Mode().IsRegular() || info.Mode()&os.ModeDevice != 0 {
+			devices = append(devices, path)
 		}
 	}
+
 	if len(devices) == 0 {
 		return nil, fmt.Errorf("no keyboard devices found")
 	}
+
 	return devices, nil
 }
 
-var linuxDeviceOpener = func(path string) (io.ReadCloser, error) {
+var freebsdDeviceOpener = func(path string) (io.ReadCloser, error) {
 	return os.Open(path)
 }
