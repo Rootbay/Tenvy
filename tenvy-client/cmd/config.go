@@ -26,6 +26,7 @@ var (
 	defaultMaxBackoffOverrideMs     = ""
 	defaultShellTimeoutOverrideSecs = ""
 	defaultRuntimeConfigEncoded     = ""
+	defaultUserAgentOverrideEncoded = ""
 )
 
 func loadRuntimeOptions(logger *log.Logger) (agent.RuntimeOptions, error) {
@@ -53,18 +54,21 @@ func loadRuntimeOptions(logger *log.Logger) (agent.RuntimeOptions, error) {
 
 	runtimeConfig := parseEmbeddedRuntimeConfig(logger, defaultRuntimeConfigEncoded)
 
+	userAgent := strings.TrimSpace(fallback(os.Getenv("TENVY_USER_AGENT"), decodeBase64(defaultUserAgentOverrideEncoded)))
+
 	return agent.RuntimeOptions{
-		Logger:         logger,
-		ServerURL:      serverURL,
-		SharedSecret:   sharedSecret,
-		Preferences:    preferences,
-		Metadata:       agent.CollectMetadata(buildVersion),
-		BuildVersion:   buildVersion,
-		TimingOverride: timing,
-		Watchdog:       runtimeConfig.Watchdog,
-		Execution:      runtimeConfig.Execution,
-		CustomHeaders:  runtimeConfig.Headers,
-		CustomCookies:  runtimeConfig.Cookies,
+		Logger:            logger,
+		ServerURL:         serverURL,
+		SharedSecret:      sharedSecret,
+		Preferences:       preferences,
+		Metadata:          agent.CollectMetadata(buildVersion),
+		BuildVersion:      buildVersion,
+		UserAgentOverride: userAgent,
+		TimingOverride:    timing,
+		Watchdog:          runtimeConfig.Watchdog,
+		Execution:         runtimeConfig.Execution,
+		CustomHeaders:     runtimeConfig.Headers,
+		CustomCookies:     runtimeConfig.Cookies,
 	}, nil
 }
 

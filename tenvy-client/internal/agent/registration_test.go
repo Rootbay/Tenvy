@@ -155,7 +155,7 @@ func TestRegisterAgentWithRetryHonoursRetryAfter(t *testing.T) {
 	defer cancel()
 
 	start := time.Now()
-	_, err := registerAgentWithRetry(ctx, logger, server.Client(), server.URL, "", metadata, time.Second, nil, nil)
+	_, err := registerAgentWithRetry(ctx, logger, server.Client(), server.URL, "", metadata, time.Second, nil, nil, "")
 	if err != nil {
 		t.Fatalf("registerAgentWithRetry returned error: %v", err)
 	}
@@ -188,7 +188,7 @@ func TestRegisterAgentWithRetryClampsWaitToContextDeadline(t *testing.T) {
 	logger := log.New(&buf, "", 0)
 
 	start := time.Now()
-	_, err := registerAgentWithRetry(ctx, logger, server.Client(), server.URL, "", metadata, time.Second, nil, nil)
+	_, err := registerAgentWithRetry(ctx, logger, server.Client(), server.URL, "", metadata, time.Second, nil, nil, "")
 	if !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatalf("expected deadline exceeded, got %v", err)
 	}
@@ -203,5 +203,66 @@ func TestRegisterAgentWithRetryClampsWaitToContextDeadline(t *testing.T) {
 	}
 	if !strings.Contains(logs, "retrying registration in") {
 		t.Fatalf("expected retry log entry, logs: %s", logs)
+	}
+}
+
+func TestRegisterAgentUsesDefaultUserAgent(t *testing.T) {
+	t.Parallel()
+
+	metadata := protocol.AgentMetadata{Version: "test"}
+
+	var gotUserAgent string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotUserAgent = r.Header.Get("User-Agent")
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(protocol.AgentRegistrationResponse{
+			AgentID:    "agent",
+			AgentKey:   "key",
+			Config:     protocol.AgentConfig{},
+			ServerTime: time.Now().UTC().Format(time.RFC3339Nano),
+		})
+	}))
+	defer server.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+
+	if _, err := registerAgent(ctx, server.Client(), server.URL, "", metadata, nil, nil, ""); err != nil {
+		t.Fatalf("registerAgent returned error: %v", err)
+	}
+
+	if gotUserAgent != "tenvy-client/test" {
+		t.Fatalf("expected default user agent, got %q", gotUserAgent)
+	}
+}
+
+func TestRegisterAgentUsesOverrideUserAgent(t *testing.T) {
+	t.Parallel()
+
+	metadata := protocol.AgentMetadata{Version: "test"}
+	override := "Custom-Agent/1.2"
+
+	var gotUserAgent string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotUserAgent = r.Header.Get("User-Agent")
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(protocol.AgentRegistrationResponse{
+			AgentID:    "agent",
+			AgentKey:   "key",
+			Config:     protocol.AgentConfig{},
+			ServerTime: time.Now().UTC().Format(time.RFC3339Nano),
+		})
+	}))
+	defer server.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+
+	if _, err := registerAgent(ctx, server.Client(), server.URL, "", metadata, nil, nil, override); err != nil {
+		t.Fatalf("registerAgent returned error: %v", err)
+	}
+
+	if gotUserAgent != override {
+		t.Fatalf("expected override user agent %q, got %q", override, gotUserAgent)
 	}
 }

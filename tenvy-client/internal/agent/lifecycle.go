@@ -256,6 +256,7 @@ func (a *Agent) reRegister(ctx context.Context) error {
 		a.maxBackoff(),
 		a.requestHeaders,
 		a.requestCookies,
+		a.userAgentOverride,
 	)
 	if err != nil {
 		return err
@@ -455,7 +456,17 @@ func (a *Agent) withJitter(base time.Duration) time.Duration {
 }
 
 func (a *Agent) userAgent() string {
-	return fmt.Sprintf("tenvy-client/%s", a.buildVersion)
+	if a == nil {
+		return ""
+	}
+	if ua := strings.TrimSpace(a.userAgentOverride); ua != "" {
+		return ua
+	}
+	version := strings.TrimSpace(a.buildVersion)
+	if version == "" {
+		version = "unknown"
+	}
+	return fmt.Sprintf("tenvy-client/%s", version)
 }
 
 func (a *Agent) shutdown(ctx context.Context) {

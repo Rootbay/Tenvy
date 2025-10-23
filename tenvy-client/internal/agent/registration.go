@@ -67,6 +67,7 @@ func registerAgentWithRetry(
 	maxBackoff time.Duration,
 	headers []CustomHeader,
 	cookies []CustomCookie,
+	userAgent string,
 ) (*protocol.AgentRegistrationResponse, error) {
 	if maxBackoff <= 0 {
 		maxBackoff = defaultBackoff
@@ -74,7 +75,7 @@ func registerAgentWithRetry(
 
 	backoff := time.Second
 	for attempt := 1; ; attempt++ {
-		registration, err := registerAgent(ctx, client, serverURL, token, metadata, headers, cookies)
+		registration, err := registerAgent(ctx, client, serverURL, token, metadata, headers, cookies, userAgent)
 		if err == nil {
 			if attempt > 1 {
 				logger.Printf("registration succeeded after %d attempts", attempt)
@@ -140,6 +141,7 @@ func registerAgent(
 	metadata protocol.AgentMetadata,
 	headers []CustomHeader,
 	cookies []CustomCookie,
+	userAgent string,
 ) (*protocol.AgentRegistrationResponse, error) {
 	request := protocol.AgentRegistrationRequest{Metadata: metadata}
 	if strings.TrimSpace(token) != "" {
@@ -158,7 +160,15 @@ func registerAgent(
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
-	req.Header.Set("User-Agent", fmt.Sprintf("tenvy-client/%s", metadata.Version))
+	ua := strings.TrimSpace(userAgent)
+	if ua == "" {
+		version := strings.TrimSpace(metadata.Version)
+		if version == "" {
+			version = "unknown"
+		}
+		ua = fmt.Sprintf("tenvy-client/%s", version)
+	}
+	req.Header.Set("User-Agent", ua)
 	applyRequestDecorations(req, headers, cookies)
 
 	resp, err := client.Do(req)

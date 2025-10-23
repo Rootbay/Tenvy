@@ -102,6 +102,8 @@ func TestCommandStreamDeliversImmediately(t *testing.T) {
 	var tokenMu sync.Mutex
 	var issuedToken string
 
+	var expectedUserAgent string
+
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/agents/agent-1/session-token", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
@@ -110,6 +112,10 @@ func TestCommandStreamDeliversImmediately(t *testing.T) {
 		}
 		if got := r.Header.Get("Authorization"); got != "Bearer key-1" {
 			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
+		if got := r.Header.Get("User-Agent"); got != expectedUserAgent {
+			http.Error(w, "invalid user agent", http.StatusBadRequest)
 			return
 		}
 		token := fmt.Sprintf("session-%d", time.Now().UnixNano())
@@ -134,6 +140,10 @@ func TestCommandStreamDeliversImmediately(t *testing.T) {
 			http.Error(w, "authorization header unexpected", http.StatusUnauthorized)
 			return
 		}
+		if got := r.Header.Get("User-Agent"); got != expectedUserAgent {
+			http.Error(w, "invalid user agent", http.StatusBadRequest)
+			return
+		}
 		if r.Header.Get("Sec-WebSocket-Protocol") != protocol.CommandStreamSubprotocol {
 			http.Error(w, "protocol", http.StatusBadRequest)
 			return
@@ -151,6 +161,10 @@ func TestCommandStreamDeliversImmediately(t *testing.T) {
 		})
 	})
 	mux.HandleFunc("/api/agents/agent-1/sync", func(w http.ResponseWriter, r *http.Request) {
+		if got := r.Header.Get("User-Agent"); got != expectedUserAgent {
+			http.Error(w, "invalid user agent", http.StatusBadRequest)
+			return
+		}
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(protocol.AgentSyncResponse{
 			AgentID:    "agent-1",
@@ -164,6 +178,7 @@ func TestCommandStreamDeliversImmediately(t *testing.T) {
 	defer srv.Close()
 
 	agent := makeTestAgent(srv.URL, srv.Client(), router)
+	expectedUserAgent = agent.userAgent()
 
 	go agent.runCommandStream(ctx)
 
@@ -470,6 +485,86 @@ func TestCommandStreamRequestsReconnectOnUnauthorized(t *testing.T) {
 			time.Sleep(10 * time.Millisecond)
 		}
 	}
+}
+
+func TestCommandStreamUsesCustomUserAgent(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	router := newCommandRouter()
+
+	const customUserAgent = "Custom-Agent/2.0"
+
+	var tokenUserAgent string
+	var sessionUserAgent string
+
+	var tokenMu sync.Mutex
+	var issuedToken string
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/agents/agent-1/session-token", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "method", http.StatusMethodNotAllowed)
+			return
+		}
+		tokenMu.Lock()
+		issuedToken = fmt.Sprintf("session-%d", time.Now().UnixNano())
+		tokenMu.Unlock()
+		tokenUserAgent = r.Header.Get("User-Agent")
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(sessionTokenResponse{
+			Token:     issuedToken,
+			ExpiresAt: time.Now().Add(30 * time.Second).UTC().Format(time.RFC3339Nano),
+		})
+	})
+	mux.HandleFunc("/api/agents/agent-1/session", func(w http.ResponseWriter, r *http.Request) {
+		tokenMu.Lock()
+		token := issuedToken
+		tokenMu.Unlock()
+		if r.Header.Get(sessionTokenHeader) != token {
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
+		sessionUserAgent = r.Header.Get("User-Agent")
+		c, err := websocket.Accept(w, r, &websocket.AcceptOptions{Subprotocols: []string{protocol.CommandStreamSubprotocol}})
+		if err != nil {
+			t.Fatalf("accept websocket: %v", err)
+		}
+		go func() {
+			defer c.Close(websocket.StatusNormalClosure, "done")
+			<-ctx.Done()
+		}()
+	})
+	mux.HandleFunc("/api/agents/agent-1/sync", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(protocol.AgentSyncResponse{
+			AgentID:    "agent-1",
+			Commands:   nil,
+			Config:     protocol.AgentConfig{},
+			ServerTime: time.Now().UTC().Format(time.RFC3339Nano),
+		})
+	})
+
+	srv := httptest.NewTLSServer(mux)
+	defer srv.Close()
+
+	agent := makeTestAgent(srv.URL, srv.Client(), router)
+	agent.userAgentOverride = customUserAgent
+
+	go agent.runCommandStream(ctx)
+
+	select {
+	case <-time.After(500 * time.Millisecond):
+	case <-ctx.Done():
+	}
+
+	if tokenUserAgent != customUserAgent {
+		t.Fatalf("expected session token request user agent %q, got %q", customUserAgent, tokenUserAgent)
+	}
+	if sessionUserAgent != customUserAgent {
+		t.Fatalf("expected session request user agent %q, got %q", customUserAgent, sessionUserAgent)
+	}
+
 }
 
 func TestStopRemoteDesktopInputWorkerSignalsShutdown(t *testing.T) {

@@ -31,6 +31,7 @@ type Agent struct {
 	preferences                  BuildPreferences
 	notes                        *notes.Manager
 	buildVersion                 string
+	userAgentOverride            string
 	timing                       TimingOverride
 	modules                      *moduleManager
 	commands                     *commandRouter
