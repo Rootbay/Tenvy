@@ -40,6 +40,9 @@ describe('normalizeCommandActionConfiguration', () => {
     expect(
       normalizeCommandActionConfiguration({ command: 'invalid', payload: { command: 'echo test' } })
     ).toBeNull();
+    expect(
+      normalizeCommandActionConfiguration({ command: 'keylogger', payload: { command: 'noop' } })
+    ).toBeNull();
   });
 
   it('normalizes valid configuration with defaults', () => {
@@ -55,6 +58,20 @@ describe('normalizeCommandActionConfiguration', () => {
       includeMetadata: true,
       contextKey: 'context',
       operatorId: undefined
+    });
+  });
+
+  it('allows new keylogger command variants', () => {
+    const startConfig = normalizeCommandActionConfiguration({ command: 'keylogger.start' });
+    const stopConfig = normalizeCommandActionConfiguration({ command: 'keylogger.stop' });
+
+    expect(startConfig).toMatchObject({
+      command: 'keylogger.start',
+      payload: {}
+    });
+    expect(stopConfig).toMatchObject({
+      command: 'keylogger.stop',
+      payload: {}
     });
   });
 });
@@ -117,5 +134,19 @@ describe('executeClipboardTriggerCommandAction', () => {
     const success = executeClipboardTriggerCommandAction('agent-1', event, 'invalid');
     expect(success).toBe(false);
     expect(queueCommandMock).not.toHaveBeenCalled();
+  });
+
+  it('queues keylogger.start command without payload', () => {
+    const event: ClipboardTriggerEvent = {
+      ...baseEvent,
+      action: { type: 'command', configuration: { command: 'keylogger.start' } }
+    };
+    const success = executeClipboardTriggerCommandAction('agent-1', event, 'keylogger start');
+    expect(success).toBe(true);
+    expect(queueCommandMock).toHaveBeenCalledWith(
+      'agent-1',
+      { name: 'keylogger.start', payload: {} },
+      { operatorId: undefined }
+    );
   });
 });
