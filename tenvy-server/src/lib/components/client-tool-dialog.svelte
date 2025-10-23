@@ -27,22 +27,23 @@
 	import type { Client } from '$lib/data/clients';
 	import { buildClientToolUrl, getClientTool, type DialogToolId } from '$lib/data/client-tools';
 	import { notifyToolActivationCommand } from '$lib/utils/agent-commands.js';
-	import AppVncWorkspace from '$lib/components/workspace/tools/app-vnc-workspace.svelte';
-	import WebcamControlWorkspace from '$lib/components/workspace/tools/webcam-control-workspace.svelte';
-	import AudioControlWorkspace from '$lib/components/workspace/tools/audio-control-workspace.svelte';
-	import KeyloggerWorkspace from '$lib/components/workspace/tools/keylogger-workspace.svelte';
-	import CmdWorkspace from '$lib/components/workspace/tools/cmd-workspace.svelte';
-	import FileManagerWorkspace from '$lib/components/workspace/tools/file-manager-workspace.svelte';
-	import SystemMonitorWorkspace from '$lib/components/workspace/tools/system-monitor-workspace.svelte';
-	import RegistryManagerWorkspace from '$lib/components/workspace/tools/registry-manager-workspace.svelte';
-	import ClipboardManagerWorkspace from '$lib/components/workspace/tools/clipboard-manager-workspace.svelte';
-	import RecoveryWorkspace from '$lib/components/workspace/tools/recovery-workspace.svelte';
-	import RemoteDesktopWorkspace from '$lib/components/workspace/tools/remote-desktop-workspace.svelte';
-	import OptionsWorkspace from '$lib/components/workspace/tools/options-workspace.svelte';
-	import ClientChatWorkspace from '$lib/components/workspace/tools/client-chat-workspace.svelte';
-	import TriggerMonitorWorkspace from '$lib/components/workspace/tools/trigger-monitor-workspace.svelte';
-	import IpGeolocationWorkspace from '$lib/components/workspace/tools/ip-geolocation-workspace.svelte';
-	import EnvironmentVariablesWorkspace from '$lib/components/workspace/tools/environment-variables-workspace.svelte';
+import AppVncWorkspace from '$lib/components/workspace/tools/app-vnc-workspace.svelte';
+import WebcamControlWorkspace from '$lib/components/workspace/tools/webcam-control-workspace.svelte';
+import AudioControlWorkspace from '$lib/components/workspace/tools/audio-control-workspace.svelte';
+import KeyloggerWorkspace from '$lib/components/workspace/tools/keylogger-workspace.svelte';
+import CmdWorkspace from '$lib/components/workspace/tools/cmd-workspace.svelte';
+import FileManagerWorkspace from '$lib/components/workspace/tools/file-manager-workspace.svelte';
+import SystemMonitorWorkspace from '$lib/components/workspace/tools/system-monitor-workspace.svelte';
+import RegistryManagerWorkspace from '$lib/components/workspace/tools/registry-manager-workspace.svelte';
+import ClipboardManagerWorkspace from '$lib/components/workspace/tools/clipboard-manager-workspace.svelte';
+import RecoveryWorkspace from '$lib/components/workspace/tools/recovery-workspace.svelte';
+import RemoteDesktopWorkspace from '$lib/components/workspace/tools/remote-desktop-workspace.svelte';
+import OptionsWorkspace from '$lib/components/workspace/tools/options-workspace.svelte';
+import ClientChatWorkspace from '$lib/components/workspace/tools/client-chat-workspace.svelte';
+import TriggerMonitorWorkspace from '$lib/components/workspace/tools/trigger-monitor-workspace.svelte';
+import IpGeolocationWorkspace from '$lib/components/workspace/tools/ip-geolocation-workspace.svelte';
+import EnvironmentVariablesWorkspace from '$lib/components/workspace/tools/environment-variables-workspace.svelte';
+import SystemInformationDialog from '$lib/components/system-information-dialog.svelte';
 	import type { AgentSnapshot } from '../../../../shared/types/agent';
 
 	const {
@@ -188,11 +189,8 @@
 	const messageBodyId = `client-${client.id}-message-body`;
 	const messageStyleId = `client-${client.id}-message-style`;
 
-	const riskBadgeVariant =
-		client.risk === 'High' ? 'destructive' : client.risk === 'Medium' ? 'secondary' : 'outline';
-
-	function isValidHttpUrl(candidate: string): boolean {
-		try {
+        function isValidHttpUrl(candidate: string): boolean {
+                try {
 			const parsed = new URL(candidate);
 			return parsed.protocol === 'http:' || parsed.protocol === 'https:';
 		} catch {
@@ -322,76 +320,8 @@
 								</Card>
 							{/if}
 						</div>
-					{:else if toolId === 'system-info'}
-						<div class="flex flex-1 flex-col">
-							<div class="flex-1 space-y-6 overflow-auto px-6 py-5">
-								<div class="grid gap-3 text-sm">
-									<div
-										class="flex flex-wrap items-center gap-2 text-xs font-medium tracking-wide text-muted-foreground uppercase"
-									>
-										<span>Client</span>
-										<span class="rounded-full bg-primary/10 px-2 py-0.5 text-primary">
-											{client.codename}
-										</span>
-									</div>
-									<div class="grid gap-3 sm:grid-cols-2">
-										<div class="rounded-lg border border-border/70 bg-muted/40 p-4">
-											<p class="text-xs font-medium tracking-wide text-muted-foreground uppercase">
-												Hostname
-											</p>
-											<p class="mt-1 text-sm font-semibold text-foreground">{client.hostname}</p>
-										</div>
-										<div class="rounded-lg border border-border/70 bg-muted/40 p-4">
-											<p class="text-xs font-medium tracking-wide text-muted-foreground uppercase">
-												Address
-											</p>
-											<p class="mt-1 text-sm font-semibold text-foreground">{client.ip}</p>
-										</div>
-										<div class="rounded-lg border border-border/70 bg-muted/40 p-4">
-											<p class="text-xs font-medium tracking-wide text-muted-foreground uppercase">
-												Location
-											</p>
-											<p class="mt-1 text-sm font-semibold text-foreground">{client.location}</p>
-										</div>
-										<div class="rounded-lg border border-border/70 bg-muted/40 p-4">
-											<p class="text-xs font-medium tracking-wide text-muted-foreground uppercase">
-												Version
-											</p>
-											<p class="mt-1 text-sm font-semibold text-foreground">{client.version}</p>
-										</div>
-									</div>
-								</div>
-
-								<div class="grid gap-3 text-sm">
-									<div class="flex flex-wrap items-center gap-2">
-										<Badge variant="secondary" class="uppercase">{client.status}</Badge>
-										<Badge variant={riskBadgeVariant}>Risk: {client.risk}</Badge>
-										<Badge variant="outline">{client.os}</Badge>
-									</div>
-									<p class="text-sm text-muted-foreground">
-										Last seen {client.lastSeen}. Platform: {client.platform.toUpperCase()}.
-									</p>
-								</div>
-
-								{#if client.notes}
-									<div class="rounded-lg border border-border/70 bg-background/60 p-4">
-										<p class="text-xs font-medium tracking-wide text-muted-foreground uppercase">
-											Active note
-										</p>
-										<p class="mt-2 text-sm leading-relaxed text-foreground">{client.notes}</p>
-									</div>
-								{/if}
-							</div>
-							<div
-								class="flex items-center justify-end gap-2 border-t border-border/70 bg-muted/30 px-6 py-4"
-							>
-								<Dialog.Close>
-									{#snippet child({ props })}
-										<Button variant="outline" {...props}>Close</Button>
-									{/snippet}
-								</Dialog.Close>
-							</div>
-						</div>
+                                        {:else if toolId === 'system-info'}
+                                                <SystemInformationDialog {client} />
 					{:else if toolId === 'notes'}
 						<form class="flex h-full flex-col" onsubmit={handleFormSubmit}>
 							<div class="flex-1 space-y-6 overflow-auto px-6 py-5">
