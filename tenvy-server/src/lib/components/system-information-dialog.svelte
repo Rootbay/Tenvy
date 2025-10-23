@@ -10,7 +10,7 @@
                 CardTitle
         } from '$lib/components/ui/card/index.js';
         import { Alert, AlertDescription, AlertTitle } from '$lib/components/ui/alert/index.js';
-        import { RefreshCw, AlertTriangle } from '@lucide/svelte';
+        import { RefreshCw, TriangleAlert } from '@lucide/svelte';
         import type { Client } from '$lib/data/clients';
         import type {
                 SystemInfoCPU,
@@ -194,11 +194,11 @@
                 variant="secondary"
                 class="gap-2"
                 disabled={loading}
-                on:click={() => {
+                onclick={() => {
                         void loadSnapshot(true);
                 }}
         >
-                <RefreshCw class:animate-spin={loading} class="h-4 w-4" />
+                <RefreshCw class={loading ? 'h-4 w-4 animate-spin' : 'h-4 w-4'} />
                 {loading ? 'Refreshing…' : 'Refresh snapshot'}
         </Button>
 </section>
@@ -206,7 +206,7 @@
 <div class="flex-1 space-y-6 overflow-auto px-6 py-5">
         {#if errorMessage}
                 <Alert variant="destructive">
-                        <AlertTriangle class="h-4 w-4" />
+                        <TriangleAlert class="h-4 w-4" />
                         <AlertTitle>Unable to load system information</AlertTitle>
                         <AlertDescription>{errorMessage}</AlertDescription>
                 </Alert>
@@ -514,7 +514,7 @@
                                         </div>
                                         <div class="sm:col-span-2">
                                                 <p class="text-xs font-medium uppercase tracking-wide text-muted-foreground">Command line</p>
-                                                <p class="mt-1 font-medium text-foreground break-words">
+                                                <p class="mt-1 font-medium text-foreground wrap-break-word">
                                                         {report.runtime.process.commandLine ?? '—'}
                                                 </p>
                                         </div>
@@ -647,7 +647,7 @@
 
                 {#if report.warnings && report.warnings.length > 0}
                         <Alert class="border-amber-200 bg-amber-50 text-amber-900">
-                                <AlertTriangle class="h-4 w-4" />
+                                <TriangleAlert class="h-4 w-4" />
                                 <AlertTitle>Agent warnings</AlertTitle>
                                 <AlertDescription>
                                         <ul class="list-disc space-y-1 pl-4">

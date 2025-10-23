@@ -107,7 +107,7 @@
 				>
 					<UserPlus class="h-4 w-4 text-muted-foreground" />
 				</span>
-				<div class="mx-6 w-[9rem]">
+				<div class="mx-6 w-36">
 					<Select
 						type="single"
 						value={$newClientRange}

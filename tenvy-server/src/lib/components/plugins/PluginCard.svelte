@@ -162,7 +162,7 @@ const pluginSignatureBadge: SignatureBadge = $derived(signatureBadge(plugin.sign
 					<span class="text-xs tracking-wide uppercase">Package artifact</span>
 					<PackageSearch class="h-4 w-4 text-muted-foreground" />
 				</div>
-				<p class="font-medium break-words text-foreground">{plugin.artifact}</p>
+				<p class="font-medium wrap-break-word text-foreground">{plugin.artifact}</p>
 				<p class="text-xs text-muted-foreground">
 					Default: {pluginDeliveryModeLabels[plugin.distribution.defaultMode]}
 				</p>

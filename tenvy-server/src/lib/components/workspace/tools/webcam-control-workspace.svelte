@@ -198,7 +198,7 @@
 				<div class="flex flex-col gap-1">
 					<Label for="webcam-device">Camera</Label>
 					{#if devices.length > 0}
-						<Select bind:value={selectedDevice}>
+						<Select type="single" bind:value={selectedDevice}>
 							<SelectTrigger id="webcam-device" class="w-64">
 								{#if selectedDevice}
 									{devices.find((device) => device.id === selectedDevice)?.label ??
@@ -218,10 +218,10 @@
 					{/if}
 				</div>
 				<div class="flex gap-2">
-					<Button variant="secondary" disabled={inventoryLoading} on:click={fetchInventory}>
+					<Button variant="secondary" disabled={inventoryLoading} onclick={fetchInventory}>
 						Refresh status
 					</Button>
-					<Button variant="outline" disabled={inventoryLoading} on:click={requestInventoryRefresh}>
+					<Button variant="outline" disabled={inventoryLoading} onclick={requestInventoryRefresh}>
 						Request agent refresh
 					</Button>
 				</div>
@@ -241,10 +241,10 @@
 
 		<section class="flex flex-col gap-4">
 			<div class="flex gap-2">
-				<Button on:click={startSession} disabled={sessionLoading || !selectedDevice}>
+				<Button onclick={startSession} disabled={sessionLoading || !selectedDevice}>
 					{session ? 'Restart stream' : 'Start stream'}
 				</Button>
-				<Button variant="outline" on:click={stopSession} disabled={sessionLoading || !session}>
+				<Button variant="outline" onclick={stopSession} disabled={sessionLoading || !session}>
 					Stop stream
 				</Button>
 			</div>
@@ -255,7 +255,7 @@
 					autoplay
 					playsinline
 					muted
-				/>
+				></video>
 				<p class="mt-2 text-sm text-muted-foreground">
 					Remote webcam streaming will appear here once the agent begins transmitting media. Until
 					then, commands queue successfully but playback may remain unavailable if the agent does

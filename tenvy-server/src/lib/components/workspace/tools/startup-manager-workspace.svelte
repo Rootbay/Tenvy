@@ -855,7 +855,7 @@
 					<dl class="grid gap-3 md:grid-cols-2">
 						<div class="space-y-1">
 							<dt class="text-xs text-muted-foreground uppercase">Executable</dt>
-							<dd class="font-medium break-words text-foreground">{selectedEntry.path}</dd>
+							<dd class="font-medium wrap-break-word text-foreground">{selectedEntry.path}</dd>
 						</div>
 						<div class="space-y-1">
 							<dt class="text-xs text-muted-foreground uppercase">Publisher</dt>
@@ -863,7 +863,7 @@
 						</div>
 						<div class="space-y-1">
 							<dt class="text-xs text-muted-foreground uppercase">Location</dt>
-							<dd class="font-medium break-words text-foreground">{selectedEntry.location}</dd>
+							<dd class="font-medium wrap-break-word text-foreground">{selectedEntry.location}</dd>
 						</div>
 						<div class="space-y-1">
 							<dt class="text-xs text-muted-foreground uppercase">Scope</dt>
@@ -890,7 +890,7 @@
 						{#if selectedEntry.arguments}
 							<div class="space-y-1 md:col-span-2">
 								<dt class="text-xs text-muted-foreground uppercase">Arguments</dt>
-								<dd class="font-medium break-words text-foreground">{selectedEntry.arguments}</dd>
+								<dd class="font-medium wrap-break-word text-foreground">{selectedEntry.arguments}</dd>
 							</div>
 						{/if}
 					</dl>

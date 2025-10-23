@@ -954,7 +954,7 @@
 	class="flex h-full min-h-[720px] flex-col overflow-hidden rounded-2xl border border-border/60 bg-background/80 shadow-xl"
 >
 	<header
-		class="border-b border-border/60 bg-gradient-to-r from-background via-background to-muted/40 px-6 py-5"
+		class="border-b border-border/60 bg-linear-to-r from-background via-background to-muted/40 px-6 py-5"
 	>
 		<div class="flex flex-wrap items-start justify-between gap-6">
 			<div class="space-y-1">
@@ -1304,7 +1304,7 @@
 							<div class="mt-4 space-y-3 text-sm">
 								<div>
 									<p class="text-xs tracking-wide text-muted-foreground uppercase">Full path</p>
-									<p class="font-medium break-words text-foreground">{selectedPathLabel}</p>
+									<p class="font-medium wrap-break-word text-foreground">{selectedPathLabel}</p>
 								</div>
 								<div class="grid gap-3 sm:grid-cols-2">
 									<div>
