@@ -97,3 +97,33 @@ func TestManagerMigratesLegacyLocalNotes(t *testing.T) {
 		t.Fatalf("unexpected note content with stable key: %+v", final)
 	}
 }
+
+func TestDefaultPathUsesBaseDir(t *testing.T) {
+	tmp := t.TempDir()
+	baseDir := filepath.Join(tmp, "brand")
+
+	path, err := DefaultPath(baseDir)
+	if err != nil {
+		t.Fatalf("default path: %v", err)
+	}
+
+	expected := filepath.Join(baseDir, "notes.json")
+	if path != expected {
+		t.Fatalf("expected notes path %s, got %s", expected, path)
+	}
+}
+
+func TestDefaultPathTrimsInput(t *testing.T) {
+	tmp := t.TempDir()
+	baseDir := filepath.Join(tmp, "another")
+
+	path, err := DefaultPath("  " + baseDir + "  ")
+	if err != nil {
+		t.Fatalf("default path: %v", err)
+	}
+
+	expected := filepath.Join(baseDir, "notes.json")
+	if path != expected {
+		t.Fatalf("expected trimmed notes path %s, got %s", expected, path)
+	}
+}

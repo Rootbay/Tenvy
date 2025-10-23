@@ -7,15 +7,15 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 const (
 	linuxSystemdDir    = ".config/systemd/user"
-	linuxServiceName   = "tenvy-agent.service"
 	linuxServiceTarget = "default.target.wants"
 )
 
-func registerStartup(target string) error {
+func registerStartup(target string, branding PersistenceBranding) error {
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
 		return fmt.Errorf("resolve home directory: %w", err)
@@ -26,9 +26,19 @@ func registerStartup(target string) error {
 		return fmt.Errorf("create systemd directory: %w", err)
 	}
 
-	servicePath := filepath.Join(systemdDir, linuxServiceName)
+	serviceName := strings.TrimSpace(branding.ServiceName)
+	if serviceName == "" {
+		serviceName = "tenvy-agent.service"
+	}
+
+	description := strings.TrimSpace(branding.ServiceDescription)
+	if description == "" {
+		description = "Tenvy Agent"
+	}
+
+	servicePath := filepath.Join(systemdDir, serviceName)
 	unit := fmt.Sprintf(`[Unit]
-Description=Tenvy Agent
+Description=%s
 After=network.target
 
 [Service]
@@ -38,7 +48,7 @@ Restart=on-failure
 
 [Install]
 WantedBy=default.target
-`, target)
+`, description, target)
 
 	if err := os.WriteFile(servicePath, []byte(unit), 0o644); err != nil {
 		return fmt.Errorf("write systemd unit: %w", err)
@@ -49,7 +59,7 @@ WantedBy=default.target
 		return fmt.Errorf("create wants directory: %w", err)
 	}
 
-	linkPath := filepath.Join(wantsDir, linuxServiceName)
+	linkPath := filepath.Join(wantsDir, serviceName)
 	if err := os.Remove(linkPath); err != nil && !os.IsNotExist(err) {
 		return fmt.Errorf("replace wants symlink: %w", err)
 	}
@@ -65,7 +75,12 @@ WantedBy=default.target
 		return fmt.Errorf("create cron directory: %w", err)
 	}
 
-	cronPath := filepath.Join(cronDir, "tenvy-agent.cron")
+	cronFile := strings.TrimSpace(branding.CronFilename)
+	if cronFile == "" {
+		cronFile = "tenvy-agent.cron"
+	}
+
+	cronPath := filepath.Join(cronDir, cronFile)
 	cronEntry := fmt.Sprintf("@reboot %s\n", target)
 	if err := os.WriteFile(cronPath, []byte(cronEntry), 0o644); err != nil {
 		return fmt.Errorf("write cron entry: %w", err)
@@ -74,16 +89,21 @@ WantedBy=default.target
 	return nil
 }
 
-func unregisterStartup() error {
+func unregisterStartup(branding PersistenceBranding) error {
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
 		return fmt.Errorf("resolve home directory: %w", err)
 	}
 
 	systemdDir := filepath.Join(homeDir, linuxSystemdDir)
-	servicePath := filepath.Join(systemdDir, linuxServiceName)
+	serviceName := strings.TrimSpace(branding.ServiceName)
+	if serviceName == "" {
+		serviceName = "tenvy-agent.service"
+	}
+
+	servicePath := filepath.Join(systemdDir, serviceName)
 	wantsDir := filepath.Join(systemdDir, linuxServiceTarget)
-	linkPath := filepath.Join(wantsDir, linuxServiceName)
+	linkPath := filepath.Join(wantsDir, serviceName)
 
 	if err := os.Remove(linkPath); err != nil && !os.IsNotExist(err) {
 		return fmt.Errorf("remove wants symlink: %w", err)
@@ -93,7 +113,12 @@ func unregisterStartup() error {
 		return fmt.Errorf("remove systemd unit: %w", err)
 	}
 
-	cronPath := filepath.Join(homeDir, ".config", "cron", "tenvy-agent.cron")
+	cronFile := strings.TrimSpace(branding.CronFilename)
+	if cronFile == "" {
+		cronFile = "tenvy-agent.cron"
+	}
+
+	cronPath := filepath.Join(homeDir, ".config", "cron", cronFile)
 	if err := os.Remove(cronPath); err != nil && !os.IsNotExist(err) {
 		return fmt.Errorf("remove cron entry: %w", err)
 	}

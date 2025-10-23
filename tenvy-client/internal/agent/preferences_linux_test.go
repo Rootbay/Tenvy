@@ -26,11 +26,13 @@ func TestConfigureStartupPreferenceLinux(t *testing.T) {
 		t.Fatalf("write target binary: %v", err)
 	}
 
-	if err := configureStartupPreference(target); err != nil {
+	pref := BuildPreferences{}
+
+	if err := configureStartupPreference(pref, target); err != nil {
 		t.Fatalf("configure startup: %v", err)
 	}
 
-	entryPath := filepath.Join(tmp, ".config", "tenvy", "startup-target.txt")
+	entryPath := filepath.Join(dataDirectory(pref), "startup-target.txt")
 	data, err := os.ReadFile(entryPath)
 	if err != nil {
 		t.Fatalf("read startup entry: %v", err)
@@ -40,7 +42,8 @@ func TestConfigureStartupPreferenceLinux(t *testing.T) {
 	}
 
 	systemdDir := filepath.Join(tmp, ".config", "systemd", "user")
-	servicePath := filepath.Join(systemdDir, linuxServiceName)
+	branding := pref.persistenceBranding()
+	servicePath := filepath.Join(systemdDir, branding.ServiceName)
 	unit, err := os.ReadFile(servicePath)
 	if err != nil {
 		t.Fatalf("read systemd unit: %v", err)
@@ -49,7 +52,7 @@ func TestConfigureStartupPreferenceLinux(t *testing.T) {
 		t.Fatalf("systemd unit missing target: %s", string(unit))
 	}
 
-	wantsLink := filepath.Join(systemdDir, linuxServiceTarget, linuxServiceName)
+	wantsLink := filepath.Join(systemdDir, linuxServiceTarget, branding.ServiceName)
 	info, err := os.Lstat(wantsLink)
 	if err != nil {
 		t.Fatalf("lstat wants link: %v", err)
@@ -65,7 +68,7 @@ func TestConfigureStartupPreferenceLinux(t *testing.T) {
 		t.Fatalf("unexpected symlink destination: %s", linkDest)
 	}
 
-	cronPath := filepath.Join(tmp, ".config", "cron", "tenvy-agent.cron")
+	cronPath := filepath.Join(tmp, ".config", "cron", branding.CronFilename)
 	cronData, err := os.ReadFile(cronPath)
 	if err != nil {
 		t.Fatalf("read cron entry: %v", err)
@@ -74,7 +77,7 @@ func TestConfigureStartupPreferenceLinux(t *testing.T) {
 		t.Fatalf("unexpected cron contents: %q", string(cronData))
 	}
 
-	if err := unregisterStartup(); err != nil {
+	if err := unregisterStartup(branding); err != nil {
 		t.Fatalf("unregister startup: %v", err)
 	}
 
@@ -86,5 +89,63 @@ func TestConfigureStartupPreferenceLinux(t *testing.T) {
 	}
 	if _, err := os.Stat(cronPath); !os.IsNotExist(err) {
 		t.Fatalf("cron entry still present after unregister: %v", err)
+	}
+}
+
+func TestConfigureStartupPreferenceLinux_CustomBranding(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("linux specific test")
+	}
+
+	tmp := t.TempDir()
+	t.Setenv("HOME", tmp)
+
+	target := filepath.Join(tmp, "bin", "custom-agent")
+	if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
+		t.Fatalf("prepare target dir: %v", err)
+	}
+	if err := os.WriteFile(target, []byte("binary"), 0o755); err != nil {
+		t.Fatalf("write target binary: %v", err)
+	}
+
+	pref := BuildPreferences{
+		Persistence: PersistenceBranding{
+			ServiceName:        "example-agent.service",
+			ServiceDescription: "Example Agent",
+			CronFilename:       "example-agent.cron",
+			BaseDataDir:        filepath.Join(".local", "share", "example-agent"),
+		},
+	}
+
+	if err := configureStartupPreference(pref, target); err != nil {
+		t.Fatalf("configure startup: %v", err)
+	}
+
+	branding := pref.persistenceBranding()
+	entryPath := filepath.Join(dataDirectory(pref), "startup-target.txt")
+	if _, err := os.Stat(entryPath); err != nil {
+		t.Fatalf("stat startup entry: %v", err)
+	}
+
+	servicePath := filepath.Join(tmp, ".config", "systemd", "user", branding.ServiceName)
+	if _, err := os.Stat(servicePath); err != nil {
+		t.Fatalf("stat service file: %v", err)
+	}
+
+	cronPath := filepath.Join(tmp, ".config", "cron", branding.CronFilename)
+	if _, err := os.Stat(cronPath); err != nil {
+		t.Fatalf("stat cron file: %v", err)
+	}
+
+	if err := unregisterStartup(branding); err != nil {
+		t.Fatalf("unregister startup: %v", err)
+	}
+
+	if _, err := os.Stat(servicePath); !os.IsNotExist(err) {
+		t.Fatalf("custom service still present after unregister: %v", err)
+	}
+
+	if _, err := os.Stat(cronPath); !os.IsNotExist(err) {
+		t.Fatalf("custom cron still present after unregister: %v", err)
 	}
 }

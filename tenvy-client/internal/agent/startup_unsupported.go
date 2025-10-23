@@ -7,10 +7,10 @@ import (
 	"runtime"
 )
 
-func registerStartup(target string) error {
+func registerStartup(target string, _ PersistenceBranding) error {
 	return fmt.Errorf("startup registration not supported on %s", runtime.GOOS)
 }
 
-func unregisterStartup() error {
+func unregisterStartup(PersistenceBranding) error {
 	return nil
 }
