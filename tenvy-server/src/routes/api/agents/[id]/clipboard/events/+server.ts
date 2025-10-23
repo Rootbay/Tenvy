@@ -1,6 +1,7 @@
 import { json, error } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { clipboardManager } from '$lib/server/rat/clipboard';
+import { executeClipboardTriggerCommandAction } from '$lib/server/rat/clipboard-trigger-actions';
 import type { ClipboardEventEnvelope, ClipboardTriggerEvent } from '$lib/types/clipboard';
 
 function describeEvent(agentId: string, event: ClipboardTriggerEvent): string {
@@ -17,11 +18,10 @@ function handleAction(agentId: string, event: ClipboardTriggerEvent) {
 		case 'notify':
 			console.info(`[clipboard] ${describeEvent(agentId, event)}`);
 			break;
-		case 'command':
-			console.warn(
-				`[clipboard] command action requested for ${describeEvent(agentId, event)} - not implemented`
-			);
-			break;
+                case 'command': {
+                        executeClipboardTriggerCommandAction(agentId, event, describeEvent(agentId, event));
+                        break;
+                }
 		default:
 			console.warn(
 				`[clipboard] unsupported action ${actionType} for ${describeEvent(agentId, event)}`
