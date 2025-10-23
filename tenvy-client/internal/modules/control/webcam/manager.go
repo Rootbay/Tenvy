@@ -256,7 +256,9 @@ func (m *Manager) startSession(ctx context.Context, payload protocol.WebcamComma
 		m.mu.Unlock()
 		existing.requestStop.Store(true)
 		existing.stop()
-		existing.wait(2 * time.Second)
+		if !existing.wait(15 * time.Second) {
+			m.logf("webcam stream %s previous session did not stop within timeout", sessionID)
+		}
 	} else {
 		m.mu.Unlock()
 	}
@@ -475,7 +477,9 @@ func (s *streamSession) run() {
 		cancel()
 		s.closeSource()
 		s.manager.mu.Lock()
-		delete(s.manager.sessions, s.id)
+		if current := s.manager.sessions[s.id]; current == s {
+			delete(s.manager.sessions, s.id)
+		}
 		s.manager.mu.Unlock()
 		close(s.done)
 	}()

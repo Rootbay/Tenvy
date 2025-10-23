@@ -8,13 +8,17 @@ import (
 	"math"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/blackjack/webcam"
 	"github.com/rootbay/tenvy-client/internal/protocol"
 )
 
-const frameWaitTimeout = 5000 // milliseconds
+const (
+	frameWaitTimeout      = 5000 // milliseconds
+	reconfigureRetryDelay = 10 * time.Millisecond
+)
 
 type v4l2FrameSource struct {
 	devicePath string
@@ -23,6 +27,8 @@ type v4l2FrameSource struct {
 	mimeType   string
 	started    bool
 	mu         sync.Mutex
+
+	reconfiguring atomic.Bool
 }
 
 func defaultFrameSourceFactory(deviceID string, settings *protocol.WebcamStreamSettings) (frameSource, error) {
@@ -88,6 +94,7 @@ func (s *v4l2FrameSource) Start(ctx context.Context) (<-chan framePacket, error)
 	s.started = true
 	cam := s.camera
 	mimeType := s.mimeType
+	source := s
 	s.mu.Unlock()
 
 	frames := make(chan framePacket)
@@ -104,6 +111,10 @@ func (s *v4l2FrameSource) Start(ctx context.Context) (<-chan framePacket, error)
 				if _, ok := err.(*webcam.Timeout); ok {
 					continue
 				}
+				if source.reconfiguring.Load() {
+					time.Sleep(reconfigureRetryDelay)
+					continue
+				}
 				select {
 				case frames <- framePacket{Err: err}:
 				case <-ctx.Done():
@@ -113,6 +124,10 @@ func (s *v4l2FrameSource) Start(ctx context.Context) (<-chan framePacket, error)
 
 			data, err := cam.ReadFrame()
 			if err != nil {
+				if source.reconfiguring.Load() {
+					time.Sleep(reconfigureRetryDelay)
+					continue
+				}
 				select {
 				case frames <- framePacket{Err: err}:
 				case <-ctx.Done():
@@ -147,6 +162,11 @@ func (s *v4l2FrameSource) ApplySettings(settings *protocol.WebcamStreamSettings)
 
 	if cam == nil {
 		return errors.New("webcam device is closed")
+	}
+
+	if started {
+		s.reconfiguring.Store(true)
+		defer s.reconfiguring.Store(false)
 	}
 
 	if started {
