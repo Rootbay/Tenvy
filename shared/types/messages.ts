@@ -15,6 +15,7 @@ import type { ClientChatCommandPayload } from "./client-chat";
 import type { ToolActivationCommandPayload } from "./tool-activation";
 import type { WebcamCommandPayload } from "./webcam";
 import type { TaskManagerCommandPayload } from "./task-manager";
+import type { SystemInfoCommandPayload, SystemInfoSnapshot } from "./system-info";
 
 export type CommandName =
   | "ping"
@@ -44,10 +45,6 @@ export interface ShellCommandPayload {
   workingDirectory?: string;
   elevated?: boolean;
   environment?: Record<string, string>;
-}
-
-export interface SystemInfoCommandPayload {
-  refresh?: boolean;
 }
 
 export interface OpenUrlCommandPayload {
@@ -146,7 +143,13 @@ export interface AgentAppVncInputEnvelope {
   input: AppVncInputBurst;
 }
 
+export interface AgentSystemInfoEnvelope {
+  type: "system-info";
+  snapshot: SystemInfoSnapshot;
+}
+
 export type AgentEnvelope =
   | AgentCommandEnvelope
   | AgentRemoteDesktopInputEnvelope
-  | AgentAppVncInputEnvelope;
+  | AgentAppVncInputEnvelope
+  | AgentSystemInfoEnvelope;
