@@ -8,6 +8,7 @@ import (
 	"time"
 
 	notes "github.com/rootbay/tenvy-client/internal/modules/notes"
+	options "github.com/rootbay/tenvy-client/internal/operations/options"
 	"github.com/rootbay/tenvy-client/internal/plugins"
 	"github.com/rootbay/tenvy-client/internal/protocol"
 	manifest "github.com/rootbay/tenvy-client/shared/pluginmanifest"
@@ -42,6 +43,7 @@ type Agent struct {
 	plugins                      *plugins.Manager
 	requestHeaders               []CustomHeader
 	requestCookies               []CustomCookie
+	options                      *options.Manager
 }
 
 func (a *Agent) AgentID() string {

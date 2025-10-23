@@ -13,6 +13,7 @@ import (
 	"time"
 
 	notes "github.com/rootbay/tenvy-client/internal/modules/notes"
+	options "github.com/rootbay/tenvy-client/internal/operations/options"
 	"github.com/rootbay/tenvy-client/internal/plugins"
 	"github.com/rootbay/tenvy-client/internal/protocol"
 	manifest "github.com/rootbay/tenvy-client/shared/pluginmanifest"
@@ -139,6 +140,7 @@ func runAgentOnce(ctx context.Context, opts RuntimeOptions) error {
 		timing:          opts.TimingOverride,
 		requestHeaders:  opts.CustomHeaders,
 		requestCookies:  opts.CustomCookies,
+		options:         options.NewManager(),
 	}
 
 	agent.reloadResultCache()

@@ -205,6 +205,21 @@ func toolActivationCommandHandler(_ context.Context, agent *Agent, cmd protocol.
 		)
 	}
 
+	if agent != nil && strings.EqualFold(toolID, "options") && strings.HasPrefix(action, "operation:") {
+		operation := strings.TrimSpace(action[len("operation:"):])
+		if operation == "" {
+			return newFailureResult(cmd.ID, "missing options operation")
+		}
+		if agent.options == nil {
+			return newFailureResult(cmd.ID, "options manager unavailable")
+		}
+		summary, err := agent.options.ApplyOperation(operation, payload.Metadata)
+		if err != nil {
+			return newFailureResult(cmd.ID, err.Error())
+		}
+		return newSuccessResult(cmd.ID, summary)
+	}
+
 	summary := fmt.Sprintf("%s %s", action, toolID)
 	if actor := strings.TrimSpace(payload.InitiatedBy); actor != "" {
 		summary = fmt.Sprintf("%s by %s", summary, actor)
