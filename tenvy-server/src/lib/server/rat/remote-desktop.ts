@@ -23,7 +23,7 @@ import type {
 } from '$lib/types/remote-desktop';
 import { registry } from './store';
 import { WebRTCPipeline } from '$lib/streams/webrtc';
-import { remoteDesktopInputService } from './remote-desktop-input';
+import { remoteDesktopInputService, type RemoteDesktopQuicDeliveryResult } from './remote-desktop-input';
 import { Buffer } from 'node:buffer';
 
 const remoteDesktopPluginManifest = remoteDesktopEngineManifestJson as PluginManifest;
@@ -913,12 +913,12 @@ export class RemoteDesktopManager {
 		this.broadcastSession(agentId);
 	}
 
-	dispatchInput(
-		agentId: string,
-		sessionId: string,
-		events: RemoteDesktopInputEvent[],
-		options: { sequence?: number } = {}
-	): { delivered: boolean; sequence: number | null } {
+        dispatchInput(
+                agentId: string,
+                sessionId: string,
+                events: RemoteDesktopInputEvent[],
+                options: { sequence?: number } = {}
+        ): { delivered: boolean; sequence: number | null; quicDelivered: boolean; quicDeliveredAll: boolean } {
 		const record = this.sessions.get(agentId);
 		if (!record || !record.active) {
 			throw new RemoteDesktopError('No active remote desktop session', 404);
@@ -926,49 +926,72 @@ export class RemoteDesktopManager {
 		if (record.id !== sessionId) {
 			throw new RemoteDesktopError('Session identifier mismatch', 409);
 		}
-		if (!Array.isArray(events) || events.length === 0) {
-			return { delivered: false, sequence: null };
-		}
+                if (!Array.isArray(events) || events.length === 0) {
+                        return { delivered: false, sequence: null, quicDelivered: false, quicDeliveredAll: false };
+                }
 
-		const sequence = this.reserveInputSequence(record, options.sequence);
-		if (sequence === null) {
-			return { delivered: false, sequence: null };
-		}
+                const sequence = this.reserveInputSequence(record, options.sequence);
+                if (sequence === null) {
+                        return { delivered: false, sequence: null, quicDelivered: false, quicDeliveredAll: false };
+                }
 
 		const burst: RemoteDesktopInputBurst = { sessionId, events, sequence };
 
-		let delivered = false;
-		try {
-			delivered = remoteDesktopInputService.send(agentId, sessionId, burst);
-		} catch (err) {
-			console.warn('Failed to deliver remote desktop input via QUIC service', err);
-		}
+                let delivered = false;
+                let quicDelivery: RemoteDesktopQuicDeliveryResult | null = null;
+                try {
+                        quicDelivery = remoteDesktopInputService.send(agentId, sessionId, burst);
+                        delivered = quicDelivery.deliveredAll;
+                } catch (err) {
+                        console.warn('Failed to deliver remote desktop input via QUIC service', err);
+                }
 
-		if (!delivered) {
-			try {
-				delivered = registry.sendRemoteDesktopInput(agentId, burst);
-			} catch (err) {
-				console.error('Failed to deliver remote desktop input burst', err);
-			}
-		}
+                const quicDeliveredAll = quicDelivery?.deliveredAll ?? false;
+                const quicDeliveredAny = quicDelivery?.deliveredAny ?? false;
+                const quicDeliveredEvents = quicDelivery?.deliveredEvents ?? 0;
 
-		if (!delivered) {
-			try {
-				registry.queueCommand(agentId, {
-					name: 'remote-desktop',
-					payload: {
-						action: 'input',
-						sessionId,
-						events
-					}
-				});
-			} catch (err) {
-				console.error('Failed to enqueue remote desktop input fallback command', err);
-			}
-		}
+                let remainingEvents: RemoteDesktopInputEvent[] = burst.events;
+                if (quicDeliveredEvents >= burst.events.length) {
+                        remainingEvents = [];
+                } else if (quicDeliveredEvents > 0) {
+                        remainingEvents = burst.events.slice(quicDeliveredEvents);
+                }
 
-		return { delivered, sequence };
-	}
+                if (!quicDeliveredAll && remainingEvents.length > 0) {
+                        const fallbackBurst =
+                                remainingEvents === burst.events
+                                        ? burst
+                                        : { ...burst, events: remainingEvents };
+                        try {
+                                delivered = registry.sendRemoteDesktopInput(agentId, fallbackBurst);
+                        } catch (err) {
+                                console.error('Failed to deliver remote desktop input burst', err);
+                        }
+                }
+
+                if (!delivered) {
+                        const pendingEvents = remainingEvents.length > 0 ? remainingEvents : burst.events;
+                        try {
+                                registry.queueCommand(agentId, {
+                                        name: 'remote-desktop',
+                                        payload: {
+                                                action: 'input',
+                                                sessionId,
+                                                events: pendingEvents
+                                        }
+                                });
+                        } catch (err) {
+                                console.error('Failed to enqueue remote desktop input fallback command', err);
+                        }
+                }
+
+                return {
+                        delivered,
+                        sequence,
+                        quicDelivered: quicDeliveredAny,
+                        quicDeliveredAll
+                };
+        }
 
 	async negotiateTransport(
 		agentId: string,
