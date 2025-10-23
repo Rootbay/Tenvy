@@ -2,6 +2,7 @@ package agent
 
 import (
 	"fmt"
+	"path/filepath"
 	"testing"
 
 	"github.com/rootbay/tenvy-client/internal/protocol"
@@ -40,6 +41,33 @@ func TestResultStorePersistsAcrossRestarts(t *testing.T) {
 		if results[i].CommandID != expected[i].CommandID {
 			t.Fatalf("result %d mismatch: got %q want %q", i, results[i].CommandID, expected[i].CommandID)
 		}
+	}
+}
+
+func TestDefaultResultStorePathUsesDataDirectory(t *testing.T) {
+	tmp := t.TempDir()
+	t.Setenv("HOME", tmp)
+
+	pref := BuildPreferences{}
+	path := defaultResultStorePath(pref)
+	expected := filepath.Join(tmp, ".config", "tenvy", "results")
+	if path != expected {
+		t.Fatalf("expected result store path %s, got %s", expected, path)
+	}
+}
+
+func TestDefaultResultStorePathCustomBranding(t *testing.T) {
+	tmp := t.TempDir()
+	t.Setenv("HOME", tmp)
+
+	pref := BuildPreferences{
+		Persistence: PersistenceBranding{BaseDataDir: filepath.Join(".data", "custom")},
+	}
+
+	path := defaultResultStorePath(pref)
+	expected := filepath.Join(tmp, ".data", "custom", "results")
+	if path != expected {
+		t.Fatalf("expected custom result store path %s, got %s", expected, path)
 	}
 }
 

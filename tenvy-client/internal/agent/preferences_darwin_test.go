@@ -20,16 +20,18 @@ func TestRegisterStartupPreferenceDarwin(t *testing.T) {
 		t.Fatalf("write target: %v", err)
 	}
 
-	if err := configureStartupPreference(target); err != nil {
+	pref := BuildPreferences{}
+	if err := configureStartupPreference(pref, target); err != nil {
 		t.Fatalf("configure startup: %v", err)
 	}
 
-	plistPath := filepath.Join(tmp, macLaunchAgentsDir, macPlistName)
+	branding := pref.persistenceBranding()
+	plistPath := filepath.Join(tmp, macLaunchAgentsDir, branding.LaunchAgentLabel+".plist")
 	if _, err := os.Stat(plistPath); err != nil {
 		t.Fatalf("stat plist: %v", err)
 	}
 
-	if err := unregisterStartup(); err != nil {
+	if err := unregisterStartup(branding); err != nil {
 		t.Fatalf("unregister startup: %v", err)
 	}
 

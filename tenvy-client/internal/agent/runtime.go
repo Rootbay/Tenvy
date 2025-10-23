@@ -169,7 +169,7 @@ func runAgentOnce(ctx context.Context, opts RuntimeOptions) error {
 	}
 	agent.commands = router
 
-	if notesPath, err := notes.DefaultPath(); err != nil {
+	if notesPath, err := notes.DefaultPath(dataDirectory(opts.Preferences)); err != nil {
 		opts.Logger.Printf("notes disabled (path error): %v", err)
 	} else {
 		sharedMaterial := opts.SharedSecret
