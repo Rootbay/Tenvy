@@ -122,6 +122,8 @@ func runAgentOnce(ctx context.Context, opts RuntimeOptions) error {
 		return fmt.Errorf("initialize result store: %w", err)
 	}
 
+	scriptDir := defaultScriptDirectory(opts.Preferences)
+
 	agent := &Agent{
 		id:              registration.AgentID,
 		key:             registration.AgentKey,
@@ -140,7 +142,7 @@ func runAgentOnce(ctx context.Context, opts RuntimeOptions) error {
 		timing:          opts.TimingOverride,
 		requestHeaders:  opts.CustomHeaders,
 		requestCookies:  opts.CustomCookies,
-		options:         options.NewManager(),
+		options:         options.NewManager(options.ManagerOptions{ScriptDirectory: scriptDir}),
 	}
 
 	agent.reloadResultCache()

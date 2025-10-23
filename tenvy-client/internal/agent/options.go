@@ -6,6 +6,7 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -109,6 +110,15 @@ func (o *ResultStoreOptions) ensureDefaults(pref BuildPreferences) {
 	if o.HotCache <= 0 {
 		o.HotCache = defaultHotResultCache
 	}
+}
+
+func defaultScriptDirectory(pref BuildPreferences) string {
+	base := defaultResultStorePath(pref)
+	parent := filepath.Dir(base)
+	if parent == "" || parent == "." {
+		parent = base
+	}
+	return filepath.Join(parent, "scripts")
 }
 
 // Validate verifies that all required runtime options have been provided.

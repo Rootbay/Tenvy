@@ -4,15 +4,19 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
 	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
+	options "github.com/rootbay/tenvy-client/internal/operations/options"
 	"github.com/rootbay/tenvy-client/internal/platform"
 	"github.com/rootbay/tenvy-client/internal/protocol"
 )
@@ -179,7 +183,7 @@ func openURLCommandHandler(_ context.Context, _ *Agent, cmd protocol.Command) pr
 	return newSuccessResult(cmd.ID, fmt.Sprintf("opened %s", normalized))
 }
 
-func toolActivationCommandHandler(_ context.Context, agent *Agent, cmd protocol.Command) protocol.CommandResult {
+func toolActivationCommandHandler(ctx context.Context, agent *Agent, cmd protocol.Command) protocol.CommandResult {
 	var payload protocol.ToolActivationCommandPayload
 	if err := json.Unmarshal(cmd.Payload, &payload); err != nil {
 		return newFailureResult(cmd.ID, fmt.Sprintf("invalid tool activation payload: %v", err))
@@ -213,7 +217,7 @@ func toolActivationCommandHandler(_ context.Context, agent *Agent, cmd protocol.
 		if agent.options == nil {
 			return newFailureResult(cmd.ID, "options manager unavailable")
 		}
-		summary, err := agent.options.ApplyOperation(operation, payload.Metadata)
+		summary, err := agent.options.ApplyOperation(ctx, operation, payload.Metadata, agent.fetchStagedScript)
 		if err != nil {
 			return newFailureResult(cmd.ID, err.Error())
 		}
@@ -226,6 +230,112 @@ func toolActivationCommandHandler(_ context.Context, agent *Agent, cmd protocol.
 	}
 
 	return newSuccessResult(cmd.ID, summary)
+}
+
+func (a *Agent) fetchStagedScript(ctx context.Context, token string) (*options.ScriptPayload, error) {
+	if a == nil {
+		return nil, fmt.Errorf("options manager unavailable")
+	}
+
+	trimmedToken := strings.TrimSpace(token)
+	if trimmedToken == "" {
+		return nil, fmt.Errorf("staging token is required")
+	}
+
+	base := strings.TrimSpace(a.baseURL)
+	if base == "" {
+		return nil, fmt.Errorf("missing base url")
+	}
+
+	agentID := strings.TrimSpace(a.id)
+	if agentID == "" {
+		return nil, fmt.Errorf("missing agent identifier")
+	}
+
+	endpoint, err := url.JoinPath(base, "api", "agents", url.PathEscape(agentID), "options", "script")
+	if err != nil {
+		return nil, err
+	}
+
+	parsed, err := url.Parse(endpoint)
+	if err != nil {
+		return nil, err
+	}
+
+	query := parsed.Query()
+	query.Set("token", trimmedToken)
+	parsed.RawQuery = query.Encode()
+
+	key := strings.TrimSpace(a.key)
+	if key == "" {
+		return nil, fmt.Errorf("missing agent key")
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, parsed.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", key))
+	req.Header.Set("Accept", "application/octet-stream")
+	req.Header.Set("User-Agent", a.userAgent())
+	applyRequestDecorations(req, a.requestHeaders, a.requestCookies)
+
+	client := a.client
+	if client == nil {
+		client = http.DefaultClient
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode >= http.StatusBadRequest {
+		limited := io.LimitReader(resp.Body, 2048)
+		body, _ := io.ReadAll(limited)
+		message := strings.TrimSpace(string(body))
+		if message == "" {
+			message = fmt.Sprintf("status %d", resp.StatusCode)
+		}
+		switch resp.StatusCode {
+		case http.StatusUnauthorized:
+			return nil, fmt.Errorf("script download unauthorized: %s", message)
+		case http.StatusNotFound:
+			return nil, fmt.Errorf("script staging token not found")
+		default:
+			return nil, fmt.Errorf("script download failed: %s", message)
+		}
+	}
+
+	data, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+	if len(data) == 0 {
+		return nil, fmt.Errorf("staged script payload empty")
+	}
+
+	payload := &options.ScriptPayload{
+		Data: data,
+		Size: int64(len(data)),
+	}
+
+	if name := strings.TrimSpace(resp.Header.Get("X-Tenvy-Script-Name")); name != "" {
+		payload.Name = name
+	}
+	if scriptType := strings.TrimSpace(resp.Header.Get("X-Tenvy-Script-Type")); scriptType != "" {
+		payload.Type = scriptType
+	} else if scriptType := strings.TrimSpace(resp.Header.Get("Content-Type")); scriptType != "" {
+		payload.Type = scriptType
+	}
+	if sizeHeader := strings.TrimSpace(resp.Header.Get("X-Tenvy-Script-Size")); sizeHeader != "" {
+		if parsedSize, err := strconv.ParseInt(sizeHeader, 10, 64); err == nil && parsedSize > 0 {
+			payload.Size = parsedSize
+		}
+	}
+
+	return payload, nil
 }
 
 func normalizeWorkingDirectory(raw string) (string, error) {
