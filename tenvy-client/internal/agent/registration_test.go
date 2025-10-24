@@ -207,7 +207,7 @@ func TestRegisterAgentWithRetryClampsWaitToContextDeadline(t *testing.T) {
 }
 
 func TestRegisterAgentUsesDefaultUserAgent(t *testing.T) {
-	t.Parallel()
+	t.Setenv("LC_ALL", "en_US.UTF-8")
 
 	metadata := protocol.AgentMetadata{Version: "test"}
 
@@ -231,8 +231,9 @@ func TestRegisterAgentUsesDefaultUserAgent(t *testing.T) {
 		t.Fatalf("registerAgent returned error: %v", err)
 	}
 
-	if gotUserAgent != "tenvy-client/test" {
-		t.Fatalf("expected default user agent, got %q", gotUserAgent)
+	expected := resolveUserAgentString("", "", false, metadata.Version)
+	if gotUserAgent != expected {
+		t.Fatalf("expected default user agent %q, got %q", expected, gotUserAgent)
 	}
 }
 

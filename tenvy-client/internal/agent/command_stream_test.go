@@ -68,22 +68,25 @@ func (r *recordingAppVncHandler) snapshot() []protocol.AppVncInputBurst {
 
 func makeTestAgent(baseURL string, client *http.Client, router *commandRouter) *Agent {
 	return &Agent{
-		id:             "agent-1",
-		key:            "key-1",
-		baseURL:        baseURL,
-		client:         client,
-		config:         protocol.AgentConfig{PollIntervalMs: 50, MaxBackoffMs: 200, JitterRatio: 0},
-		logger:         log.New(io.Discard, "", 0),
-		pendingResults: make([]protocol.CommandResult, 0, 4),
-		startTime:      time.Now(),
-		buildVersion:   "test",
-		commands:       router,
+		id:                   "agent-1",
+		key:                  "key-1",
+		baseURL:              baseURL,
+		client:               client,
+		config:               protocol.AgentConfig{PollIntervalMs: 50, MaxBackoffMs: 200, JitterRatio: 0},
+		logger:               log.New(io.Discard, "", 0),
+		pendingResults:       make([]protocol.CommandResult, 0, 4),
+		startTime:            time.Now(),
+		metadata:             protocol.AgentMetadata{Version: "test"},
+		buildVersion:         "test",
+		userAgentFingerprint: defaultUserAgentFingerprint(),
+		commands:             router,
 	}
 }
 
 func TestCommandStreamDeliversImmediately(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
+	t.Setenv("LC_ALL", "en_US.UTF-8")
 
 	executed := make(chan protocol.Command, 1)
 	router := newCommandRouter()
@@ -178,6 +181,7 @@ func TestCommandStreamDeliversImmediately(t *testing.T) {
 	defer srv.Close()
 
 	agent := makeTestAgent(srv.URL, srv.Client(), router)
+	agent.userAgentFingerprint = userAgentFingerprintEdgeWindows
 	expectedUserAgent = agent.userAgent()
 
 	go agent.runCommandStream(ctx)

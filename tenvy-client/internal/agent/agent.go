@@ -32,6 +32,8 @@ type Agent struct {
 	notes                        *notes.Manager
 	buildVersion                 string
 	userAgentOverride            string
+	userAgentFingerprint         string
+	userAgentAutogenDisabled     bool
 	timing                       TimingOverride
 	modules                      *moduleManager
 	commands                     *commandRouter

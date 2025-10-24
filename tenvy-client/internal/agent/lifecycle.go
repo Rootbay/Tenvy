@@ -459,14 +459,11 @@ func (a *Agent) userAgent() string {
 	if a == nil {
 		return ""
 	}
-	if ua := strings.TrimSpace(a.userAgentOverride); ua != "" {
-		return ua
-	}
-	version := strings.TrimSpace(a.buildVersion)
+	version := strings.TrimSpace(a.metadata.Version)
 	if version == "" {
-		version = "unknown"
+		version = a.buildVersion
 	}
-	return fmt.Sprintf("tenvy-client/%s", version)
+	return resolveUserAgentString(a.userAgentOverride, a.userAgentFingerprint, a.userAgentAutogenDisabled, version)
 }
 
 func (a *Agent) shutdown(ctx context.Context) {

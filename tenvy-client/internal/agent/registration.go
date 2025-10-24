@@ -162,11 +162,7 @@ func registerAgent(
 	req.Header.Set("Accept", "application/json")
 	ua := strings.TrimSpace(userAgent)
 	if ua == "" {
-		version := strings.TrimSpace(metadata.Version)
-		if version == "" {
-			version = "unknown"
-		}
-		ua = fmt.Sprintf("tenvy-client/%s", version)
+		ua = resolveUserAgentString("", "", false, metadata.Version)
 	}
 	req.Header.Set("User-Agent", ua)
 	applyRequestDecorations(req, headers, cookies)
