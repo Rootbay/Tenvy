@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -41,6 +42,7 @@ type Config struct {
 	AgentConfig   protocol.AgentConfig
 	Plugins       *plugins.Manager
 	ActiveModules []string
+	Extensions    ModuleExtensionRegistry
 }
 
 func envBool(name string) bool {
@@ -102,12 +104,27 @@ type ModuleCapability struct {
 	Description string
 }
 
+type ModuleExtension struct {
+	Source       string
+	Version      string
+	Capabilities []ModuleCapability
+}
+
+type ModuleExtensionRegistrar interface {
+	RegisterExtension(ModuleExtension) error
+}
+
+type ModuleExtensionRegistry interface {
+	RegisterModuleExtension(moduleID string, extension ModuleExtension) error
+}
+
 type ModuleMetadata struct {
 	ID           string
 	Title        string
 	Description  string
 	Commands     []string
 	Capabilities []ModuleCapability
+	Extensions   []ModuleExtension
 }
 
 type Module interface {
@@ -147,9 +164,34 @@ func WrapCommandResult(result protocol.CommandResult) error {
 }
 
 type moduleEntry struct {
-	module   Module
-	metadata ModuleMetadata
-	commands []string
+	module     Module
+	metadata   ModuleMetadata
+	commands   []string
+	base       ModuleMetadata
+	registrar  ModuleExtensionRegistrar
+	extensions map[string]ModuleExtension
+}
+
+func (e *moduleEntry) rebuildMetadata() {
+	metadata := copyModuleMetadata(e.base)
+	if len(e.extensions) > 0 {
+		keys := make([]string, 0, len(e.extensions))
+		for source := range e.extensions {
+			keys = append(keys, source)
+		}
+		sort.Strings(keys)
+		metadata.Extensions = make([]ModuleExtension, 0, len(keys))
+		for _, source := range keys {
+			ext := copyModuleExtension(e.extensions[source])
+			metadata.Extensions = append(metadata.Extensions, ext)
+			if len(ext.Capabilities) > 0 {
+				metadata.Capabilities = append(metadata.Capabilities, ext.Capabilities...)
+			}
+		}
+	} else {
+		metadata.Extensions = nil
+	}
+	e.metadata = metadata
 }
 
 type appVncInputHandler interface {
@@ -159,6 +201,7 @@ type appVncInputHandler interface {
 type moduleManager struct {
 	mu        sync.RWMutex
 	modules   map[string]*moduleEntry
+	byID      map[string]*moduleEntry
 	lifecycle []*moduleEntry
 	remote    *remoteDesktopModule
 	appVnc    appVncInputHandler
@@ -184,6 +227,7 @@ func newDefaultModuleManager() *moduleManager {
 func newModuleManager() *moduleManager {
 	return &moduleManager{
 		modules:   make(map[string]*moduleEntry),
+		byID:      make(map[string]*moduleEntry),
 		lifecycle: make([]*moduleEntry, 0, 6),
 	}
 }
@@ -209,17 +253,26 @@ func (r *moduleManager) register(m Module) {
 		panic(fmt.Sprintf("agent module %s does not declare any commands", metadata.ID))
 	}
 	entry := &moduleEntry{
-		module:   m,
-		metadata: metadata,
-		commands: append([]string(nil), commands...),
+		module:     m,
+		base:       copyModuleMetadata(metadata),
+		commands:   append([]string(nil), commands...),
+		extensions: make(map[string]ModuleExtension),
 	}
+	entry.rebuildMetadata()
 	if remote, ok := m.(*remoteDesktopModule); ok {
 		r.remote = remote
 	}
 	if app, ok := any(m).(appVncInputHandler); ok {
 		r.appVnc = app
 	}
+	if registrar, ok := any(m).(ModuleExtensionRegistrar); ok {
+		entry.registrar = registrar
+	}
+	if _, exists := r.byID[moduleID]; exists {
+		panic(fmt.Sprintf("module %s already registered", moduleID))
+	}
 	r.lifecycle = append(r.lifecycle, entry)
+	r.byID[moduleID] = entry
 	for _, command := range entry.commands {
 		if strings.TrimSpace(command) == "" {
 			continue
@@ -235,6 +288,7 @@ func (r *moduleManager) Init(ctx context.Context, cfg Config) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
+	cfg.Extensions = r
 	var errs []error
 	for _, entry := range r.lifecycle {
 		if err := entry.module.Init(ctx, cfg); err != nil {
@@ -253,6 +307,7 @@ func (r *moduleManager) UpdateConfig(cfg Config) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
+	cfg.Extensions = r
 	var errs []error
 	for _, entry := range r.lifecycle {
 		if err := entry.module.UpdateConfig(cfg); err != nil {
@@ -273,9 +328,88 @@ func (r *moduleManager) Metadata() []ModuleMetadata {
 
 	metadata := make([]ModuleMetadata, 0, len(r.lifecycle))
 	for _, entry := range r.lifecycle {
-		metadata = append(metadata, entry.metadata)
+		metadata = append(metadata, copyModuleMetadata(entry.metadata))
 	}
 	return metadata
+}
+
+func (r *moduleManager) RegisterModuleExtension(moduleID string, extension ModuleExtension) error {
+	moduleID = strings.TrimSpace(moduleID)
+	if moduleID == "" {
+		return errors.New("module identifier is required")
+	}
+	extension.Source = strings.TrimSpace(extension.Source)
+	if extension.Source == "" {
+		return errors.New("extension source is required")
+	}
+
+	sanitized := copyModuleExtension(extension)
+	sanitized.Capabilities = sanitizeModuleCapabilities(sanitized.Capabilities)
+
+	r.mu.Lock()
+	entry, ok := r.byID[moduleID]
+	if !ok {
+		r.mu.Unlock()
+		return fmt.Errorf("module %s not registered", moduleID)
+	}
+	entry.extensions[sanitized.Source] = sanitized
+	entry.rebuildMetadata()
+	registrar := entry.registrar
+	r.mu.Unlock()
+
+	if registrar != nil {
+		if err := registrar.RegisterExtension(sanitized); err != nil {
+			return fmt.Errorf("module %s extension registration failed: %w", moduleID, err)
+		}
+	}
+
+	return nil
+}
+
+func copyModuleMetadata(metadata ModuleMetadata) ModuleMetadata {
+	clone := ModuleMetadata{
+		ID:           metadata.ID,
+		Title:        metadata.Title,
+		Description:  metadata.Description,
+		Commands:     append([]string(nil), metadata.Commands...),
+		Capabilities: append([]ModuleCapability(nil), metadata.Capabilities...),
+	}
+	if len(metadata.Extensions) > 0 {
+		clone.Extensions = make([]ModuleExtension, 0, len(metadata.Extensions))
+		for _, extension := range metadata.Extensions {
+			clone.Extensions = append(clone.Extensions, copyModuleExtension(extension))
+		}
+	}
+	return clone
+}
+
+func copyModuleExtension(extension ModuleExtension) ModuleExtension {
+	return ModuleExtension{
+		Source:       extension.Source,
+		Version:      extension.Version,
+		Capabilities: append([]ModuleCapability(nil), extension.Capabilities...),
+	}
+}
+
+func sanitizeModuleCapabilities(caps []ModuleCapability) []ModuleCapability {
+	if len(caps) == 0 {
+		return nil
+	}
+	sanitized := make([]ModuleCapability, 0, len(caps))
+	for _, capability := range caps {
+		name := strings.TrimSpace(capability.Name)
+		if name == "" {
+			continue
+		}
+		sanitized = append(sanitized, ModuleCapability{
+			Name:        name,
+			Description: strings.TrimSpace(capability.Description),
+		})
+	}
+	if len(sanitized) == 0 {
+		return nil
+	}
+	return sanitized
 }
 
 func (r *moduleManager) HandleCommand(ctx context.Context, cmd protocol.Command) (bool, protocol.CommandResult) {
@@ -452,6 +586,7 @@ func (a *Agent) moduleRuntime() Config {
 		AgentConfig:   a.config,
 		Plugins:       a.plugins,
 		ActiveModules: activeModules,
+		Extensions:    a.modules,
 	}
 }
 
@@ -463,6 +598,7 @@ type remoteDesktopModule struct {
 	engineConfig    remotedesktop.Config
 	factory         remoteDesktopEngineFactory
 	requiredVersion string
+	extensions      map[string]ModuleExtension
 }
 
 func newRemoteDesktopModule(engine remotedesktop.Engine) *remoteDesktopModule {
@@ -502,6 +638,22 @@ func (m *remoteDesktopModule) Init(ctx context.Context, cfg Config) error {
 
 func (m *remoteDesktopModule) UpdateConfig(cfg Config) error {
 	return m.configure(context.Background(), cfg)
+}
+
+func (m *remoteDesktopModule) RegisterExtension(extension ModuleExtension) error {
+	source := strings.TrimSpace(extension.Source)
+	if source == "" {
+		return errors.New("extension source required")
+	}
+
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	if m.extensions == nil {
+		m.extensions = make(map[string]ModuleExtension)
+	}
+	m.extensions[source] = copyModuleExtension(extension)
+	return nil
 }
 
 func (m *remoteDesktopModule) configure(ctx context.Context, runtime Config) error {
@@ -740,6 +892,28 @@ func defaultRemoteDesktopEngineFactory(ctx context.Context, runtime Config, cfg 
 	}
 
 	version := strings.TrimSpace(result.Manifest.Version)
+	if runtime.Extensions != nil {
+		var caps []ModuleCapability
+		for _, capability := range result.Manifest.Capabilities {
+			if !strings.EqualFold(strings.TrimSpace(capability.Module), "remote-desktop") {
+				continue
+			}
+			caps = append(caps, ModuleCapability{
+				Name:        strings.TrimSpace(capability.Name),
+				Description: strings.TrimSpace(capability.Description),
+			})
+		}
+		if len(caps) > 0 {
+			extension := ModuleExtension{
+				Source:       strings.TrimSpace(result.Manifest.ID),
+				Version:      version,
+				Capabilities: caps,
+			}
+			if err := runtime.Extensions.RegisterModuleExtension("remote-desktop", extension); err != nil && runtime.Logger != nil {
+				runtime.Logger.Printf("remote desktop: failed to register plugin capabilities: %v", err)
+			}
+		}
+	}
 	engine := remotedesktop.NewManagedRemoteDesktopEngine(result.EntryPath, version, manager, runtime.Logger)
 	return engine, version, nil
 }
