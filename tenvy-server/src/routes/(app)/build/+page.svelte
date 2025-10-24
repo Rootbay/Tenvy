@@ -730,9 +730,9 @@
 						</TabsList>
 
 						<TabsContent value="connection" class="space-y-6">
-							{#if tabComponents.connection}
-								<svelte:component
-									this={tabComponents.connection}
+                                                        {#if tabComponents.connection}
+                                                                {@const ConnectionTabComponent = tabComponents.connection}
+                                                                <ConnectionTabComponent
 									bind:host
 									bind:port
 									bind:outputFilename
@@ -768,9 +768,9 @@
 							{/if}
 						</TabsContent>
 						<TabsContent value="persistence" class="space-y-6">
-							{#if tabComponents.persistence}
-								<svelte:component
-									this={tabComponents.persistence}
+                                                        {#if tabComponents.persistence}
+                                                                {@const PersistenceTabComponent = tabComponents.persistence}
+                                                                <PersistenceTabComponent
 									bind:installationPath
 									bind:mutexName
 									bind:meltAfterRun
@@ -795,9 +795,9 @@
 							{/if}
 						</TabsContent>
 						<TabsContent value="execution" class="space-y-6">
-							{#if tabComponents.execution}
-								<svelte:component
-									this={tabComponents.execution}
+                                                        {#if tabComponents.execution}
+                                                                {@const ExecutionTabComponent = tabComponents.execution}
+                                                                <ExecutionTabComponent
 									bind:executionDelaySeconds
 									bind:executionMinUptimeMinutes
 									bind:executionAllowedUsernames
@@ -815,9 +815,9 @@
 							{/if}
 						</TabsContent>
 						<TabsContent value="presentation" class="space-y-6">
-							{#if tabComponents.presentation}
-								<svelte:component
-									this={tabComponents.presentation}
+                                                        {#if tabComponents.presentation}
+                                                                {@const PresentationTabComponent = tabComponents.presentation}
+                                                                <PresentationTabComponent
 									{fileIconName}
 									{fileIconError}
 									{handleIconSelection}

@@ -18,11 +18,11 @@
 </script>
 
 {#if MapComponent}
-	<svelte:component
-		this={MapComponent}
-		clients={props.clients}
-		highlightCountry={props.highlightCountry}
-	/>
+        {@const ClientPresenceMap = MapComponent}
+        <ClientPresenceMap
+                clients={props.clients}
+                highlightCountry={props.highlightCountry}
+        />
 {:else}
 	<div
 		role="img"
