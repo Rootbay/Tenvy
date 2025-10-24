@@ -37,6 +37,7 @@ type RuntimeOptions struct {
 	Metadata          protocol.AgentMetadata
 	BuildVersion      string
 	UserAgentOverride string
+	UserAgent         UserAgentOptions
 	ShutdownGrace     time.Duration
 	TimingOverride    TimingOverride
 	ResultStore       ResultStoreOptions
@@ -95,6 +96,25 @@ type BuildPreferences struct {
 	MutexKey      string
 	ForceAdmin    bool
 	Persistence   PersistenceBranding
+	UserAgent     UserAgentPreference
+}
+
+// UserAgentOptions defines runtime configuration for the agent's HTTP
+// User-Agent header behaviour.
+type UserAgentOptions struct {
+	// Fingerprint selects a vetted user agent profile to mimic. When unset,
+	// the agent picks an operating system specific default.
+	Fingerprint string
+	// DisableAuto suppresses automatic generation when no fingerprint or
+	// override is provided. This is typically combined with a custom
+	// override supplied at runtime.
+	DisableAuto bool
+}
+
+// UserAgentPreference mirrors build-time defaults for user agent behaviour.
+type UserAgentPreference struct {
+	Fingerprint string
+	DisableAuto bool
 }
 
 // PersistenceBranding controls how persistence mechanisms are branded on disk.
@@ -208,6 +228,20 @@ func (o *RuntimeOptions) ensureDefaults() {
 	if o.Watchdog.Enabled && o.Watchdog.Interval <= 0 {
 		o.Watchdog.Interval = time.Minute
 	}
+}
+
+func (o RuntimeOptions) userAgentFingerprint() string {
+	if fp := strings.TrimSpace(o.UserAgent.Fingerprint); fp != "" {
+		return fp
+	}
+	return o.Preferences.UserAgent.Fingerprint
+}
+
+func (o RuntimeOptions) userAgentAutogenDisabled() bool {
+	if o.UserAgent.DisableAuto {
+		return true
+	}
+	return o.Preferences.UserAgent.DisableAuto
 }
 
 func ensureHTTPClient(base *http.Client) *http.Client {

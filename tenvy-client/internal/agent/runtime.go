@@ -102,6 +102,14 @@ func runAgentOnce(ctx context.Context, opts RuntimeOptions) error {
 
 	client := opts.HTTPClient
 
+	fingerprint := normalizeFingerprintName(opts.userAgentFingerprint())
+	disableAuto := opts.userAgentAutogenDisabled()
+	fallbackVersion := strings.TrimSpace(metadata.Version)
+	if fallbackVersion == "" {
+		fallbackVersion = opts.BuildVersion
+	}
+	resolvedUserAgent := resolveUserAgentString(opts.UserAgentOverride, fingerprint, disableAuto, fallbackVersion)
+
 	registration, err := registerAgentWithRetry(
 		ctx,
 		opts.Logger,
@@ -112,7 +120,8 @@ func runAgentOnce(ctx context.Context, opts RuntimeOptions) error {
 		opts.maxBackoffOverride(),
 		opts.CustomHeaders,
 		opts.CustomCookies,
-		opts.UserAgentOverride,
+		resolvedUserAgent,
+		disableAuto,
 	)
 	if err != nil {
 		return fmt.Errorf("failed to register agent: %w", err)
@@ -126,25 +135,27 @@ func runAgentOnce(ctx context.Context, opts RuntimeOptions) error {
 	scriptDir := defaultScriptDirectory(opts.Preferences)
 
 	agent := &Agent{
-		id:                registration.AgentID,
-		key:               registration.AgentKey,
-		baseURL:           opts.ServerURL,
-		client:            client,
-		config:            registration.Config,
-		logger:            opts.Logger,
-		pendingResults:    make([]protocol.CommandResult, 0, opts.ResultStore.HotCache),
-		resultStore:       store,
-		resultCacheSize:   opts.ResultStore.HotCache,
-		startTime:         time.Now(),
-		metadata:          metadata,
-		sharedSecret:      opts.SharedSecret,
-		preferences:       opts.Preferences,
-		buildVersion:      opts.BuildVersion,
-		userAgentOverride: opts.UserAgentOverride,
-		timing:            opts.TimingOverride,
-		requestHeaders:    opts.CustomHeaders,
-		requestCookies:    opts.CustomCookies,
-		options:           options.NewManager(options.ManagerOptions{ScriptDirectory: scriptDir}),
+		id:                       registration.AgentID,
+		key:                      registration.AgentKey,
+		baseURL:                  opts.ServerURL,
+		client:                   client,
+		config:                   registration.Config,
+		logger:                   opts.Logger,
+		pendingResults:           make([]protocol.CommandResult, 0, opts.ResultStore.HotCache),
+		resultStore:              store,
+		resultCacheSize:          opts.ResultStore.HotCache,
+		startTime:                time.Now(),
+		metadata:                 metadata,
+		sharedSecret:             opts.SharedSecret,
+		preferences:              opts.Preferences,
+		buildVersion:             opts.BuildVersion,
+		userAgentOverride:        opts.UserAgentOverride,
+		userAgentFingerprint:     fingerprint,
+		userAgentAutogenDisabled: disableAuto,
+		timing:                   opts.TimingOverride,
+		requestHeaders:           opts.CustomHeaders,
+		requestCookies:           opts.CustomCookies,
+		options:                  options.NewManager(options.ManagerOptions{ScriptDirectory: scriptDir}),
 	}
 
 	agent.reloadResultCache()

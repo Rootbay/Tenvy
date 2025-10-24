@@ -319,3 +319,59 @@ func TestPerformSyncIncludesCustomHeadersAndCookies(t *testing.T) {
 		t.Fatalf("no sync request captured")
 	}
 }
+
+func TestUserAgentDefaultFingerprint(t *testing.T) {
+	t.Setenv("LC_ALL", "de_DE.UTF-8")
+	agent := &Agent{
+		buildVersion:             "1.2.3",
+		metadata:                 protocol.AgentMetadata{Version: "1.2.3"},
+		userAgentAutogenDisabled: false,
+	}
+	got := agent.userAgent()
+	if strings.HasPrefix(got, "tenvy-client/") {
+		t.Fatalf("expected fingerprinted user agent, got %q", got)
+	}
+	meta := currentUserAgentMetadata()
+	want := generateUserAgentFromFingerprint(defaultUserAgentFingerprint(), meta)
+	if want == "" {
+		t.Fatalf("default fingerprint returned empty user agent")
+	}
+	if got != want {
+		t.Fatalf("unexpected default user agent: got %q want %q", got, want)
+	}
+}
+
+func TestUserAgentOverrideTakesPrecedence(t *testing.T) {
+	agent := &Agent{
+		buildVersion:      "1.2.3",
+		metadata:          protocol.AgentMetadata{},
+		userAgentOverride: "Custom-UA",
+	}
+	if got := agent.userAgent(); got != "Custom-UA" {
+		t.Fatalf("expected override to be returned, got %q", got)
+	}
+}
+
+func TestUserAgentAutoDisabled(t *testing.T) {
+	agent := &Agent{
+		buildVersion:             "1.2.3",
+		metadata:                 protocol.AgentMetadata{},
+		userAgentAutogenDisabled: true,
+	}
+	if got := agent.userAgent(); got != "" {
+		t.Fatalf("expected auto-generation to be disabled, got %q", got)
+	}
+}
+
+func TestUserAgentCustomFingerprint(t *testing.T) {
+	agent := &Agent{
+		buildVersion:         "1.2.3",
+		metadata:             protocol.AgentMetadata{},
+		userAgentFingerprint: userAgentFingerprintFirefoxLinux,
+	}
+	meta := currentUserAgentMetadata()
+	want := generateUserAgentFromFingerprint(userAgentFingerprintFirefoxLinux, meta)
+	if got := agent.userAgent(); got != want {
+		t.Fatalf("unexpected user agent for custom fingerprint: got %q want %q", got, want)
+	}
+}
