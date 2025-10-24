@@ -12,15 +12,18 @@ import (
 )
 
 type stubModule struct {
-	metadata       ModuleMetadata
-	initErr        error
-	updateErr      error
-	handleFunc     func(context.Context, protocol.Command) error
-	initCalled     int
-	updateCalled   int
-	shutdownCalled int
-	handleCalled   int
-	log            *[]string
+	metadata         ModuleMetadata
+	initErr          error
+	updateErr        error
+	handleFunc       func(context.Context, protocol.Command) error
+	initCalled       int
+	updateCalled     int
+	shutdownCalled   int
+	handleCalled     int
+	log              *[]string
+	acceptExtensions bool
+	registerErr      error
+	registered       []ModuleExtension
 }
 
 func (m *stubModule) Metadata() ModuleMetadata {
@@ -64,6 +67,14 @@ func (m *stubModule) Shutdown(context.Context) error {
 		*m.log = append(*m.log, m.metadata.ID+":shutdown")
 	}
 	return nil
+}
+
+func (m *stubModule) RegisterExtension(extension ModuleExtension) error {
+	if !m.acceptExtensions {
+		return m.registerErr
+	}
+	m.registered = append(m.registered, copyModuleExtension(extension))
+	return m.registerErr
 }
 
 func TestModuleManagerLifecycle(t *testing.T) {
@@ -162,6 +173,75 @@ func TestModuleManagerLifecycle(t *testing.T) {
 	}
 	if metadata[0].ID != "module-a" || metadata[1].ID != "module-b" {
 		t.Fatalf("unexpected metadata ordering: %+v", metadata)
+	}
+}
+
+func TestModuleManagerRegisterExtension(t *testing.T) {
+	t.Parallel()
+
+	module := &stubModule{
+		metadata: ModuleMetadata{
+			ID:           "ext-module",
+			Title:        "Extension Module",
+			Commands:     []string{"ext.command"},
+			Capabilities: []ModuleCapability{{Name: "base.capability"}},
+		},
+		acceptExtensions: true,
+	}
+
+	manager := newModuleManager()
+	manager.register(module)
+
+	err := manager.RegisterModuleExtension("ext-module", ModuleExtension{
+		Source:  "plugin.remote",
+		Version: "1.0.0",
+		Capabilities: []ModuleCapability{
+			{Name: " ext.capability ", Description: " Extended feature "},
+			{Name: "   "},
+		},
+	})
+	if err != nil {
+		t.Fatalf("register extension: %v", err)
+	}
+
+	metadata := manager.Metadata()
+	if len(metadata) != 1 {
+		t.Fatalf("expected single module metadata entry, got %d", len(metadata))
+	}
+	entry := metadata[0]
+	if entry.ID != "ext-module" {
+		t.Fatalf("unexpected metadata id %s", entry.ID)
+	}
+	if len(entry.Capabilities) != 2 {
+		t.Fatalf("expected base + extension capabilities, got %d", len(entry.Capabilities))
+	}
+	if entry.Capabilities[1].Name != "ext.capability" {
+		t.Fatalf("expected sanitized capability name, got %q", entry.Capabilities[1].Name)
+	}
+	if entry.Capabilities[1].Description != "Extended feature" {
+		t.Fatalf("expected trimmed capability description, got %q", entry.Capabilities[1].Description)
+	}
+	if len(entry.Extensions) != 1 {
+		t.Fatalf("expected metadata extension entry, got %d", len(entry.Extensions))
+	}
+	ext := entry.Extensions[0]
+	if ext.Source != "plugin.remote" {
+		t.Fatalf("unexpected extension source %s", ext.Source)
+	}
+	if ext.Version != "1.0.0" {
+		t.Fatalf("unexpected extension version %s", ext.Version)
+	}
+	if len(ext.Capabilities) != 1 {
+		t.Fatalf("expected sanitized extension capability list, got %d", len(ext.Capabilities))
+	}
+	if ext.Capabilities[0].Name != "ext.capability" {
+		t.Fatalf("unexpected extension capability name %s", ext.Capabilities[0].Name)
+	}
+	if len(module.registered) != 1 {
+		t.Fatalf("expected module registrar to receive extension, got %d", len(module.registered))
+	}
+	if module.registered[0].Source != "plugin.remote" {
+		t.Fatalf("unexpected registrar extension source %s", module.registered[0].Source)
 	}
 }
 

@@ -41,7 +41,19 @@ func TestRemoteDesktopModuleNegotiationWithManagedEngine(t *testing.T) {
 		Version:       pluginVersion,
 		Entry:         "remote-desktop-engine/engine",
 		RepositoryURL: "https://github.com/rootbay/remote-desktop-engine",
-		License:       manifest.LicenseInfo{SPDXID: "MIT"},
+		Capabilities: []manifest.Capability{
+			{
+				Name:        "remote-desktop.transport.quic",
+				Module:      "remote-desktop",
+				Description: "Provides QUIC transport negotiation for input events.",
+			},
+			{
+				Name:        "remote-desktop.codec.hevc",
+				Module:      "remote-desktop",
+				Description: "Enables hardware accelerated HEVC streaming.",
+			},
+		},
+		License: manifest.LicenseInfo{SPDXID: "MIT"},
 		Requirements: manifest.Requirements{
 			MinAgentVersion: "0.1.0",
 			RequiredModules: []string{"remote-desktop"},
@@ -115,6 +127,10 @@ func TestRemoteDesktopModuleNegotiationWithManagedEngine(t *testing.T) {
 		t.Fatalf("new plugin manager: %v", err)
 	}
 
+	modules := newModuleManager()
+	remote := newRemoteDesktopModule(nil)
+	modules.register(remote)
+
 	runtime := Config{
 		AgentID:       agentID,
 		BaseURL:       server.URL,
@@ -126,16 +142,50 @@ func TestRemoteDesktopModuleNegotiationWithManagedEngine(t *testing.T) {
 		ActiveModules: []string{"remote-desktop"},
 	}
 
-	module := newRemoteDesktopModule(nil)
-	if err := module.Init(context.Background(), runtime); err != nil {
+	if err := modules.Init(context.Background(), runtime); err != nil {
 		t.Fatalf("module init: %v", err)
 	}
 
-	module.mu.Lock()
-	configuredVersion := module.engineConfig.PluginVersion
-	module.mu.Unlock()
+	remote.mu.Lock()
+	configuredVersion := remote.engineConfig.PluginVersion
+	remote.mu.Unlock()
 	if strings.TrimSpace(configuredVersion) != pluginVersion {
 		t.Fatalf("expected module to configure plugin version %s, got %q", pluginVersion, configuredVersion)
+	}
+
+	metadata := modules.Metadata()
+	var remoteMetadata *ModuleMetadata
+	for index := range metadata {
+		if metadata[index].ID == "remote-desktop" {
+			remoteMetadata = &metadata[index]
+			break
+		}
+	}
+	if remoteMetadata == nil {
+		t.Fatal("remote desktop metadata not found")
+	}
+	if len(remoteMetadata.Extensions) != 1 {
+		t.Fatalf("expected one metadata extension, got %d", len(remoteMetadata.Extensions))
+	}
+	extension := remoteMetadata.Extensions[0]
+	if extension.Source != plugins.RemoteDesktopEnginePluginID {
+		t.Fatalf("unexpected extension source %s", extension.Source)
+	}
+	if extension.Version != pluginVersion {
+		t.Fatalf("unexpected extension version %s", extension.Version)
+	}
+	if len(extension.Capabilities) != 2 {
+		t.Fatalf("expected two extension capabilities, got %d", len(extension.Capabilities))
+	}
+	caps := map[string]bool{}
+	for _, capability := range extension.Capabilities {
+		caps[capability.Name] = true
+	}
+	if !caps["remote-desktop.transport.quic"] || !caps["remote-desktop.codec.hevc"] {
+		t.Fatalf("extension capabilities not registered: %+v", extension.Capabilities)
+	}
+	if len(remoteMetadata.Capabilities) != 4 {
+		t.Fatalf("expected combined capabilities to include base and extension entries, got %d", len(remoteMetadata.Capabilities))
 	}
 
 	startPayload := remotedesktop.RemoteDesktopCommandPayload{Action: "start", SessionID: sessionID}
@@ -151,7 +201,7 @@ func TestRemoteDesktopModuleNegotiationWithManagedEngine(t *testing.T) {
 		CreatedAt: time.Now().UTC().Format(time.RFC3339Nano),
 	}
 
-	startErr := module.Handle(context.Background(), startCmd)
+	startErr := remote.Handle(context.Background(), startCmd)
 	startResult := unwrapResult(t, startErr)
 	if !startResult.Success {
 		t.Fatalf("start command failed: %s", startResult.Error)
@@ -177,13 +227,13 @@ func TestRemoteDesktopModuleNegotiationWithManagedEngine(t *testing.T) {
 		Payload:   stopRaw,
 		CreatedAt: time.Now().UTC().Format(time.RFC3339Nano),
 	}
-	stopErr := module.Handle(context.Background(), stopCmd)
+	stopErr := remote.Handle(context.Background(), stopCmd)
 	stopResult := unwrapResult(t, stopErr)
 	if !stopResult.Success {
 		t.Fatalf("stop command failed: %s", stopResult.Error)
 	}
 
-	if err := module.Shutdown(context.Background()); err != nil {
+	if err := modules.Shutdown(context.Background()); err != nil {
 		t.Fatalf("module shutdown: %v", err)
 	}
 
