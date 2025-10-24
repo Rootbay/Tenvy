@@ -316,33 +316,33 @@ export const POST: RequestHandler = async ({ request }) => {
 			ldflagsParts.push('-H=windowsgui');
 		}
 
-		if (shouldEmbedResources) {
-			const cmdDir = join(workDir, 'cmd');
-			const iconFileName = iconPayload?.filename ?? null;
-			const versionConfig = buildVersionInfoConfig(fileInformationPayload, iconFileName);
-			await writeFile(
-				join(cmdDir, 'versioninfo.json'),
-				`${JSON.stringify(versionConfig, null, 2)}\n`,
-				'utf8'
-			);
-			if (iconPayload) {
-				await writeFile(join(cmdDir, iconPayload.filename), iconPayload.buffer);
-			}
-			const goversionArgs = [
-				'run',
-				'github.com/josephspurrier/goversioninfo/cmd/goversioninfo@v1.4.0',
-				'-64'
+                if (shouldEmbedResources) {
+                        const loaderDir = join(workDir, 'cmd', 'loader');
+                        const iconFileName = iconPayload?.filename ?? null;
+                        const versionConfig = buildVersionInfoConfig(fileInformationPayload, iconFileName);
+                        await writeFile(
+                                join(loaderDir, 'versioninfo.json'),
+                                `${JSON.stringify(versionConfig, null, 2)}\n`,
+                                'utf8'
+                        );
+                        if (iconPayload) {
+                                await writeFile(join(loaderDir, iconPayload.filename), iconPayload.buffer);
+                        }
+                        const goversionArgs = [
+                                'run',
+                                'github.com/josephspurrier/goversioninfo/cmd/goversioninfo@v1.4.0',
+                                '-64'
 			] as const;
-			const goversionExit = await runCommand(
-				'go',
-				goversionArgs,
-				{
-					cwd: cmdDir,
-					env: process.env,
-					stdio: ['pipe', 'pipe', 'pipe']
-				},
-				buildOutput
-			);
+                        const goversionExit = await runCommand(
+                                'go',
+                                goversionArgs,
+                                {
+                                        cwd: loaderDir,
+                                        env: process.env,
+                                        stdio: ['pipe', 'pipe', 'pipe']
+                                },
+                                buildOutput
+                        );
 			if (goversionExit !== 0) {
 				warnings.push(
 					`Embedding Windows resources failed with exit code ${goversionExit}. Continuing without version metadata.`
@@ -365,7 +365,7 @@ export const POST: RequestHandler = async ({ request }) => {
 		if (buildTags.length > 0) {
 			goArgs.push('-tags', buildTags.join(','));
 		}
-		goArgs.push('-o', tempBinaryPath, './cmd');
+                goArgs.push('-o', tempBinaryPath, './cmd/loader');
 
 		const goEnv: NodeJS.ProcessEnv = {
 			...process.env,
