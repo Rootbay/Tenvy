@@ -169,10 +169,10 @@ func runAgentOnce(ctx context.Context, opts RuntimeOptions) error {
 	}
 
 	modules := newDefaultModuleManager()
+	agent.modules = modules
 	if err := modules.Init(ctx, agent.moduleRuntime()); err != nil {
 		return fmt.Errorf("initialize modules: %w", err)
 	}
-	agent.modules = modules
 
 	router, err := newDefaultCommandRouter()
 	if err != nil {

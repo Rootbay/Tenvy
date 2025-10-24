@@ -42,6 +42,7 @@ func StageRemoteDesktopEngine(
 	manager *Manager,
 	client HTTPDoer,
 	baseURL, agentID, authKey, userAgent string,
+	runtimeFacts manifest.RuntimeFacts,
 ) (RemoteDesktopStageResult, error) {
 	var result RemoteDesktopStageResult
 
@@ -91,6 +92,12 @@ func StageRemoteDesktopEngine(
 	}
 	if !trusted {
 		message := fmt.Sprintf("signature not trusted: %s", signatureUntrustedReason(mf, verificationResult))
+		manager.recordInstallStatusLocked(RemoteDesktopEnginePluginID, mf.Version, manifest.InstallBlocked, message)
+		return result, errors.New(message)
+	}
+
+	if err := manifest.CheckRuntimeCompatibility(mf, runtimeFacts); err != nil {
+		message := fmt.Sprintf("plugin requirements not satisfied: %s", err.Error())
 		manager.recordInstallStatusLocked(RemoteDesktopEnginePluginID, mf.Version, manifest.InstallBlocked, message)
 		return result, errors.New(message)
 	}

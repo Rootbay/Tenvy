@@ -109,12 +109,14 @@ func TestRemoteDesktopModuleNegotiationWithManagedEngine(t *testing.T) {
 	}
 
 	runtime := Config{
-		AgentID:    agentID,
-		BaseURL:    server.URL,
-		HTTPClient: server.Client(),
-		Logger:     log.New(io.Discard, "", 0),
-		UserAgent:  "integration-test",
-		Plugins:    manager,
+		AgentID:       agentID,
+		BaseURL:       server.URL,
+		HTTPClient:    server.Client(),
+		Logger:        log.New(io.Discard, "", 0),
+		UserAgent:     "integration-test",
+		Plugins:       manager,
+		BuildVersion:  pluginVersion,
+		ActiveModules: []string{"remote-desktop"},
 	}
 
 	module := newRemoteDesktopModule(nil)
