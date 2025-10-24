@@ -4,7 +4,7 @@ import nacl from "tweetnacl";
 export const pluginDeliveryModes = ["manual", "automatic"] as const;
 export type PluginDeliveryMode = (typeof pluginDeliveryModes)[number];
 
-export const pluginSignatureTypes = ["none", "sha256", "ed25519"] as const;
+export const pluginSignatureTypes = ["sha256", "ed25519"] as const;
 export type PluginSignatureType = (typeof pluginSignatureTypes)[number];
 
 export const pluginSignatureStatuses = [
@@ -139,7 +139,6 @@ export class PluginSignatureVerificationError extends Error {
 }
 
 export interface PluginSignatureVerificationOptions {
-  allowUnsigned?: boolean;
   sha256AllowList?: Iterable<string>;
   ed25519PublicKeys?: Record<string, Uint8Array>;
   resolveEd25519PublicKey?: (
@@ -267,15 +266,13 @@ export function validatePluginManifest(manifest: PluginManifest): string[] {
         problems.push("ed25519 signature requires publicKey");
       }
     }
-    if (signature.type !== "none" && isEmpty(signature.signature)) {
+    if (isEmpty(signature.signature)) {
       problems.push("signed manifests must provide signature value");
     }
   }
 
-  if (manifest.distribution?.signature?.type !== "none") {
-    if (isEmpty(manifest.package?.hash)) {
-      problems.push("signed packages must include a hash");
-    }
+  if (isEmpty(manifest.package?.hash)) {
+    problems.push("signed packages must include a hash");
   }
 
   ensureArray(manifest.requirements?.requiredModules).forEach(
@@ -416,10 +413,7 @@ export const verifyPluginSignature = async (
   options: PluginSignatureVerificationOptions = {},
 ): Promise<PluginSignatureVerificationResult> => {
   const signature = manifest.distribution?.signature;
-  if (!signature || signature.type === "none") {
-    if (options.allowUnsigned) {
-      return { trusted: false, signatureType: "none" };
-    }
+  if (!signature) {
     throw new PluginSignatureVerificationError(
       "plugin manifest is unsigned",
       "UNSIGNED",

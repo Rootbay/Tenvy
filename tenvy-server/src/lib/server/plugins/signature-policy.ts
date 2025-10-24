@@ -5,17 +5,15 @@ import type { AgentPluginSignaturePolicy } from '../../../../../../shared/types/
 import type { PluginSignatureVerificationOptions } from '../../../../../../shared/types/plugin-manifest.js';
 
 type ServerSignaturePolicy = {
-	allowUnsigned: boolean;
-	sha256AllowList: string[];
-	ed25519PublicKeys: Record<string, string>;
-	maxSignatureAgeMs?: number;
+        sha256AllowList: string[];
+        ed25519PublicKeys: Record<string, string>;
+        maxSignatureAgeMs?: number;
 };
 
 const DEFAULT_POLICY: ServerSignaturePolicy = {
-	allowUnsigned: false,
-	sha256AllowList: [],
-	ed25519PublicKeys: {},
-	maxSignatureAgeMs: undefined
+        sha256AllowList: [],
+        ed25519PublicKeys: {},
+        maxSignatureAgeMs: undefined
 };
 
 let cachedPolicy: ServerSignaturePolicy | null = null;
@@ -35,12 +33,15 @@ const parsePolicy = (raw: unknown): ServerSignaturePolicy => {
 	}
 
 	const input = raw as Record<string, unknown>;
-	const policy: ServerSignaturePolicy = {
-		allowUnsigned: Boolean(input.allowUnsigned),
-		sha256AllowList: [],
-		ed25519PublicKeys: {},
-		maxSignatureAgeMs: undefined
-	};
+        const policy: ServerSignaturePolicy = {
+                sha256AllowList: [],
+                ed25519PublicKeys: {},
+                maxSignatureAgeMs: undefined
+        };
+
+        if (input.allowUnsigned) {
+                console.warn("Ignoring deprecated allowUnsigned flag in plugin signature policy");
+        }
 
 	if (Array.isArray(input.sha256AllowList)) {
 		policy.sha256AllowList = input.sha256AllowList
@@ -71,11 +72,7 @@ const parsePolicy = (raw: unknown): ServerSignaturePolicy => {
 		policy.maxSignatureAgeMs = Math.floor(maxAge);
 	}
 
-	if (!policy.allowUnsigned) {
-		policy.allowUnsigned = false;
-	}
-
-	return policy;
+        return policy;
 };
 
 const loadPolicyFromDisk = (): ServerSignaturePolicy => {
@@ -133,12 +130,11 @@ const ed25519KeyBytes = (policy: ServerSignaturePolicy): Record<string, Uint8Arr
 };
 
 export const getVerificationOptions = (): PluginSignatureVerificationOptions => {
-	const policy = getSignaturePolicy();
-	const options: PluginSignatureVerificationOptions = {
-		allowUnsigned: policy.allowUnsigned,
-		sha256AllowList: policy.sha256AllowList,
-		ed25519PublicKeys: ed25519KeyBytes(policy)
-	};
+        const policy = getSignaturePolicy();
+        const options: PluginSignatureVerificationOptions = {
+                sha256AllowList: policy.sha256AllowList,
+                ed25519PublicKeys: ed25519KeyBytes(policy)
+        };
 	if (policy.maxSignatureAgeMs && policy.maxSignatureAgeMs > 0) {
 		options.maxSignatureAgeMs = policy.maxSignatureAgeMs;
 	}
@@ -146,12 +142,11 @@ export const getVerificationOptions = (): PluginSignatureVerificationOptions => 
 };
 
 export const getAgentSignaturePolicy = (): AgentPluginSignaturePolicy => {
-	const policy = getSignaturePolicy();
-	const agentPolicy: AgentPluginSignaturePolicy = {
-		allowUnsigned: policy.allowUnsigned,
-		sha256AllowList: policy.sha256AllowList,
-		ed25519PublicKeys: policy.ed25519PublicKeys
-	};
+        const policy = getSignaturePolicy();
+        const agentPolicy: AgentPluginSignaturePolicy = {
+                sha256AllowList: policy.sha256AllowList,
+                ed25519PublicKeys: policy.ed25519PublicKeys
+        };
 	if (policy.maxSignatureAgeMs && policy.maxSignatureAgeMs > 0) {
 		agentPolicy.maxSignatureAgeMs = policy.maxSignatureAgeMs;
 	}

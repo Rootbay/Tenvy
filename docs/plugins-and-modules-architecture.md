@@ -254,7 +254,6 @@ PATCH /api/clients/:id/plugins/:pluginId → enable/disable
 
 ```json
 {
-  "allowUnsigned": false,
   "sha256AllowList": [],
   "ed25519PublicKeys": {
     "release": "aabbcc..."

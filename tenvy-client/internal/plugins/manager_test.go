@@ -27,7 +27,7 @@ func writeFile(t *testing.T, path string, data []byte) {
 	}
 }
 
-func TestSnapshotBlocksUnsignedPlugin(t *testing.T) {
+func TestSnapshotSkipsManifestWithUnsupportedSignature(t *testing.T) {
 	t.Parallel()
 	root := t.TempDir()
 	pluginDir := filepath.Join(root, "unsigned")
@@ -47,22 +47,13 @@ func TestSnapshotBlocksUnsignedPlugin(t *testing.T) {
         }`))
 	writeFile(t, artifactPath, []byte("payload"))
 
-	opts := manifest.VerifyOptions{AllowUnsigned: false}
-	manager, err := plugins.NewManager(root, log.New(io.Discard, "", 0), opts)
+	manager, err := plugins.NewManager(root, log.New(io.Discard, "", 0), manifest.VerifyOptions{})
 	if err != nil {
 		t.Fatalf("new manager: %v", err)
 	}
 
-	snapshot := manager.Snapshot()
-	if snapshot == nil || len(snapshot.Installations) != 1 {
-		t.Fatalf("expected one installation, got %#v", snapshot)
-	}
-	install := snapshot.Installations[0]
-	if install.Status != manifest.InstallBlocked {
-		t.Fatalf("expected status blocked, got %s", install.Status)
-	}
-	if install.Error == "" || !strings.Contains(install.Error, "unsigned") {
-		t.Fatalf("expected unsigned error, got %q", install.Error)
+	if snapshot := manager.Snapshot(); snapshot != nil {
+		t.Fatalf("expected snapshot to be nil for unsupported signature, got %#v", snapshot)
 	}
 }
 
@@ -237,8 +228,7 @@ func TestSnapshotWithoutManifestUsesStatus(t *testing.T) {
 	t.Parallel()
 	root := t.TempDir()
 
-	opts := manifest.VerifyOptions{AllowUnsigned: true}
-	manager, err := plugins.NewManager(root, log.New(io.Discard, "", 0), opts)
+	manager, err := plugins.NewManager(root, log.New(io.Discard, "", 0), manifest.VerifyOptions{})
 	if err != nil {
 		t.Fatalf("new manager: %v", err)
 	}

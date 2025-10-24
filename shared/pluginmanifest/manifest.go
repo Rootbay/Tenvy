@@ -82,7 +82,6 @@ const (
 	DeliveryManual    DeliveryMode = "manual"
 	DeliveryAutomatic DeliveryMode = "automatic"
 
-	SignatureNone    SignatureType = "none"
 	SignatureSHA256  SignatureType = "sha256"
 	SignatureEd25519 SignatureType = "ed25519"
 
@@ -106,7 +105,7 @@ const (
 
 var (
 	knownDeliveryModes  = []DeliveryMode{DeliveryManual, DeliveryAutomatic}
-	knownSignatureTypes = []SignatureType{SignatureNone, SignatureSHA256, SignatureEd25519}
+	knownSignatureTypes = []SignatureType{SignatureSHA256, SignatureEd25519}
 	knownPlatforms      = []PluginPlatform{PlatformWindows, PlatformLinux, PlatformMacOS}
 	knownArchitectures  = []PluginArchitecture{ArchitectureX8664, ArchitectureARM64}
 	knownInstallStates  = []PluginInstallStatus{InstallPending, InstallInstalling, InstallInstalled, InstallFailed, InstallBlocked}
@@ -231,7 +230,6 @@ func (m Manifest) validateDistribution() error {
 	}
 
 	switch sig.Type {
-	case SignatureNone:
 	case SignatureSHA256:
 		if strings.TrimSpace(sig.Hash) == "" {
 			return errors.New("sha256 signature requires hash")
@@ -245,13 +243,11 @@ func (m Manifest) validateDistribution() error {
 		}
 	}
 
-	if sig.Type != SignatureNone {
-		if strings.TrimSpace(m.Package.Hash) == "" {
-			return errors.New("signed packages must include a hash")
-		}
-		if strings.TrimSpace(sig.Signature) == "" {
-			return errors.New("signed manifests must provide signature value")
-		}
+	if strings.TrimSpace(m.Package.Hash) == "" {
+		return errors.New("signed packages must include a hash")
+	}
+	if strings.TrimSpace(sig.Signature) == "" {
+		return errors.New("signed manifests must provide signature value")
 	}
 
 	return nil

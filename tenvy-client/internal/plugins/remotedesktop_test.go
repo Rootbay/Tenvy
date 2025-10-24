@@ -115,8 +115,7 @@ func TestStageRemoteDesktopEngineRecordsFailure(t *testing.T) {
 	defer server.Close()
 
 	root := t.TempDir()
-	opts := manifest.VerifyOptions{AllowUnsigned: true}
-	manager, err := plugins.NewManager(root, log.New(io.Discard, "", 0), opts)
+	manager, err := plugins.NewManager(root, log.New(io.Discard, "", 0), manifest.VerifyOptions{})
 	if err != nil {
 		t.Fatalf("new manager: %v", err)
 	}
@@ -142,7 +141,8 @@ func TestStageRemoteDesktopEngineRecordsFailure(t *testing.T) {
 func TestStageRemoteDesktopEngineBlocksIncompatiblePlatform(t *testing.T) {
 	t.Parallel()
 
-	manifestJSON := `{
+	hashHex := strings.Repeat("ab", 32)
+	manifestJSON := fmt.Sprintf(`{
                 "id": "remote-desktop-engine",
                 "name": "Remote Desktop Engine",
                 "version": "1.0.0",
@@ -150,9 +150,9 @@ func TestStageRemoteDesktopEngineBlocksIncompatiblePlatform(t *testing.T) {
                 "repositoryUrl": "https://github.com/rootbay/tenvy-client",
                 "license": {"spdxId": "MIT"},
                 "requirements": {"platforms": ["windows"]},
-                "distribution": {"defaultMode": "manual", "autoUpdate": false, "signature": {"type": "none"}},
-                "package": {"artifact": "remote-desktop-engine/remote-desktop-engine.zip"}
-        }`
+                "distribution": {"defaultMode": "manual", "autoUpdate": false, "signature": {"type": "sha256", "hash": "%[1]s", "signature": "%[1]s"}},
+                "package": {"artifact": "remote-desktop-engine/remote-desktop-engine.zip", "hash": "%[1]s"}
+        }`, hashHex)
 
 	var artifactRequested atomic.Bool
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -168,7 +168,7 @@ func TestStageRemoteDesktopEngineBlocksIncompatiblePlatform(t *testing.T) {
 	defer server.Close()
 
 	root := t.TempDir()
-	opts := manifest.VerifyOptions{AllowUnsigned: true}
+	opts := manifest.VerifyOptions{SHA256AllowList: []string{hashHex}}
 	manager, err := plugins.NewManager(root, log.New(io.Discard, "", 0), opts)
 	if err != nil {
 		t.Fatalf("new manager: %v", err)
@@ -208,7 +208,8 @@ func TestStageRemoteDesktopEngineBlocksIncompatiblePlatform(t *testing.T) {
 func TestStageRemoteDesktopEngineBlocksIncompatibleArchitecture(t *testing.T) {
 	t.Parallel()
 
-	manifestJSON := `{
+	hashHex := strings.Repeat("cd", 32)
+	manifestJSON := fmt.Sprintf(`{
                 "id": "remote-desktop-engine",
                 "name": "Remote Desktop Engine",
                 "version": "1.0.0",
@@ -216,9 +217,9 @@ func TestStageRemoteDesktopEngineBlocksIncompatibleArchitecture(t *testing.T) {
                 "repositoryUrl": "https://github.com/rootbay/tenvy-client",
                 "license": {"spdxId": "MIT"},
                 "requirements": {"architectures": ["arm64"]},
-                "distribution": {"defaultMode": "manual", "autoUpdate": false, "signature": {"type": "none"}},
-                "package": {"artifact": "remote-desktop-engine/remote-desktop-engine.zip"}
-        }`
+                "distribution": {"defaultMode": "manual", "autoUpdate": false, "signature": {"type": "sha256", "hash": "%[1]s", "signature": "%[1]s"}},
+                "package": {"artifact": "remote-desktop-engine/remote-desktop-engine.zip", "hash": "%[1]s"}
+        }`, hashHex)
 
 	var artifactRequested atomic.Bool
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -234,7 +235,7 @@ func TestStageRemoteDesktopEngineBlocksIncompatibleArchitecture(t *testing.T) {
 	defer server.Close()
 
 	root := t.TempDir()
-	opts := manifest.VerifyOptions{AllowUnsigned: true}
+	opts := manifest.VerifyOptions{SHA256AllowList: []string{hashHex}}
 	manager, err := plugins.NewManager(root, log.New(io.Discard, "", 0), opts)
 	if err != nil {
 		t.Fatalf("new manager: %v", err)
@@ -274,7 +275,8 @@ func TestStageRemoteDesktopEngineBlocksIncompatibleArchitecture(t *testing.T) {
 func TestStageRemoteDesktopEngineBlocksIncompatibleAgentVersion(t *testing.T) {
 	t.Parallel()
 
-	manifestJSON := `{
+	hashHex := strings.Repeat("ef", 32)
+	manifestJSON := fmt.Sprintf(`{
                 "id": "remote-desktop-engine",
                 "name": "Remote Desktop Engine",
                 "version": "1.0.0",
@@ -282,9 +284,9 @@ func TestStageRemoteDesktopEngineBlocksIncompatibleAgentVersion(t *testing.T) {
                 "repositoryUrl": "https://github.com/rootbay/tenvy-client",
                 "license": {"spdxId": "MIT"},
                 "requirements": {"minAgentVersion": "5.0.0"},
-                "distribution": {"defaultMode": "manual", "autoUpdate": false, "signature": {"type": "none"}},
-                "package": {"artifact": "remote-desktop-engine/remote-desktop-engine.zip"}
-        }`
+                "distribution": {"defaultMode": "manual", "autoUpdate": false, "signature": {"type": "sha256", "hash": "%[1]s", "signature": "%[1]s"}},
+                "package": {"artifact": "remote-desktop-engine/remote-desktop-engine.zip", "hash": "%[1]s"}
+        }`, hashHex)
 
 	var artifactRequested atomic.Bool
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -300,7 +302,7 @@ func TestStageRemoteDesktopEngineBlocksIncompatibleAgentVersion(t *testing.T) {
 	defer server.Close()
 
 	root := t.TempDir()
-	opts := manifest.VerifyOptions{AllowUnsigned: true}
+	opts := manifest.VerifyOptions{SHA256AllowList: []string{hashHex}}
 	manager, err := plugins.NewManager(root, log.New(io.Discard, "", 0), opts)
 	if err != nil {
 		t.Fatalf("new manager: %v", err)
