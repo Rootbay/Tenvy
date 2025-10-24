@@ -121,6 +121,7 @@ func runAgentOnce(ctx context.Context, opts RuntimeOptions) error {
 		opts.CustomHeaders,
 		opts.CustomCookies,
 		resolvedUserAgent,
+		disableAuto,
 	)
 	if err != nil {
 		return fmt.Errorf("failed to register agent: %w", err)

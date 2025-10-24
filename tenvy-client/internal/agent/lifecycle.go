@@ -256,7 +256,8 @@ func (a *Agent) reRegister(ctx context.Context) error {
 		a.maxBackoff(),
 		a.requestHeaders,
 		a.requestCookies,
-		a.userAgentOverride,
+		a.userAgent(),
+		a.userAgentAutogenDisabled,
 	)
 	if err != nil {
 		return err

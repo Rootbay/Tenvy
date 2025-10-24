@@ -68,6 +68,7 @@ func registerAgentWithRetry(
 	headers []CustomHeader,
 	cookies []CustomCookie,
 	userAgent string,
+	disableUserAgent bool,
 ) (*protocol.AgentRegistrationResponse, error) {
 	if maxBackoff <= 0 {
 		maxBackoff = defaultBackoff
@@ -75,7 +76,7 @@ func registerAgentWithRetry(
 
 	backoff := time.Second
 	for attempt := 1; ; attempt++ {
-		registration, err := registerAgent(ctx, client, serverURL, token, metadata, headers, cookies, userAgent)
+		registration, err := registerAgent(ctx, client, serverURL, token, metadata, headers, cookies, userAgent, disableUserAgent)
 		if err == nil {
 			if attempt > 1 {
 				logger.Printf("registration succeeded after %d attempts", attempt)
@@ -142,6 +143,7 @@ func registerAgent(
 	headers []CustomHeader,
 	cookies []CustomCookie,
 	userAgent string,
+	disableUserAgent bool,
 ) (*protocol.AgentRegistrationResponse, error) {
 	request := protocol.AgentRegistrationRequest{Metadata: metadata}
 	if strings.TrimSpace(token) != "" {
@@ -162,7 +164,11 @@ func registerAgent(
 	req.Header.Set("Accept", "application/json")
 	ua := strings.TrimSpace(userAgent)
 	if ua == "" {
-		ua = resolveUserAgentString("", "", false, metadata.Version)
+		if disableUserAgent {
+			ua = ""
+		} else {
+			ua = resolveUserAgentString("", "", false, metadata.Version)
+		}
 	}
 	req.Header.Set("User-Agent", ua)
 	applyRequestDecorations(req, headers, cookies)
