@@ -78,17 +78,17 @@ function normalizeAliases(
 }
 
 function normalizeFeatures(
-        features: Partial<ClientChatFeatureFlags> | undefined,
-        options: { forceUnstoppable?: boolean } = {}
+	features: Partial<ClientChatFeatureFlags> | undefined,
+	options: { forceUnstoppable?: boolean } = {}
 ): Partial<ClientChatFeatureFlags> | undefined {
-        const normalized: Partial<ClientChatFeatureFlags> = { ...(features ?? {}) };
-        const shouldForce = options.forceUnstoppable === true;
-        if (shouldForce) {
-                normalized.unstoppable = true;
-        }
-        if (Object.keys(normalized).length === 0) {
-                return undefined;
-        }
+	const normalized: Partial<ClientChatFeatureFlags> = { ...(features ?? {}) };
+	const shouldForce = options.forceUnstoppable === true;
+	if (shouldForce) {
+		normalized.unstoppable = true;
+	}
+	if (Object.keys(normalized).length === 0) {
+		return undefined;
+	}
 	return normalized;
 }
 
@@ -228,14 +228,14 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 				throw error(500, 'Failed to dispatch chat message');
 			}
 		}
-                case 'configure': {
-                        const current = clientChatManager.getState(agentId);
-                        const sessionId = payload.sessionId?.trim() || current?.sessionId || randomUUID();
-                        const aliases = normalizeAliases(payload.aliases, {
-                                operator: current?.operatorAlias ?? 'Operator',
-                                client: current?.clientAlias ?? 'Client'
-                        });
-                        const features = normalizeFeatures(payload.features);
+		case 'configure': {
+			const current = clientChatManager.getState(agentId);
+			const sessionId = payload.sessionId?.trim() || current?.sessionId || randomUUID();
+			const aliases = normalizeAliases(payload.aliases, {
+				operator: current?.operatorAlias ?? 'Operator',
+				client: current?.clientAlias ?? 'Client'
+			});
+			const features = normalizeFeatures(payload.features);
 			queueChatCommand(
 				agentId,
 				{

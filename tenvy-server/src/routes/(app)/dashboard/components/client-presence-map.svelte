@@ -181,7 +181,7 @@
 <div
 	role="img"
 	aria-label="Client presence map"
-	class="relative h-full min-h-[280px] w-full overflow-hidden rounded-xl border border-border/60 bg-gradient-to-br from-background via-background to-muted/30"
+	class="relative h-full min-h-[280px] w-full overflow-hidden rounded-xl border border-border/60 bg-linear-to-br from-background via-background to-muted/30"
 >
 	<svg
 		bind:this={svgElement}

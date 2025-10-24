@@ -890,7 +890,9 @@
 						{#if selectedEntry.arguments}
 							<div class="space-y-1 md:col-span-2">
 								<dt class="text-xs text-muted-foreground uppercase">Arguments</dt>
-								<dd class="font-medium wrap-break-word text-foreground">{selectedEntry.arguments}</dd>
+								<dd class="font-medium wrap-break-word text-foreground">
+									{selectedEntry.arguments}
+								</dd>
 							</div>
 						{/if}
 					</dl>

@@ -18,10 +18,10 @@ function handleAction(agentId: string, event: ClipboardTriggerEvent) {
 		case 'notify':
 			console.info(`[clipboard] ${describeEvent(agentId, event)}`);
 			break;
-                case 'command': {
-                        executeClipboardTriggerCommandAction(agentId, event, describeEvent(agentId, event));
-                        break;
-                }
+		case 'command': {
+			executeClipboardTriggerCommandAction(agentId, event, describeEvent(agentId, event));
+			break;
+		}
 		default:
 			console.warn(
 				`[clipboard] unsupported action ${actionType} for ${describeEvent(agentId, event)}`

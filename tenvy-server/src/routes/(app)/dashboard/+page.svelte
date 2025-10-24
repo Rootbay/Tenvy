@@ -1,7 +1,7 @@
 <script lang="ts">
-	import DashboardCountryList from '$lib/components/dashboard/dashboard-country-list.svelte';
-	import DashboardOperationsPanel from '$lib/components/dashboard/dashboard-operations-panel.svelte';
-	import DashboardSummaryCard from '$lib/components/dashboard/dashboard-summary-card.svelte';
+	import DashboardCountryList from './components/dashboard-country-list.svelte';
+	import DashboardOperationsPanel from './components/dashboard-operations-panel.svelte';
+	import DashboardSummaryCard from './components/dashboard-summary-card.svelte';
 	import { writable } from 'svelte/store';
 	import type { PageData } from './$types';
 
@@ -20,9 +20,7 @@
 		{percentageFormatter}
 	/>
 
-	<section
-		class="grid h-full min-h-0 flex-1 auto-rows-[minmax(0,1fr)] gap-6 overflow-hidden lg:grid-cols-7"
-	>
+	<section class="grid h-full min-h-0 flex-1 auto-rows-fr gap-6 overflow-hidden lg:grid-cols-7">
 		<DashboardOperationsPanel
 			clients={data.clients}
 			logs={data.logs}

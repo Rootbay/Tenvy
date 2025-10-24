@@ -13,7 +13,7 @@
 	import { Badge } from '$lib/components/ui/badge/index.js';
 	import { Alert, AlertDescription } from '$lib/components/ui/alert/index.js';
 	import X from '@lucide/svelte/icons/x';
-	import type { AgentSnapshot } from '../../../../../shared/types/agent';
+	import type { AgentSnapshot } from '../../../../../../shared/types/agent';
 
 	const MAX_TAGS = 16;
 	const MAX_TAG_LENGTH = 32;

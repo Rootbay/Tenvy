@@ -85,15 +85,15 @@ describe('GET /api/geo/[ip]', () => {
 		expect(setHeadersSecond).toHaveBeenCalledWith({ 'Cache-Control': 'public, max-age=900' });
 	});
 
-        it('rejects invalid IP addresses', async () => {
-                await expect(GET(createEvent('not-an-ip', vi.fn(), vi.fn()))).rejects.toMatchObject({
-                        status: 400
-                });
+	it('rejects invalid IP addresses', async () => {
+		await expect(GET(createEvent('not-an-ip', vi.fn(), vi.fn()))).rejects.toMatchObject({
+			status: 400
+		});
 
-                await expect(GET(createEvent('192.168.1.10', vi.fn(), vi.fn()))).rejects.toMatchObject({
-                        status: 400
-                });
-        });
+		await expect(GET(createEvent('192.168.1.10', vi.fn(), vi.fn()))).rejects.toMatchObject({
+			status: 400
+		});
+	});
 
 	it('propagates provider failures as a 502 error', async () => {
 		const fetchMock = vi.fn(

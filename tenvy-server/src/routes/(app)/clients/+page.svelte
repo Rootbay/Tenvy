@@ -28,9 +28,9 @@
 		SelectTrigger
 	} from '$lib/components/ui/select/index.js';
 	import ClientToolDialog from '$lib/components/client-tool-dialog.svelte';
-	import ClientsTableRow from '$lib/components/clients/clients-table-row.svelte';
-	import ManageTagsDialog from '$lib/components/clients/manage-tags-dialog.svelte';
-	import DeployAgentDialog from '$lib/components/clients/deploy-agent-dialog.svelte';
+	import ClientsTableRow from './components/clients-table-row.svelte';
+	import ManageTagsDialog from './components/manage-tags-dialog.svelte';
+	import DeployAgentDialog from './components/deploy-agent-dialog.svelte';
 	import { sectionToolMap, type SectionKey } from '$lib/client-sections';
 	import { createClientsTableStore } from '$lib/stores/clients-table';
 	import {
@@ -736,11 +736,11 @@
 		}
 
 		if (target === '_self') {
-			goto(resolve(url));
+			goto(url as any);
 			return;
 		}
 
-		const resolvedUrl = resolve(url);
+		const resolvedUrl = resolve(url as any);
 
 		if (target === '_blank') {
 			const newWindow = window.open(resolvedUrl, '_blank', 'noopener');
@@ -882,7 +882,7 @@
 		<TooltipProvider delayDuration={100}>
 			{#if isDesktop}
 				<ScrollArea class="rounded-lg border border-border/60">
-					<div class="min-w-0 md:min-w-[clamp(48rem,80vw,64rem)] xl:min-w-[70rem]">
+					<div class="min-w-0 md:min-w-[clamp(48rem,80vw,64rem)] xl:min-w-280">
 						<Table>
 							<TableHeader>
 								<TableRow>
@@ -902,7 +902,7 @@
 											</TooltipContent>
 										</Tooltip>
 									</TableHead>
-									<TableHead class="w-[6rem] text-center">
+									<TableHead class="w-24 text-center">
 										<Tooltip>
 											<TooltipTrigger>
 												{#snippet child({ props })}
@@ -917,7 +917,7 @@
 											</TooltipContent>
 										</Tooltip>
 									</TableHead>
-									<TableHead class="w-[6rem] text-center">
+									<TableHead class="w-24 text-center">
 										<Tooltip>
 											<TooltipTrigger>
 												{#snippet child({ props })}
@@ -932,7 +932,7 @@
 											</TooltipContent>
 										</Tooltip>
 									</TableHead>
-									<TableHead class="w-[12rem] text-center">
+									<TableHead class="w-48 text-center">
 										<Tooltip>
 											<TooltipTrigger>
 												{#snippet child({ props })}
@@ -947,7 +947,7 @@
 											</TooltipContent>
 										</Tooltip>
 									</TableHead>
-									<TableHead class="w-[5rem] text-center">
+									<TableHead class="w-20 text-center">
 										<Tooltip>
 											<TooltipTrigger>
 												{#snippet child({ props })}
@@ -965,7 +965,7 @@
 											</TooltipContent>
 										</Tooltip>
 									</TableHead>
-									<TableHead class="w-[6rem] text-center">
+									<TableHead class="w-24 text-center">
 										<Tooltip>
 											<TooltipTrigger>
 												{#snippet child({ props })}
@@ -981,7 +981,7 @@
 											</TooltipContent>
 										</Tooltip>
 									</TableHead>
-									<TableHead class="w-[6rem] text-center">
+									<TableHead class="w-24 text-center">
 										<Tooltip>
 											<TooltipTrigger>
 												{#snippet child({ props })}
@@ -996,7 +996,7 @@
 											</TooltipContent>
 										</Tooltip>
 									</TableHead>
-									<TableHead class="w-[7rem] text-center">
+									<TableHead class="w-28 text-center">
 										<Tooltip>
 											<TooltipTrigger>
 												{#snippet child({ props })}
@@ -1161,7 +1161,7 @@
 		{/key}
 	{/if}
 
-	<DeployAgentDialog open={deployDialogOpen} on:close={() => (deployDialogOpen = false)} />
+	<DeployAgentDialog open={deployDialogOpen} onClose={() => (deployDialogOpen = false)} />
 
 	<ManageTagsDialog
 		open={Boolean(tagsDialogAgentId && tagsAgent)}

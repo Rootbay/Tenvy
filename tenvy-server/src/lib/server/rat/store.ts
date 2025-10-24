@@ -9,10 +9,10 @@ import {
 	auditEvent as auditEventTable
 } from '$lib/server/db/schema';
 import {
-        defaultAgentConfig,
-        type AgentConfig,
-        type AgentPluginConfig,
-        type AgentPluginSignaturePolicy
+	defaultAgentConfig,
+	type AgentConfig,
+	type AgentPluginConfig,
+	type AgentPluginSignaturePolicy
 } from '../../../../../shared/types/config';
 import type { NoteEnvelope } from '../../../../../shared/types/notes';
 import type { AgentRegistryEvent } from '../../../../../shared/types/registry-events';
@@ -220,46 +220,46 @@ function parseNumeric(value: unknown): number | null {
 }
 
 function cloneSignaturePolicy(
-        policy: AgentPluginSignaturePolicy | undefined
+	policy: AgentPluginSignaturePolicy | undefined
 ): AgentPluginSignaturePolicy | undefined {
-        if (!policy) {
-                return undefined;
-        }
+	if (!policy) {
+		return undefined;
+	}
 
-        const cloned: AgentPluginSignaturePolicy = { ...policy };
+	const cloned: AgentPluginSignaturePolicy = { ...policy };
 
-        if (Array.isArray(policy.sha256AllowList)) {
-                cloned.sha256AllowList = [...policy.sha256AllowList];
-        }
+	if (Array.isArray(policy.sha256AllowList)) {
+		cloned.sha256AllowList = [...policy.sha256AllowList];
+	}
 
-        if (policy.ed25519PublicKeys) {
-                cloned.ed25519PublicKeys = { ...policy.ed25519PublicKeys };
-        }
+	if (policy.ed25519PublicKeys) {
+		cloned.ed25519PublicKeys = { ...policy.ed25519PublicKeys };
+	}
 
-        return cloned;
+	return cloned;
 }
 
 function clonePluginConfig(config?: AgentPluginConfig | null): AgentPluginConfig | undefined {
-        if (!config || typeof config !== 'object') {
-                return undefined;
-        }
+	if (!config || typeof config !== 'object') {
+		return undefined;
+	}
 
-        const clone: AgentPluginConfig = {};
+	const clone: AgentPluginConfig = {};
 
-        for (const [key, value] of Object.entries(config)) {
-                if (key === 'signaturePolicy') {
-                        continue;
-                }
-                (clone as Record<string, unknown>)[key] = value;
-        }
+	for (const [key, value] of Object.entries(config)) {
+		if (key === 'signaturePolicy') {
+			continue;
+		}
+		(clone as Record<string, unknown>)[key] = value;
+	}
 
-        return clone;
+	return clone;
 }
 
 function normalizeConfig(config?: Partial<AgentConfig> | null): AgentConfig {
-        const normalized: AgentConfig = {
-                ...defaultAgentConfig
-        };
+	const normalized: AgentConfig = {
+		...defaultAgentConfig
+	};
 
 	if (!config) {
 		return normalized;
@@ -280,22 +280,22 @@ function normalizeConfig(config?: Partial<AgentConfig> | null): AgentConfig {
 		normalized.jitterRatio = jitter;
 	}
 
-        const pluginConfig = clonePluginConfig(config?.plugins);
-        const signaturePolicy = cloneSignaturePolicy(getAgentSignaturePolicy());
+	const pluginConfig = clonePluginConfig(config?.plugins);
+	const signaturePolicy = cloneSignaturePolicy(getAgentSignaturePolicy());
 
-        const mergedPluginConfig: AgentPluginConfig = {
-                ...(pluginConfig ?? {})
-        };
+	const mergedPluginConfig: AgentPluginConfig = {
+		...(pluginConfig ?? {})
+	};
 
-        if (signaturePolicy) {
-                mergedPluginConfig.signaturePolicy = signaturePolicy;
-        }
+	if (signaturePolicy) {
+		mergedPluginConfig.signaturePolicy = signaturePolicy;
+	}
 
-        if (Object.keys(mergedPluginConfig).length > 0) {
-                normalized.plugins = mergedPluginConfig;
-        }
+	if (Object.keys(mergedPluginConfig).length > 0) {
+		normalized.plugins = mergedPluginConfig;
+	}
 
-        return normalized;
+	return normalized;
 }
 
 function cloneMetadata(metadata: AgentMetadata): AgentMetadata {

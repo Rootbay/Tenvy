@@ -25,15 +25,15 @@ export function isLikelyPrivateIp(ip: string): boolean {
 		? normalized.slice('::ffff:'.length)
 		: normalized;
 
-        if (ipv4Candidate === '0.0.0.0') {
-                return true;
-        }
+	if (ipv4Candidate === '0.0.0.0') {
+		return true;
+	}
 
-        return (
-                ipv4Candidate.startsWith('10.') ||
-                ipv4Candidate.startsWith('192.168.') ||
-                ipv4Candidate.startsWith('169.254.') ||
-                /^172\.(1[6-9]|2\d|3[0-1])\./.test(ipv4Candidate) ||
-                ipv4Candidate.startsWith('127.')
-        );
+	return (
+		ipv4Candidate.startsWith('10.') ||
+		ipv4Candidate.startsWith('192.168.') ||
+		ipv4Candidate.startsWith('169.254.') ||
+		/^172\.(1[6-9]|2\d|3[0-1])\./.test(ipv4Candidate) ||
+		ipv4Candidate.startsWith('127.')
+	);
 }

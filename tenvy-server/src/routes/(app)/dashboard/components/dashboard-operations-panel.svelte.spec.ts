@@ -5,7 +5,7 @@ import { writable } from 'svelte/store';
 
 import type { DashboardClient, DashboardLogEntry } from '$lib/data/dashboard';
 
-vi.mock('$lib/components/dashboard/client-presence-map.lazy.svelte', () => ({
+vi.mock('./components/client-presence-map.lazy.svelte', () => ({
 	default: class {
 		constructor(options: { target?: HTMLElement }) {
 			if (options?.target) {

@@ -4,7 +4,7 @@
 	import { Button } from '$lib/components/ui/button/index.js';
 	import { Card, CardContent } from '$lib/components/ui/card/index.js';
 	import { Popover, PopoverContent, PopoverTrigger } from '$lib/components/ui/popover/index.js';
-	import ClientPresenceMap from '$lib/components/dashboard/client-presence-map.lazy.svelte';
+	import ClientPresenceMap from './client-presence-map.lazy.svelte';
 	import { derived, writable, type Writable } from 'svelte/store';
 	import { ChevronDown, Earth } from '@lucide/svelte';
 	import { countryCodeToFlag } from '$lib/utils/location';
@@ -77,7 +77,7 @@
 	}
 </script>
 
-<Card class="flex h-[min(26rem,65vh)] flex-col border-border/60 lg:col-span-5 lg:h-[32rem]">
+<Card class="flex h-[min(26rem,65vh)] flex-col border-border/60 lg:col-span-5 lg:h-128">
 	<CardContent class="relative flex min-h-0 flex-1 flex-col gap-4 overflow-hidden">
 		<div class="pointer-events-none absolute top-4 right-4 z-10">
 			<Popover>

@@ -262,17 +262,17 @@ type QuicSession = Record<string, unknown>;
 type QuicStream = Record<string, unknown>;
 
 interface QuicAgentConnection {
-        agentId: string;
-        sessionId: string;
-        session: QuicSession;
-        stream: QuicStream;
+	agentId: string;
+	sessionId: string;
+	session: QuicSession;
+	stream: QuicStream;
 }
 
 export interface RemoteDesktopQuicDeliveryResult {
-        deliveredAll: boolean;
-        deliveredAny: boolean;
-        deliveredEvents: number;
-        sequence: number | null;
+	deliveredAll: boolean;
+	deliveredAny: boolean;
+	deliveredEvents: number;
+	sequence: number | null;
 }
 
 export class RemoteDesktopQuicInputService {
@@ -345,59 +345,59 @@ export class RemoteDesktopQuicInputService {
 		return true;
 	}
 
-        send(
-                agentId: string,
-                sessionId: string,
-                burst: RemoteDesktopInputBurst
-        ): RemoteDesktopQuicDeliveryResult {
-                const sequence = typeof burst.sequence === 'number' ? burst.sequence : null;
+	send(
+		agentId: string,
+		sessionId: string,
+		burst: RemoteDesktopInputBurst
+	): RemoteDesktopQuicDeliveryResult {
+		const sequence = typeof burst.sequence === 'number' ? burst.sequence : null;
 
-                if (!agentId || !sessionId) {
-                        return { deliveredAll: false, deliveredAny: false, deliveredEvents: 0, sequence };
-                }
-                const connection = this.connections.get(agentId);
-                if (!connection || connection.sessionId !== sessionId) {
-                        return { deliveredAll: false, deliveredAny: false, deliveredEvents: 0, sequence };
-                }
-                if (!Array.isArray(burst.events) || burst.events.length === 0) {
-                        return { deliveredAll: false, deliveredAny: false, deliveredEvents: 0, sequence };
-                }
+		if (!agentId || !sessionId) {
+			return { deliveredAll: false, deliveredAny: false, deliveredEvents: 0, sequence };
+		}
+		const connection = this.connections.get(agentId);
+		if (!connection || connection.sessionId !== sessionId) {
+			return { deliveredAll: false, deliveredAny: false, deliveredEvents: 0, sequence };
+		}
+		if (!Array.isArray(burst.events) || burst.events.length === 0) {
+			return { deliveredAll: false, deliveredAny: false, deliveredEvents: 0, sequence };
+		}
 
-                let deliveredEvents = 0;
+		let deliveredEvents = 0;
 
-                for (let index = 0; index < burst.events.length; index += MAX_EVENT_BATCH) {
-                        const chunk = burst.events.slice(index, index + MAX_EVENT_BATCH);
-                        const payload = {
-                                type: 'input',
-                                sessionId,
-                                sequence: burst.sequence,
-                                events: chunk
-                        };
-                        const delivered = this.sendMessage(connection.stream, payload);
-                        if (!delivered) {
-                                if (deliveredEvents === 0) {
-                                        this.detachConnection(connection, 'write-failed');
-                                } else {
-                                        this.detachConnection(connection, 'partial-write-failed');
-                                }
-                                return {
-                                        deliveredAll: false,
-                                        deliveredAny: deliveredEvents > 0,
-                                        deliveredEvents,
-                                        sequence
-                                } satisfies RemoteDesktopQuicDeliveryResult;
-                        }
+		for (let index = 0; index < burst.events.length; index += MAX_EVENT_BATCH) {
+			const chunk = burst.events.slice(index, index + MAX_EVENT_BATCH);
+			const payload = {
+				type: 'input',
+				sessionId,
+				sequence: burst.sequence,
+				events: chunk
+			};
+			const delivered = this.sendMessage(connection.stream, payload);
+			if (!delivered) {
+				if (deliveredEvents === 0) {
+					this.detachConnection(connection, 'write-failed');
+				} else {
+					this.detachConnection(connection, 'partial-write-failed');
+				}
+				return {
+					deliveredAll: false,
+					deliveredAny: deliveredEvents > 0,
+					deliveredEvents,
+					sequence
+				} satisfies RemoteDesktopQuicDeliveryResult;
+			}
 
-                        deliveredEvents += chunk.length;
-                }
+			deliveredEvents += chunk.length;
+		}
 
-                return {
-                        deliveredAll: true,
-                        deliveredAny: deliveredEvents > 0,
-                        deliveredEvents,
-                        sequence
-                } satisfies RemoteDesktopQuicDeliveryResult;
-        }
+		return {
+			deliveredAll: true,
+			deliveredAny: deliveredEvents > 0,
+			deliveredEvents,
+			sequence
+		} satisfies RemoteDesktopQuicDeliveryResult;
+	}
 
 	disconnect(agentId: string, sessionId?: string) {
 		const connection = this.connections.get(agentId);
@@ -536,28 +536,28 @@ export class RemoteDesktopQuicInputService {
 		}
 	}
 
-        private attachSessionListener(socket: QuicSocket) {
-                const on = (socket as { on?: (event: string, handler: (...args: unknown[]) => void) => void })
-                        .on;
-                if (typeof on !== 'function') {
-                        return;
-                }
+	private attachSessionListener(socket: QuicSocket) {
+		const on = (socket as { on?: (event: string, handler: (...args: unknown[]) => void) => void })
+			.on;
+		if (typeof on !== 'function') {
+			return;
+		}
 
-                on.call(socket, 'session', (session: unknown) => {
-                        this.attachStreamListener(session as QuicSession);
-                });
-        }
+		on.call(socket, 'session', (session: unknown) => {
+			this.attachStreamListener(session as QuicSession);
+		});
+	}
 
-        private closeStreamQuietly(stream: QuicStream) {
-                const close = (stream as { close?: () => void }).close;
-                if (typeof close === 'function') {
-                        try {
-                                close.call(stream);
-                        } catch (err) {
-                                console.warn('Failed to close QUIC stream after error:', err);
-                        }
-                }
-        }
+	private closeStreamQuietly(stream: QuicStream) {
+		const close = (stream as { close?: () => void }).close;
+		if (typeof close === 'function') {
+			try {
+				close.call(stream);
+			} catch (err) {
+				console.warn('Failed to close QUIC stream after error:', err);
+			}
+		}
+	}
 
 	private attachStreamListener(session: QuicSession) {
 		const on = (session as { on?: (event: string, handler: (...args: unknown[]) => void) => void })

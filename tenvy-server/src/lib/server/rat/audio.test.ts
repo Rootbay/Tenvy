@@ -68,84 +68,84 @@ function parseSseChunk(chunk: Uint8Array): { event: string; data: unknown } {
 }
 
 describe('AudioBridgeManager chunk validation', () => {
-        let manager: AudioBridgeManager;
+	let manager: AudioBridgeManager;
 
-        beforeEach(() => {
-                manager = new AudioBridgeManager();
-        });
+	beforeEach(() => {
+		manager = new AudioBridgeManager();
+	});
 
-        it('accepts well-formed audio chunks', () => {
-                const session = manager.createSession('agent-1', {
-                        direction: 'input',
-                        format: { encoding: 'pcm16', sampleRate: 48_000, channels: 1 }
-                });
+	it('accepts well-formed audio chunks', () => {
+		const session = manager.createSession('agent-1', {
+			direction: 'input',
+			format: { encoding: 'pcm16', sampleRate: 48_000, channels: 1 }
+		});
 
-                const chunk = {
-                        sessionId: session.sessionId,
-                        sequence: 0,
-                        timestamp: new Date().toISOString(),
-                        format: { encoding: 'pcm16', sampleRate: 48_000, channels: 1 },
-                        data: Buffer.from('test').toString('base64')
-                } satisfies Parameters<AudioBridgeManager['ingestChunk']>[1];
+		const chunk = {
+			sessionId: session.sessionId,
+			sequence: 0,
+			timestamp: new Date().toISOString(),
+			format: { encoding: 'pcm16', sampleRate: 48_000, channels: 1 },
+			data: Buffer.from('test').toString('base64')
+		} satisfies Parameters<AudioBridgeManager['ingestChunk']>[1];
 
-                expect(() => manager.ingestChunk('agent-1', chunk)).not.toThrow();
-                const state = manager.getSessionState('agent-1');
-                expect(state?.lastSequence).toBe(0);
-        });
+		expect(() => manager.ingestChunk('agent-1', chunk)).not.toThrow();
+		const state = manager.getSessionState('agent-1');
+		expect(state?.lastSequence).toBe(0);
+	});
 
-        it('rejects audio chunks with invalid sequence metadata', () => {
-                const session = manager.createSession('agent-1', {
-                        direction: 'input',
-                        format: { encoding: 'pcm16', sampleRate: 48_000, channels: 1 }
-                });
+	it('rejects audio chunks with invalid sequence metadata', () => {
+		const session = manager.createSession('agent-1', {
+			direction: 'input',
+			format: { encoding: 'pcm16', sampleRate: 48_000, channels: 1 }
+		});
 
-                const chunk = {
-                        sessionId: session.sessionId,
-                        sequence: Number.NaN,
-                        timestamp: new Date().toISOString(),
-                        format: { encoding: 'pcm16', sampleRate: 48_000, channels: 1 },
-                        data: Buffer.from('test').toString('base64')
-                } satisfies Parameters<AudioBridgeManager['ingestChunk']>[1];
+		const chunk = {
+			sessionId: session.sessionId,
+			sequence: Number.NaN,
+			timestamp: new Date().toISOString(),
+			format: { encoding: 'pcm16', sampleRate: 48_000, channels: 1 },
+			data: Buffer.from('test').toString('base64')
+		} satisfies Parameters<AudioBridgeManager['ingestChunk']>[1];
 
-                expect(() => manager.ingestChunk('agent-1', chunk)).toThrowError(AudioBridgeError);
-        });
+		expect(() => manager.ingestChunk('agent-1', chunk)).toThrowError(AudioBridgeError);
+	});
 
-        it('rejects audio chunks with invalid data payloads', () => {
-                const session = manager.createSession('agent-1', {
-                        direction: 'input',
-                        format: { encoding: 'pcm16', sampleRate: 48_000, channels: 1 }
-                });
+	it('rejects audio chunks with invalid data payloads', () => {
+		const session = manager.createSession('agent-1', {
+			direction: 'input',
+			format: { encoding: 'pcm16', sampleRate: 48_000, channels: 1 }
+		});
 
-                const invalidTypeChunk = {
-                        sessionId: session.sessionId,
-                        sequence: 0,
-                        timestamp: new Date().toISOString(),
-                        format: { encoding: 'pcm16', sampleRate: 48_000, channels: 1 },
-                        data: 12345 as unknown as string
-                } satisfies Parameters<AudioBridgeManager['ingestChunk']>[1];
+		const invalidTypeChunk = {
+			sessionId: session.sessionId,
+			sequence: 0,
+			timestamp: new Date().toISOString(),
+			format: { encoding: 'pcm16', sampleRate: 48_000, channels: 1 },
+			data: 12345 as unknown as string
+		} satisfies Parameters<AudioBridgeManager['ingestChunk']>[1];
 
-                expect(() => manager.ingestChunk('agent-1', invalidTypeChunk)).toThrowError(AudioBridgeError);
+		expect(() => manager.ingestChunk('agent-1', invalidTypeChunk)).toThrowError(AudioBridgeError);
 
-                const oversizedChunk = {
-                        sessionId: session.sessionId,
-                        sequence: 1,
-                        timestamp: new Date().toISOString(),
-                        format: { encoding: 'pcm16', sampleRate: 48_000, channels: 1 },
-                        data: 'A'.repeat(MAX_AUDIO_STREAM_BASE64_LENGTH + 1)
-                } satisfies Parameters<AudioBridgeManager['ingestChunk']>[1];
+		const oversizedChunk = {
+			sessionId: session.sessionId,
+			sequence: 1,
+			timestamp: new Date().toISOString(),
+			format: { encoding: 'pcm16', sampleRate: 48_000, channels: 1 },
+			data: 'A'.repeat(MAX_AUDIO_STREAM_BASE64_LENGTH + 1)
+		} satisfies Parameters<AudioBridgeManager['ingestChunk']>[1];
 
-                expect(() => manager.ingestChunk('agent-1', oversizedChunk)).toThrowError(AudioBridgeError);
-        });
+		expect(() => manager.ingestChunk('agent-1', oversizedChunk)).toThrowError(AudioBridgeError);
+	});
 });
 
 describe('AudioBridgeManager binary transport', () => {
-        let manager: AudioBridgeManager;
+	let manager: AudioBridgeManager;
 
-        beforeEach(() => {
-                manager = new AudioBridgeManager();
-        });
+	beforeEach(() => {
+		manager = new AudioBridgeManager();
+	});
 
-        it('streams audio frames over the binary transport and survives reconnection', async () => {
+	it('streams audio frames over the binary transport and survives reconnection', async () => {
 		const session = manager.createSession('agent-1', {
 			direction: 'input',
 			format: { encoding: 'pcm16', sampleRate: 48_000, channels: 1 }
@@ -219,39 +219,39 @@ describe('AudioBridgeManager binary transport', () => {
 		expect(secondData.sequence).toBe(2);
 		expect(secondData.data).toBe(Buffer.from(secondPayload).toString('base64'));
 
-                const finalState = manager.getSessionState('agent-1');
-                expect(finalState?.lastSequence).toBe(2);
-        });
+		const finalState = manager.getSessionState('agent-1');
+		expect(finalState?.lastSequence).toBe(2);
+	});
 
-        it('closes the binary stream when frames exceed the maximum payload size', () => {
-                const session = manager.createSession('agent-1', {
-                        direction: 'input',
-                        format: { encoding: 'pcm16', sampleRate: 48_000, channels: 1 }
-                });
+	it('closes the binary stream when frames exceed the maximum payload size', () => {
+		const session = manager.createSession('agent-1', {
+			direction: 'input',
+			format: { encoding: 'pcm16', sampleRate: 48_000, channels: 1 }
+		});
 
-                const prepared = manager.prepareBinaryTransport('agent-1', session.sessionId);
-                const token = prepared.command.headers?.[AUDIO_STREAM_TOKEN_HEADER];
-                expect(token).toBeTruthy();
+		const prepared = manager.prepareBinaryTransport('agent-1', session.sessionId);
+		const token = prepared.command.headers?.[AUDIO_STREAM_TOKEN_HEADER];
+		expect(token).toBeTruthy();
 
-                const socket = new MockWebSocket();
-                manager.attachBinaryStream(
-                        'agent-1',
-                        session.sessionId,
-                        token!,
-                        socket as unknown as WebSocket
-                );
+		const socket = new MockWebSocket();
+		manager.attachBinaryStream(
+			'agent-1',
+			session.sessionId,
+			token!,
+			socket as unknown as WebSocket
+		);
 
-                const oversizedPayloadLength = Math.ceil((MAX_AUDIO_STREAM_BASE64_LENGTH + 1) / 4) * 3;
-                const oversizedPayload = new Uint8Array(oversizedPayloadLength);
-                const frame = buildFrame(
-                        { sessionId: session.sessionId, sequence: 1, timestamp: new Date().toISOString() },
-                        oversizedPayload
-                );
+		const oversizedPayloadLength = Math.ceil((MAX_AUDIO_STREAM_BASE64_LENGTH + 1) / 4) * 3;
+		const oversizedPayload = new Uint8Array(oversizedPayloadLength);
+		const frame = buildFrame(
+			{ sessionId: session.sessionId, sequence: 1, timestamp: new Date().toISOString() },
+			oversizedPayload
+		);
 
-                socket.emitMessage(frame);
+		socket.emitMessage(frame);
 
-                expect(socket.closed).toBe(true);
-                const state = manager.getSessionState('agent-1');
-                expect(state?.lastSequence).toBeUndefined();
-        });
+		expect(socket.closed).toBe(true);
+		const state = manager.getSessionState('agent-1');
+		expect(state?.lastSequence).toBeUndefined();
+	});
 });

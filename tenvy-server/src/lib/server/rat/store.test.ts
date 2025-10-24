@@ -244,72 +244,72 @@ describe('AgentRegistry database integration', () => {
 				)
 			);
 
-                await expect(
-                        registry.requireAgentPluginVersion(
-                                registration.agentId,
-                                remoteDesktopEnginePluginId,
-                                requiredRemoteDesktopPluginVersion
-                        )
-                ).resolves.toBeUndefined();
-        });
+		await expect(
+			registry.requireAgentPluginVersion(
+				registration.agentId,
+				remoteDesktopEnginePluginId,
+				requiredRemoteDesktopPluginVersion
+			)
+		).resolves.toBeUndefined();
+	});
 
-        it('preserves custom plugin configuration when refreshing agent config', async () => {
-                const signaturePolicyModule = await import('../plugins/signature-policy.js');
-                const initialPolicy = {
-                        allowUnsigned: true,
-                        sha256AllowList: ['cafebabe'],
-                        ed25519PublicKeys: { controller: 'a'.repeat(64) }
-                };
-                const refreshedPolicy = {
-                        allowUnsigned: false,
-                        sha256AllowList: ['deadbeef'],
-                        ed25519PublicKeys: { controller: 'b'.repeat(64) },
-                        maxSignatureAgeMs: 86_400_000
-                };
+	it('preserves custom plugin configuration when refreshing agent config', async () => {
+		const signaturePolicyModule = await import('../plugins/signature-policy.js');
+		const initialPolicy = {
+			allowUnsigned: true,
+			sha256AllowList: ['cafebabe'],
+			ed25519PublicKeys: { controller: 'a'.repeat(64) }
+		};
+		const refreshedPolicy = {
+			allowUnsigned: false,
+			sha256AllowList: ['deadbeef'],
+			ed25519PublicKeys: { controller: 'b'.repeat(64) },
+			maxSignatureAgeMs: 86_400_000
+		};
 
-                const policySpy = vi
-                        .spyOn(signaturePolicyModule, 'getAgentSignaturePolicy')
-                        .mockReturnValue(initialPolicy);
+		const policySpy = vi
+			.spyOn(signaturePolicyModule, 'getAgentSignaturePolicy')
+			.mockReturnValue(initialPolicy);
 
-                const registry = new AgentRegistry();
-                const registration = registry.registerAgent({ metadata: baseMetadata });
+		const registry = new AgentRegistry();
+		const registration = registry.registerAgent({ metadata: baseMetadata });
 
-                try {
-                        const internals = registry as unknown as {
-                                agents: Map<string, { config: AgentConfig }>;
-                        };
-                        const record = internals.agents.get(registration.agentId);
-                        expect(record).toBeTruthy();
-                        if (!record) {
-                                throw new Error('Agent record missing');
-                        }
+		try {
+			const internals = registry as unknown as {
+				agents: Map<string, { config: AgentConfig }>;
+			};
+			const record = internals.agents.get(registration.agentId);
+			expect(record).toBeTruthy();
+			if (!record) {
+				throw new Error('Agent record missing');
+			}
 
-                        record.config = {
-                                ...record.config,
-                                plugins: {
-                                        ...(record.config.plugins ?? {}),
-                                        experimental: { enabled: true }
-                                } as AgentPluginConfig
-                        };
+			record.config = {
+				...record.config,
+				plugins: {
+					...(record.config.plugins ?? {}),
+					experimental: { enabled: true }
+				} as AgentPluginConfig
+			};
 
-                        policySpy.mockReturnValue(refreshedPolicy);
+			policySpy.mockReturnValue(refreshedPolicy);
 
-                        const refreshed = registry.registerAgent({ metadata: baseMetadata });
+			const refreshed = registry.registerAgent({ metadata: baseMetadata });
 
-                        const pluginConfig = refreshed.config.plugins as AgentPluginConfig & {
-                                experimental?: { enabled: boolean };
-                        };
+			const pluginConfig = refreshed.config.plugins as AgentPluginConfig & {
+				experimental?: { enabled: boolean };
+			};
 
-                        expect(pluginConfig.experimental?.enabled).toBe(true);
-                        expect(pluginConfig.signaturePolicy).toEqual(refreshedPolicy);
-                        expect(pluginConfig.signaturePolicy).not.toBe(refreshedPolicy);
-                        expect(pluginConfig.signaturePolicy?.sha256AllowList).toEqual(
-                                refreshedPolicy.sha256AllowList
-                        );
-                } finally {
-                        policySpy.mockRestore();
-                }
-        });
+			expect(pluginConfig.experimental?.enabled).toBe(true);
+			expect(pluginConfig.signaturePolicy).toEqual(refreshedPolicy);
+			expect(pluginConfig.signaturePolicy).not.toBe(refreshedPolicy);
+			expect(pluginConfig.signaturePolicy?.sha256AllowList).toEqual(
+				refreshedPolicy.sha256AllowList
+			);
+		} finally {
+			policySpy.mockRestore();
+		}
+	});
 
 	it('rolls back partial persistence when a transactional error occurs', async () => {
 		const registry = new AgentRegistry();

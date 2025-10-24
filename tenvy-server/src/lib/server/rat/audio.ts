@@ -1,13 +1,13 @@
 import { createHash, randomBytes, randomUUID, timingSafeEqual } from 'crypto';
 import type {
-        AudioDeviceInventory,
-        AudioDeviceInventoryState,
-        AudioDirection,
-        AudioSessionState,
-        AudioStreamChunk,
-        AudioStreamFormat,
-        AudioStreamTransport,
-        AudioUploadTrack
+	AudioDeviceInventory,
+	AudioDeviceInventoryState,
+	AudioDirection,
+	AudioSessionState,
+	AudioStreamChunk,
+	AudioStreamFormat,
+	AudioStreamTransport,
+	AudioUploadTrack
 } from '$lib/types/audio';
 import { join } from 'node:path';
 import { mkdir, stat, unlink } from 'node:fs/promises';
@@ -19,10 +19,8 @@ import {
 const encoder = new TextEncoder();
 const AUDIO_STREAM_TOKEN_TTL_MS = 60_000;
 export const MAX_AUDIO_STREAM_BASE64_LENGTH = 1 * 1024 * 1024; // 1 MiB
-const RFC3339_REGEX =
-        /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?Z$/;
-const BASE64_REGEX =
-        /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}(?:==)?|[A-Za-z0-9+/]{3}=)?$/;
+const RFC3339_REGEX = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?Z$/;
+const BASE64_REGEX = /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}(?:==)?|[A-Za-z0-9+/]{3}=)?$/;
 
 function hashStreamToken(token: string): string {
 	const hash = createHash('sha256');
@@ -351,77 +349,81 @@ export class AudioBridgeManager {
 		return toSessionState(record);
 	}
 
-        ingestChunk(agentId: string, chunk: AudioStreamChunk) {
-                if (!chunk || typeof chunk.sessionId !== 'string' || chunk.sessionId.trim() === '') {
-                        throw new AudioBridgeError('Audio chunk session identifier is required', 400);
-                }
+	ingestChunk(agentId: string, chunk: AudioStreamChunk) {
+		if (!chunk || typeof chunk.sessionId !== 'string' || chunk.sessionId.trim() === '') {
+			throw new AudioBridgeError('Audio chunk session identifier is required', 400);
+		}
 
-                const sessionId = chunk.sessionId.trim();
-                const record = this.sessions.get(agentId);
-                if (!record || record.id !== sessionId) {
-                        throw new AudioBridgeError('No active audio session for this agent', 404);
-                }
+		const sessionId = chunk.sessionId.trim();
+		const record = this.sessions.get(agentId);
+		if (!record || record.id !== sessionId) {
+			throw new AudioBridgeError('No active audio session for this agent', 404);
+		}
 
-                if (!record.active) {
-                        throw new AudioBridgeError('Audio session is not active', 409);
-                }
+		if (!record.active) {
+			throw new AudioBridgeError('Audio session is not active', 409);
+		}
 
-                if (!Number.isFinite(chunk.sequence) || chunk.sequence < 0 || !Number.isInteger(chunk.sequence)) {
-                        throw new AudioBridgeError('Invalid audio chunk sequence', 400);
-                }
+		if (
+			!Number.isFinite(chunk.sequence) ||
+			chunk.sequence < 0 ||
+			!Number.isInteger(chunk.sequence)
+		) {
+			throw new AudioBridgeError('Invalid audio chunk sequence', 400);
+		}
 
-                if (typeof chunk.timestamp !== 'string' || chunk.timestamp.trim() === '') {
-                        throw new AudioBridgeError('Invalid audio chunk timestamp', 400);
-                }
+		if (typeof chunk.timestamp !== 'string' || chunk.timestamp.trim() === '') {
+			throw new AudioBridgeError('Invalid audio chunk timestamp', 400);
+		}
 
-                const timestamp = chunk.timestamp.trim();
-                if (!RFC3339_REGEX.test(timestamp) || Number.isNaN(Date.parse(timestamp))) {
-                        throw new AudioBridgeError('Invalid audio chunk timestamp', 400);
-                }
+		const timestamp = chunk.timestamp.trim();
+		if (!RFC3339_REGEX.test(timestamp) || Number.isNaN(Date.parse(timestamp))) {
+			throw new AudioBridgeError('Invalid audio chunk timestamp', 400);
+		}
 
-                if (!chunk.format || typeof chunk.format !== 'object') {
-                        throw new AudioBridgeError('Invalid audio chunk format', 400);
-                }
+		if (!chunk.format || typeof chunk.format !== 'object') {
+			throw new AudioBridgeError('Invalid audio chunk format', 400);
+		}
 
-                const { encoding, sampleRate, channels } = chunk.format;
-                if (typeof encoding !== 'string' || encoding.trim() === '') {
-                        throw new AudioBridgeError('Invalid audio chunk format encoding', 400);
-                }
+		const { encoding, sampleRate, channels } = chunk.format;
+		if (typeof encoding !== 'string' || encoding.trim() === '') {
+			throw new AudioBridgeError('Invalid audio chunk format encoding', 400);
+		}
 
-                if (encoding !== 'pcm16') {
-                        throw new AudioBridgeError('Unsupported audio encoding', 400);
-                }
+		if (encoding !== 'pcm16') {
+			throw new AudioBridgeError('Unsupported audio encoding', 400);
+		}
 
-                if (!Number.isFinite(sampleRate) || sampleRate <= 0) {
-                        throw new AudioBridgeError('Invalid audio sample rate', 400);
-                }
+		if (!Number.isFinite(sampleRate) || sampleRate <= 0) {
+			throw new AudioBridgeError('Invalid audio sample rate', 400);
+		}
 
-                if (!Number.isInteger(channels) || channels <= 0) {
-                        throw new AudioBridgeError('Invalid audio channel count', 400);
-                }
+		if (!Number.isInteger(channels) || channels <= 0) {
+			throw new AudioBridgeError('Invalid audio channel count', 400);
+		}
 
-                if (typeof chunk.data !== 'string') {
-                        throw new AudioBridgeError('Audio chunk data must be a base64 string', 400);
-                }
+		if (typeof chunk.data !== 'string') {
+			throw new AudioBridgeError('Audio chunk data must be a base64 string', 400);
+		}
 
-                if (chunk.data.length > MAX_AUDIO_STREAM_BASE64_LENGTH) {
-                        throw new AudioBridgeError('Audio chunk payload exceeds maximum size', 400);
-                }
+		if (chunk.data.length > MAX_AUDIO_STREAM_BASE64_LENGTH) {
+			throw new AudioBridgeError('Audio chunk payload exceeds maximum size', 400);
+		}
 
-                if (chunk.data.length > 0 && !BASE64_REGEX.test(chunk.data)) {
-                        throw new AudioBridgeError('Audio chunk data must be a base64 string', 400);
-                }
+		if (chunk.data.length > 0 && !BASE64_REGEX.test(chunk.data)) {
+			throw new AudioBridgeError('Audio chunk data must be a base64 string', 400);
+		}
 
-                record.lastSequence = chunk.sequence;
-                record.lastUpdatedAt = new Date();
-                this.broadcast(record, 'chunk', {
-                        sessionId: record.id,
-                        sequence: chunk.sequence,
-                        timestamp,
-                        format: { ...chunk.format },
-                        data: chunk.data
-                });
-        }
+		record.lastSequence = chunk.sequence;
+		record.lastUpdatedAt = new Date();
+		this.broadcast(record, 'chunk', {
+			sessionId: record.id,
+			sequence: chunk.sequence,
+			timestamp,
+			format: { ...chunk.format },
+			data: chunk.data
+		});
+	}
 
 	subscribe(agentId: string, sessionId: string): ReadableStream<Uint8Array> {
 		const record = this.sessions.get(agentId);
@@ -522,15 +524,15 @@ export class AudioBridgeManager {
 			throw new AudioBridgeError('Invalid audio stream frame header', 400);
 		}
 
-                const payloadData = buffer.subarray(newlineIndex + 1);
-                const base64Data = payloadData.length > 0 ? payloadData.toString('base64') : '';
+		const payloadData = buffer.subarray(newlineIndex + 1);
+		const base64Data = payloadData.length > 0 ? payloadData.toString('base64') : '';
 
-                if (base64Data.length > MAX_AUDIO_STREAM_BASE64_LENGTH) {
-                        throw new AudioBridgeError('Audio chunk payload exceeds maximum size', 400);
-                }
+		if (base64Data.length > MAX_AUDIO_STREAM_BASE64_LENGTH) {
+			throw new AudioBridgeError('Audio chunk payload exceeds maximum size', 400);
+		}
 
-                let sequence: number | undefined;
-                if (typeof header.sequence === 'number' && Number.isFinite(header.sequence)) {
+		let sequence: number | undefined;
+		if (typeof header.sequence === 'number' && Number.isFinite(header.sequence)) {
 			sequence = header.sequence;
 		} else if (typeof header.sequence === 'string') {
 			const parsed = Number.parseInt(header.sequence, 10);

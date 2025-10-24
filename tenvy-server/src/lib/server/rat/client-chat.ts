@@ -194,15 +194,15 @@ export class ClientChatManager {
 		}
 	): ClientChatSessionState {
 		const record = this.getOrCreateRecord(agentId);
-                const requestedId = options.sessionId?.trim();
-                if (requestedId && requestedId !== record.id) {
-                        record.id = requestedId;
-                        record.messages = [];
-                }
-                this.applyAliases(record, options.aliases);
-                this.applyFeatures(record, options.features);
-                return cloneState(record);
-        }
+		const requestedId = options.sessionId?.trim();
+		if (requestedId && requestedId !== record.id) {
+			record.id = requestedId;
+			record.messages = [];
+		}
+		this.applyAliases(record, options.aliases);
+		this.applyFeatures(record, options.features);
+		return cloneState(record);
+	}
 
 	sendOperatorMessage(
 		agentId: string,

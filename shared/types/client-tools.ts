@@ -4,5 +4,6 @@ export interface ClientToolDefinition {
   id: string;
   title: string;
   segments: string[];
+  description?: string;
   target?: ClientToolTarget;
 }

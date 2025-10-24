@@ -26,33 +26,33 @@
 		distributionNotice as defaultDistributionNotice,
 		formatSignatureTime,
 		signatureBadge,
-	statusSeverity
-} from './utils.js';
+		statusSeverity
+	} from './utils.js';
 
-let {
-	plugin,
-	updatePlugin,
-	distributionNotice = defaultDistributionNotice
-}: {
-	plugin: Plugin;
-	updatePlugin: (id: string, patch: PluginUpdatePayload) => void | Promise<void>;
-	distributionNotice?: (plugin: Plugin) => string;
-} = $props();
+	let {
+		plugin,
+		updatePlugin,
+		distributionNotice = defaultDistributionNotice
+	}: {
+		plugin: Plugin;
+		updatePlugin: (id: string, patch: PluginUpdatePayload) => void | Promise<void>;
+		distributionNotice?: (plugin: Plugin) => string;
+	} = $props();
 
-type SignatureBadge = ReturnType<typeof signatureBadge>;
-const pluginSignatureBadge: SignatureBadge = $derived(signatureBadge(plugin.signature));
+	type SignatureBadge = ReturnType<typeof signatureBadge>;
+	const pluginSignatureBadge: SignatureBadge = $derived(signatureBadge(plugin.signature));
 </script>
 
 <Card
-        class={cn(
-                'border-border/60 transition',
-                plugin.status === 'error' && 'border-red-500/40',
-                plugin.status === 'update' && 'border-amber-500/40',
-                !plugin.enabled && 'opacity-90'
-        )}
+	class={cn(
+		'border-border/60 transition',
+		plugin.status === 'error' && 'border-red-500/40',
+		plugin.status === 'update' && 'border-amber-500/40',
+		!plugin.enabled && 'opacity-90'
+	)}
 >
-        {@const PluginSignatureIcon = pluginSignatureBadge.icon}
-        <CardHeader class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+	{@const PluginSignatureIcon = pluginSignatureBadge.icon}
+	<CardHeader class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
 		<div class="space-y-2">
 			<div class="flex flex-wrap items-center gap-3">
 				<CardTitle class="text-base leading-tight font-semibold">{plugin.name}</CardTitle>
@@ -65,16 +65,16 @@ const pluginSignatureBadge: SignatureBadge = $derived(signatureBadge(plugin.sign
 				>
 					{pluginStatusLabels[plugin.status]}
 				</Badge>
-                                <Badge
-                                        variant="outline"
-                                        class={cn(
-                                                'flex items-center gap-1 px-2.5 py-1 text-xs font-medium',
-                                                pluginSignatureBadge.class
-                                        )}
-                                >
-                                        <PluginSignatureIcon class="h-3.5 w-3.5" />
-                                        {pluginSignatureBadge.label}
-                                </Badge>
+				<Badge
+					variant="outline"
+					class={cn(
+						'flex items-center gap-1 px-2.5 py-1 text-xs font-medium',
+						pluginSignatureBadge.class
+					)}
+				>
+					<PluginSignatureIcon class="h-3.5 w-3.5" />
+					{pluginSignatureBadge.label}
+				</Badge>
 			</div>
 			<CardDescription class="max-w-2xl text-sm text-muted-foreground"
 				>{plugin.description}</CardDescription
@@ -117,10 +117,10 @@ const pluginSignatureBadge: SignatureBadge = $derived(signatureBadge(plugin.sign
 		<div class="grid gap-4 text-sm text-muted-foreground md:grid-cols-2 xl:grid-cols-3">
 			<div class="space-y-1 rounded-md border border-border/60 px-3 py-2">
 				<span class="text-xs tracking-wide uppercase">Signature</span>
-                                <p class="flex items-center gap-2 text-sm font-semibold text-foreground">
-                                        <PluginSignatureIcon class="h-4 w-4" />
-                                        {pluginSignatureBadge.label}
-                                </p>
+				<p class="flex items-center gap-2 text-sm font-semibold text-foreground">
+					<PluginSignatureIcon class="h-4 w-4" />
+					{pluginSignatureBadge.label}
+				</p>
 				{#if plugin.signature.error}
 					<p class="text-xs text-muted-foreground">{plugin.signature.error}</p>
 				{:else if plugin.signature.signer}

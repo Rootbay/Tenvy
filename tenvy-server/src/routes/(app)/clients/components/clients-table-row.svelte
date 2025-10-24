@@ -18,7 +18,7 @@
 	import { cn } from '$lib/utils.js';
 	import { toast } from 'svelte-sonner';
 	import { countryCodeToFlag } from '$lib/utils/location';
-	import type { AgentSnapshot } from '../../../../../shared/types/agent';
+	import type { AgentSnapshot } from '../../../../../../shared/types/agent';
 	import type { SectionKey } from '$lib/client-sections';
 
 	type TriggerChildProps = Parameters<NonNullable<ContextMenuPrimitive.TriggerProps['child']>>[0];
