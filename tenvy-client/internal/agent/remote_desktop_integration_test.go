@@ -6,6 +6,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -107,7 +108,7 @@ func TestRemoteDesktopModuleNegotiationWithManagedEngine(t *testing.T) {
 		t.Fatalf("new plugin manager: %v", err)
 	}
 
-	runtime := ModuleRuntime{
+	runtime := Config{
 		AgentID:    agentID,
 		BaseURL:    server.URL,
 		HTTPClient: server.Client(),
@@ -141,9 +142,10 @@ func TestRemoteDesktopModuleNegotiationWithManagedEngine(t *testing.T) {
 		CreatedAt: time.Now().UTC().Format(time.RFC3339Nano),
 	}
 
-	result := module.Handle(context.Background(), startCmd)
-	if !result.Success {
-		t.Fatalf("start command failed: %s", result.Error)
+	startErr := module.Handle(context.Background(), startCmd)
+	startResult := unwrapResult(t, startErr)
+	if !startResult.Success {
+		t.Fatalf("start command failed: %s", startResult.Error)
 	}
 
 	select {
@@ -166,12 +168,15 @@ func TestRemoteDesktopModuleNegotiationWithManagedEngine(t *testing.T) {
 		Payload:   stopRaw,
 		CreatedAt: time.Now().UTC().Format(time.RFC3339Nano),
 	}
-	stopResult := module.Handle(context.Background(), stopCmd)
+	stopErr := module.Handle(context.Background(), stopCmd)
+	stopResult := unwrapResult(t, stopErr)
 	if !stopResult.Success {
 		t.Fatalf("stop command failed: %s", stopResult.Error)
 	}
 
-	module.Shutdown(context.Background())
+	if err := module.Shutdown(context.Background()); err != nil {
+		t.Fatalf("module shutdown: %v", err)
+	}
 
 	snapshot := manager.Snapshot()
 	if snapshot == nil || len(snapshot.Installations) != 1 {
@@ -228,4 +233,16 @@ func buildEngineArtifact(t *testing.T) []byte {
 		t.Fatalf("close zip writer: %v", err)
 	}
 	return buf.Bytes()
+}
+
+func unwrapResult(t *testing.T, err error) protocol.CommandResult {
+	t.Helper()
+	if err == nil {
+		return protocol.CommandResult{}
+	}
+	var resultErr *CommandResultError
+	if !errors.As(err, &resultErr) {
+		t.Fatalf("unexpected error type: %T", err)
+	}
+	return resultErr.Result
 }
