@@ -35,7 +35,34 @@ func secureHTTPClient(doer HTTPDoer) HTTPDoer {
 	}
 
 	client.Transport = secureHTTPTransport(client.Transport)
+	client.CheckRedirect = secureRedirectPolicy(client.CheckRedirect)
 	return client
+}
+
+func secureRedirectPolicy(next func(*http.Request, []*http.Request) error) func(*http.Request, []*http.Request) error {
+	return func(req *http.Request, via []*http.Request) error {
+		if err := validateRedirectTarget(req); err != nil {
+			return err
+		}
+		if next != nil {
+			return next(req, via)
+		}
+		return nil
+	}
+}
+
+func validateRedirectTarget(req *http.Request) error {
+	if req == nil || req.URL == nil {
+		return nil
+	}
+
+	scheme := strings.ToLower(req.URL.Scheme)
+	switch scheme {
+	case "", "https", "wss":
+		return nil
+	default:
+		return fmt.Errorf("redirect to insecure scheme blocked: %s", scheme)
+	}
 }
 
 func secureHTTPTransport(rt http.RoundTripper) http.RoundTripper {

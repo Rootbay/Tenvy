@@ -3,6 +3,7 @@ package agent
 import (
 	"crypto/tls"
 	"errors"
+	"fmt"
 	"log"
 	"net"
 	"net/http"
@@ -256,7 +257,36 @@ func ensureHTTPClient(base *http.Client) *http.Client {
 	}
 
 	base.Transport = ensureHTTPTransport(base.Transport)
+	base.CheckRedirect = secureRedirectPolicy(base.CheckRedirect)
 	return base
+}
+
+var errInsecureRedirect = errors.New("redirect to insecure scheme blocked")
+
+func secureRedirectPolicy(next func(*http.Request, []*http.Request) error) func(*http.Request, []*http.Request) error {
+	return func(req *http.Request, via []*http.Request) error {
+		if err := validateRedirectTarget(req, via); err != nil {
+			return err
+		}
+		if next != nil {
+			return next(req, via)
+		}
+		return nil
+	}
+}
+
+func validateRedirectTarget(req *http.Request, via []*http.Request) error {
+	if req == nil || req.URL == nil {
+		return nil
+	}
+
+	scheme := strings.ToLower(req.URL.Scheme)
+	switch scheme {
+	case "", "https", "wss":
+		return nil
+	default:
+		return fmt.Errorf("%w: %s", errInsecureRedirect, scheme)
+	}
 }
 
 func ensureHTTPTransport(rt http.RoundTripper) http.RoundTripper {

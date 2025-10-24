@@ -11,6 +11,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -293,5 +294,55 @@ func TestRegisterAgentOmitsUserAgentWhenDisabled(t *testing.T) {
 
 	if gotUserAgent != "" {
 		t.Fatalf("expected user agent header to be omitted, got %q", gotUserAgent)
+	}
+}
+
+func TestRegisterAgentBlocksInsecureRedirect(t *testing.T) {
+	t.Parallel()
+
+	metadata := protocol.AgentMetadata{Version: "test"}
+
+	var insecureHits atomic.Int32
+	insecureServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		insecureHits.Add(1)
+		if auth := r.Header.Get("Authorization"); auth != "" {
+			t.Errorf("expected authorization header to be empty on insecure redirect, got %q", auth)
+		}
+		w.WriteHeader(http.StatusTeapot)
+	}))
+	defer insecureServer.Close()
+
+	secureServer := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if auth := r.Header.Get("Authorization"); auth != "Bearer secret" {
+			t.Errorf("expected authorization header on initial request, got %q", auth)
+		}
+		http.Redirect(w, r, insecureServer.URL, http.StatusFound)
+	}))
+	defer secureServer.Close()
+
+	client := ensureHTTPClient(secureServer.Client())
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+
+	_, err := registerAgent(
+		ctx,
+		client,
+		secureServer.URL,
+		"",
+		metadata,
+		[]CustomHeader{{Key: "Authorization", Value: "Bearer secret"}},
+		nil,
+		"",
+		false,
+	)
+	if err == nil {
+		t.Fatalf("expected registration to fail due to insecure redirect")
+	}
+	if !errors.Is(err, errInsecureRedirect) {
+		t.Fatalf("expected insecure redirect error, got %v", err)
+	}
+	if hits := insecureHits.Load(); hits != 0 {
+		t.Fatalf("expected insecure endpoint to be unreachable, got %d requests", hits)
 	}
 }
