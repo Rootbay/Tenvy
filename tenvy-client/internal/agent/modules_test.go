@@ -15,7 +15,7 @@ type stubModule struct {
 	metadata       ModuleMetadata
 	initErr        error
 	updateErr      error
-	handleFunc     func(context.Context, protocol.Command) protocol.CommandResult
+	handleFunc     func(context.Context, protocol.Command) error
 	initCalled     int
 	updateCalled   int
 	shutdownCalled int
@@ -27,7 +27,11 @@ func (m *stubModule) Metadata() ModuleMetadata {
 	return m.metadata
 }
 
-func (m *stubModule) Init(context.Context, ModuleRuntime) error {
+func (m *stubModule) ID() string {
+	return m.metadata.ID
+}
+
+func (m *stubModule) Init(context.Context, Config) error {
 	m.initCalled++
 	if m.log != nil {
 		*m.log = append(*m.log, m.metadata.ID+":init")
@@ -35,7 +39,7 @@ func (m *stubModule) Init(context.Context, ModuleRuntime) error {
 	return m.initErr
 }
 
-func (m *stubModule) Handle(ctx context.Context, cmd protocol.Command) protocol.CommandResult {
+func (m *stubModule) Handle(ctx context.Context, cmd protocol.Command) error {
 	m.handleCalled++
 	if m.log != nil {
 		*m.log = append(*m.log, m.metadata.ID+":handle"+":"+cmd.Name)
@@ -43,10 +47,10 @@ func (m *stubModule) Handle(ctx context.Context, cmd protocol.Command) protocol.
 	if m.handleFunc != nil {
 		return m.handleFunc(ctx, cmd)
 	}
-	return protocol.CommandResult{CommandID: cmd.ID, Success: true, CompletedAt: "now"}
+	return WrapCommandResult(protocol.CommandResult{CommandID: cmd.ID, Success: true, CompletedAt: "now"})
 }
 
-func (m *stubModule) UpdateConfig(context.Context, ModuleRuntime) error {
+func (m *stubModule) UpdateConfig(Config) error {
 	m.updateCalled++
 	if m.log != nil {
 		*m.log = append(*m.log, m.metadata.ID+":update")
@@ -54,11 +58,12 @@ func (m *stubModule) UpdateConfig(context.Context, ModuleRuntime) error {
 	return m.updateErr
 }
 
-func (m *stubModule) Shutdown(context.Context) {
+func (m *stubModule) Shutdown(context.Context) error {
 	m.shutdownCalled++
 	if m.log != nil {
 		*m.log = append(*m.log, m.metadata.ID+":shutdown")
 	}
+	return nil
 }
 
 func TestModuleManagerLifecycle(t *testing.T) {
@@ -81,8 +86,8 @@ func TestModuleManagerLifecycle(t *testing.T) {
 			Commands: []string{"beta"},
 		},
 		updateErr: errors.New("boom"),
-		handleFunc: func(_ context.Context, cmd protocol.Command) protocol.CommandResult {
-			return protocol.CommandResult{CommandID: cmd.ID, Success: true, Output: "ok", CompletedAt: "done"}
+		handleFunc: func(_ context.Context, cmd protocol.Command) error {
+			return WrapCommandResult(protocol.CommandResult{CommandID: cmd.ID, Success: true, Output: "ok", CompletedAt: "done"})
 		},
 		log: &callLog,
 	}
@@ -91,7 +96,7 @@ func TestModuleManagerLifecycle(t *testing.T) {
 	manager.register(moduleA)
 	manager.register(moduleB)
 
-	runtime := ModuleRuntime{AgentID: "agent-123"}
+	runtime := Config{AgentID: "agent-123"}
 	if err := manager.Init(context.Background(), runtime); err != nil {
 		t.Fatalf("Init returned unexpected error: %v", err)
 	}
@@ -100,7 +105,7 @@ func TestModuleManagerLifecycle(t *testing.T) {
 		t.Fatalf("expected init to be called once on each module, got %d and %d", moduleA.initCalled, moduleB.initCalled)
 	}
 
-	err := manager.UpdateConfig(context.Background(), runtime)
+	err := manager.UpdateConfig(runtime)
 	if err == nil {
 		t.Fatal("expected UpdateConfig to return aggregated error")
 	}
@@ -124,7 +129,9 @@ func TestModuleManagerLifecycle(t *testing.T) {
 		t.Fatal("expected unknown command to be unhandled")
 	}
 
-	manager.Shutdown(context.Background())
+	if err := manager.Shutdown(context.Background()); err != nil {
+		t.Fatalf("Shutdown returned unexpected error: %v", err)
+	}
 
 	if moduleA.shutdownCalled != 1 || moduleB.shutdownCalled != 1 {
 		t.Fatalf("expected shutdown to be called once on each module, got %d and %d", moduleA.shutdownCalled, moduleB.shutdownCalled)
@@ -209,13 +216,25 @@ func (f *fakeRemoteDesktopEngine) Shutdown() {
 	f.shutdownCalled = true
 }
 
+func unwrapModuleResult(t *testing.T, err error) protocol.CommandResult {
+	t.Helper()
+	if err == nil {
+		return protocol.CommandResult{}
+	}
+	var resultErr *CommandResultError
+	if !errors.As(err, &resultErr) {
+		t.Fatalf("unexpected error type: %T", err)
+	}
+	return resultErr.Result
+}
+
 func TestRemoteDesktopModuleInitUsesInjectedEngine(t *testing.T) {
 	t.Parallel()
 
 	engine := &fakeRemoteDesktopEngine{}
 	module := newRemoteDesktopModule(engine)
 
-	runtime := ModuleRuntime{AgentID: "agent-1", BaseURL: "https://controller.example"}
+	runtime := Config{AgentID: "agent-1", BaseURL: "https://controller.example"}
 	if err := module.Init(context.Background(), runtime); err != nil {
 		t.Fatalf("Init returned error: %v", err)
 	}
@@ -224,7 +243,7 @@ func TestRemoteDesktopModuleInitUsesInjectedEngine(t *testing.T) {
 	}
 
 	runtime.AuthKey = "key"
-	if err := module.UpdateConfig(context.Background(), runtime); err != nil {
+	if err := module.UpdateConfig(runtime); err != nil {
 		t.Fatalf("UpdateConfig returned error: %v", err)
 	}
 	if len(engine.configureCalls) != 2 {
@@ -238,7 +257,7 @@ func TestRemoteDesktopModuleDelegatesCommandsToEngine(t *testing.T) {
 	engine := &fakeRemoteDesktopEngine{}
 	module := newRemoteDesktopModule(engine)
 
-	runtime := ModuleRuntime{AgentID: "agent-1"}
+	runtime := Config{AgentID: "agent-1"}
 	if err := module.Init(context.Background(), runtime); err != nil {
 		t.Fatalf("Init returned error: %v", err)
 	}
@@ -250,7 +269,7 @@ func TestRemoteDesktopModuleDelegatesCommandsToEngine(t *testing.T) {
 	if err != nil {
 		t.Fatalf("marshal start payload: %v", err)
 	}
-	result := module.Handle(ctx, protocol.Command{ID: "start", Name: "remote-desktop", Payload: rawStart})
+	result := unwrapModuleResult(t, module.Handle(ctx, protocol.Command{ID: "start", Name: "remote-desktop", Payload: rawStart}))
 	if !result.Success {
 		t.Fatalf("expected start to succeed, got result: %+v", result)
 	}
@@ -263,7 +282,7 @@ func TestRemoteDesktopModuleDelegatesCommandsToEngine(t *testing.T) {
 	if err != nil {
 		t.Fatalf("marshal stop payload: %v", err)
 	}
-	_ = module.Handle(ctx, protocol.Command{ID: "stop", Name: "remote-desktop", Payload: rawStop})
+	unwrapModuleResult(t, module.Handle(ctx, protocol.Command{ID: "stop", Name: "remote-desktop", Payload: rawStop}))
 	if len(engine.stopCalls) != 1 || engine.stopCalls[0] != "session-1" {
 		t.Fatalf("expected stop payload to be forwarded, got %+v", engine.stopCalls)
 	}
@@ -273,7 +292,7 @@ func TestRemoteDesktopModuleDelegatesCommandsToEngine(t *testing.T) {
 	if err != nil {
 		t.Fatalf("marshal configure payload: %v", err)
 	}
-	_ = module.Handle(ctx, protocol.Command{ID: "configure", Name: "remote-desktop", Payload: rawUpdate})
+	unwrapModuleResult(t, module.Handle(ctx, protocol.Command{ID: "configure", Name: "remote-desktop", Payload: rawUpdate}))
 	if len(engine.updateCalls) != 1 {
 		t.Fatalf("expected configure payload to be forwarded, got %d calls", len(engine.updateCalls))
 	}
@@ -289,7 +308,7 @@ func TestRemoteDesktopModuleDelegatesCommandsToEngine(t *testing.T) {
 	if err != nil {
 		t.Fatalf("marshal input payload: %v", err)
 	}
-	_ = module.Handle(ctx, protocol.Command{ID: "input", Name: "remote-desktop", Payload: rawInput})
+	unwrapModuleResult(t, module.Handle(ctx, protocol.Command{ID: "input", Name: "remote-desktop", Payload: rawInput}))
 	if len(engine.inputCalls) != 1 {
 		t.Fatalf("expected input payload to be forwarded once, got %d calls", len(engine.inputCalls))
 	}
@@ -310,7 +329,9 @@ func TestRemoteDesktopModuleDelegatesCommandsToEngine(t *testing.T) {
 		t.Fatalf("expected burst to forward input payload, got %d calls", len(engine.inputCalls))
 	}
 
-	module.Shutdown(ctx)
+	if err := module.Shutdown(ctx); err != nil {
+		t.Fatalf("Shutdown returned error: %v", err)
+	}
 	if !engine.shutdownCalled {
 		t.Fatal("expected Shutdown to invoke engine")
 	}
