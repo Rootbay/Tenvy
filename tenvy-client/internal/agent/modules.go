@@ -26,19 +26,21 @@ import (
 	systeminfo "github.com/rootbay/tenvy-client/internal/modules/systeminfo"
 	"github.com/rootbay/tenvy-client/internal/plugins"
 	"github.com/rootbay/tenvy-client/internal/protocol"
+	manifest "github.com/rootbay/tenvy-client/shared/pluginmanifest"
 )
 
 type Config struct {
-	AgentID      string
-	BaseURL      string
-	AuthKey      string
-	HTTPClient   *http.Client
-	Logger       *log.Logger
-	UserAgent    string
-	Provider     systeminfo.AgentInfoProvider
-	BuildVersion string
-	AgentConfig  protocol.AgentConfig
-	Plugins      *plugins.Manager
+	AgentID       string
+	BaseURL       string
+	AuthKey       string
+	HTTPClient    *http.Client
+	Logger        *log.Logger
+	UserAgent     string
+	Provider      systeminfo.AgentInfoProvider
+	BuildVersion  string
+	AgentConfig   protocol.AgentConfig
+	Plugins       *plugins.Manager
+	ActiveModules []string
 }
 
 func envBool(name string) bool {
@@ -427,17 +429,29 @@ func (m *appVncModule) Shutdown(ctx context.Context) error {
 }
 
 func (a *Agent) moduleRuntime() Config {
+	var activeModules []string
+	if a.modules != nil {
+		metadata := a.modules.Metadata()
+		activeModules = make([]string, 0, len(metadata))
+		for _, entry := range metadata {
+			if id := strings.TrimSpace(entry.ID); id != "" {
+				activeModules = append(activeModules, id)
+			}
+		}
+	}
+
 	return Config{
-		AgentID:      a.id,
-		BaseURL:      a.baseURL,
-		AuthKey:      a.key,
-		HTTPClient:   a.client,
-		Logger:       a.logger,
-		UserAgent:    a.userAgent(),
-		Provider:     a,
-		BuildVersion: a.buildVersion,
-		AgentConfig:  a.config,
-		Plugins:      a.plugins,
+		AgentID:       a.id,
+		BaseURL:       a.baseURL,
+		AuthKey:       a.key,
+		HTTPClient:    a.client,
+		Logger:        a.logger,
+		UserAgent:     a.userAgent(),
+		Provider:      a,
+		BuildVersion:  a.buildVersion,
+		AgentConfig:   a.config,
+		Plugins:       a.plugins,
+		ActiveModules: activeModules,
 	}
 }
 
@@ -702,7 +716,22 @@ func defaultRemoteDesktopEngineFactory(ctx context.Context, runtime Config, cfg 
 	stageCtx, cancel := context.WithTimeout(stageCtx, 30*time.Second)
 	defer cancel()
 
-	result, err := plugins.StageRemoteDesktopEngine(stageCtx, manager, client, baseURL, agentID, runtime.AuthKey, runtime.UserAgent)
+	var metadata protocol.AgentMetadata
+	if runtime.Provider != nil {
+		metadata = runtime.Provider.AgentMetadata()
+	}
+	agentVersion := strings.TrimSpace(runtime.BuildVersion)
+	if agentVersion == "" {
+		agentVersion = strings.TrimSpace(metadata.Version)
+	}
+	facts := manifest.RuntimeFacts{
+		Platform:       metadata.OS,
+		Architecture:   metadata.Architecture,
+		AgentVersion:   agentVersion,
+		EnabledModules: append([]string(nil), runtime.ActiveModules...),
+	}
+
+	result, err := plugins.StageRemoteDesktopEngine(stageCtx, manager, client, baseURL, agentID, runtime.AuthKey, runtime.UserAgent, facts)
 	if err != nil {
 		if runtime.Logger != nil {
 			runtime.Logger.Printf("remote desktop: engine staging failed: %v", err)

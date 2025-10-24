@@ -13,6 +13,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	plugins "github.com/rootbay/tenvy-client/internal/plugins"
@@ -63,7 +64,7 @@ func TestStageRemoteDesktopEngineSuccess(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	result, err := plugins.StageRemoteDesktopEngine(ctx, manager, server.Client(), server.URL, "agent-1", "", "stage-test")
+	result, err := plugins.StageRemoteDesktopEngine(ctx, manager, server.Client(), server.URL, "agent-1", "", "stage-test", manifest.RuntimeFacts{})
 	if err != nil {
 		t.Fatalf("stage engine: %v", err)
 	}
@@ -96,7 +97,7 @@ func TestStageRemoteDesktopEngineSuccess(t *testing.T) {
 	}
 
 	// Subsequent staging should be a no-op.
-	result2, err := plugins.StageRemoteDesktopEngine(ctx, manager, server.Client(), server.URL, "agent-1", "", "stage-test")
+	result2, err := plugins.StageRemoteDesktopEngine(ctx, manager, server.Client(), server.URL, "agent-1", "", "stage-test", manifest.RuntimeFacts{})
 	if err != nil {
 		t.Fatalf("restage engine: %v", err)
 	}
@@ -120,7 +121,7 @@ func TestStageRemoteDesktopEngineRecordsFailure(t *testing.T) {
 		t.Fatalf("new manager: %v", err)
 	}
 
-	_, err = plugins.StageRemoteDesktopEngine(context.Background(), manager, server.Client(), server.URL, "agent-1", "", "stage-test")
+	_, err = plugins.StageRemoteDesktopEngine(context.Background(), manager, server.Client(), server.URL, "agent-1", "", "stage-test", manifest.RuntimeFacts{})
 	if err == nil {
 		t.Fatal("expected staging to fail")
 	}
@@ -135,6 +136,204 @@ func TestStageRemoteDesktopEngineRecordsFailure(t *testing.T) {
 	}
 	if !strings.Contains(install.Error, "boom") {
 		t.Fatalf("expected controller error message, got %q", install.Error)
+	}
+}
+
+func TestStageRemoteDesktopEngineBlocksIncompatiblePlatform(t *testing.T) {
+	t.Parallel()
+
+	manifestJSON := `{
+                "id": "remote-desktop-engine",
+                "name": "Remote Desktop Engine",
+                "version": "1.0.0",
+                "entry": "remote-desktop-engine/remote-desktop-engine",
+                "repositoryUrl": "https://github.com/rootbay/tenvy-client",
+                "license": {"spdxId": "MIT"},
+                "requirements": {"platforms": ["windows"]},
+                "distribution": {"defaultMode": "manual", "autoUpdate": false, "signature": {"type": "none"}},
+                "package": {"artifact": "remote-desktop-engine/remote-desktop-engine.zip"}
+        }`
+
+	var artifactRequested atomic.Bool
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasSuffix(r.URL.Path, "/artifact") {
+			artifactRequested.Store(true)
+			t.Fatalf("artifact download should not be attempted")
+		}
+		w.Header().Set("Content-Type", "application/json")
+		if _, err := io.WriteString(w, manifestJSON); err != nil {
+			t.Fatalf("write manifest: %v", err)
+		}
+	}))
+	defer server.Close()
+
+	root := t.TempDir()
+	opts := manifest.VerifyOptions{AllowUnsigned: true}
+	manager, err := plugins.NewManager(root, log.New(io.Discard, "", 0), opts)
+	if err != nil {
+		t.Fatalf("new manager: %v", err)
+	}
+
+	facts := manifest.RuntimeFacts{
+		Platform:       "linux",
+		Architecture:   "x86_64",
+		AgentVersion:   "1.0.0",
+		EnabledModules: []string{"remote-desktop"},
+	}
+
+	_, err = plugins.StageRemoteDesktopEngine(context.Background(), manager, server.Client(), server.URL, "agent-1", "", "stage-test", facts)
+	if err == nil {
+		t.Fatal("expected staging to be blocked")
+	}
+	if !strings.Contains(err.Error(), "platform") {
+		t.Fatalf("expected platform error, got %v", err)
+	}
+	if artifactRequested.Load() {
+		t.Fatal("expected no artifact download attempts")
+	}
+
+	snapshot := manager.Snapshot()
+	if snapshot == nil || len(snapshot.Installations) != 1 {
+		t.Fatalf("expected snapshot entry, got %#v", snapshot)
+	}
+	install := snapshot.Installations[0]
+	if install.Status != manifest.InstallBlocked {
+		t.Fatalf("expected blocked status, got %s", install.Status)
+	}
+	if !strings.Contains(install.Error, "platform") {
+		t.Fatalf("expected platform message, got %q", install.Error)
+	}
+}
+
+func TestStageRemoteDesktopEngineBlocksIncompatibleArchitecture(t *testing.T) {
+	t.Parallel()
+
+	manifestJSON := `{
+                "id": "remote-desktop-engine",
+                "name": "Remote Desktop Engine",
+                "version": "1.0.0",
+                "entry": "remote-desktop-engine/remote-desktop-engine",
+                "repositoryUrl": "https://github.com/rootbay/tenvy-client",
+                "license": {"spdxId": "MIT"},
+                "requirements": {"architectures": ["arm64"]},
+                "distribution": {"defaultMode": "manual", "autoUpdate": false, "signature": {"type": "none"}},
+                "package": {"artifact": "remote-desktop-engine/remote-desktop-engine.zip"}
+        }`
+
+	var artifactRequested atomic.Bool
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasSuffix(r.URL.Path, "/artifact") {
+			artifactRequested.Store(true)
+			t.Fatalf("artifact download should not be attempted")
+		}
+		w.Header().Set("Content-Type", "application/json")
+		if _, err := io.WriteString(w, manifestJSON); err != nil {
+			t.Fatalf("write manifest: %v", err)
+		}
+	}))
+	defer server.Close()
+
+	root := t.TempDir()
+	opts := manifest.VerifyOptions{AllowUnsigned: true}
+	manager, err := plugins.NewManager(root, log.New(io.Discard, "", 0), opts)
+	if err != nil {
+		t.Fatalf("new manager: %v", err)
+	}
+
+	facts := manifest.RuntimeFacts{
+		Platform:       "linux",
+		Architecture:   "x86_64",
+		AgentVersion:   "1.0.0",
+		EnabledModules: []string{"remote-desktop"},
+	}
+
+	_, err = plugins.StageRemoteDesktopEngine(context.Background(), manager, server.Client(), server.URL, "agent-1", "", "stage-test", facts)
+	if err == nil {
+		t.Fatal("expected staging to be blocked")
+	}
+	if !strings.Contains(err.Error(), "architecture") {
+		t.Fatalf("expected architecture error, got %v", err)
+	}
+	if artifactRequested.Load() {
+		t.Fatal("expected no artifact download attempts")
+	}
+
+	snapshot := manager.Snapshot()
+	if snapshot == nil || len(snapshot.Installations) != 1 {
+		t.Fatalf("expected snapshot entry, got %#v", snapshot)
+	}
+	install := snapshot.Installations[0]
+	if install.Status != manifest.InstallBlocked {
+		t.Fatalf("expected blocked status, got %s", install.Status)
+	}
+	if !strings.Contains(install.Error, "architecture") {
+		t.Fatalf("expected architecture message, got %q", install.Error)
+	}
+}
+
+func TestStageRemoteDesktopEngineBlocksIncompatibleAgentVersion(t *testing.T) {
+	t.Parallel()
+
+	manifestJSON := `{
+                "id": "remote-desktop-engine",
+                "name": "Remote Desktop Engine",
+                "version": "1.0.0",
+                "entry": "remote-desktop-engine/remote-desktop-engine",
+                "repositoryUrl": "https://github.com/rootbay/tenvy-client",
+                "license": {"spdxId": "MIT"},
+                "requirements": {"minAgentVersion": "5.0.0"},
+                "distribution": {"defaultMode": "manual", "autoUpdate": false, "signature": {"type": "none"}},
+                "package": {"artifact": "remote-desktop-engine/remote-desktop-engine.zip"}
+        }`
+
+	var artifactRequested atomic.Bool
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasSuffix(r.URL.Path, "/artifact") {
+			artifactRequested.Store(true)
+			t.Fatalf("artifact download should not be attempted")
+		}
+		w.Header().Set("Content-Type", "application/json")
+		if _, err := io.WriteString(w, manifestJSON); err != nil {
+			t.Fatalf("write manifest: %v", err)
+		}
+	}))
+	defer server.Close()
+
+	root := t.TempDir()
+	opts := manifest.VerifyOptions{AllowUnsigned: true}
+	manager, err := plugins.NewManager(root, log.New(io.Discard, "", 0), opts)
+	if err != nil {
+		t.Fatalf("new manager: %v", err)
+	}
+
+	facts := manifest.RuntimeFacts{
+		Platform:       "linux",
+		Architecture:   "x86_64",
+		AgentVersion:   "1.0.0",
+		EnabledModules: []string{"remote-desktop"},
+	}
+
+	_, err = plugins.StageRemoteDesktopEngine(context.Background(), manager, server.Client(), server.URL, "agent-1", "", "stage-test", facts)
+	if err == nil {
+		t.Fatal("expected staging to be blocked")
+	}
+	if !strings.Contains(err.Error(), "version") {
+		t.Fatalf("expected version error, got %v", err)
+	}
+	if artifactRequested.Load() {
+		t.Fatal("expected no artifact download attempts")
+	}
+
+	snapshot := manager.Snapshot()
+	if snapshot == nil || len(snapshot.Installations) != 1 {
+		t.Fatalf("expected snapshot entry, got %#v", snapshot)
+	}
+	install := snapshot.Installations[0]
+	if install.Status != manifest.InstallBlocked {
+		t.Fatalf("expected blocked status, got %s", install.Status)
+	}
+	if !strings.Contains(install.Error, "version") {
+		t.Fatalf("expected version message, got %q", install.Error)
 	}
 }
 
