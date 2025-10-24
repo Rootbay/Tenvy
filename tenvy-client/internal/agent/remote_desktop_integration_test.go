@@ -34,6 +34,7 @@ func TestRemoteDesktopModuleNegotiationWithManagedEngine(t *testing.T) {
 
 	artifactData := buildEngineArtifact(t)
 	artifactHash := sha256.Sum256(artifactData)
+	hashHex := fmt.Sprintf("%x", artifactHash[:])
 	manifestJSON, err := json.Marshal(manifest.Manifest{
 		ID:            plugins.RemoteDesktopEnginePluginID,
 		Name:          "Remote Desktop Engine",
@@ -48,11 +49,15 @@ func TestRemoteDesktopModuleNegotiationWithManagedEngine(t *testing.T) {
 		Distribution: manifest.Distribution{
 			DefaultMode: "automatic",
 			AutoUpdate:  true,
-			Signature:   manifest.Signature{Type: manifest.SignatureNone},
+			Signature: manifest.Signature{
+				Type:      manifest.SignatureSHA256,
+				Hash:      hashHex,
+				Signature: hashHex,
+			},
 		},
 		Package: manifest.PackageDescriptor{
 			Artifact: "remote-desktop-engine/engine.zip",
-			Hash:     fmt.Sprintf("%x", artifactHash[:]),
+			Hash:     hashHex,
 		},
 	})
 	if err != nil {
@@ -103,7 +108,9 @@ func TestRemoteDesktopModuleNegotiationWithManagedEngine(t *testing.T) {
 	}))
 	defer server.Close()
 
-	manager, err := plugins.NewManager(t.TempDir(), log.New(io.Discard, "", 0), manifest.VerifyOptions{AllowUnsigned: true})
+	manager, err := plugins.NewManager(t.TempDir(), log.New(io.Discard, "", 0), manifest.VerifyOptions{
+		SHA256AllowList: []string{hashHex},
+	})
 	if err != nil {
 		t.Fatalf("new plugin manager: %v", err)
 	}

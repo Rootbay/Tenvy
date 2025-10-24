@@ -276,7 +276,6 @@ func deriveSignatureVerifyOptions(cfg protocol.AgentConfig, logger *log.Logger) 
 	}
 
 	policy := cfg.Plugins.SignaturePolicy
-	opts.AllowUnsigned = policy.AllowUnsigned
 
 	if len(policy.SHA256AllowList) > 0 {
 		opts.SHA256AllowList = make([]string, 0, len(policy.SHA256AllowList))

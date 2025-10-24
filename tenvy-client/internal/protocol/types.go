@@ -18,7 +18,6 @@ const (
 var ErrUnauthorized = errors.New("unauthorized")
 
 type PluginSignaturePolicy struct {
-	AllowUnsigned     bool              `json:"allowUnsigned,omitempty"`
 	SHA256AllowList   []string          `json:"sha256AllowList,omitempty"`
 	Ed25519PublicKeys map[string]string `json:"ed25519PublicKeys,omitempty"`
 	MaxSignatureAgeMs int64             `json:"maxSignatureAgeMs,omitempty"`

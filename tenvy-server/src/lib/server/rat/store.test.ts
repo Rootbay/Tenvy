@@ -255,17 +255,15 @@ describe('AgentRegistry database integration', () => {
 
 	it('preserves custom plugin configuration when refreshing agent config', async () => {
 		const signaturePolicyModule = await import('../plugins/signature-policy.js');
-		const initialPolicy = {
-			allowUnsigned: true,
-			sha256AllowList: ['cafebabe'],
-			ed25519PublicKeys: { controller: 'a'.repeat(64) }
-		};
-		const refreshedPolicy = {
-			allowUnsigned: false,
-			sha256AllowList: ['deadbeef'],
-			ed25519PublicKeys: { controller: 'b'.repeat(64) },
-			maxSignatureAgeMs: 86_400_000
-		};
+                const initialPolicy = {
+                        sha256AllowList: ['cafebabe'],
+                        ed25519PublicKeys: { controller: 'a'.repeat(64) }
+                };
+                const refreshedPolicy = {
+                        sha256AllowList: ['deadbeef'],
+                        ed25519PublicKeys: { controller: 'b'.repeat(64) },
+                        maxSignatureAgeMs: 86_400_000
+                };
 
 		const policySpy = vi
 			.spyOn(signaturePolicyModule, 'getAgentSignaturePolicy')

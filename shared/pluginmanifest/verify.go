@@ -24,7 +24,6 @@ type CertificateChainValidator func(chain []string) error
 type Ed25519PublicKeyResolver func(keyID string) (ed25519.PublicKey, bool, error)
 
 type VerifyOptions struct {
-	AllowUnsigned           bool
 	SHA256AllowList         []string
 	Ed25519PublicKeys       map[string]ed25519.PublicKey
 	ResolveEd25519PublicKey Ed25519PublicKeyResolver
@@ -45,11 +44,12 @@ type VerificationResult struct {
 
 func VerifySignature(manifest Manifest, opts VerifyOptions) (*VerificationResult, error) {
 	sig := manifest.Distribution.Signature
-	if sig.Type == SignatureNone {
-		if opts.AllowUnsigned {
-			return &VerificationResult{SignatureType: sig.Type}, nil
-		}
+	if strings.TrimSpace(string(sig.Type)) == "" {
 		return nil, ErrUnsignedPlugin
+	}
+
+	if !containsSignatureType(sig.Type) {
+		return nil, fmt.Errorf("unsupported signature type: %s", sig.Type)
 	}
 
 	nowFn := opts.CurrentTime

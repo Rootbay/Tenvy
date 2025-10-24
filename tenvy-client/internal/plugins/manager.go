@@ -113,11 +113,7 @@ func (m *Manager) Snapshot() *manifest.SyncPayload {
 			continue
 		}
 
-		trusted := verificationResult != nil && verificationResult.Trusted
-		if !trusted && verificationResult != nil && verificationResult.SignatureType == manifest.SignatureNone {
-			trusted = true
-		}
-		if !trusted {
+		if verificationResult == nil || !verificationResult.Trusted {
 			installation.Status = manifest.InstallBlocked
 			installation.Error = fmt.Sprintf("signature: %s", signatureUntrustedReason(mf, verificationResult))
 			installation.LastCheckedAt = &now
@@ -268,8 +264,6 @@ func signatureUntrustedReason(mf manifest.Manifest, result *manifest.Verificatio
 	}
 
 	switch result.SignatureType {
-	case manifest.SignatureNone:
-		return "unsigned plugin"
 	case manifest.SignatureSHA256:
 		return "hash not trusted"
 	case manifest.SignatureEd25519:
