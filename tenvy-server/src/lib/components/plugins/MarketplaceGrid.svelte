@@ -70,7 +70,8 @@
 		{:else}
 			<div class="grid gap-4 lg:grid-cols-2 xl:grid-cols-3">
 				{#each listings as listing (listing.id)}
-					{@const listingSignature = signatureBadge(listing.signature)}
+                                        {@const listingSignature = signatureBadge(listing.signature)}
+                                        {@const ListingSignatureIcon = listingSignature.icon}
 					<div
 						class="flex flex-col justify-between rounded-lg border border-border bg-card p-4 shadow-sm"
 					>
@@ -84,14 +85,14 @@
 								</div>
 								<div class="flex flex-col items-end gap-2">
 									<Badge class={statusStyles[listing.status]}>{listing.status}</Badge>
-									<Badge
+                                                                        <Badge
 										variant="outline"
 										class={cn(
 											'flex items-center gap-1 rounded-full border px-2 py-1 text-[10px] font-semibold tracking-wide uppercase',
 											listingSignature.class
 										)}
 									>
-										<svelte:component this={listingSignature.icon} class="h-3 w-3" />
+                                                                                <ListingSignatureIcon class="h-3 w-3" />
 										{listingSignature.label}
 									</Badge>
 								</div>
@@ -115,8 +116,8 @@
 									<ShieldCheck class="h-3.5 w-3.5" />
 									<span>{listing.manifest.license.spdxId}</span>
 								</div>
-								<div class="flex items-center gap-2">
-									<svelte:component this={listingSignature.icon} class="h-3.5 w-3.5" />
+                                                                <div class="flex items-center gap-2">
+                                                                        <ListingSignatureIcon class="h-3.5 w-3.5" />
 									<span>
 										{listing.signature.signer ??
 											listing.signature.publicKey ??
