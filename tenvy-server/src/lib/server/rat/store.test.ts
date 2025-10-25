@@ -174,18 +174,20 @@ describe('AgentRegistry database integration', () => {
 	});
 
 	it('validates the remote desktop engine plugin version', async () => {
-		const registry = new AgentRegistry();
-		const registration = registry.registerAgent({ metadata: baseMetadata });
+                const registry = new AgentRegistry();
+                const registration = registry.registerAgent({ metadata: baseMetadata });
 
-		const manifest = remoteDesktopEngineManifestJson as PluginManifest;
-		const expectedHash = manifest.package?.hash ?? '';
-		const timestamp = new Date().toISOString();
+                const manifest = remoteDesktopEngineManifestJson as PluginManifest;
+                const expectedHash = manifest.package?.hash ?? '';
+                const timestamp = new Date().toISOString();
 
-		await registry.syncAgent(registration.agentId, registration.agentKey, {
-			status: 'online',
-			timestamp,
-			plugins: {
-				installations: [
+                await registry.flush();
+
+                await registry.syncAgent(registration.agentId, registration.agentKey, {
+                        status: 'online',
+                        timestamp,
+                        plugins: {
+                                installations: [
 					{
 						pluginId: remoteDesktopEnginePluginId,
 						version: '0.0.1',

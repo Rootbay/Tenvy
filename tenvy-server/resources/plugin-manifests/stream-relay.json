@@ -12,13 +12,9 @@
 		"url": "https://opensource.org/license/bsd-3-clause"
 	},
 	"categories": ["transport"],
-	"capabilities": [
-		{
-			"name": "remote-desktop.metrics",
-			"module": "remote-desktop",
-			"description": "Collect frame quality and adaptive bitrate metrics for dashboards."
-		}
-	],
+        "capabilities": [
+                "remote-desktop.metrics"
+        ],
 	"requirements": {
 		"minAgentVersion": "1.1.0",
 		"requiredModules": ["remote-desktop"]

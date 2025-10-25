@@ -229,24 +229,25 @@ describe('RemoteDesktopManager WebRTC negotiation', () => {
 		const manager = await createManager();
 		const session = manager.createSession('agent-1');
 
-		const request: RemoteDesktopSessionNegotiationRequest = {
-			sessionId: session.sessionId,
-			transports: [
-				{
-					transport: 'webrtc',
-					codecs: ['hevc'],
-					features: { intraRefresh: true, binaryFrames: true }
-				}
-			],
-			codecs: ['hevc'],
-			webrtc: {
-				offer: Buffer.from('mock-offer', 'utf8').toString('base64'),
-				dataChannel: 'remote-desktop-frames'
-			}
-		};
+                const request: RemoteDesktopSessionNegotiationRequest = {
+                        sessionId: session.sessionId,
+                        transports: [
+                                {
+                                        transport: 'webrtc',
+                                        codecs: ['hevc'],
+                                        features: { intraRefresh: true, binaryFrames: true }
+                                }
+                        ],
+                        codecs: ['hevc'],
+                        pluginVersion: requiredPluginVersion,
+                        webrtc: {
+                                offer: Buffer.from('mock-offer', 'utf8').toString('base64'),
+                                dataChannel: 'remote-desktop-frames'
+                        }
+                };
 
-		const response = await manager.negotiateTransport('agent-1', request);
-		expect(response.features?.binaryFrames).toBe(true);
+                const response = await manager.negotiateTransport('agent-1', request);
+                expect(response.features?.binaryFrames).toBe(true);
 
 		expect(createdPipelines).toHaveLength(1);
 		const pipelineRecord = createdPipelines[0];

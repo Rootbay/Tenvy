@@ -79,6 +79,17 @@ CREATE TABLE IF NOT EXISTS plugin (
         last_auto_sync_at INTEGER,
         last_deployed_at INTEGER,
         last_checked_at INTEGER,
+        signature_status TEXT NOT NULL DEFAULT 'unsigned',
+        signature_trusted INTEGER NOT NULL DEFAULT 0,
+        signature_type TEXT NOT NULL DEFAULT 'none',
+        signature_hash TEXT,
+        signature_signer TEXT,
+        signature_public_key TEXT,
+        signature_checked_at INTEGER,
+        signature_signed_at INTEGER,
+        signature_error TEXT,
+        signature_error_code TEXT,
+        signature_chain TEXT,
         approval_status TEXT NOT NULL DEFAULT 'pending',
         approved_at INTEGER,
         approval_note TEXT,
@@ -241,5 +252,16 @@ ensureColumn('user', 'role', "role TEXT NOT NULL DEFAULT 'operator'");
 ensureColumn('plugin', 'approval_status', "approval_status TEXT NOT NULL DEFAULT 'pending'");
 ensureColumn('plugin', 'approved_at', 'approved_at INTEGER');
 ensureColumn('plugin', 'approval_note', 'approval_note TEXT');
+ensureColumn('plugin', 'signature_status', "signature_status TEXT NOT NULL DEFAULT 'unsigned'");
+ensureColumn('plugin', 'signature_trusted', "signature_trusted INTEGER NOT NULL DEFAULT 0");
+ensureColumn('plugin', 'signature_type', "signature_type TEXT NOT NULL DEFAULT 'none'");
+ensureColumn('plugin', 'signature_hash', 'signature_hash TEXT');
+ensureColumn('plugin', 'signature_signer', 'signature_signer TEXT');
+ensureColumn('plugin', 'signature_public_key', 'signature_public_key TEXT');
+ensureColumn('plugin', 'signature_checked_at', 'signature_checked_at INTEGER');
+ensureColumn('plugin', 'signature_signed_at', 'signature_signed_at INTEGER');
+ensureColumn('plugin', 'signature_error', 'signature_error TEXT');
+ensureColumn('plugin', 'signature_error_code', 'signature_error_code TEXT');
+ensureColumn('plugin', 'signature_chain', 'signature_chain TEXT');
 
 export const db = drizzle(client, { schema });

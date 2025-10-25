@@ -41,17 +41,9 @@ func TestRemoteDesktopModuleNegotiationWithManagedEngine(t *testing.T) {
 		Version:       pluginVersion,
 		Entry:         "remote-desktop-engine/engine",
 		RepositoryURL: "https://github.com/rootbay/remote-desktop-engine",
-		Capabilities: []manifest.Capability{
-			{
-				Name:        "remote-desktop.transport.quic",
-				Module:      "remote-desktop",
-				Description: "Provides QUIC transport negotiation for input events.",
-			},
-			{
-				Name:        "remote-desktop.codec.hevc",
-				Module:      "remote-desktop",
-				Description: "Enables hardware accelerated HEVC streaming.",
-			},
+		Capabilities: []string{
+			"remote-desktop.transport.quic",
+			"remote-desktop.codec.hevc",
 		},
 		License: manifest.LicenseInfo{SPDXID: "MIT"},
 		Requirements: manifest.Requirements{
@@ -140,6 +132,12 @@ func TestRemoteDesktopModuleNegotiationWithManagedEngine(t *testing.T) {
 		Plugins:       manager,
 		BuildVersion:  pluginVersion,
 		ActiveModules: []string{"remote-desktop"},
+		PluginManifests: map[string]manifest.ManifestDescriptor{
+			plugins.RemoteDesktopEnginePluginID: {
+				PluginID: plugins.RemoteDesktopEnginePluginID,
+				Version:  pluginVersion,
+			},
+		},
 	}
 
 	if err := modules.Init(context.Background(), runtime); err != nil {
@@ -177,12 +175,26 @@ func TestRemoteDesktopModuleNegotiationWithManagedEngine(t *testing.T) {
 	if len(extension.Capabilities) != 2 {
 		t.Fatalf("expected two extension capabilities, got %d", len(extension.Capabilities))
 	}
-	caps := map[string]bool{}
+	caps := make(map[string]ModuleCapability)
 	for _, capability := range extension.Capabilities {
-		caps[capability.Name] = true
+		caps[capability.ID] = capability
 	}
-	if !caps["remote-desktop.transport.quic"] || !caps["remote-desktop.codec.hevc"] {
-		t.Fatalf("extension capabilities not registered: %+v", extension.Capabilities)
+	quic, ok := caps["remote-desktop.transport.quic"]
+	if !ok {
+		t.Fatalf("quic capability not registered: %+v", extension.Capabilities)
+	}
+	if quic.Name != "QUIC transport" {
+		t.Fatalf("unexpected quic capability name %q", quic.Name)
+	}
+	if !strings.Contains(quic.Description, "QUIC transport") {
+		t.Fatalf("unexpected quic capability description %q", quic.Description)
+	}
+	hevc, ok := caps["remote-desktop.codec.hevc"]
+	if !ok {
+		t.Fatalf("hevc capability not registered: %+v", extension.Capabilities)
+	}
+	if hevc.Name != "HEVC encoding" {
+		t.Fatalf("unexpected hevc capability name %q", hevc.Name)
 	}
 	if len(remoteMetadata.Capabilities) != 4 {
 		t.Fatalf("expected combined capabilities to include base and extension entries, got %d", len(remoteMetadata.Capabilities))

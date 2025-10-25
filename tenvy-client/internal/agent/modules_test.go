@@ -184,7 +184,7 @@ func TestModuleManagerRegisterExtension(t *testing.T) {
 			ID:           "ext-module",
 			Title:        "Extension Module",
 			Commands:     []string{"ext.command"},
-			Capabilities: []ModuleCapability{{Name: "base.capability"}},
+			Capabilities: []ModuleCapability{{ID: "base.capability", Name: "base.capability"}},
 		},
 		acceptExtensions: true,
 	}
@@ -196,7 +196,7 @@ func TestModuleManagerRegisterExtension(t *testing.T) {
 		Source:  "plugin.remote",
 		Version: "1.0.0",
 		Capabilities: []ModuleCapability{
-			{Name: " ext.capability ", Description: " Extended feature "},
+			{ID: " ext.capability ", Name: " ext.capability ", Description: " Extended feature "},
 			{Name: "   "},
 		},
 	})
@@ -214,6 +214,9 @@ func TestModuleManagerRegisterExtension(t *testing.T) {
 	}
 	if len(entry.Capabilities) != 2 {
 		t.Fatalf("expected base + extension capabilities, got %d", len(entry.Capabilities))
+	}
+	if entry.Capabilities[1].ID != "ext.capability" {
+		t.Fatalf("expected sanitized capability id, got %q", entry.Capabilities[1].ID)
 	}
 	if entry.Capabilities[1].Name != "ext.capability" {
 		t.Fatalf("expected sanitized capability name, got %q", entry.Capabilities[1].Name)
@@ -233,6 +236,9 @@ func TestModuleManagerRegisterExtension(t *testing.T) {
 	}
 	if len(ext.Capabilities) != 1 {
 		t.Fatalf("expected sanitized extension capability list, got %d", len(ext.Capabilities))
+	}
+	if ext.Capabilities[0].ID != "ext.capability" {
+		t.Fatalf("unexpected extension capability id %s", ext.Capabilities[0].ID)
 	}
 	if ext.Capabilities[0].Name != "ext.capability" {
 		t.Fatalf("unexpected extension capability name %s", ext.Capabilities[0].Name)

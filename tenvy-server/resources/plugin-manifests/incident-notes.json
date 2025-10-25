@@ -12,13 +12,9 @@
 		"url": "https://www.apache.org/licenses/LICENSE-2.0"
 	},
 	"categories": ["persistence"],
-	"capabilities": [
-		{
-			"name": "notes.sync",
-			"module": "notes",
-			"description": "Push local notes to the operator vault after each sync cycle."
-		}
-	],
+        "capabilities": [
+                "notes.sync"
+        ],
 	"requirements": {
 		"minAgentVersion": "1.0.0",
 		"requiredModules": ["notes"]
