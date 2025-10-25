@@ -100,7 +100,7 @@ func StageRemoteDesktopEngine(
 		descriptor.ManifestDigest,
 	)
 	if err != nil {
-		manager.recordInstallStatusLocked(RemoteDesktopEnginePluginID, "", manifest.InstallFailed, err.Error())
+		manager.recordInstallStatusLocked(RemoteDesktopEnginePluginID, "", manifest.InstallError, err.Error())
 		return result, err
 	}
 
@@ -108,7 +108,7 @@ func StageRemoteDesktopEngine(
 
 	if !strings.EqualFold(strings.TrimSpace(mf.ID), pluginID) {
 		message := fmt.Sprintf("unexpected manifest id %s", mf.ID)
-		manager.recordInstallStatusLocked(RemoteDesktopEnginePluginID, mf.Version, manifest.InstallFailed, message)
+		manager.recordInstallStatusLocked(RemoteDesktopEnginePluginID, mf.Version, manifest.InstallError, message)
 		return result, errors.New(message)
 	}
 
@@ -133,13 +133,13 @@ func StageRemoteDesktopEngine(
 	artifactRel := filepath.Clean(filepath.FromSlash(mf.Package.Artifact))
 	if artifactRel == "" || strings.HasPrefix(artifactRel, "..") {
 		message := "manifest artifact path is invalid"
-		manager.recordInstallStatusLocked(RemoteDesktopEnginePluginID, mf.Version, manifest.InstallFailed, message)
+		manager.recordInstallStatusLocked(RemoteDesktopEnginePluginID, mf.Version, manifest.InstallError, message)
 		return result, errors.New(message)
 	}
 	entryRel := filepath.Clean(filepath.FromSlash(mf.Entry))
 	if entryRel == "" || strings.HasPrefix(entryRel, "..") {
 		message := "manifest entry path is invalid"
-		manager.recordInstallStatusLocked(RemoteDesktopEnginePluginID, mf.Version, manifest.InstallFailed, message)
+		manager.recordInstallStatusLocked(RemoteDesktopEnginePluginID, mf.Version, manifest.InstallError, message)
 		return result, errors.New(message)
 	}
 
@@ -154,7 +154,7 @@ func StageRemoteDesktopEngine(
 
 	stagingDir, err := os.MkdirTemp(manager.root, "remote-desktop-engine-")
 	if err != nil {
-		manager.recordInstallStatusLocked(RemoteDesktopEnginePluginID, mf.Version, manifest.InstallFailed, fmt.Sprintf("create staging directory: %v", err))
+		manager.recordInstallStatusLocked(RemoteDesktopEnginePluginID, mf.Version, manifest.InstallError, fmt.Sprintf("create staging directory: %v", err))
 		return result, fmt.Errorf("create staging directory: %w", err)
 	}
 	cleanup := true
@@ -166,36 +166,36 @@ func StageRemoteDesktopEngine(
 
 	stagingManifest := filepath.Join(stagingDir, manifestFileName)
 	if err := os.WriteFile(stagingManifest, manifestData, 0o644); err != nil {
-		manager.recordInstallStatusLocked(RemoteDesktopEnginePluginID, mf.Version, manifest.InstallFailed, fmt.Sprintf("write manifest: %v", err))
+		manager.recordInstallStatusLocked(RemoteDesktopEnginePluginID, mf.Version, manifest.InstallError, fmt.Sprintf("write manifest: %v", err))
 		return result, fmt.Errorf("write manifest: %w", err)
 	}
 
 	stagingArtifact := filepath.Join(stagingDir, artifactRel)
 	if err := os.MkdirAll(filepath.Dir(stagingArtifact), 0o755); err != nil {
-		manager.recordInstallStatusLocked(RemoteDesktopEnginePluginID, mf.Version, manifest.InstallFailed, fmt.Sprintf("prepare artifact directory: %v", err))
+		manager.recordInstallStatusLocked(RemoteDesktopEnginePluginID, mf.Version, manifest.InstallError, fmt.Sprintf("prepare artifact directory: %v", err))
 		return result, fmt.Errorf("prepare artifact directory: %w", err)
 	}
 
 	if err := downloadRemoteDesktopArtifact(ctx, client, artifactURL, authKey, userAgent, stagingArtifact); err != nil {
-		manager.recordInstallStatusLocked(RemoteDesktopEnginePluginID, mf.Version, manifest.InstallFailed, err.Error())
+		manager.recordInstallStatusLocked(RemoteDesktopEnginePluginID, mf.Version, manifest.InstallError, err.Error())
 		return result, err
 	}
 
 	if hash := strings.TrimSpace(mf.Package.Hash); hash != "" {
 		sum, hashErr := fileHash(stagingArtifact)
 		if hashErr != nil {
-			manager.recordInstallStatusLocked(RemoteDesktopEnginePluginID, mf.Version, manifest.InstallFailed, fmt.Sprintf("compute artifact hash: %v", hashErr))
+			manager.recordInstallStatusLocked(RemoteDesktopEnginePluginID, mf.Version, manifest.InstallError, fmt.Sprintf("compute artifact hash: %v", hashErr))
 			return result, fmt.Errorf("compute artifact hash: %w", hashErr)
 		}
 		if !strings.EqualFold(hash, sum) {
 			message := "artifact hash mismatch"
-			manager.recordInstallStatusLocked(RemoteDesktopEnginePluginID, mf.Version, manifest.InstallFailed, message)
+			manager.recordInstallStatusLocked(RemoteDesktopEnginePluginID, mf.Version, manifest.InstallError, message)
 			return result, errors.New(message)
 		}
 	}
 
 	if err := unpackRemoteDesktopArchive(stagingArtifact, stagingDir); err != nil {
-		manager.recordInstallStatusLocked(RemoteDesktopEnginePluginID, mf.Version, manifest.InstallFailed, err.Error())
+		manager.recordInstallStatusLocked(RemoteDesktopEnginePluginID, mf.Version, manifest.InstallError, err.Error())
 		return result, err
 	}
 
@@ -205,17 +205,17 @@ func StageRemoteDesktopEngine(
 		if err != nil {
 			message = fmt.Sprintf("engine entry verification failed: %v", err)
 		}
-		manager.recordInstallStatusLocked(RemoteDesktopEnginePluginID, mf.Version, manifest.InstallFailed, message)
+		manager.recordInstallStatusLocked(RemoteDesktopEnginePluginID, mf.Version, manifest.InstallError, message)
 		return result, errors.New(message)
 	}
 
 	if err := os.RemoveAll(pluginDir); err != nil && !errors.Is(err, os.ErrNotExist) {
-		manager.recordInstallStatusLocked(RemoteDesktopEnginePluginID, mf.Version, manifest.InstallFailed, fmt.Sprintf("remove previous installation: %v", err))
+		manager.recordInstallStatusLocked(RemoteDesktopEnginePluginID, mf.Version, manifest.InstallError, fmt.Sprintf("remove previous installation: %v", err))
 		return result, fmt.Errorf("remove previous installation: %w", err)
 	}
 
 	if err := os.Rename(stagingDir, pluginDir); err != nil {
-		manager.recordInstallStatusLocked(RemoteDesktopEnginePluginID, mf.Version, manifest.InstallFailed, fmt.Sprintf("activate staged plugin: %v", err))
+		manager.recordInstallStatusLocked(RemoteDesktopEnginePluginID, mf.Version, manifest.InstallError, fmt.Sprintf("activate staged plugin: %v", err))
 		return result, fmt.Errorf("activate staged plugin: %w", err)
 	}
 	cleanup = false

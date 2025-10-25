@@ -135,11 +135,10 @@ const (
 	ArchitectureX8664 PluginArchitecture = "x86_64"
 	ArchitectureARM64 PluginArchitecture = "arm64"
 
-	InstallPending    PluginInstallStatus = "pending"
-	InstallInstalling PluginInstallStatus = "installing"
-	InstallInstalled  PluginInstallStatus = "installed"
-	InstallFailed     PluginInstallStatus = "failed"
-	InstallBlocked    PluginInstallStatus = "blocked"
+	InstallInstalled PluginInstallStatus = "installed"
+	InstallBlocked   PluginInstallStatus = "blocked"
+	InstallError     PluginInstallStatus = "error"
+	InstallDisabled  PluginInstallStatus = "disabled"
 
 	ApprovalPending  PluginApprovalStatus = "pending"
 	ApprovalApproved PluginApprovalStatus = "approved"
@@ -151,7 +150,7 @@ var (
 	knownSignatureTypes = []SignatureType{SignatureSHA256, SignatureEd25519}
 	knownPlatforms      = []PluginPlatform{PlatformWindows, PlatformLinux, PlatformMacOS}
 	knownArchitectures  = []PluginArchitecture{ArchitectureX8664, ArchitectureARM64}
-	knownInstallStates  = []PluginInstallStatus{InstallPending, InstallInstalling, InstallInstalled, InstallFailed, InstallBlocked}
+	knownInstallStates  = []PluginInstallStatus{InstallBlocked, InstallDisabled, InstallError, InstallInstalled}
 	knownApprovalStates = []PluginApprovalStatus{ApprovalPending, ApprovalApproved, ApprovalRejected}
 	semverPattern       = regexp.MustCompile(`^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-[0-9A-Za-z-.]+)?(?:\+[0-9A-Za-z-.]+)?$`)
 	registeredModules   = map[string]struct{}{

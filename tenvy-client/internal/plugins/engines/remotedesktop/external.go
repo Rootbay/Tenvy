@@ -278,19 +278,19 @@ func (p *engineProcess) ensureStartedLocked() error {
 
 	if strings.TrimSpace(p.path) == "" {
 		message := "engine entry path not configured"
-		plugins.RecordInstallStatus(p.manager, plugins.RemoteDesktopEnginePluginID, p.version, manifest.InstallFailed, message)
+		plugins.RecordInstallStatus(p.manager, plugins.RemoteDesktopEnginePluginID, p.version, manifest.InstallError, message)
 		return errors.New(message)
 	}
 
 	info, err := os.Stat(p.path)
 	if err != nil {
 		message := fmt.Sprintf("engine binary unavailable: %v", err)
-		plugins.RecordInstallStatus(p.manager, plugins.RemoteDesktopEnginePluginID, p.version, manifest.InstallFailed, message)
+		plugins.RecordInstallStatus(p.manager, plugins.RemoteDesktopEnginePluginID, p.version, manifest.InstallError, message)
 		return errors.New(message)
 	}
 	if info.IsDir() {
 		message := "engine entry path resolves to a directory"
-		plugins.RecordInstallStatus(p.manager, plugins.RemoteDesktopEnginePluginID, p.version, manifest.InstallFailed, message)
+		plugins.RecordInstallStatus(p.manager, plugins.RemoteDesktopEnginePluginID, p.version, manifest.InstallError, message)
 		return errors.New(message)
 	}
 
@@ -301,7 +301,7 @@ func (p *engineProcess) ensureStartedLocked() error {
 	if err != nil {
 		cancel()
 		message := fmt.Sprintf("engine stdin pipe: %v", err)
-		plugins.RecordInstallStatus(p.manager, plugins.RemoteDesktopEnginePluginID, p.version, manifest.InstallFailed, message)
+		plugins.RecordInstallStatus(p.manager, plugins.RemoteDesktopEnginePluginID, p.version, manifest.InstallError, message)
 		return errors.New(message)
 	}
 	stdout, err := cmd.StdoutPipe()
@@ -309,7 +309,7 @@ func (p *engineProcess) ensureStartedLocked() error {
 		stdin.Close()
 		cancel()
 		message := fmt.Sprintf("engine stdout pipe: %v", err)
-		plugins.RecordInstallStatus(p.manager, plugins.RemoteDesktopEnginePluginID, p.version, manifest.InstallFailed, message)
+		plugins.RecordInstallStatus(p.manager, plugins.RemoteDesktopEnginePluginID, p.version, manifest.InstallError, message)
 		return errors.New(message)
 	}
 	stderr, err := cmd.StderrPipe()
@@ -318,7 +318,7 @@ func (p *engineProcess) ensureStartedLocked() error {
 		stdout.Close()
 		cancel()
 		message := fmt.Sprintf("engine stderr pipe: %v", err)
-		plugins.RecordInstallStatus(p.manager, plugins.RemoteDesktopEnginePluginID, p.version, manifest.InstallFailed, message)
+		plugins.RecordInstallStatus(p.manager, plugins.RemoteDesktopEnginePluginID, p.version, manifest.InstallError, message)
 		return errors.New(message)
 	}
 
@@ -328,7 +328,7 @@ func (p *engineProcess) ensureStartedLocked() error {
 		stderr.Close()
 		cancel()
 		message := fmt.Sprintf("engine launch failed: %v", err)
-		plugins.RecordInstallStatus(p.manager, plugins.RemoteDesktopEnginePluginID, p.version, manifest.InstallFailed, message)
+		plugins.RecordInstallStatus(p.manager, plugins.RemoteDesktopEnginePluginID, p.version, manifest.InstallError, message)
 		return fmt.Errorf("remote desktop engine launch: %w", err)
 	}
 
@@ -428,7 +428,7 @@ func (p *engineProcess) wait(cmd *exec.Cmd) {
 		message = fmt.Sprintf("%s; output: %s", message, output)
 	}
 
-	plugins.RecordInstallStatus(p.manager, plugins.RemoteDesktopEnginePluginID, version, manifest.InstallFailed, message)
+	plugins.RecordInstallStatus(p.manager, plugins.RemoteDesktopEnginePluginID, version, manifest.InstallError, message)
 	if logger != nil {
 		logger.Printf("remote desktop engine: %s", message)
 	}
