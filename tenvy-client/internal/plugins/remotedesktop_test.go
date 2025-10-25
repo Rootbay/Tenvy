@@ -1,29 +1,74 @@
 package plugins_test
 
 import (
-	"archive/zip"
-	"bytes"
-	"context"
-	"crypto/sha256"
-	"fmt"
-	"io"
-	"log"
-	"net/http"
-	"net/http/httptest"
-	"os"
-	"path/filepath"
-	"strings"
-	"sync/atomic"
-	"testing"
+        "archive/zip"
+        "bytes"
+        "context"
+        "crypto/ed25519"
+        "crypto/sha256"
+        "encoding/hex"
+        "fmt"
+        "io"
+        "log"
+        "net/http"
+        "net/http/httptest"
+        "os"
+        "path/filepath"
+        "strings"
+        "sync/atomic"
+        "testing"
 
 	plugins "github.com/rootbay/tenvy-client/internal/plugins"
 	manifest "github.com/rootbay/tenvy-client/shared/pluginmanifest"
 )
 
+const (
+        releaseSeedHex       = "11e4f334ae8f5dafc590d45ea6465ed65280579656f324cafe4d73109db06936"
+        releasePublicKeyHex  = "ea9ceca1c7c7176859b235e095cbca9b5755746b741865cab5458d6f0e754cc2"
+        releaseSigner        = "release"
+        releaseSignedAtStamp = "2024-01-01T00:00:00Z"
+)
+
+func decodeHex(t *testing.T, value string) []byte {
+        t.Helper()
+        decoded, err := hex.DecodeString(strings.TrimSpace(value))
+        if err != nil {
+                t.Fatalf("decode hex: %v", err)
+        }
+        return decoded
+}
+
+func releasePublicKey(t *testing.T) ed25519.PublicKey {
+        t.Helper()
+        return ed25519.PublicKey(decodeHex(t, releasePublicKeyHex))
+}
+
+func releaseSignatureFor(t *testing.T, hash string) string {
+        t.Helper()
+        seed := decodeHex(t, releaseSeedHex)
+        privateKey := ed25519.NewKeyFromSeed(seed)
+        normalized := strings.ToLower(strings.TrimSpace(hash))
+        signature := ed25519.Sign(privateKey, []byte(normalized))
+        return hex.EncodeToString(signature)
+}
+
+func releaseVerifyOptions(t *testing.T, allowList ...string) manifest.VerifyOptions {
+        t.Helper()
+        opts := manifest.VerifyOptions{
+                Ed25519PublicKeys: map[string]ed25519.PublicKey{
+                        releaseSigner: releasePublicKey(t),
+                },
+        }
+        if len(allowList) > 0 {
+                opts.SHA256AllowList = append([]string(nil), allowList...)
+        }
+        return opts
+}
+
 func buildDescriptor(manifestJSON, version, artifactHash string, briefing manifest.ManifestBriefing) manifest.ManifestDescriptor {
-	digest := sha256.Sum256([]byte(manifestJSON))
-	descriptor := manifest.ManifestDescriptor{
-		PluginID:       plugins.RemoteDesktopEnginePluginID,
+        digest := sha256.Sum256([]byte(manifestJSON))
+        descriptor := manifest.ManifestDescriptor{
+                PluginID:       plugins.RemoteDesktopEnginePluginID,
 		Version:        version,
 		ManifestDigest: fmt.Sprintf("%x", digest[:]),
 		Distribution:   briefing,
@@ -37,13 +82,14 @@ func buildDescriptor(manifestJSON, version, artifactHash string, briefing manife
 func TestStageRemoteDesktopEngineSuccess(t *testing.T) {
 	t.Parallel()
 
-	artifactData := buildRemoteDesktopArtifact(t, map[string][]byte{
-		"remote-desktop-engine/remote-desktop-engine": []byte("engine payload"),
-	})
-	hash := sha256.Sum256(artifactData)
-	hashHex := fmt.Sprintf("%x", hash[:])
+        artifactData := buildRemoteDesktopArtifact(t, map[string][]byte{
+                "remote-desktop-engine/remote-desktop-engine": []byte("engine payload"),
+        })
+        hash := sha256.Sum256(artifactData)
+        hashHex := fmt.Sprintf("%x", hash[:])
+        signatureValue := releaseSignatureFor(t, hashHex)
 
-	manifestJSON := fmt.Sprintf(`{
+        manifestJSON := fmt.Sprintf(`{
                 "id": "remote-desktop-engine",
                 "name": "Remote Desktop Engine",
                 "version": "9.9.9",
@@ -51,9 +97,9 @@ func TestStageRemoteDesktopEngineSuccess(t *testing.T) {
                 "repositoryUrl": "https://github.com/rootbay/tenvy-client",
                 "license": { "spdxId": "MIT" },
                 "requirements": {},
-                "distribution": {"defaultMode": "automatic", "autoUpdate": true, "signature": "sha256", "signatureHash": "%[1]s"},
-                "package": {"artifact": "remote-desktop-engine/remote-desktop-engine.zip", "hash": "%s"}
-        }`, hashHex, hashHex)
+                "distribution": {"defaultMode": "automatic", "autoUpdate": true, "signature": "ed25519", "signatureHash": "%[1]s", "signatureSigner": "%[2]s", "signatureValue": "%[3]s", "signatureTimestamp": "%[4]s"},
+                "package": {"artifact": "remote-desktop-engine/remote-desktop-engine.zip", "hash": "%[1]s"}
+        }`, hashHex, releaseSigner, signatureValue, releaseSignedAtStamp)
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if strings.HasSuffix(r.URL.Path, "/artifact") {
@@ -71,7 +117,7 @@ func TestStageRemoteDesktopEngineSuccess(t *testing.T) {
 	defer server.Close()
 
 	root := t.TempDir()
-	opts := manifest.VerifyOptions{SHA256AllowList: []string{hashHex}}
+        opts := releaseVerifyOptions(t)
 	manager, err := plugins.NewManager(root, log.New(io.Discard, "", 0), opts)
 	if err != nil {
 		t.Fatalf("new manager: %v", err)
@@ -226,13 +272,14 @@ func TestStageRemoteDesktopEngineRespectsManualPolicyWithoutSignal(t *testing.T)
 func TestStageRemoteDesktopEngineAllowsManualWhenRequested(t *testing.T) {
 	t.Parallel()
 
-	artifactData := buildRemoteDesktopArtifact(t, map[string][]byte{
-		"remote-desktop-engine/remote-desktop-engine": []byte("engine payload"),
-	})
-	hash := sha256.Sum256(artifactData)
-	hashHex := fmt.Sprintf("%x", hash[:])
+        artifactData := buildRemoteDesktopArtifact(t, map[string][]byte{
+                "remote-desktop-engine/remote-desktop-engine": []byte("engine payload"),
+        })
+        hash := sha256.Sum256(artifactData)
+        hashHex := fmt.Sprintf("%x", hash[:])
+        signatureValue := releaseSignatureFor(t, hashHex)
 
-	manifestJSON := fmt.Sprintf(`{
+        manifestJSON := fmt.Sprintf(`{
                 "id": "remote-desktop-engine",
                 "name": "Remote Desktop Engine",
                 "version": "5.5.5",
@@ -240,9 +287,9 @@ func TestStageRemoteDesktopEngineAllowsManualWhenRequested(t *testing.T) {
                 "repositoryUrl": "https://github.com/rootbay/tenvy-client",
                 "license": {"spdxId": "MIT"},
                 "requirements": {"platforms": ["windows"], "architectures": ["x86_64"]},
-                "distribution": {"defaultMode": "manual", "autoUpdate": false, "signature": "sha256", "signatureHash": "%[1]s"},
+                "distribution": {"defaultMode": "manual", "autoUpdate": false, "signature": "ed25519", "signatureHash": "%[1]s", "signatureSigner": "%[2]s", "signatureValue": "%[3]s", "signatureTimestamp": "%[4]s"},
                 "package": {"artifact": "remote-desktop-engine/remote-desktop-engine.zip", "hash": "%[1]s"}
-        }`, hashHex)
+        }`, hashHex, releaseSigner, signatureValue, releaseSignedAtStamp)
 
 	var artifactServed atomic.Bool
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -261,8 +308,8 @@ func TestStageRemoteDesktopEngineAllowsManualWhenRequested(t *testing.T) {
 	}))
 	defer server.Close()
 
-	root := t.TempDir()
-	opts := manifest.VerifyOptions{SHA256AllowList: []string{hashHex}}
+        root := t.TempDir()
+        opts := releaseVerifyOptions(t)
 	manager, err := plugins.NewManager(root, log.New(io.Discard, "", 0), opts)
 	if err != nil {
 		t.Fatalf("new manager: %v", err)
@@ -323,8 +370,9 @@ func TestStageRemoteDesktopEngineAllowsManualWhenRequested(t *testing.T) {
 func TestStageRemoteDesktopEngineBlocksIncompatiblePlatform(t *testing.T) {
 	t.Parallel()
 
-	hashHex := strings.Repeat("ab", 32)
-	manifestJSON := fmt.Sprintf(`{
+        hashHex := strings.Repeat("ab", 32)
+        signatureValue := releaseSignatureFor(t, hashHex)
+        manifestJSON := fmt.Sprintf(`{
                 "id": "remote-desktop-engine",
                 "name": "Remote Desktop Engine",
                 "version": "1.0.0",
@@ -332,9 +380,9 @@ func TestStageRemoteDesktopEngineBlocksIncompatiblePlatform(t *testing.T) {
                 "repositoryUrl": "https://github.com/rootbay/tenvy-client",
                 "license": {"spdxId": "MIT"},
                 "requirements": {"platforms": ["windows"]},
-                "distribution": {"defaultMode": "manual", "autoUpdate": false, "signature": "sha256", "signatureHash": "%[1]s"},
+                "distribution": {"defaultMode": "manual", "autoUpdate": false, "signature": "ed25519", "signatureHash": "%[1]s", "signatureSigner": "%[2]s", "signatureValue": "%[3]s", "signatureTimestamp": "%[4]s"},
                 "package": {"artifact": "remote-desktop-engine/remote-desktop-engine.zip", "hash": "%[1]s"}
-        }`, hashHex)
+        }`, hashHex, releaseSigner, signatureValue, releaseSignedAtStamp)
 
 	var artifactRequested atomic.Bool
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -349,8 +397,8 @@ func TestStageRemoteDesktopEngineBlocksIncompatiblePlatform(t *testing.T) {
 	}))
 	defer server.Close()
 
-	root := t.TempDir()
-	opts := manifest.VerifyOptions{SHA256AllowList: []string{hashHex}}
+        root := t.TempDir()
+        opts := releaseVerifyOptions(t)
 	manager, err := plugins.NewManager(root, log.New(io.Discard, "", 0), opts)
 	if err != nil {
 		t.Fatalf("new manager: %v", err)
@@ -397,8 +445,9 @@ func TestStageRemoteDesktopEngineBlocksIncompatiblePlatform(t *testing.T) {
 func TestStageRemoteDesktopEngineBlocksIncompatibleArchitecture(t *testing.T) {
 	t.Parallel()
 
-	hashHex := strings.Repeat("cd", 32)
-	manifestJSON := fmt.Sprintf(`{
+        hashHex := strings.Repeat("cd", 32)
+        signatureValue := releaseSignatureFor(t, hashHex)
+        manifestJSON := fmt.Sprintf(`{
                 "id": "remote-desktop-engine",
                 "name": "Remote Desktop Engine",
                 "version": "1.0.0",
@@ -406,9 +455,9 @@ func TestStageRemoteDesktopEngineBlocksIncompatibleArchitecture(t *testing.T) {
                 "repositoryUrl": "https://github.com/rootbay/tenvy-client",
                 "license": {"spdxId": "MIT"},
                 "requirements": {"architectures": ["arm64"]},
-                "distribution": {"defaultMode": "manual", "autoUpdate": false, "signature": "sha256", "signatureHash": "%[1]s"},
+                "distribution": {"defaultMode": "manual", "autoUpdate": false, "signature": "ed25519", "signatureHash": "%[1]s", "signatureSigner": "%[2]s", "signatureValue": "%[3]s", "signatureTimestamp": "%[4]s"},
                 "package": {"artifact": "remote-desktop-engine/remote-desktop-engine.zip", "hash": "%[1]s"}
-        }`, hashHex)
+        }`, hashHex, releaseSigner, signatureValue, releaseSignedAtStamp)
 
 	var artifactRequested atomic.Bool
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -423,8 +472,8 @@ func TestStageRemoteDesktopEngineBlocksIncompatibleArchitecture(t *testing.T) {
 	}))
 	defer server.Close()
 
-	root := t.TempDir()
-	opts := manifest.VerifyOptions{SHA256AllowList: []string{hashHex}}
+        root := t.TempDir()
+        opts := releaseVerifyOptions(t)
 	manager, err := plugins.NewManager(root, log.New(io.Discard, "", 0), opts)
 	if err != nil {
 		t.Fatalf("new manager: %v", err)
@@ -471,8 +520,9 @@ func TestStageRemoteDesktopEngineBlocksIncompatibleArchitecture(t *testing.T) {
 func TestStageRemoteDesktopEngineBlocksIncompatibleAgentVersion(t *testing.T) {
 	t.Parallel()
 
-	hashHex := strings.Repeat("ef", 32)
-	manifestJSON := fmt.Sprintf(`{
+        hashHex := strings.Repeat("ef", 32)
+        signatureValue := releaseSignatureFor(t, hashHex)
+        manifestJSON := fmt.Sprintf(`{
                 "id": "remote-desktop-engine",
                 "name": "Remote Desktop Engine",
                 "version": "1.0.0",
@@ -480,9 +530,9 @@ func TestStageRemoteDesktopEngineBlocksIncompatibleAgentVersion(t *testing.T) {
                 "repositoryUrl": "https://github.com/rootbay/tenvy-client",
                 "license": {"spdxId": "MIT"},
                 "requirements": {"minAgentVersion": "5.0.0"},
-                "distribution": {"defaultMode": "manual", "autoUpdate": false, "signature": "sha256", "signatureHash": "%[1]s"},
+                "distribution": {"defaultMode": "manual", "autoUpdate": false, "signature": "ed25519", "signatureHash": "%[1]s", "signatureSigner": "%[2]s", "signatureValue": "%[3]s", "signatureTimestamp": "%[4]s"},
                 "package": {"artifact": "remote-desktop-engine/remote-desktop-engine.zip", "hash": "%[1]s"}
-        }`, hashHex)
+        }`, hashHex, releaseSigner, signatureValue, releaseSignedAtStamp)
 
 	var artifactRequested atomic.Bool
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -497,8 +547,8 @@ func TestStageRemoteDesktopEngineBlocksIncompatibleAgentVersion(t *testing.T) {
 	}))
 	defer server.Close()
 
-	root := t.TempDir()
-	opts := manifest.VerifyOptions{SHA256AllowList: []string{hashHex}}
+        root := t.TempDir()
+        opts := releaseVerifyOptions(t)
 	manager, err := plugins.NewManager(root, log.New(io.Discard, "", 0), opts)
 	if err != nil {
 		t.Fatalf("new manager: %v", err)
