@@ -44,7 +44,7 @@ func TestSnapshotSkipsManifestWithUnsupportedSignature(t *testing.T) {
                 "repositoryUrl": "https://github.com/rootbay/unsigned",
                 "license": { "spdxId": "MIT" },
                 "requirements": {},
-                "distribution": {"defaultMode": "manual", "autoUpdate": false, "signature": {"type": "none"}},
+                "distribution": {"defaultMode": "manual", "autoUpdate": false, "signature": "none"},
                 "package": {"artifact": "plugin.dll"}
         }`))
 	writeFile(t, artifactPath, []byte("payload"))
@@ -90,12 +90,10 @@ func TestSnapshotAllowsTrustedSignature(t *testing.T) {
                 "distribution": {
                         "defaultMode": "manual",
                         "autoUpdate": false,
-                        "signature": {
-                                "type": "ed25519",
-                                "hash": "%s",
-                                "publicKey": "primary",
-                                "signature": "%s"
-                        }
+                        "signature": "ed25519",
+                        "signatureHash": "%s",
+                        "signatureSigner": "primary",
+                        "signatureValue": "%s"
                 },
                 "package": {"artifact": "plugin.bin", "hash": "%s"}
         }`, hash, hex.EncodeToString(signature), hash)
@@ -151,12 +149,10 @@ func TestSnapshotBlocksInvalidSignature(t *testing.T) {
                 "distribution": {
                         "defaultMode": "manual",
                         "autoUpdate": false,
-                        "signature": {
-                                "type": "ed25519",
-                                "hash": "%s",
-                                "publicKey": "primary",
-                                "signature": "%s"
-                        }
+                        "signature": "ed25519",
+                        "signatureHash": "%s",
+                        "signatureSigner": "primary",
+                        "signatureValue": "%s"
                 },
                 "package": {"artifact": "plugin.bin", "hash": "%s"}
         }`, hash, strings.Repeat("00", ed25519.SignatureSize), hash)
@@ -205,7 +201,7 @@ func TestSnapshotAppliesRecordedStatus(t *testing.T) {
                 "repositoryUrl": "https://github.com/rootbay/tenvy",
                 "license": { "spdxId": "MIT" },
                 "requirements": {},
-                "distribution": {"defaultMode": "automatic", "autoUpdate": true, "signature": {"type": "sha256", "hash": "%[1]s", "signature": "%[1]s"}},
+                "distribution": {"defaultMode": "automatic", "autoUpdate": true, "signature": "sha256", "signatureHash": "%[1]s"},
                 "package": {"artifact": "engine.bin", "hash": "%[1]s"}
         }`, hashHex)))
 
@@ -286,7 +282,7 @@ func TestSnapshotEmitsDocumentedStatuses(t *testing.T) {
                 "version": "1.0.0",
                 "entry": "plugin.bin",
                 "requirements": {},
-                "distribution": {"defaultMode": "manual", "autoUpdate": false, "signature": {"type": "sha256", "hash": "%[1]s", "signature": "%[1]s"}},
+                "distribution": {"defaultMode": "manual", "autoUpdate": false, "signature": "sha256", "signatureHash": "%[1]s"},
                 "package": {"artifact": "plugin.bin", "hash": "%[1]s"}
         }`, installedHash)
 	writeFile(t, filepath.Join(installedDir, "manifest.json"), []byte(installedManifest))
@@ -309,7 +305,7 @@ func TestSnapshotEmitsDocumentedStatuses(t *testing.T) {
                 "distribution": {
                         "defaultMode": "manual",
                         "autoUpdate": false,
-                        "signature": {"type": "ed25519", "hash": "%[1]s", "publicKey": "primary", "signature": "%[2]s"}
+                        "signature": "ed25519", "signatureHash": "%[1]s", "signatureSigner": "primary", "signatureValue": "%[2]s"
                 },
                 "package": {"artifact": "plugin.bin", "hash": "%[1]s"}
         }`, blockedHash, strings.Repeat("00", ed25519.SignatureSize))
@@ -323,7 +319,7 @@ func TestSnapshotEmitsDocumentedStatuses(t *testing.T) {
                 "version": "1.0.0",
                 "entry": "missing.bin",
                 "requirements": {},
-                "distribution": {"defaultMode": "manual", "autoUpdate": false, "signature": {"type": "sha256", "hash": "%[1]s", "signature": "%[1]s"}},
+                "distribution": {"defaultMode": "manual", "autoUpdate": false, "signature": "sha256", "signatureHash": "%[1]s"},
                 "package": {"artifact": "missing.bin", "hash": "%[1]s"}
         }`, errorHash)
 	writeFile(t, filepath.Join(errorDir, "manifest.json"), []byte(errorManifest))

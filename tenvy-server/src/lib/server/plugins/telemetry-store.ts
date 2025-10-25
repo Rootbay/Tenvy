@@ -2,16 +2,16 @@ import { createHash, randomUUID } from 'crypto';
 import { and, eq, sql } from 'drizzle-orm';
 import type { AgentMetadata } from '../../../../../shared/types/agent.js';
 import {
-        pluginInstallStatuses,
-        resolveManifestSignature,
-        type PluginInstallationTelemetry,
-        type PluginManifest,
-        type PluginPlatform,
-        type PluginArchitecture,
-        type PluginManifestDescriptor,
-        type PluginManifestDelta,
-        type AgentPluginManifestState,
-        type PluginManifestSnapshot
+	pluginInstallStatuses,
+	resolveManifestSignature,
+	type PluginInstallationTelemetry,
+	type PluginManifest,
+	type PluginPlatform,
+	type PluginArchitecture,
+	type PluginManifestDescriptor,
+	type PluginManifestDelta,
+	type AgentPluginManifestState,
+	type PluginManifestSnapshot
 } from '../../../../../shared/types/plugin-manifest.js';
 import { loadPluginManifests, type LoadedPluginManifest } from '$lib/data/plugin-manifests.js';
 import { db } from '$lib/server/db/index.js';
@@ -45,31 +45,31 @@ export interface AgentPluginRecord {
 const MANIFEST_CACHE_TTL_MS = 30_000;
 
 function toDate(value: number | string | Date | null | undefined): Date | null {
-        if (value == null) return null;
-        if (value instanceof Date) return new Date(value);
-        if (typeof value === 'number') {
-                if (!Number.isFinite(value)) {
-                        return null;
-                }
-                const parsed = new Date(value);
-                return Number.isNaN(parsed.getTime()) ? null : parsed;
-        }
-        if (typeof value === 'string') {
-                const trimmed = value.trim();
-                if (trimmed === '') {
-                        return null;
-                }
-                const numeric = Number(trimmed);
-                if (!Number.isNaN(numeric)) {
-                        const numericDate = new Date(numeric);
-                        if (!Number.isNaN(numericDate.getTime())) {
-                                return numericDate;
-                        }
-                }
-                const parsed = new Date(trimmed);
-                return Number.isNaN(parsed.getTime()) ? null : parsed;
-        }
-        return null;
+	if (value == null) return null;
+	if (value instanceof Date) return new Date(value);
+	if (typeof value === 'number') {
+		if (!Number.isFinite(value)) {
+			return null;
+		}
+		const parsed = new Date(value);
+		return Number.isNaN(parsed.getTime()) ? null : parsed;
+	}
+	if (typeof value === 'string') {
+		const trimmed = value.trim();
+		if (trimmed === '') {
+			return null;
+		}
+		const numeric = Number(trimmed);
+		if (!Number.isNaN(numeric)) {
+			const numericDate = new Date(numeric);
+			if (!Number.isNaN(numericDate.getTime())) {
+				return numericDate;
+			}
+		}
+		const parsed = new Date(trimmed);
+		return Number.isNaN(parsed.getTime()) ? null : parsed;
+	}
+	return null;
 }
 
 function normalizeStatus(status: string | undefined): string {
@@ -144,41 +144,41 @@ function isArchitectureCompatible(
 }
 
 function buildAuditPayload(details: Record<string, unknown>): {
-        payloadHash: string;
-        result: string;
+	payloadHash: string;
+	result: string;
 } {
-        const serialized = JSON.stringify(details);
-        const hash = createHash('sha256').update(serialized, 'utf8').digest('hex');
-        return { payloadHash: hash, result: serialized };
+	const serialized = JSON.stringify(details);
+	const hash = createHash('sha256').update(serialized, 'utf8').digest('hex');
+	return { payloadHash: hash, result: serialized };
 }
 
 function computeManifestDigest(record: LoadedPluginManifest): string {
-        const raw = record.raw ?? JSON.stringify(record.manifest);
-        return createHash('sha256').update(raw, 'utf8').digest('hex');
+	const raw = record.raw ?? JSON.stringify(record.manifest);
+	return createHash('sha256').update(raw, 'utf8').digest('hex');
 }
 
 function verificationBlockReason(record: LoadedPluginManifest): string | null {
-        const { verification, manifest } = record;
-        if (!verification || verification.status === 'trusted') {
-                return null;
-        }
+	const { verification, manifest } = record;
+	if (!verification || verification.status === 'trusted') {
+		return null;
+	}
 
 	let message: string;
-        switch (verification.status) {
-                case 'unsigned':
-                        message = 'plugin manifest is unsigned';
-                        break;
-                case 'untrusted':
-                        message = 'plugin signature is not trusted';
-                        if (verification.signer) {
-                                message += ` (${verification.signer})`;
-                        } else {
-                                const { metadata } = resolveManifestSignature(manifest);
-                                if (metadata?.publicKey) {
-                                        message += ` (${metadata.publicKey})`;
-                                }
-                        }
-                        break;
+	switch (verification.status) {
+		case 'unsigned':
+			message = 'plugin manifest is unsigned';
+			break;
+		case 'untrusted':
+			message = 'plugin signature is not trusted';
+			if (verification.signer) {
+				message += ` (${verification.signer})`;
+			} else {
+				const metadata = resolveManifestSignature(manifest);
+				if (metadata.signer) {
+					message += ` (${metadata.signer})`;
+				}
+			}
+			break;
 		case 'invalid':
 		default:
 			message = 'plugin signature verification failed';
@@ -192,26 +192,26 @@ function verificationBlockReason(record: LoadedPluginManifest): string | null {
 }
 
 export class PluginTelemetryStore {
-        private readonly runtimeStore: PluginRuntimeStore;
-        private readonly manifestDirectory?: string;
-        private manifestCache = new Map<string, LoadedPluginManifest>();
-        private manifestLoadedAt = 0;
-        private manifestSnapshot: {
-                version: string;
-                entries: PluginManifestDescriptor[];
-                digests: Map<string, string>;
-        } | null = null;
+	private readonly runtimeStore: PluginRuntimeStore;
+	private readonly manifestDirectory?: string;
+	private manifestCache = new Map<string, LoadedPluginManifest>();
+	private manifestLoadedAt = 0;
+	private manifestSnapshot: {
+		version: string;
+		entries: PluginManifestDescriptor[];
+		digests: Map<string, string>;
+	} | null = null;
 
 	constructor(options: PluginTelemetryStoreOptions = {}) {
 		this.runtimeStore = options.runtimeStore ?? createPluginRuntimeStore();
 		this.manifestDirectory = options.manifestDirectory;
 	}
 
-        async syncAgent(
-                agentId: string,
-                metadata: AgentMetadata,
-                installations: PluginInstallationTelemetry[]
-        ): Promise<void> {
+	async syncAgent(
+		agentId: string,
+		metadata: AgentMetadata,
+		installations: PluginInstallationTelemetry[]
+	): Promise<void> {
 		if (installations.length === 0) {
 			return;
 		}
@@ -258,8 +258,8 @@ export class PluginTelemetryStore {
 					manifest.requirements.maxAgentVersion
 				);
 
-                        const { type: signatureType } = resolveManifestSignature(manifest);
-                        const signatureReason = verificationBlockReason(record);
+			const signatureType = resolveManifestSignature(manifest).type;
+			const signatureReason = verificationBlockReason(record);
 
 			const signedHash = manifest.package.hash?.toLowerCase();
 			const observedHash = installation.hash?.toLowerCase();
@@ -273,12 +273,12 @@ export class PluginTelemetryStore {
 			} else if (!compatible) {
 				status = 'blocked';
 				reason = reason ?? 'agent incompatible with plugin requirements';
-                        } else if (signatureType && signatureType !== 'none') {
-                                if (!observedHash) {
-                                        status = 'blocked';
-                                        reason = reason ?? 'missing signature hash';
-                                } else if (signedHash && signedHash !== observedHash) {
-                                        status = 'blocked';
+			} else if (signatureType && signatureType !== 'none') {
+				if (!observedHash) {
+					status = 'blocked';
+					reason = reason ?? 'missing signature hash';
+				} else if (signedHash && signedHash !== observedHash) {
+					status = 'blocked';
 					reason = `hash mismatch (expected ${signedHash})`;
 				}
 			}
@@ -329,100 +329,103 @@ export class PluginTelemetryStore {
 			processed.add(installation.pluginId);
 		}
 
-                for (const pluginId of processed) {
-                        await this.refreshAggregates(pluginId);
-                }
-        }
+		for (const pluginId of processed) {
+			await this.refreshAggregates(pluginId);
+		}
+	}
 
-        async getManifestSnapshot(): Promise<PluginManifestSnapshot> {
-                const snapshot = await this.ensureManifestSnapshot();
-                const manifests = snapshot.entries.map((entry) => ({
-                        pluginId: entry.pluginId,
-                        version: entry.version,
-                        manifestDigest: entry.manifestDigest,
-                        artifactHash: entry.artifactHash ?? null,
-                        artifactSizeBytes: entry.artifactSizeBytes ?? null,
-                        approvedAt: entry.approvedAt ?? null,
-                        distribution: { ...entry.distribution }
-                } satisfies PluginManifestDescriptor));
+	async getManifestSnapshot(): Promise<PluginManifestSnapshot> {
+		const snapshot = await this.ensureManifestSnapshot();
+		const manifests = snapshot.entries.map(
+			(entry) =>
+				({
+					pluginId: entry.pluginId,
+					version: entry.version,
+					manifestDigest: entry.manifestDigest,
+					artifactHash: entry.artifactHash ?? null,
+					artifactSizeBytes: entry.artifactSizeBytes ?? null,
+					approvedAt: entry.approvedAt ?? null,
+					distribution: { ...entry.distribution }
+				}) satisfies PluginManifestDescriptor
+		);
 
-                return { version: snapshot.version, manifests } satisfies PluginManifestSnapshot;
-        }
+		return { version: snapshot.version, manifests } satisfies PluginManifestSnapshot;
+	}
 
-        async getManifestDelta(state?: AgentPluginManifestState): Promise<PluginManifestDelta> {
-                const snapshot = await this.ensureManifestSnapshot();
-                const knownVersion = state?.version?.trim() ?? '';
-                const knownDigests = state?.digests ?? {};
+	async getManifestDelta(state?: AgentPluginManifestState): Promise<PluginManifestDelta> {
+		const snapshot = await this.ensureManifestSnapshot();
+		const knownVersion = state?.version?.trim() ?? '';
+		const knownDigests = state?.digests ?? {};
 
-                if (knownVersion && knownVersion === snapshot.version) {
-                        return { version: snapshot.version, updated: [], removed: [] } satisfies PluginManifestDelta;
-                }
+		if (knownVersion && knownVersion === snapshot.version) {
+			return { version: snapshot.version, updated: [], removed: [] } satisfies PluginManifestDelta;
+		}
 
-                const serverIndex = new Map(snapshot.entries.map((entry) => [entry.pluginId, entry]));
-                const removed: string[] = [];
-                for (const pluginId of Object.keys(knownDigests)) {
-                        if (!serverIndex.has(pluginId)) {
-                                removed.push(pluginId);
-                        }
-                }
+		const serverIndex = new Map(snapshot.entries.map((entry) => [entry.pluginId, entry]));
+		const removed: string[] = [];
+		for (const pluginId of Object.keys(knownDigests)) {
+			if (!serverIndex.has(pluginId)) {
+				removed.push(pluginId);
+			}
+		}
 
-                const updated: PluginManifestDescriptor[] = [];
-                for (const entry of snapshot.entries) {
-                        const digest = knownDigests?.[entry.pluginId];
-                        if (!digest || digest !== entry.manifestDigest) {
-                                updated.push({
-                                        pluginId: entry.pluginId,
-                                        version: entry.version,
-                                        manifestDigest: entry.manifestDigest,
-                                        artifactHash: entry.artifactHash ?? null,
-                                        artifactSizeBytes: entry.artifactSizeBytes ?? null,
-                                        approvedAt: entry.approvedAt ?? null,
-                                        distribution: { ...entry.distribution }
-                                });
-                        }
-                }
+		const updated: PluginManifestDescriptor[] = [];
+		for (const entry of snapshot.entries) {
+			const digest = knownDigests?.[entry.pluginId];
+			if (!digest || digest !== entry.manifestDigest) {
+				updated.push({
+					pluginId: entry.pluginId,
+					version: entry.version,
+					manifestDigest: entry.manifestDigest,
+					artifactHash: entry.artifactHash ?? null,
+					artifactSizeBytes: entry.artifactSizeBytes ?? null,
+					approvedAt: entry.approvedAt ?? null,
+					distribution: { ...entry.distribution }
+				});
+			}
+		}
 
-                return { version: snapshot.version, updated, removed } satisfies PluginManifestDelta;
-        }
+		return { version: snapshot.version, updated, removed } satisfies PluginManifestDelta;
+	}
 
-        async getApprovedManifest(
-                pluginId: string
-        ): Promise<{ record: LoadedPluginManifest; descriptor: PluginManifestDescriptor } | null> {
-                const trimmed = pluginId.trim();
-                if (trimmed.length === 0) {
-                        return null;
-                }
+	async getApprovedManifest(
+		pluginId: string
+	): Promise<{ record: LoadedPluginManifest; descriptor: PluginManifestDescriptor } | null> {
+		const trimmed = pluginId.trim();
+		if (trimmed.length === 0) {
+			return null;
+		}
 
-                const snapshot = await this.ensureManifestSnapshot();
-                const descriptor = snapshot.entries.find((entry) => entry.pluginId === trimmed);
-                if (!descriptor) {
-                        return null;
-                }
+		const snapshot = await this.ensureManifestSnapshot();
+		const descriptor = snapshot.entries.find((entry) => entry.pluginId === trimmed);
+		if (!descriptor) {
+			return null;
+		}
 
-                const record = this.manifestCache.get(trimmed);
-                if (!record) {
-                        return null;
-                }
+		const record = this.manifestCache.get(trimmed);
+		if (!record) {
+			return null;
+		}
 
-                return {
-                        record,
-                        descriptor: {
-                                pluginId: descriptor.pluginId,
-                                version: descriptor.version,
-                                manifestDigest: descriptor.manifestDigest,
-                                artifactHash: descriptor.artifactHash ?? null,
-                                artifactSizeBytes: descriptor.artifactSizeBytes ?? null,
-                                approvedAt: descriptor.approvedAt ?? null,
-                                distribution: { ...descriptor.distribution }
-                        }
-                };
-        }
+		return {
+			record,
+			descriptor: {
+				pluginId: descriptor.pluginId,
+				version: descriptor.version,
+				manifestDigest: descriptor.manifestDigest,
+				artifactHash: descriptor.artifactHash ?? null,
+				artifactSizeBytes: descriptor.artifactSizeBytes ?? null,
+				approvedAt: descriptor.approvedAt ?? null,
+				distribution: { ...descriptor.distribution }
+			}
+		};
+	}
 
-        async getAgentPlugin(agentId: string, pluginId: string): Promise<AgentPluginRecord | null> {
-                await this.ensureManifestIndex();
-                const [row] = await db
-                        .select({
-                                pluginId: pluginInstallationTable.pluginId,
+	async getAgentPlugin(agentId: string, pluginId: string): Promise<AgentPluginRecord | null> {
+		await this.ensureManifestIndex();
+		const [row] = await db
+			.select({
+				pluginId: pluginInstallationTable.pluginId,
 				agentId: pluginInstallationTable.agentId,
 				status: pluginInstallationTable.status,
 				version: pluginInstallationTable.version,
@@ -502,11 +505,11 @@ export class PluginTelemetryStore {
 		}));
 	}
 
-        async updateAgentPlugin(
-                agentId: string,
-                pluginId: string,
-                patch: Partial<{ enabled: boolean }>
-        ): Promise<void> {
+	async updateAgentPlugin(
+		agentId: string,
+		pluginId: string,
+		patch: Partial<{ enabled: boolean }>
+	): Promise<void> {
 		if (patch.enabled === undefined) {
 			return;
 		}
@@ -538,86 +541,86 @@ export class PluginTelemetryStore {
 				})
 				.onConflictDoNothing();
 		}
-                await this.refreshAggregates(pluginId);
-        }
+		await this.refreshAggregates(pluginId);
+	}
 
-        private async ensureManifestSnapshot(): Promise<{
-                version: string;
-                entries: PluginManifestDescriptor[];
-                digests: Map<string, string>;
-        }> {
-                if (!this.manifestSnapshot) {
-                        await this.buildManifestSnapshot();
-                }
+	private async ensureManifestSnapshot(): Promise<{
+		version: string;
+		entries: PluginManifestDescriptor[];
+		digests: Map<string, string>;
+	}> {
+		if (!this.manifestSnapshot) {
+			await this.buildManifestSnapshot();
+		}
 
-                if (!this.manifestSnapshot) {
-                        this.manifestSnapshot = { version: '', entries: [], digests: new Map() };
-                }
+		if (!this.manifestSnapshot) {
+			this.manifestSnapshot = { version: '', entries: [], digests: new Map() };
+		}
 
-                return this.manifestSnapshot;
-        }
+		return this.manifestSnapshot;
+	}
 
-        private async buildManifestSnapshot(): Promise<void> {
-                await this.ensureManifestIndex();
+	private async buildManifestSnapshot(): Promise<void> {
+		await this.ensureManifestIndex();
 
-                const entries: PluginManifestDescriptor[] = [];
-                for (const record of this.manifestCache.values()) {
-                        if (record.verification.status !== 'trusted') {
-                                continue;
-                        }
+		const entries: PluginManifestDescriptor[] = [];
+		for (const record of this.manifestCache.values()) {
+			if (record.verification.status !== 'trusted') {
+				continue;
+			}
 
-                        const runtime = await this.runtimeStore.ensure(record);
-                        if (runtime.approvalStatus !== 'approved') {
-                                continue;
-                        }
+			const runtime = await this.runtimeStore.ensure(record);
+			if (runtime.approvalStatus !== 'approved') {
+				continue;
+			}
 
-                        const digest = computeManifestDigest(record);
-                        const approvedAt = runtime.approvedAt ? runtime.approvedAt.toISOString() : null;
-                        const size =
-                                typeof record.manifest.package.sizeBytes === 'number'
-                                        ? record.manifest.package.sizeBytes
-                                        : null;
+			const digest = computeManifestDigest(record);
+			const approvedAt = runtime.approvedAt ? runtime.approvedAt.toISOString() : null;
+			const size =
+				typeof record.manifest.package.sizeBytes === 'number'
+					? record.manifest.package.sizeBytes
+					: null;
 
-                        entries.push({
-                                pluginId: record.manifest.id,
-                                version: record.manifest.version,
-                                manifestDigest: digest,
-                                artifactHash: record.manifest.package.hash ?? null,
-                                artifactSizeBytes: size,
-                                approvedAt,
-                                distribution: {
-                                        defaultMode: record.manifest.distribution.defaultMode,
-                                        autoUpdate: record.manifest.distribution.autoUpdate
-                                }
-                        });
-                }
+			entries.push({
+				pluginId: record.manifest.id,
+				version: record.manifest.version,
+				manifestDigest: digest,
+				artifactHash: record.manifest.package.hash ?? null,
+				artifactSizeBytes: size,
+				approvedAt,
+				distribution: {
+					defaultMode: record.manifest.distribution.defaultMode,
+					autoUpdate: record.manifest.distribution.autoUpdate
+				}
+			});
+		}
 
-                entries.sort((a, b) => a.pluginId.localeCompare(b.pluginId));
+		entries.sort((a, b) => a.pluginId.localeCompare(b.pluginId));
 
-                const digests = new Map(entries.map((entry) => [entry.pluginId, entry.manifestDigest]));
-                const versionSeed = entries
-                        .map((entry) => `${entry.pluginId}:${entry.manifestDigest}`)
-                        .join('|');
-                const version = createHash('sha256').update(versionSeed, 'utf8').digest('hex');
+		const digests = new Map(entries.map((entry) => [entry.pluginId, entry.manifestDigest]));
+		const versionSeed = entries
+			.map((entry) => `${entry.pluginId}:${entry.manifestDigest}`)
+			.join('|');
+		const version = createHash('sha256').update(versionSeed, 'utf8').digest('hex');
 
-                this.manifestSnapshot = { version, entries, digests };
-        }
+		this.manifestSnapshot = { version, entries, digests };
+	}
 
-        private async ensureManifestIndex(): Promise<void> {
-                const now = Date.now();
-                if (now - this.manifestLoadedAt < MANIFEST_CACHE_TTL_MS && this.manifestCache.size > 0) {
-                        return;
-                }
+	private async ensureManifestIndex(): Promise<void> {
+		const now = Date.now();
+		if (now - this.manifestLoadedAt < MANIFEST_CACHE_TTL_MS && this.manifestCache.size > 0) {
+			return;
+		}
 
-                const records = await loadPluginManifests({ directory: this.manifestDirectory });
-                const index = new Map<string, LoadedPluginManifest>();
-                for (const record of records) {
-                        index.set(record.manifest.id, record);
-                }
-                this.manifestCache = index;
-                this.manifestLoadedAt = now;
-                this.manifestSnapshot = null;
-        }
+		const records = await loadPluginManifests({ directory: this.manifestDirectory });
+		const index = new Map<string, LoadedPluginManifest>();
+		for (const record of records) {
+			index.set(record.manifest.id, record);
+		}
+		this.manifestCache = index;
+		this.manifestLoadedAt = now;
+		this.manifestSnapshot = null;
+	}
 
 	private async refreshAggregates(pluginId: string): Promise<void> {
 		const [row] = await db

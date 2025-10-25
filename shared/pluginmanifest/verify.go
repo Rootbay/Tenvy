@@ -43,13 +43,13 @@ type VerificationResult struct {
 }
 
 func VerifySignature(manifest Manifest, opts VerifyOptions) (*VerificationResult, error) {
-	sig := manifest.Distribution.Signature
-	if strings.TrimSpace(string(sig.Type)) == "" {
+	sigType := strings.TrimSpace(string(manifest.Distribution.Signature))
+	if sigType == "" {
 		return nil, ErrUnsignedPlugin
 	}
 
-	if !containsSignatureType(sig.Type) {
-		return nil, fmt.Errorf("unsupported signature type: %s", sig.Type)
+	if !containsSignatureType(SignatureType(sigType)) {
+		return nil, fmt.Errorf("unsupported signature type: %s", sigType)
 	}
 
 	nowFn := opts.CurrentTime
@@ -58,8 +58,8 @@ func VerifySignature(manifest Manifest, opts VerifyOptions) (*VerificationResult
 	}
 
 	var signedAtPtr *time.Time
-	if strings.TrimSpace(sig.SignedAt) != "" {
-		parsed, err := time.Parse(time.RFC3339, strings.TrimSpace(sig.SignedAt))
+	if strings.TrimSpace(manifest.Distribution.SignatureTimestamp) != "" {
+		parsed, err := time.Parse(time.RFC3339, strings.TrimSpace(manifest.Distribution.SignatureTimestamp))
 		if err != nil {
 			return nil, fmt.Errorf("plugin manifest signedAt is invalid: %w", err)
 		}
@@ -82,29 +82,39 @@ func VerifySignature(manifest Manifest, opts VerifyOptions) (*VerificationResult
 		return nil, fmt.Errorf("plugin manifest is missing package hash")
 	}
 
-	normalizedSignatureHash := normalizeHexString(sig.Hash)
+	normalizedSignatureHash := normalizeHexString(manifest.Distribution.SignatureHash)
 	if normalizedSignatureHash != "" && normalizedManifestHash != normalizedSignatureHash {
 		return nil, ErrSignatureMismatch
 	}
 
 	hashValue := normalizedManifestHash
 
-	switch sig.Type {
+	switch SignatureType(sigType) {
 	case SignatureSHA256:
 		if len(opts.SHA256AllowList) > 0 {
 			if !hashAllowed(hashValue, opts.SHA256AllowList) {
 				return nil, ErrHashNotAllowed
 			}
 		}
+		return &VerificationResult{
+			Trusted:          true,
+			SignatureType:    SignatureSHA256,
+			Hash:             hashValue,
+			Signer:           strings.TrimSpace(manifest.Distribution.SignatureSigner),
+			SignedAt:         signedAtPtr,
+			CertificateChain: append([]string(nil), manifest.Distribution.SignatureCertificateChain...),
+		}, nil
 	case SignatureEd25519:
-		if strings.TrimSpace(sig.PublicKey) == "" {
+		signerID := strings.TrimSpace(manifest.Distribution.SignatureSigner)
+		if signerID == "" {
 			return nil, ErrUntrustedSigner
 		}
-		if strings.TrimSpace(sig.Signature) == "" {
+		signatureValue := strings.TrimSpace(manifest.Distribution.SignatureValue)
+		if signatureValue == "" {
 			return nil, ErrInvalidSignature
 		}
 
-		publicKey, err := resolveEd25519Key(sig.PublicKey, opts)
+		publicKey, err := resolveEd25519Key(signerID, opts)
 		if err != nil {
 			return nil, err
 		}
@@ -112,7 +122,7 @@ func VerifySignature(manifest Manifest, opts VerifyOptions) (*VerificationResult
 			return nil, fmt.Errorf("plugin manifest public key has invalid length: %d", len(publicKey))
 		}
 
-		signatureBytes, err := hex.DecodeString(strings.TrimSpace(sig.Signature))
+		signatureBytes, err := hex.DecodeString(signatureValue)
 		if err != nil {
 			return nil, fmt.Errorf("plugin signature is not valid hex: %w", err)
 		}
@@ -125,24 +135,23 @@ func VerifySignature(manifest Manifest, opts VerifyOptions) (*VerificationResult
 			return nil, ErrInvalidSignature
 		}
 
-		if opts.CertificateValidator != nil && len(sig.Chain) > 0 {
-			if err := opts.CertificateValidator(append([]string(nil), sig.Chain...)); err != nil {
+		if opts.CertificateValidator != nil && len(manifest.Distribution.SignatureCertificateChain) > 0 {
+			if err := opts.CertificateValidator(append([]string(nil), manifest.Distribution.SignatureCertificateChain...)); err != nil {
 				return nil, fmt.Errorf("certificate chain validation failed: %w", err)
 			}
 		}
+		return &VerificationResult{
+			Trusted:          true,
+			SignatureType:    SignatureEd25519,
+			Hash:             hashValue,
+			PublicKey:        hex.EncodeToString(publicKey),
+			Signer:           signerID,
+			SignedAt:         signedAtPtr,
+			CertificateChain: append([]string(nil), manifest.Distribution.SignatureCertificateChain...),
+		}, nil
 	default:
-		return nil, fmt.Errorf("unsupported signature type: %s", sig.Type)
+		return nil, fmt.Errorf("unsupported signature type: %s", sigType)
 	}
-
-	return &VerificationResult{
-		Trusted:          true,
-		SignatureType:    sig.Type,
-		Hash:             hashValue,
-		PublicKey:        sig.PublicKey,
-		Signer:           sig.Signer,
-		SignedAt:         signedAtPtr,
-		CertificateChain: append([]string(nil), sig.Chain...),
-	}, nil
 }
 
 func hashAllowed(hash string, allowList []string) bool {
@@ -157,8 +166,8 @@ func hashAllowed(hash string, allowList []string) bool {
 	return false
 }
 
-func resolveEd25519Key(keyID string, opts VerifyOptions) (ed25519.PublicKey, error) {
-	trimmedKeyID := strings.TrimSpace(keyID)
+func resolveEd25519Key(signerID string, opts VerifyOptions) (ed25519.PublicKey, error) {
+	trimmedKeyID := strings.TrimSpace(signerID)
 	if trimmedKeyID == "" {
 		return nil, ErrUntrustedSigner
 	}

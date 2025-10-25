@@ -270,8 +270,11 @@ func signatureUntrustedReason(mf manifest.Manifest, result *manifest.Verificatio
 		if strings.TrimSpace(result.Signer) != "" {
 			return fmt.Sprintf("untrusted signer %s", result.Signer)
 		}
-		if strings.TrimSpace(mf.Distribution.Signature.PublicKey) != "" {
-			return fmt.Sprintf("untrusted key %s", mf.Distribution.Signature.PublicKey)
+		if strings.TrimSpace(result.PublicKey) != "" {
+			return fmt.Sprintf("untrusted key %s", result.PublicKey)
+		}
+		if strings.TrimSpace(mf.Distribution.SignatureSigner) != "" {
+			return fmt.Sprintf("untrusted signer %s", mf.Distribution.SignatureSigner)
 		}
 		return "untrusted signer"
 	default:

@@ -12,23 +12,17 @@
 		"url": "https://opensource.org/license/mit"
 	},
 	"categories": ["collection"],
-        "capabilities": [
-                "clipboard.capture",
-                "clipboard.push"
-        ],
-        "requirements": {
-                "minAgentVersion": "1.2.0",
-                "platforms": ["windows", "macos"],
+	"capabilities": ["clipboard.capture", "clipboard.push"],
+	"requirements": {
+		"minAgentVersion": "1.2.0",
+		"platforms": ["windows", "macos"],
 		"requiredModules": ["clipboard"]
 	},
 	"distribution": {
 		"defaultMode": "automatic",
 		"autoUpdate": true,
-		"signature": {
-			"type": "sha256",
-			"hash": "d8b8a0fb9c8f8e3a72d88e3f7a8c6d1f1fbb83c9f6c2ddacb12e3b45f1a8bbef",
-			"signature": "b3941f7d88da4bbdd89a2b1f2c41c8f93bc2330bb6b8ea3be97dc32d8d12a1ee"
-		}
+		"signature": "sha256",
+		"signatureHash": "d8b8a0fb9c8f8e3a72d88e3f7a8c6d1f1fbb83c9f6c2ddacb12e3b45f1a8bbef"
 	},
 	"package": {
 		"artifact": "clipboard-sync-1.4.2.dll",

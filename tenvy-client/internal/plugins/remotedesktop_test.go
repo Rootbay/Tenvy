@@ -51,7 +51,7 @@ func TestStageRemoteDesktopEngineSuccess(t *testing.T) {
                 "repositoryUrl": "https://github.com/rootbay/tenvy-client",
                 "license": { "spdxId": "MIT" },
                 "requirements": {},
-                "distribution": {"defaultMode": "automatic", "autoUpdate": true, "signature": {"type": "sha256", "hash": "%[1]s", "signature": "%[1]s"}},
+                "distribution": {"defaultMode": "automatic", "autoUpdate": true, "signature": "sha256", "signatureHash": "%[1]s"},
                 "package": {"artifact": "remote-desktop-engine/remote-desktop-engine.zip", "hash": "%s"}
         }`, hashHex, hashHex)
 
@@ -177,7 +177,7 @@ func TestStageRemoteDesktopEngineBlocksIncompatiblePlatform(t *testing.T) {
                 "repositoryUrl": "https://github.com/rootbay/tenvy-client",
                 "license": {"spdxId": "MIT"},
                 "requirements": {"platforms": ["windows"]},
-                "distribution": {"defaultMode": "manual", "autoUpdate": false, "signature": {"type": "sha256", "hash": "%[1]s", "signature": "%[1]s"}},
+                "distribution": {"defaultMode": "manual", "autoUpdate": false, "signature": "sha256", "signatureHash": "%[1]s"},
                 "package": {"artifact": "remote-desktop-engine/remote-desktop-engine.zip", "hash": "%[1]s"}
         }`, hashHex)
 
@@ -251,7 +251,7 @@ func TestStageRemoteDesktopEngineBlocksIncompatibleArchitecture(t *testing.T) {
                 "repositoryUrl": "https://github.com/rootbay/tenvy-client",
                 "license": {"spdxId": "MIT"},
                 "requirements": {"architectures": ["arm64"]},
-                "distribution": {"defaultMode": "manual", "autoUpdate": false, "signature": {"type": "sha256", "hash": "%[1]s", "signature": "%[1]s"}},
+                "distribution": {"defaultMode": "manual", "autoUpdate": false, "signature": "sha256", "signatureHash": "%[1]s"},
                 "package": {"artifact": "remote-desktop-engine/remote-desktop-engine.zip", "hash": "%[1]s"}
         }`, hashHex)
 
@@ -325,7 +325,7 @@ func TestStageRemoteDesktopEngineBlocksIncompatibleAgentVersion(t *testing.T) {
                 "repositoryUrl": "https://github.com/rootbay/tenvy-client",
                 "license": {"spdxId": "MIT"},
                 "requirements": {"minAgentVersion": "5.0.0"},
-                "distribution": {"defaultMode": "manual", "autoUpdate": false, "signature": {"type": "sha256", "hash": "%[1]s", "signature": "%[1]s"}},
+                "distribution": {"defaultMode": "manual", "autoUpdate": false, "signature": "sha256", "signatureHash": "%[1]s"},
                 "package": {"artifact": "remote-desktop-engine/remote-desktop-engine.zip", "hash": "%[1]s"}
         }`, hashHex)
 

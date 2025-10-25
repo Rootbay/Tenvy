@@ -1,7 +1,6 @@
 package pluginmanifest
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net/url"
@@ -44,66 +43,20 @@ type Requirements struct {
 }
 
 type Distribution struct {
-	DefaultMode DeliveryMode `json:"defaultMode"`
-	AutoUpdate  bool         `json:"autoUpdate"`
-	Signature   Signature    `json:"signature"`
+	DefaultMode               DeliveryMode  `json:"defaultMode"`
+	AutoUpdate                bool          `json:"autoUpdate"`
+	Signature                 SignatureType `json:"signature"`
+	SignatureHash             string        `json:"signatureHash,omitempty"`
+	SignatureValue            string        `json:"signatureValue,omitempty"`
+	SignatureTimestamp        string        `json:"signatureTimestamp,omitempty"`
+	SignatureSigner           string        `json:"signatureSigner,omitempty"`
+	SignatureCertificateChain []string      `json:"signatureCertificateChain,omitempty"`
 }
 
 type PackageDescriptor struct {
 	Artifact  string `json:"artifact"`
 	SizeBytes int64  `json:"sizeBytes,omitempty"`
 	Hash      string `json:"hash,omitempty"`
-}
-
-type Signature struct {
-	Type      SignatureType
-	Hash      string
-	PublicKey string
-	Signature string
-	SignedAt  string
-	Signer    string
-	Chain     []string
-}
-
-func (s *Signature) UnmarshalJSON(data []byte) error {
-	if len(data) == 0 {
-		return nil
-	}
-
-	var asString string
-	if err := json.Unmarshal(data, &asString); err == nil {
-		s.Type = SignatureType(strings.TrimSpace(asString))
-		s.Hash = ""
-		s.PublicKey = ""
-		s.Signature = ""
-		s.SignedAt = ""
-		s.Signer = ""
-		s.Chain = nil
-		return nil
-	}
-
-	var payload struct {
-		Type      SignatureType `json:"type"`
-		Hash      string        `json:"hash"`
-		PublicKey string        `json:"publicKey"`
-		Signature string        `json:"signature"`
-		SignedAt  string        `json:"signedAt"`
-		Signer    string        `json:"signer"`
-		Chain     []string      `json:"certificateChain"`
-	}
-
-	if err := json.Unmarshal(data, &payload); err != nil {
-		return err
-	}
-
-	s.Type = payload.Type
-	s.Hash = payload.Hash
-	s.PublicKey = payload.PublicKey
-	s.Signature = payload.Signature
-	s.SignedAt = payload.SignedAt
-	s.Signer = payload.Signer
-	s.Chain = append([]string(nil), payload.Chain...)
-	return nil
 }
 
 type LicenseInfo struct {
@@ -413,8 +366,7 @@ func (m Manifest) validateDistribution() error {
 		return fmt.Errorf("unsupported delivery mode: %s", mode)
 	}
 
-	sig := m.Distribution.Signature
-	sigType := strings.TrimSpace(string(sig.Type))
+	sigType := strings.TrimSpace(string(m.Distribution.Signature))
 	if sigType == "" {
 		return errors.New("distribution signature is required")
 	}
@@ -427,8 +379,17 @@ func (m Manifest) validateDistribution() error {
 		return errors.New("signed packages must include a hash")
 	}
 
-	if sigHash := strings.TrimSpace(sig.Hash); sigHash != "" && !strings.EqualFold(sigHash, packageHash) {
+	if sigHash := strings.TrimSpace(m.Distribution.SignatureHash); sigHash != "" && !strings.EqualFold(sigHash, packageHash) {
 		return errors.New("signature hash does not match package hash")
+	}
+
+	if SignatureType(sigType) == SignatureEd25519 {
+		if strings.TrimSpace(m.Distribution.SignatureSigner) == "" {
+			return errors.New("ed25519 signatures require a signer id")
+		}
+		if strings.TrimSpace(m.Distribution.SignatureValue) == "" {
+			return errors.New("ed25519 signatures require a signature value")
+		}
 	}
 
 	return nil

@@ -1,4 +1,7 @@
-import { agentModuleCapabilityIndex, agentModuleIds } from "../modules/index.js";
+import {
+  agentModuleCapabilityIndex,
+  agentModuleIds,
+} from "../modules/index.js";
 import nacl from "tweetnacl";
 
 export const pluginDeliveryModes = ["manual", "automatic"] as const;
@@ -54,24 +57,15 @@ export interface PluginRequirements {
   requiredModules?: string[];
 }
 
-export interface LegacyPluginSignature {
-  type: PluginSignatureType;
-  hash?: string;
-  publicKey?: string;
-  signature?: string;
-  signedAt?: string;
-  signer?: string;
-  certificateChain?: string[];
-}
-
-export type PluginDistributionSignature =
-  | PluginSignatureType
-  | LegacyPluginSignature;
-
 export interface PluginDistribution {
   defaultMode: PluginDeliveryMode;
   autoUpdate: boolean;
-  signature: PluginDistributionSignature;
+  signature: PluginSignatureType;
+  signatureHash?: string;
+  signatureValue?: string;
+  signatureSigner?: string;
+  signatureTimestamp?: string;
+  signatureCertificateChain?: string[];
 }
 
 export interface PluginLicenseInfo {
@@ -210,32 +204,45 @@ const textEncoder = new TextEncoder();
 const normalizeHex = (value: string | undefined | null): string =>
   value?.trim().toLowerCase() ?? "";
 
+const trimOptional = (value: string | undefined | null): string | undefined => {
+  if (value == null) return undefined;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
+};
+
 export const isPluginSignatureType = (
   value: string,
 ): value is PluginSignatureType =>
   pluginSignatureTypes.includes(value as PluginSignatureType);
 
-export interface ResolvedDistributionSignature {
+export interface PluginSignatureMetadata {
   type: string;
-  metadata?: LegacyPluginSignature;
+  hash?: string;
+  signer?: string;
+  value?: string;
+  timestamp?: string;
+  certificateChain?: string[];
 }
-
-export const resolveDistributionSignature = (
-  signature: PluginDistributionSignature | undefined | null,
-): ResolvedDistributionSignature => {
-  if (typeof signature === "string") {
-    return { type: signature.trim() };
-  }
-  if (signature && typeof signature === "object") {
-    return { type: signature.type?.trim() ?? "", metadata: signature };
-  }
-  return { type: "" };
-};
 
 export const resolveManifestSignature = (
   manifest: PluginManifest,
-): ResolvedDistributionSignature =>
-  resolveDistributionSignature(manifest.distribution?.signature);
+): PluginSignatureMetadata => {
+  const distribution = manifest.distribution;
+  const signatureType =
+    typeof distribution?.signature === "string"
+      ? distribution.signature.trim()
+      : "";
+  return {
+    type: signatureType,
+    hash: trimOptional(distribution?.signatureHash),
+    signer: trimOptional(distribution?.signatureSigner),
+    value: trimOptional(distribution?.signatureValue),
+    timestamp: trimOptional(distribution?.signatureTimestamp),
+    certificateChain: distribution?.signatureCertificateChain?.length
+      ? [...distribution.signatureCertificateChain]
+      : undefined,
+  };
+};
 
 const hexToBytes = (value: string): Uint8Array => {
   const trimmed = value.trim();
@@ -259,6 +266,9 @@ const hexToBytes = (value: string): Uint8Array => {
   }
   return bytes;
 };
+
+const bytesToHex = (value: Uint8Array): string =>
+  Array.from(value, (byte) => byte.toString(16).padStart(2, "0")).join("");
 
 const ensureRepositoryUrl = (url: string | undefined | null): boolean => {
   if (isEmpty(url)) return true;
@@ -305,7 +315,8 @@ export function validatePluginManifest(manifest: PluginManifest): string[] {
     problems.push(`unsupported delivery mode: ${mode ?? "undefined"}`);
   }
 
-  const { type: signatureType, metadata } = resolveManifestSignature(manifest);
+  const signatureMetadata = resolveManifestSignature(manifest);
+  const signatureType = signatureMetadata.type;
   if (!signatureType) {
     problems.push("missing signature");
   } else if (!isPluginSignatureType(signatureType)) {
@@ -316,20 +327,19 @@ export function validatePluginManifest(manifest: PluginManifest): string[] {
     problems.push("signed packages must include a hash");
   }
 
-  if (metadata) {
-    if (signatureType === "sha256" && isEmpty(metadata.hash)) {
+  if (signatureType === "sha256") {
+    if (isEmpty(signatureMetadata.hash)) {
       problems.push("sha256 signature requires hash");
     }
-    if (signatureType === "ed25519") {
-      if (isEmpty(metadata.hash)) {
-        problems.push("ed25519 signature requires hash");
-      }
-      if (isEmpty(metadata.publicKey)) {
-        problems.push("ed25519 signature requires publicKey");
-      }
-      if (isEmpty(metadata.signature)) {
-        problems.push("signed manifests must provide signature value");
-      }
+  } else if (signatureType === "ed25519") {
+    if (isEmpty(signatureMetadata.hash)) {
+      problems.push("ed25519 signature requires hash");
+    }
+    if (isEmpty(signatureMetadata.signer)) {
+      problems.push("ed25519 signature requires signer identifier");
+    }
+    if (isEmpty(signatureMetadata.value)) {
+      problems.push("signed manifests must provide signature value");
     }
   }
 
@@ -389,10 +399,10 @@ export function validatePluginManifest(manifest: PluginManifest): string[] {
 }
 
 const resolvePublicKey = async (
-  keyId: string,
+  signerId: string,
   options: PluginSignatureVerificationOptions,
 ): Promise<Uint8Array | undefined> => {
-  const trimmed = keyId.trim();
+  const trimmed = signerId.trim();
   if (!trimmed) return undefined;
 
   if (options.resolveEd25519PublicKey) {
@@ -449,7 +459,7 @@ const ensureValidSignedAt = (
 
 const ensureHashMatches = (
   manifest: PluginManifest,
-  metadata: LegacyPluginSignature | undefined,
+  metadata: PluginSignatureMetadata,
 ): string => {
   const manifestHash = normalizeHex(manifest.package?.hash);
   if (!manifestHash) {
@@ -459,7 +469,7 @@ const ensureHashMatches = (
     );
   }
 
-  const signatureHash = normalizeHex(metadata?.hash);
+  const signatureHash = normalizeHex(metadata.hash);
   if (signatureHash && manifestHash !== signatureHash) {
     throw new PluginSignatureVerificationError(
       "plugin hash does not match manifest signature hash",
@@ -474,17 +484,8 @@ export const verifyPluginSignature = async (
   manifest: PluginManifest,
   options: PluginSignatureVerificationOptions = {},
 ): Promise<PluginSignatureVerificationResult> => {
-  const signatureValue = manifest.distribution?.signature;
-  if (!signatureValue) {
-    throw new PluginSignatureVerificationError(
-      "plugin manifest is unsigned",
-      "UNSIGNED",
-    );
-  }
-
-  const { type: resolvedType, metadata } = resolveDistributionSignature(
-    signatureValue,
-  );
+  const metadata = resolveManifestSignature(manifest);
+  const resolvedType = metadata.type;
 
   if (!resolvedType) {
     throw new PluginSignatureVerificationError(
@@ -500,7 +501,7 @@ export const verifyPluginSignature = async (
     );
   }
 
-  const signedAt = ensureValidSignedAt(metadata?.signedAt, options);
+  const signedAt = ensureValidSignedAt(metadata.timestamp, options);
   const hash = ensureHashMatches(manifest, metadata);
 
   if (resolvedType === "sha256") {
@@ -521,9 +522,9 @@ export const verifyPluginSignature = async (
       trusted: allowList ? allowList.size > 0 : false,
       signatureType: "sha256",
       hash,
-      signer: metadata?.signer ?? null,
+      signer: metadata.signer ?? null,
       signedAt,
-      certificateChain: metadata?.certificateChain
+      certificateChain: metadata.certificateChain
         ? [...metadata.certificateChain]
         : undefined,
     };
@@ -536,14 +537,14 @@ export const verifyPluginSignature = async (
     );
   }
 
-  if (!metadata?.publicKey?.trim()) {
+  if (!metadata.signer?.trim()) {
     throw new PluginSignatureVerificationError(
-      "ed25519 signature requires publicKey",
+      "ed25519 signature requires signer identifier",
       "UNTRUSTED_SIGNER",
     );
   }
 
-  const publicKey = await resolvePublicKey(metadata.publicKey, options);
+  const publicKey = await resolvePublicKey(metadata.signer, options);
   if (!publicKey) {
     throw new PluginSignatureVerificationError(
       "ed25519 signer is not trusted",
@@ -557,7 +558,7 @@ export const verifyPluginSignature = async (
     );
   }
 
-  const signatureBytes = hexToBytes(metadata.signature ?? "");
+  const signatureBytes = hexToBytes(metadata.value ?? "");
   if (signatureBytes.length !== nacl.sign.signatureLength) {
     throw new PluginSignatureVerificationError(
       "ed25519 signature has invalid length",
@@ -573,7 +574,7 @@ export const verifyPluginSignature = async (
     );
   }
 
-  if (options.certificateValidator && metadata?.certificateChain?.length) {
+  if (options.certificateValidator && metadata.certificateChain?.length) {
     try {
       await options.certificateValidator([...metadata.certificateChain]);
     } catch (error) {
@@ -588,10 +589,10 @@ export const verifyPluginSignature = async (
     trusted: true,
     signatureType: "ed25519",
     hash,
-    signer: metadata?.signer ?? null,
+    signer: metadata.signer ?? null,
     signedAt,
-    publicKey: metadata.publicKey,
-    certificateChain: metadata?.certificateChain
+    publicKey: bytesToHex(publicKey),
+    certificateChain: metadata.certificateChain
       ? [...metadata.certificateChain]
       : undefined,
   };

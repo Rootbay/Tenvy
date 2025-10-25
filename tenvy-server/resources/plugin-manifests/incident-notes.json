@@ -12,9 +12,7 @@
 		"url": "https://www.apache.org/licenses/LICENSE-2.0"
 	},
 	"categories": ["persistence"],
-        "capabilities": [
-                "notes.sync"
-        ],
+	"capabilities": ["notes.sync"],
 	"requirements": {
 		"minAgentVersion": "1.0.0",
 		"requiredModules": ["notes"]
@@ -22,11 +20,8 @@
 	"distribution": {
 		"defaultMode": "automatic",
 		"autoUpdate": true,
-		"signature": {
-			"type": "sha256",
-			"hash": "97f3dfb04f2bb1d0d07b0eac07c6f6a7c6d820b4d19d3fbfdcf7ee52b0cc3947",
-			"signature": "5d3b0ddf8b9e2a2227490ff8c3a6b55bdc6fa4e3f0bd5746d6193b82ba3f6e1c"
-		}
+		"signature": "sha256",
+		"signatureHash": "97f3dfb04f2bb1d0d07b0eac07c6f6a7c6d820b4d19d3fbfdcf7ee52b0cc3947"
 	},
 	"package": {
 		"artifact": "incident-notes-1.0.1.dll",
