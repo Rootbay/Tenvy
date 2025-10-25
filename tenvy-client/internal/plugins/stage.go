@@ -19,9 +19,10 @@ import (
 
 // StageResult describes the outcome of a generic plugin staging operation.
 type StageResult struct {
-	Manifest  manifest.Manifest
-	EntryPath string
-	Updated   bool
+	Manifest   manifest.Manifest
+	EntryPath  string
+	Updated    bool
+	BackupPath string
 }
 
 // StageError conveys the plugin installation status associated with a staging
@@ -240,18 +241,60 @@ func StagePlugin(
 		return result, newStageError(manifest.InstallError, mf.Version, errors.New("plugin entry path points to a directory"))
 	}
 
-	if err := os.RemoveAll(pluginDir); err != nil && !errors.Is(err, os.ErrNotExist) {
-		return result, newStageError(manifest.InstallError, mf.Version, fmt.Errorf("remove previous installation: %w", err))
+	var backupDir string
+	if info, err := os.Stat(pluginDir); err == nil {
+		if !info.IsDir() {
+			return result, newStageError(manifest.InstallError, mf.Version, errors.New("previous installation is not a directory"))
+		}
+		backupDir, err = os.MkdirTemp(manager.root, fmt.Sprintf("%s-backup-", pluginID))
+		if err != nil {
+			return result, newStageError(manifest.InstallError, mf.Version, fmt.Errorf("create backup directory: %w", err))
+		}
+		if err := os.Remove(backupDir); err != nil {
+			os.RemoveAll(backupDir)
+			return result, newStageError(manifest.InstallError, mf.Version, fmt.Errorf("prepare backup directory: %w", err))
+		}
+		if err := os.Rename(pluginDir, backupDir); err != nil {
+			os.RemoveAll(backupDir)
+			return result, newStageError(manifest.InstallError, mf.Version, fmt.Errorf("preserve previous installation: %w", err))
+		}
+	} else if err != nil && !errors.Is(err, os.ErrNotExist) {
+		return result, newStageError(manifest.InstallError, mf.Version, fmt.Errorf("inspect previous installation: %w", err))
 	}
 
 	if err := os.Rename(stagingDir, pluginDir); err != nil {
-		return result, newStageError(manifest.InstallError, mf.Version, fmt.Errorf("activate staged plugin: %w", err))
+		combinedErr := fmt.Errorf("activate staged plugin: %w", err)
+		if backupDir != "" {
+			if restoreErr := RestorePluginBackup(pluginDir, backupDir); restoreErr != nil {
+				combinedErr = fmt.Errorf("%w (restore failed: %v)", combinedErr, restoreErr)
+			}
+		}
+		return result, newStageError(manifest.InstallError, mf.Version, combinedErr)
 	}
 	cleanup = false
 
 	result.Updated = true
 	result.EntryPath = filepath.Join(pluginDir, entryRel)
+	result.BackupPath = backupDir
 	return result, nil
+}
+
+// RestorePluginBackup reverts a staged installation using the provided backup
+// directory. The target plugin directory is cleared before the backup is
+// restored.
+func RestorePluginBackup(pluginDir, backupDir string) error {
+	pluginDir = strings.TrimSpace(pluginDir)
+	backupDir = strings.TrimSpace(backupDir)
+	if pluginDir == "" || backupDir == "" {
+		return nil
+	}
+	if err := os.RemoveAll(pluginDir); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("remove staged plugin: %w", err)
+	}
+	if err := os.Rename(backupDir, pluginDir); err != nil {
+		return fmt.Errorf("restore backup: %w", err)
+	}
+	return nil
 }
 
 func autoSyncAllowed(descriptor manifest.ManifestDescriptor) bool {

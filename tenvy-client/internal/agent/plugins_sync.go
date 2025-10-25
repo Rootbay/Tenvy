@@ -19,9 +19,10 @@ import (
 )
 
 type pluginStageOutcome struct {
-	Manifest  *manifest.Manifest
-	EntryPath string
-	Staged    bool
+	Manifest   *manifest.Manifest
+	EntryPath  string
+	Staged     bool
+	BackupPath string
 }
 
 type pluginStageHandler interface {
@@ -102,6 +103,7 @@ func (genericPluginStageHandler) Stage(ctx context.Context, agent *Agent, descri
 	}
 	outcome.Manifest = &result.Manifest
 	outcome.EntryPath = result.EntryPath
+	outcome.BackupPath = result.BackupPath
 	outcome.Staged = true
 	return outcome, nil
 }
@@ -282,6 +284,7 @@ func (a *Agent) stagePluginsFromList(ctx context.Context, snapshot *manifest.Man
 		var (
 			manifestResult *manifest.Manifest
 			entryPath      string
+			backupPath     string
 			stageErr       error
 		)
 
@@ -291,6 +294,7 @@ func (a *Agent) stagePluginsFromList(ctx context.Context, snapshot *manifest.Man
 			if err == nil {
 				manifestResult = &res.Manifest
 				entryPath = res.EntryPath
+				backupPath = res.BackupPath
 			}
 		} else {
 			outcome, err := handler.Stage(stageCtx, a, entry)
@@ -298,10 +302,11 @@ func (a *Agent) stagePluginsFromList(ctx context.Context, snapshot *manifest.Man
 			if err == nil && outcome.Manifest != nil {
 				manifestResult = outcome.Manifest
 				entryPath = outcome.EntryPath
+				backupPath = outcome.BackupPath
 			}
 		}
 		if stageErr == nil && manifestResult != nil {
-			if err := a.activatePlugin(stageCtx, *manifestResult, entryPath); err != nil {
+			if err := a.activatePlugin(stageCtx, *manifestResult, entryPath, backupPath); err != nil {
 				stageErr = err
 				manifestResult = nil
 			}
@@ -471,7 +476,7 @@ func (a *Agent) handlePluginRemoval(ctx context.Context, pluginIDs []string) err
 	return resultErr
 }
 
-func (a *Agent) activatePlugin(ctx context.Context, mf manifest.Manifest, entryPath string) error {
+func (a *Agent) activatePlugin(ctx context.Context, mf manifest.Manifest, entryPath, backupPath string) error {
 	if a.modules == nil {
 		return nil
 	}
@@ -483,12 +488,37 @@ func (a *Agent) activatePlugin(ctx context.Context, mf manifest.Manifest, entryP
 	if entryPath == "" {
 		return fmt.Errorf("plugin %s entry path not resolved", pluginID)
 	}
+	backupPath = strings.TrimSpace(backupPath)
+	var pluginDir string
+	if backupPath != "" && a.plugins != nil {
+		if root := strings.TrimSpace(a.plugins.Root()); root != "" {
+			pluginDir = filepath.Join(root, pluginID)
+		}
+	}
+
+	restoreOnFailure := func(err error) error {
+		if backupPath == "" || pluginDir == "" {
+			return err
+		}
+		if restoreErr := plugins.RestorePluginBackup(pluginDir, backupPath); restoreErr != nil {
+			if a.logger != nil {
+				a.logger.Printf("plugin sync: failed to restore %s from backup: %v", pluginID, restoreErr)
+			}
+			return fmt.Errorf("%w (restore failed: %v)", err, restoreErr)
+		}
+		if a.logger != nil {
+			a.logger.Printf("plugin sync: restored previous installation for %s after activation failure", pluginID)
+		}
+		return fmt.Errorf("%w (previous version restored)", err)
+	}
+
 	extensions := buildModuleExtensions(mf)
 	handle, err := plugins.LaunchRuntime(ctx, entryPath, plugins.RuntimeOptions{
 		Name:   pluginID,
 		Logger: a.logger,
 	})
 	if err != nil {
+		err = restoreOnFailure(err)
 		if a.plugins != nil {
 			if recordErr := plugins.RecordInstallStatus(a.plugins, pluginID, strings.TrimSpace(mf.Version), manifest.InstallError, err.Error()); recordErr != nil && a.logger != nil {
 				a.logger.Printf("plugin sync: failed to record install status for %s: %v", pluginID, recordErr)
@@ -499,12 +529,18 @@ func (a *Agent) activatePlugin(ctx context.Context, mf manifest.Manifest, entryP
 
 	if err := a.modules.ActivatePlugin(ctx, pluginID, extensions, handle); err != nil {
 		_ = handle.Shutdown(ctx)
+		err = restoreOnFailure(err)
 		if a.plugins != nil {
 			if recordErr := plugins.RecordInstallStatus(a.plugins, pluginID, strings.TrimSpace(mf.Version), manifest.InstallError, err.Error()); recordErr != nil && a.logger != nil {
 				a.logger.Printf("plugin sync: failed to record install status for %s: %v", pluginID, recordErr)
 			}
 		}
 		return err
+	}
+	if backupPath != "" {
+		if err := os.RemoveAll(backupPath); err != nil && a.logger != nil {
+			a.logger.Printf("plugin sync: failed to remove backup for %s: %v", pluginID, err)
+		}
 	}
 	return nil
 }
