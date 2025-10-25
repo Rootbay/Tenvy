@@ -705,6 +705,82 @@ func TestStagePluginsFromListRegistersCapabilitiesForCustomPlugin(t *testing.T) 
 	}
 }
 
+func TestStagePluginsFromListDefersConflictingDescriptors(t *testing.T) {
+	t.Parallel()
+
+	pluginID := "conflict-plugin"
+	pluginRoot := t.TempDir()
+	manager, err := plugins.NewManager(pluginRoot, log.New(io.Discard, "", 0), manifest.VerifyOptions{})
+	if err != nil {
+		t.Fatalf("new plugin manager: %v", err)
+	}
+
+	handler := &testPluginStageHandler{}
+	pluginStages.Register(pluginID, handler)
+	t.Cleanup(func() {
+		pluginStages.Unregister(pluginID)
+	})
+
+	agent := &Agent{
+		id:      "agent-1",
+		plugins: manager,
+		client:  &http.Client{},
+		modules: newDefaultModuleManager(),
+		logger:  log.New(io.Discard, "", 0),
+	}
+
+	snapshot := &manifest.ManifestList{
+		Version: "4",
+		Manifests: []manifest.ManifestDescriptor{
+			{
+				PluginID:       pluginID,
+				ManifestDigest: "digest-1",
+				Version:        "1.2.3",
+			},
+			{
+				PluginID:       pluginID,
+				ManifestDigest: "digest-2",
+				Version:        "1.4.0",
+			},
+		},
+	}
+
+	err = agent.stagePluginsFromList(context.Background(), snapshot)
+	if err == nil {
+		t.Fatal("expected conflict error")
+	}
+	if !strings.Contains(err.Error(), "manifest conflict") {
+		t.Fatalf("expected conflict error, got %v", err)
+	}
+	if handler.calls != 0 {
+		t.Fatalf("expected handler to be skipped, invoked %d times", handler.calls)
+	}
+
+	statusPath := filepath.Join(pluginRoot, pluginID, ".status.json")
+	data, readErr := os.ReadFile(statusPath)
+	if readErr != nil {
+		t.Fatalf("read status: %v", readErr)
+	}
+
+	var status struct {
+		Version string `json:"version"`
+		State   string `json:"status"`
+		Error   string `json:"error"`
+	}
+	if decodeErr := json.Unmarshal(data, &status); decodeErr != nil {
+		t.Fatalf("decode status: %v", decodeErr)
+	}
+	if !strings.EqualFold(status.State, string(manifest.InstallBlocked)) {
+		t.Fatalf("expected status blocked, got %q", status.State)
+	}
+	if status.Version != "1.4.0" {
+		t.Fatalf("expected preferred version recorded, got %q", status.Version)
+	}
+	if !strings.Contains(status.Error, "conflicting manifests") {
+		t.Fatalf("expected conflict message, got %q", status.Error)
+	}
+}
+
 type testPluginStageHandler struct {
 	outcome pluginStageOutcome
 	err     error

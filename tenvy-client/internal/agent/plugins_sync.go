@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -23,6 +24,13 @@ type pluginStageOutcome struct {
 	EntryPath  string
 	Staged     bool
 	BackupPath string
+}
+
+type manifestConflict struct {
+	PluginID  string
+	Preferred *manifest.ManifestDescriptor
+	Summary   string
+	Message   string
 }
 
 type pluginStageHandler interface {
@@ -271,7 +279,25 @@ func (a *Agent) stagePluginsFromList(ctx context.Context, snapshot *manifest.Man
 	}
 
 	var resultErr error
-	for _, entry := range snapshot.Manifests {
+	resolved, conflicts := resolveManifestDescriptorConflicts(snapshot.Manifests)
+
+	for _, conflict := range conflicts {
+		if a.logger != nil {
+			a.logger.Printf("plugin sync: manifest conflict for %s: %s", conflict.PluginID, conflict.Message)
+		}
+		if a.plugins != nil {
+			version := ""
+			if conflict.Preferred != nil {
+				version = strings.TrimSpace(conflict.Preferred.Version)
+			}
+			if err := plugins.RecordInstallStatus(a.plugins, conflict.PluginID, version, manifest.InstallBlocked, conflict.Message); err != nil && a.logger != nil {
+				a.logger.Printf("plugin sync: failed to record conflict status for %s: %v", conflict.PluginID, err)
+			}
+		}
+		resultErr = combineErrors(resultErr, fmt.Errorf("manifest conflict for %s: %s", conflict.PluginID, conflict.Summary))
+	}
+
+	for _, entry := range resolved {
 		id := strings.TrimSpace(entry.PluginID)
 		handler := pluginStages.Lookup(id)
 		if handler == nil {
@@ -345,6 +371,227 @@ func (a *Agent) stagePluginsFromList(ctx context.Context, snapshot *manifest.Man
 	}
 
 	return resultErr
+}
+
+type semverParts struct {
+	major      int
+	minor      int
+	patch      int
+	prerelease string
+}
+
+func resolveManifestDescriptorConflicts(entries []manifest.ManifestDescriptor) ([]manifest.ManifestDescriptor, []manifestConflict) {
+	type group struct {
+		pluginID    string
+		descriptors []manifest.ManifestDescriptor
+	}
+
+	groups := make([]group, 0)
+	index := make(map[string]int)
+
+	for _, entry := range entries {
+		pluginID := strings.TrimSpace(entry.PluginID)
+		if pluginID == "" {
+			continue
+		}
+		normalized := strings.ToLower(pluginID)
+		if idx, ok := index[normalized]; ok {
+			groups[idx].descriptors = append(groups[idx].descriptors, entry)
+			continue
+		}
+		index[normalized] = len(groups)
+		groups = append(groups, group{pluginID: pluginID, descriptors: []manifest.ManifestDescriptor{entry}})
+	}
+
+	resolved := make([]manifest.ManifestDescriptor, 0, len(entries))
+	conflicts := make([]manifestConflict, 0)
+
+	for _, group := range groups {
+		unique := deduplicateManifestDescriptors(group.descriptors)
+		if len(unique) == 0 {
+			continue
+		}
+		if len(unique) == 1 {
+			resolved = append(resolved, unique[0])
+			continue
+		}
+
+		conflict := analyzeManifestConflict(group.pluginID, unique)
+		conflicts = append(conflicts, conflict)
+	}
+
+	return resolved, conflicts
+}
+
+func deduplicateManifestDescriptors(entries []manifest.ManifestDescriptor) []manifest.ManifestDescriptor {
+	unique := make([]manifest.ManifestDescriptor, 0, len(entries))
+
+	for _, entry := range entries {
+		version := strings.TrimSpace(entry.Version)
+		digest := strings.TrimSpace(entry.ManifestDigest)
+		found := false
+		for _, existing := range unique {
+			if strings.EqualFold(strings.TrimSpace(existing.Version), version) && strings.TrimSpace(existing.ManifestDigest) == digest {
+				found = true
+				break
+			}
+		}
+		if !found {
+			unique = append(unique, entry)
+		}
+	}
+
+	return unique
+}
+
+func analyzeManifestConflict(pluginID string, descriptors []manifest.ManifestDescriptor) manifestConflict {
+	conflict := manifestConflict{PluginID: pluginID}
+
+	summaryParts := make([]string, 0, len(descriptors))
+	for _, descriptor := range descriptors {
+		version := strings.TrimSpace(descriptor.Version)
+		if version == "" {
+			version = "unspecified"
+		}
+		digest := strings.TrimSpace(descriptor.ManifestDigest)
+		if digest == "" {
+			digest = "no digest"
+		}
+		if manual := strings.TrimSpace(descriptor.ManualPushAt); manual != "" {
+			summaryParts = append(summaryParts, fmt.Sprintf("version %s (digest %s, manual %s)", version, digest, manual))
+		} else {
+			summaryParts = append(summaryParts, fmt.Sprintf("version %s (digest %s)", version, digest))
+		}
+	}
+	conflict.Summary = strings.Join(summaryParts, "; ")
+
+	if idx := selectPreferredDescriptor(descriptors); idx >= 0 {
+		selected := descriptors[idx]
+		conflict.Preferred = &selected
+	}
+
+	message := fmt.Sprintf("conflicting manifests detected: %s", conflict.Summary)
+	if conflict.Preferred != nil {
+		if version := strings.TrimSpace(conflict.Preferred.Version); version != "" {
+			message = fmt.Sprintf("%s; preferred %s", message, version)
+		}
+	}
+	conflict.Message = message + "; staging deferred"
+	return conflict
+}
+
+func selectPreferredDescriptor(descriptors []manifest.ManifestDescriptor) int {
+	bestIndex := -1
+	var bestParts semverParts
+	bestValid := false
+	ambiguous := false
+
+	for idx, descriptor := range descriptors {
+		parts, valid := parseSemverParts(descriptor.Version)
+		switch {
+		case bestIndex == -1 && valid:
+			bestIndex = idx
+			bestParts = parts
+			bestValid = true
+			ambiguous = false
+		case bestIndex == -1 && !valid:
+			bestIndex = idx
+			bestValid = false
+		case !bestValid && valid:
+			bestIndex = idx
+			bestParts = parts
+			bestValid = true
+			ambiguous = false
+		case bestValid && valid:
+			cmp := compareSemverParts(parts, bestParts)
+			if cmp > 0 {
+				bestIndex = idx
+				bestParts = parts
+				ambiguous = false
+			} else if cmp == 0 {
+				ambiguous = true
+			}
+		case bestValid && !valid:
+			// keep current best
+		default:
+			ambiguous = true
+		}
+	}
+
+	if !bestValid || bestIndex < 0 || ambiguous {
+		return -1
+	}
+	return bestIndex
+}
+
+func parseSemverParts(value string) (semverParts, bool) {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" {
+		return semverParts{}, false
+	}
+	core := trimmed
+	if idx := strings.Index(core, "+"); idx >= 0 {
+		core = core[:idx]
+	}
+	prerelease := ""
+	if idx := strings.Index(core, "-"); idx >= 0 {
+		prerelease = core[idx+1:]
+		core = core[:idx]
+	}
+	parts := strings.Split(core, ".")
+	if len(parts) != 3 {
+		return semverParts{}, false
+	}
+	major, err := strconv.Atoi(parts[0])
+	if err != nil {
+		return semverParts{}, false
+	}
+	minor, err := strconv.Atoi(parts[1])
+	if err != nil {
+		return semverParts{}, false
+	}
+	patch, err := strconv.Atoi(parts[2])
+	if err != nil {
+		return semverParts{}, false
+	}
+	return semverParts{major: major, minor: minor, patch: patch, prerelease: prerelease}, true
+}
+
+func compareSemverParts(left, right semverParts) int {
+	if left.major != right.major {
+		if left.major < right.major {
+			return -1
+		}
+		return 1
+	}
+	if left.minor != right.minor {
+		if left.minor < right.minor {
+			return -1
+		}
+		return 1
+	}
+	if left.patch != right.patch {
+		if left.patch < right.patch {
+			return -1
+		}
+		return 1
+	}
+	if left.prerelease == right.prerelease {
+		return 0
+	}
+	if left.prerelease == "" {
+		return 1
+	}
+	if right.prerelease == "" {
+		return -1
+	}
+	if left.prerelease < right.prerelease {
+		return -1
+	}
+	if left.prerelease > right.prerelease {
+		return 1
+	}
+	return 0
 }
 
 func (a *Agent) pluginRuntimeFacts() manifest.RuntimeFacts {
