@@ -6,6 +6,7 @@ import type { RequestHandler } from './$types';
 import { createPluginRepository } from '$lib/data/plugins.js';
 import { loadPluginManifests } from '$lib/data/plugin-manifests.js';
 import { getVerificationOptions } from '$lib/server/plugins/signature-policy.js';
+import { requireDeveloper } from '$lib/server/authorization.js';
 import {
         ArchiveExtractionError,
         extractPluginArchive,
@@ -92,7 +93,9 @@ export const GET: RequestHandler = async () => {
         return json({ plugins });
 };
 
-export const POST: RequestHandler = async ({ request }) => {
+export const POST: RequestHandler = async ({ locals, request }) => {
+        requireDeveloper(locals.user);
+
         const contentType = request.headers.get('content-type') ?? '';
         if (!contentType.toLowerCase().includes('multipart/form-data')) {
                 throw error(415, { message: 'Expected multipart form data upload' });
