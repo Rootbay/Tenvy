@@ -43,6 +43,14 @@ export interface AgentPluginRecord {
 }
 
 const MANIFEST_CACHE_TTL_MS = 30_000;
+const AGENT_MANIFEST_CACHE_TTL_MS = 5_000;
+
+interface AgentManifestFilterRecord {
+        disabled: Set<string>;
+        fetchedAt: number;
+}
+
+const agentManifestFilterCache = new Map<string, AgentManifestFilterRecord>();
 
 function toDate(value: number | string | Date | null | undefined): Date | null {
 	if (value == null) return null;
@@ -539,10 +547,10 @@ export class PluginTelemetryStore {
 		return { version: snapshot.version, manifests } satisfies PluginManifestSnapshot;
 	}
 
-	async getManifestDelta(state?: AgentPluginManifestState): Promise<PluginManifestDelta> {
-		const snapshot = await this.ensureManifestSnapshot();
-		const knownVersion = state?.version?.trim() ?? '';
-		const knownDigests = state?.digests ?? {};
+        async getManifestDelta(state?: AgentPluginManifestState): Promise<PluginManifestDelta> {
+                const snapshot = await this.ensureManifestSnapshot();
+                const knownVersion = state?.version?.trim() ?? '';
+                const knownDigests = state?.digests ?? {};
 
 		if (knownVersion && knownVersion === snapshot.version) {
 			return { version: snapshot.version, updated: [], removed: [] } satisfies PluginManifestDelta;
@@ -577,8 +585,72 @@ export class PluginTelemetryStore {
 			}
 		}
 
-		return { version: snapshot.version, updated, removed } satisfies PluginManifestDelta;
-	}
+                return { version: snapshot.version, updated, removed } satisfies PluginManifestDelta;
+        }
+
+        async getAgentManifestDelta(
+                agentId: string,
+                state?: AgentPluginManifestState
+        ): Promise<PluginManifestDelta> {
+                const trimmedId = agentId.trim();
+                if (trimmedId.length === 0) {
+                        return this.getManifestDelta(state);
+                }
+
+                const snapshot = await this.ensureManifestSnapshot();
+                const disabledPlugins = await this.loadAgentDisabledPlugins(trimmedId);
+                const entries = snapshot.entries.filter((entry) => !disabledPlugins.has(entry.pluginId));
+
+                const disabledFingerprint = Array.from(disabledPlugins).sort().join('|');
+                let version = snapshot.version;
+                if (disabledFingerprint.length > 0) {
+                        version = createHash('sha256')
+                                .update(`${snapshot.version}|disabled:${disabledFingerprint}`, 'utf8')
+                                .digest('hex');
+                }
+
+                const knownVersion = state?.version?.trim() ?? '';
+                const knownDigests = state?.digests ?? {};
+
+                if (knownVersion && knownVersion === version) {
+                        return { version, updated: [], removed: [] } satisfies PluginManifestDelta;
+                }
+
+                const serverIndex = new Map(entries.map((entry) => [entry.pluginId, entry]));
+                const removedSet = new Set<string>();
+                for (const pluginId of Object.keys(knownDigests)) {
+                        if (!serverIndex.has(pluginId)) {
+                                removedSet.add(pluginId);
+                        }
+                }
+                for (const pluginId of disabledPlugins) {
+                        removedSet.add(pluginId);
+                }
+                const removed = Array.from(removedSet);
+
+                const updated: PluginManifestDescriptor[] = [];
+                for (const entry of entries) {
+                        const digest = knownDigests?.[entry.pluginId];
+                        const fingerprint = buildDescriptorFingerprint(
+                                entry.manifestDigest,
+                                entry.manualPushAt ?? null
+                        );
+                        if (!digest || digest !== fingerprint) {
+                                updated.push({
+                                        pluginId: entry.pluginId,
+                                        version: entry.version,
+                                        manifestDigest: entry.manifestDigest,
+                                        artifactHash: entry.artifactHash ?? null,
+                                        artifactSizeBytes: entry.artifactSizeBytes ?? null,
+                                        approvedAt: entry.approvedAt ?? null,
+                                        manualPushAt: entry.manualPushAt ?? null,
+                                        distribution: { ...entry.distribution }
+                                });
+                        }
+                }
+
+                return { version, updated, removed } satisfies PluginManifestDelta;
+        }
 
 	async getApprovedManifest(
 		pluginId: string
@@ -701,12 +773,12 @@ export class PluginTelemetryStore {
 		}));
 	}
 
-	async updateAgentPlugin(
-		agentId: string,
-		pluginId: string,
-		patch: Partial<{ enabled: boolean }>
-	): Promise<void> {
-		if (patch.enabled === undefined) {
+        async updateAgentPlugin(
+                agentId: string,
+                pluginId: string,
+                patch: Partial<{ enabled: boolean }>
+        ): Promise<void> {
+                if (patch.enabled === undefined) {
 			return;
 		}
 		const now = new Date();
@@ -719,11 +791,11 @@ export class PluginTelemetryStore {
 					eq(pluginInstallationTable.pluginId, pluginId)
 				)
 			);
-		if (result.rowsAffected === 0) {
-			await db
-				.insert(pluginInstallationTable)
-				.values({
-					pluginId,
+                if (result.rowsAffected === 0) {
+                        await db
+                                .insert(pluginInstallationTable)
+                                .values({
+                                        pluginId,
 					agentId,
 					status: 'pending',
 					version: 'unknown',
@@ -734,11 +806,12 @@ export class PluginTelemetryStore {
 					lastCheckedAt: now,
 					createdAt: now,
 					updatedAt: now
-				})
-				.onConflictDoNothing();
-		}
-		await this.refreshAggregates(pluginId);
-	}
+                                })
+                                .onConflictDoNothing();
+                }
+                this.invalidateAgentManifestCache(agentId);
+                await this.refreshAggregates(pluginId);
+        }
 
 	async recordManualPush(_agentId: string, pluginId: string): Promise<void> {
 		const trimmed = pluginId.trim();
@@ -859,11 +932,11 @@ export class PluginTelemetryStore {
 		this.manifestSnapshot = null;
 	}
 
-	private async refreshAggregates(pluginId: string): Promise<void> {
-		const [row] = await db
-			.select({
-				installed: sql<number>`sum(CASE WHEN ${pluginInstallationTable.status} = 'installed' THEN 1 ELSE 0 END)`,
-				blocked: sql<number>`sum(CASE WHEN ${pluginInstallationTable.status} = 'blocked' THEN 1 ELSE 0 END)`,
+        private async refreshAggregates(pluginId: string): Promise<void> {
+                const [row] = await db
+                        .select({
+                                installed: sql<number>`sum(CASE WHEN ${pluginInstallationTable.status} = 'installed' THEN 1 ELSE 0 END)`,
+                                blocked: sql<number>`sum(CASE WHEN ${pluginInstallationTable.status} = 'blocked' THEN 1 ELSE 0 END)`,
 				lastDeployedAt: sql<Date | null>`max(${pluginInstallationTable.lastDeployedAt})`,
 				lastCheckedAt: sql<Date | null>`max(${pluginInstallationTable.lastCheckedAt})`
 			})
@@ -884,13 +957,55 @@ export class PluginTelemetryStore {
 			patch.status = 'error';
 		}
 
-		await this.runtimeStore.update(pluginId, patch);
-	}
+                await this.runtimeStore.update(pluginId, patch);
+        }
 
-	private async recordAuditEvent(
-		agentId: string,
-		pluginId: string,
-		status: string,
+        private async loadAgentDisabledPlugins(agentId: string): Promise<Set<string>> {
+                const trimmed = agentId.trim();
+                if (trimmed.length === 0) {
+                        return new Set();
+                }
+
+                const now = Date.now();
+                const cached = agentManifestFilterCache.get(trimmed);
+                if (cached && now - cached.fetchedAt < AGENT_MANIFEST_CACHE_TTL_MS) {
+                        return new Set(cached.disabled);
+                }
+
+                const rows = await db
+                        .select({ pluginId: pluginInstallationTable.pluginId })
+                        .from(pluginInstallationTable)
+                        .where(
+                                and(
+                                        eq(pluginInstallationTable.agentId, trimmed),
+                                        eq(pluginInstallationTable.enabled, false)
+                                )
+                        );
+
+                const disabled = new Set<string>();
+                for (const row of rows) {
+                        const pluginId = row.pluginId?.trim();
+                        if (pluginId) {
+                                disabled.add(pluginId);
+                        }
+                }
+
+                agentManifestFilterCache.set(trimmed, { disabled, fetchedAt: now });
+                return new Set(disabled);
+        }
+
+        private invalidateAgentManifestCache(agentId: string): void {
+                const trimmed = agentId.trim();
+                if (trimmed.length === 0) {
+                        return;
+                }
+                agentManifestFilterCache.delete(trimmed);
+        }
+
+        private async recordAuditEvent(
+                agentId: string,
+                pluginId: string,
+                status: string,
 		reason: string
 	): Promise<void> {
 		try {
