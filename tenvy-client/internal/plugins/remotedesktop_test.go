@@ -100,7 +100,7 @@ func TestStageRemoteDesktopEngineSuccess(t *testing.T) {
                 "license": { "spdxId": "MIT" },
                 "requirements": {},
                 "distribution": {"defaultMode": "automatic", "autoUpdate": true, "signature": "ed25519", "signatureHash": "%[1]s", "signatureSigner": "%[2]s", "signatureValue": "%[3]s", "signatureTimestamp": "%[4]s"},
-                "package": {"artifact": "remote-desktop-engine/remote-desktop-engine.zip", "hash": "%[1]s"}
+                "package": {"artifact": "remote-desktop-engine.zip", "hash": "%[1]s"}
         }`, hashHex, releaseSigner, signatureValue, releaseSignedAtStamp)
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -152,7 +152,7 @@ func TestStageRemoteDesktopEngineSuccess(t *testing.T) {
 		t.Fatalf("unexpected entry payload %q", string(entryPayload))
 	}
 
-	artifactPath := filepath.Join(manager.Root(), plugins.RemoteDesktopEnginePluginID, "remote-desktop-engine", "remote-desktop-engine.zip")
+	artifactPath := filepath.Join(manager.Root(), plugins.RemoteDesktopEnginePluginID, "remote-desktop-engine.zip")
 	if _, err := os.Stat(artifactPath); err != nil {
 		t.Fatalf("expected artifact persisted: %v", err)
 	}
@@ -194,7 +194,7 @@ func TestStageRemoteDesktopEngineSuccessTarGz(t *testing.T) {
                 "license": {"spdxId": "MIT"},
                 "requirements": {},
                 "distribution": {"defaultMode": "automatic", "autoUpdate": true, "signature": "ed25519", "signatureHash": "%[1]s", "signatureSigner": "%[2]s", "signatureValue": "%[3]s", "signatureTimestamp": "%[4]s"},
-                "package": {"artifact": "remote-desktop-engine/remote-desktop-engine.tar.gz", "hash": "%[1]s"}
+                "package": {"artifact": "remote-desktop-engine.tar.gz", "hash": "%[1]s"}
         }`, hashHex, releaseSigner, signatureValue, releaseSignedAtStamp)
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -246,7 +246,7 @@ func TestStageRemoteDesktopEngineSuccessTarGz(t *testing.T) {
 		t.Fatalf("unexpected entry payload %q", string(entryPayload))
 	}
 
-	artifactPath := filepath.Join(manager.Root(), plugins.RemoteDesktopEnginePluginID, "remote-desktop-engine", "remote-desktop-engine.tar.gz")
+	artifactPath := filepath.Join(manager.Root(), plugins.RemoteDesktopEnginePluginID, "remote-desktop-engine.tar.gz")
 	if _, err := os.Stat(artifactPath); err != nil {
 		t.Fatalf("expected artifact persisted: %v", err)
 	}
@@ -269,7 +269,7 @@ func TestStageRemoteDesktopEngineFailsMalformedTarGz(t *testing.T) {
                 "license": {"spdxId": "MIT"},
                 "requirements": {},
                 "distribution": {"defaultMode": "automatic", "autoUpdate": true, "signature": "ed25519", "signatureHash": "%[1]s", "signatureSigner": "%[2]s", "signatureValue": "%[3]s", "signatureTimestamp": "%[4]s"},
-                "package": {"artifact": "remote-desktop-engine/remote-desktop-engine.tar.gz", "hash": "%[1]s"}
+                "package": {"artifact": "remote-desktop-engine.tar.gz", "hash": "%[1]s"}
         }`, hashHex, releaseSigner, signatureValue, releaseSignedAtStamp)
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -437,7 +437,7 @@ func TestStageRemoteDesktopEngineAllowsManualWhenRequested(t *testing.T) {
                 "license": {"spdxId": "MIT"},
                 "requirements": {"platforms": ["windows"], "architectures": ["x86_64"]},
                 "distribution": {"defaultMode": "manual", "autoUpdate": false, "signature": "ed25519", "signatureHash": "%[1]s", "signatureSigner": "%[2]s", "signatureValue": "%[3]s", "signatureTimestamp": "%[4]s"},
-                "package": {"artifact": "remote-desktop-engine/remote-desktop-engine.zip", "hash": "%[1]s"}
+                "package": {"artifact": "remote-desktop-engine.zip", "hash": "%[1]s"}
         }`, hashHex, releaseSigner, signatureValue, releaseSignedAtStamp)
 
 	var artifactServed atomic.Bool
@@ -530,7 +530,7 @@ func TestStageRemoteDesktopEngineBlocksIncompatiblePlatform(t *testing.T) {
                 "license": {"spdxId": "MIT"},
                 "requirements": {"platforms": ["windows"]},
                 "distribution": {"defaultMode": "manual", "autoUpdate": false, "signature": "ed25519", "signatureHash": "%[1]s", "signatureSigner": "%[2]s", "signatureValue": "%[3]s", "signatureTimestamp": "%[4]s"},
-                "package": {"artifact": "remote-desktop-engine/remote-desktop-engine.zip", "hash": "%[1]s"}
+                "package": {"artifact": "remote-desktop-engine.zip", "hash": "%[1]s"}
         }`, hashHex, releaseSigner, signatureValue, releaseSignedAtStamp)
 
 	var artifactRequested atomic.Bool
@@ -605,7 +605,7 @@ func TestStageRemoteDesktopEngineBlocksIncompatibleArchitecture(t *testing.T) {
                 "license": {"spdxId": "MIT"},
                 "requirements": {"architectures": ["arm64"]},
                 "distribution": {"defaultMode": "manual", "autoUpdate": false, "signature": "ed25519", "signatureHash": "%[1]s", "signatureSigner": "%[2]s", "signatureValue": "%[3]s", "signatureTimestamp": "%[4]s"},
-                "package": {"artifact": "remote-desktop-engine/remote-desktop-engine.zip", "hash": "%[1]s"}
+                "package": {"artifact": "remote-desktop-engine.zip", "hash": "%[1]s"}
         }`, hashHex, releaseSigner, signatureValue, releaseSignedAtStamp)
 
 	var artifactRequested atomic.Bool
@@ -680,7 +680,7 @@ func TestStageRemoteDesktopEngineBlocksIncompatibleAgentVersion(t *testing.T) {
                 "license": {"spdxId": "MIT"},
                 "requirements": {"minAgentVersion": "5.0.0"},
                 "distribution": {"defaultMode": "manual", "autoUpdate": false, "signature": "ed25519", "signatureHash": "%[1]s", "signatureSigner": "%[2]s", "signatureValue": "%[3]s", "signatureTimestamp": "%[4]s"},
-                "package": {"artifact": "remote-desktop-engine/remote-desktop-engine.zip", "hash": "%[1]s"}
+                "package": {"artifact": "remote-desktop-engine.zip", "hash": "%[1]s"}
         }`, hashHex, releaseSigner, signatureValue, releaseSignedAtStamp)
 
 	var artifactRequested atomic.Bool

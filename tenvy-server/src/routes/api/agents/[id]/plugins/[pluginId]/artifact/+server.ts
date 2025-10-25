@@ -1,6 +1,6 @@
 import { createReadStream } from 'node:fs';
 import { stat } from 'node:fs/promises';
-import { dirname, resolve, normalize, isAbsolute, sep } from 'node:path';
+import { dirname, resolve, sep } from 'node:path';
 import { error } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { registry, RegistryError } from '$lib/server/rat/store.js';
@@ -38,13 +38,12 @@ export const GET: RequestHandler = async ({ params, request }) => {
                 throw error(404, 'Plugin artifact not found');
         }
 
-        const normalized = normalize(trimmed);
-        if (normalized === '' || normalized.startsWith('..') || isAbsolute(normalized)) {
+        if (trimmed.includes('/') || trimmed.includes('\\')) {
                 throw error(404, 'Plugin artifact not found');
         }
 
         const baseDir = dirname(approved.record.source);
-        const artifactPath = resolve(baseDir, normalized);
+        const artifactPath = resolve(baseDir, trimmed);
         const safeBase = baseDir.endsWith(sep) ? baseDir : `${baseDir}${sep}`;
         if (!artifactPath.startsWith(safeBase)) {
                 throw error(404, 'Plugin artifact not found');

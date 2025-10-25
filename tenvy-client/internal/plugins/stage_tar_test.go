@@ -37,7 +37,7 @@ func TestStagePluginStagesTarGzArtifact(t *testing.T) {
                 "license": {"spdxId": "MIT"},
                 "requirements": {},
                 "distribution": {"defaultMode": "automatic", "autoUpdate": true, "signature": "ed25519", "signatureHash": "%[1]s", "signatureSigner": "%[2]s", "signatureValue": "%[3]s", "signatureTimestamp": "%[4]s"},
-                "package": {"artifact": "awesome-plugin/awesome-plugin.tar.gz", "hash": "%[1]s"}
+                "package": {"artifact": "awesome-plugin.tar.gz", "hash": "%[1]s"}
         }`, hashHex, releaseSigner, signatureValue, releaseSignedAtStamp)
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -91,7 +91,7 @@ func TestStagePluginStagesTarGzArtifact(t *testing.T) {
 		t.Fatalf("unexpected entry payload %q", string(payload))
 	}
 
-	artifactPath := filepath.Join(manager.Root(), "awesome-plugin", "awesome-plugin", "awesome-plugin.tar.gz")
+	artifactPath := filepath.Join(manager.Root(), "awesome-plugin", "awesome-plugin.tar.gz")
 	if _, err := os.Stat(artifactPath); err != nil {
 		t.Fatalf("expected artifact persisted: %v", err)
 	}
@@ -118,7 +118,7 @@ func TestStagePluginFailsOnMalformedTarGz(t *testing.T) {
                 "license": {"spdxId": "MIT"},
                 "requirements": {},
                 "distribution": {"defaultMode": "automatic", "autoUpdate": true, "signature": "ed25519", "signatureHash": "%[1]s", "signatureSigner": "%[2]s", "signatureValue": "%[3]s", "signatureTimestamp": "%[4]s"},
-                "package": {"artifact": "broken-plugin/broken-plugin.tar.gz", "hash": "%[1]s"}
+                "package": {"artifact": "broken-plugin.tar.gz", "hash": "%[1]s"}
         }`, hashHex, releaseSigner, signatureValue, releaseSignedAtStamp)
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

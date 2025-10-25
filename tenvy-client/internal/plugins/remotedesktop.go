@@ -144,8 +144,15 @@ func StageRemoteDesktopEngine(
 		return result, errors.New(message)
 	}
 
-	artifactRel := filepath.Clean(filepath.FromSlash(mf.Package.Artifact))
-	if artifactRel == "" || strings.HasPrefix(artifactRel, "..") {
+	artifactRef := strings.TrimSpace(mf.Package.Artifact)
+	if artifactRef == "" || strings.ContainsAny(artifactRef, "/\\") {
+		message := "manifest artifact path is invalid"
+		manager.recordInstallStatusLocked(RemoteDesktopEnginePluginID, mf.Version, manifest.InstallError, message)
+		return result, errors.New(message)
+	}
+
+	artifactRel := filepath.Clean(artifactRef)
+	if artifactRel == "" || artifactRel == "." || strings.HasPrefix(artifactRel, "..") {
 		message := "manifest artifact path is invalid"
 		manager.recordInstallStatusLocked(RemoteDesktopEnginePluginID, mf.Version, manifest.InstallError, message)
 		return result, errors.New(message)

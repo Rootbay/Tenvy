@@ -296,9 +296,12 @@ func (m Manifest) Validate() error {
 	if err := m.validateLicense(); err != nil {
 		problems = append(problems, err)
 	}
-	if strings.TrimSpace(m.Package.Artifact) == "" {
-		problems = append(problems, errors.New("missing package artifact"))
-	}
+        artifact := strings.TrimSpace(m.Package.Artifact)
+        if artifact == "" {
+                problems = append(problems, errors.New("missing package artifact"))
+        } else if strings.ContainsAny(artifact, "/\\") {
+                problems = append(problems, errors.New("package artifact must be a file name"))
+        }
 
 	if err := m.validateDistribution(); err != nil {
 		problems = append(problems, err)

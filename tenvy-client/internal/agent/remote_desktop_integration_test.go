@@ -57,7 +57,7 @@ func TestRemoteDesktopModuleNegotiationWithManagedEngine(t *testing.T) {
 			SignatureHash: hashHex,
 		},
 		Package: manifest.PackageDescriptor{
-			Artifact: "remote-desktop-engine/engine.zip",
+			Artifact: "remote-desktop-engine.zip",
 			Hash:     hashHex,
 		},
 	})
