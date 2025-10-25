@@ -423,10 +423,11 @@ type AgentSyncRequest struct {
 }
 
 type AgentSyncResponse struct {
-	AgentID    string      `json:"agentId"`
-	Commands   []Command   `json:"commands"`
-	Config     AgentConfig `json:"config"`
-	ServerTime string      `json:"serverTime"`
+	AgentID         string                  `json:"agentId"`
+	Commands        []Command               `json:"commands"`
+	Config          AgentConfig             `json:"config"`
+	ServerTime      string                  `json:"serverTime"`
+	PluginManifests *manifest.ManifestDelta `json:"pluginManifests,omitempty"`
 }
 
 type PingCommandPayload struct {

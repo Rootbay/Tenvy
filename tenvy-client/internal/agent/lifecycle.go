@@ -126,6 +126,11 @@ func (a *Agent) sync(ctx context.Context, status string) error {
 	if a.plugins != nil {
 		a.plugins.UpdateVerification(deriveSignatureVerifyOptions(a.config, a.logger))
 	}
+	if payload.PluginManifests != nil {
+		if err := a.applyPluginManifestDelta(ctx, payload.PluginManifests); err != nil && a.logger != nil {
+			a.logger.Printf("plugin manifest sync failed: %v", err)
+		}
+	}
 	if a.modules != nil {
 		if err := a.modules.UpdateConfig(a.moduleRuntime()); err != nil {
 			a.logger.Printf("module configuration update failed: %v", err)

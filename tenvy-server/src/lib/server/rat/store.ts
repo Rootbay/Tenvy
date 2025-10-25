@@ -1157,23 +1157,28 @@ export class AgentRegistry {
 		const commands = record.pendingCommands.map((command) => ({ ...command }));
 		record.pendingCommands = [];
 
-		if (payload.plugins?.installations?.length) {
-			await this.pluginTelemetry.syncAgent(
-				record.id,
-				record.metadata,
-				payload.plugins.installations
-			);
-		}
+                if (payload.plugins?.installations?.length) {
+                        await this.pluginTelemetry.syncAgent(
+                                record.id,
+                                record.metadata,
+                                payload.plugins.installations
+                        );
+                }
 
-		this.schedulePersist();
+                const manifestDelta = await this.pluginTelemetry.getManifestDelta(
+                        payload.plugins?.manifests
+                );
 
-		return {
-			agentId: id,
-			commands,
-			config: { ...record.config },
-			serverTime: new Date().toISOString()
-		};
-	}
+                this.schedulePersist();
+
+                return {
+                        agentId: id,
+                        commands,
+                        config: { ...record.config },
+                        serverTime: new Date().toISOString(),
+                        pluginManifests: manifestDelta
+                };
+        }
 
 	queueCommand(
 		id: string,

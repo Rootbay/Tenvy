@@ -134,6 +134,38 @@ type InstallationTelemetry struct {
 
 type SyncPayload struct {
 	Installations []InstallationTelemetry `json:"installations"`
+	Manifests     *ManifestState          `json:"manifests,omitempty"`
+}
+
+type ManifestDescriptor struct {
+	PluginID       string           `json:"pluginId"`
+	Version        string           `json:"version"`
+	ManifestDigest string           `json:"manifestDigest"`
+	ArtifactHash   string           `json:"artifactHash,omitempty"`
+	ArtifactSize   int64            `json:"artifactSizeBytes,omitempty"`
+	ApprovedAt     string           `json:"approvedAt,omitempty"`
+	Distribution   ManifestBriefing `json:"distribution"`
+}
+
+type ManifestBriefing struct {
+	DefaultMode DeliveryMode `json:"defaultMode"`
+	AutoUpdate  bool         `json:"autoUpdate"`
+}
+
+type ManifestList struct {
+	Version   string               `json:"version"`
+	Manifests []ManifestDescriptor `json:"manifests"`
+}
+
+type ManifestState struct {
+	Version string            `json:"version,omitempty"`
+	Digests map[string]string `json:"digests,omitempty"`
+}
+
+type ManifestDelta struct {
+	Version string               `json:"version"`
+	Updated []ManifestDescriptor `json:"updated"`
+	Removed []string             `json:"removed"`
 }
 
 func (m Manifest) Validate() error {

@@ -31,18 +31,19 @@ import (
 )
 
 type Config struct {
-	AgentID       string
-	BaseURL       string
-	AuthKey       string
-	HTTPClient    *http.Client
-	Logger        *log.Logger
-	UserAgent     string
-	Provider      systeminfo.AgentInfoProvider
-	BuildVersion  string
-	AgentConfig   protocol.AgentConfig
-	Plugins       *plugins.Manager
-	ActiveModules []string
-	Extensions    ModuleExtensionRegistry
+	AgentID         string
+	BaseURL         string
+	AuthKey         string
+	HTTPClient      *http.Client
+	Logger          *log.Logger
+	UserAgent       string
+	Provider        systeminfo.AgentInfoProvider
+	BuildVersion    string
+	AgentConfig     protocol.AgentConfig
+	Plugins         *plugins.Manager
+	ActiveModules   []string
+	Extensions      ModuleExtensionRegistry
+	PluginManifests map[string]manifest.ManifestDescriptor
 }
 
 func envBool(name string) bool {
@@ -575,18 +576,19 @@ func (a *Agent) moduleRuntime() Config {
 	}
 
 	return Config{
-		AgentID:       a.id,
-		BaseURL:       a.baseURL,
-		AuthKey:       a.key,
-		HTTPClient:    a.client,
-		Logger:        a.logger,
-		UserAgent:     a.userAgent(),
-		Provider:      a,
-		BuildVersion:  a.buildVersion,
-		AgentConfig:   a.config,
-		Plugins:       a.plugins,
-		ActiveModules: activeModules,
-		Extensions:    a.modules,
+		AgentID:         a.id,
+		BaseURL:         a.baseURL,
+		AuthKey:         a.key,
+		HTTPClient:      a.client,
+		Logger:          a.logger,
+		UserAgent:       a.userAgent(),
+		Provider:        a,
+		BuildVersion:    a.buildVersion,
+		AgentConfig:     a.config,
+		Plugins:         a.plugins,
+		ActiveModules:   activeModules,
+		Extensions:      a.modules,
+		PluginManifests: a.pluginManifestSnapshot(),
 	}
 }
 
@@ -860,6 +862,14 @@ func defaultRemoteDesktopEngineFactory(ctx context.Context, runtime Config, cfg 
 		return fallback()
 	}
 
+	descriptor, ok := runtime.PluginManifests[plugins.RemoteDesktopEnginePluginID]
+	if !ok {
+		if runtime.Logger != nil {
+			runtime.Logger.Printf("remote desktop: manifest descriptor unavailable")
+		}
+		return fallback()
+	}
+
 	stageCtx := ctx
 	if stageCtx == nil {
 		stageCtx = context.Background()
@@ -883,7 +893,7 @@ func defaultRemoteDesktopEngineFactory(ctx context.Context, runtime Config, cfg 
 		EnabledModules: append([]string(nil), runtime.ActiveModules...),
 	}
 
-	result, err := plugins.StageRemoteDesktopEngine(stageCtx, manager, client, baseURL, agentID, runtime.AuthKey, runtime.UserAgent, facts)
+	result, err := plugins.StageRemoteDesktopEngine(stageCtx, manager, client, baseURL, agentID, runtime.AuthKey, runtime.UserAgent, facts, descriptor)
 	if err != nil {
 		if runtime.Logger != nil {
 			runtime.Logger.Printf("remote desktop: engine staging failed: %v", err)

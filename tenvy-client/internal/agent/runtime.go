@@ -168,6 +168,12 @@ func runAgentOnce(ctx context.Context, opts RuntimeOptions) error {
 		agent.plugins = manager
 	}
 
+	if agent.plugins != nil {
+		if err := agent.refreshApprovedPlugins(ctx); err != nil && opts.Logger != nil {
+			opts.Logger.Printf("plugin manifest refresh failed: %v", err)
+		}
+	}
+
 	modules := newDefaultModuleManager()
 	agent.modules = modules
 	if err := modules.Init(ctx, agent.moduleRuntime()); err != nil {
