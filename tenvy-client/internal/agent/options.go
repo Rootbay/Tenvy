@@ -46,6 +46,7 @@ type RuntimeOptions struct {
 	Execution         ExecutionGates
 	CustomHeaders     []CustomHeader
 	CustomCookies     []CustomCookie
+	EnabledModules    []string
 }
 
 // TimingOverride allows build-time or environment overrides for default

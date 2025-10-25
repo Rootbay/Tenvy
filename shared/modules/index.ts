@@ -184,10 +184,12 @@ export const agentModules: AgentModuleDefinition[] = [
   },
 ];
 
-export const agentModuleIndex: ReadonlyMap<string, AgentModuleDefinition> =
+export type AgentModuleId = (typeof agentModules)[number]['id'];
+
+export const agentModuleIndex: ReadonlyMap<AgentModuleId, AgentModuleDefinition> =
   new Map(agentModules.map((module) => [module.id, module]));
 
-export const agentModuleIds: ReadonlySet<string> = new Set(
+export const agentModuleIds: ReadonlySet<AgentModuleId> = new Set(
   agentModules.map((module) => module.id),
 );
 

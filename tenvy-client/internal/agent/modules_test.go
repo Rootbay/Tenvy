@@ -186,6 +186,88 @@ func TestModuleManagerLifecycle(t *testing.T) {
 	}
 }
 
+func TestModuleManagerSetEnabledModules(t *testing.T) {
+	t.Parallel()
+
+	moduleA := &stubModule{
+		metadata: ModuleMetadata{
+			ID:       "module-a",
+			Title:    "Module A",
+			Commands: []string{"alpha"},
+		},
+	}
+
+	moduleB := &stubModule{
+		metadata: ModuleMetadata{
+			ID:       "module-b",
+			Title:    "Module B",
+			Commands: []string{"beta"},
+		},
+	}
+
+	manager := newModuleManager()
+	manager.register(moduleA)
+	manager.register(moduleB)
+
+	manager.SetEnabledModules([]string{"module-b"})
+
+	runtime := Config{AgentID: "agent-456"}
+	if err := manager.Init(context.Background(), runtime); err != nil {
+		t.Fatalf("Init returned unexpected error: %v", err)
+	}
+
+	if moduleA.initCalled != 0 {
+		t.Fatalf("expected module A to remain disabled, init called %d times", moduleA.initCalled)
+	}
+	if moduleB.initCalled != 1 {
+		t.Fatalf("expected module B to initialize once, got %d", moduleB.initCalled)
+	}
+
+	metadata := manager.Metadata()
+	if len(metadata) != 1 || metadata[0].ID != "module-b" {
+		t.Fatalf("expected only enabled module metadata, got %+v", metadata)
+	}
+
+	if handled, _ := manager.HandleCommand(context.Background(), protocol.Command{Name: "alpha"}); handled {
+		t.Fatal("expected disabled module command to be ignored")
+	}
+
+	if err := manager.Shutdown(context.Background()); err != nil {
+		t.Fatalf("Shutdown returned unexpected error: %v", err)
+	}
+
+	if moduleA.shutdownCalled != 0 {
+		t.Fatalf("expected disabled module shutdown to be skipped, got %d", moduleA.shutdownCalled)
+	}
+	if moduleB.shutdownCalled != 1 {
+		t.Fatalf("expected enabled module shutdown once, got %d", moduleB.shutdownCalled)
+	}
+
+	manager.SetEnabledModules(nil)
+	metadata = manager.Metadata()
+	if len(metadata) != 2 {
+		t.Fatalf("expected re-enabled metadata to include both modules, got %d", len(metadata))
+	}
+}
+
+func TestModuleManagerRemoteModuleDisabled(t *testing.T) {
+	t.Parallel()
+
+	manager := newDefaultModuleManager()
+	manager.SetEnabledModules([]string{"system-info"})
+
+	if remote := manager.remoteDesktopModule(); remote != nil {
+		t.Fatal("expected remote desktop module to be disabled")
+	}
+
+	metadata := manager.Metadata()
+	for _, entry := range metadata {
+		if strings.EqualFold(entry.ID, "remote-desktop") {
+			t.Fatalf("expected remote desktop metadata to be filtered out: %+v", metadata)
+		}
+	}
+}
+
 func TestModuleManagerRegisterExtension(t *testing.T) {
 	t.Parallel()
 

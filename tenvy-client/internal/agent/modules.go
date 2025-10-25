@@ -178,6 +178,7 @@ type moduleEntry struct {
 	registrar   ModuleExtensionRegistrar
 	unregistrar ModuleExtensionUnregistrar
 	extensions  map[string]ModuleExtension
+	enabled     bool
 }
 
 func (e *moduleEntry) rebuildMetadata() {
@@ -207,12 +208,14 @@ type appVncInputHandler interface {
 }
 
 type moduleManager struct {
-	mu        sync.RWMutex
-	modules   map[string]*moduleEntry
-	byID      map[string]*moduleEntry
-	lifecycle []*moduleEntry
-	remote    *remoteDesktopModule
-	appVnc    appVncInputHandler
+	mu          sync.RWMutex
+	modules     map[string]*moduleEntry
+	byID        map[string]*moduleEntry
+	lifecycle   []*moduleEntry
+	remote      *remoteDesktopModule
+	remoteEntry *moduleEntry
+	appVnc      appVncInputHandler
+	appEntry    *moduleEntry
 }
 
 func newDefaultModuleManager() *moduleManager {
@@ -265,13 +268,16 @@ func (r *moduleManager) register(m Module) {
 		base:       copyModuleMetadata(metadata),
 		commands:   append([]string(nil), commands...),
 		extensions: make(map[string]ModuleExtension),
+		enabled:    true,
 	}
 	entry.rebuildMetadata()
 	if remote, ok := m.(*remoteDesktopModule); ok {
 		r.remote = remote
+		r.remoteEntry = entry
 	}
 	if app, ok := any(m).(appVncInputHandler); ok {
 		r.appVnc = app
+		r.appEntry = entry
 	}
 	if registrar, ok := any(m).(ModuleExtensionRegistrar); ok {
 		entry.registrar = registrar
@@ -295,6 +301,51 @@ func (r *moduleManager) register(m Module) {
 	}
 }
 
+func (r *moduleManager) SetEnabledModules(moduleIDs []string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	if moduleIDs == nil {
+		for _, entry := range r.lifecycle {
+			entry.enabled = true
+		}
+		r.rebuildCommandIndexLocked()
+		return
+	}
+
+	allowed := make(map[string]struct{}, len(moduleIDs))
+	for _, id := range moduleIDs {
+		trimmed := strings.TrimSpace(id)
+		if trimmed == "" {
+			continue
+		}
+		allowed[strings.ToLower(trimmed)] = struct{}{}
+	}
+
+	for _, entry := range r.lifecycle {
+		_, ok := allowed[strings.ToLower(entry.metadata.ID)]
+		entry.enabled = ok
+	}
+
+	r.rebuildCommandIndexLocked()
+}
+
+func (r *moduleManager) rebuildCommandIndexLocked() {
+	r.modules = make(map[string]*moduleEntry, len(r.modules))
+	for _, entry := range r.lifecycle {
+		if !entry.enabled {
+			continue
+		}
+		for _, command := range entry.commands {
+			trimmed := strings.TrimSpace(command)
+			if trimmed == "" {
+				continue
+			}
+			r.modules[trimmed] = entry
+		}
+	}
+}
+
 func (r *moduleManager) Init(ctx context.Context, cfg Config) error {
 	r.mu.Lock()
 	cfg.Extensions = r
@@ -303,6 +354,9 @@ func (r *moduleManager) Init(ctx context.Context, cfg Config) error {
 
 	var errs []error
 	for _, entry := range entries {
+		if !entry.enabled {
+			continue
+		}
 		if err := entry.module.Init(ctx, cfg); err != nil {
 			label := entry.metadata.Title
 			if strings.TrimSpace(label) == "" {
@@ -323,6 +377,9 @@ func (r *moduleManager) UpdateConfig(cfg Config) error {
 
 	var errs []error
 	for _, entry := range entries {
+		if !entry.enabled {
+			continue
+		}
 		if err := entry.module.UpdateConfig(cfg); err != nil {
 			label := entry.metadata.Title
 			if strings.TrimSpace(label) == "" {
@@ -341,6 +398,9 @@ func (r *moduleManager) Metadata() []ModuleMetadata {
 
 	metadata := make([]ModuleMetadata, 0, len(r.lifecycle))
 	for _, entry := range r.lifecycle {
+		if !entry.enabled {
+			continue
+		}
 		metadata = append(metadata, copyModuleMetadata(entry.metadata))
 	}
 	return metadata
@@ -482,7 +542,7 @@ func (r *moduleManager) HandleCommand(ctx context.Context, cmd protocol.Command)
 	r.mu.RLock()
 	entry, ok := r.modules[cmd.Name]
 	r.mu.RUnlock()
-	if !ok {
+	if !ok || !entry.enabled {
 		return false, protocol.CommandResult{}
 	}
 	return true, r.wrapCommandResult(cmd, entry.module.Handle(ctx, cmd))
@@ -495,6 +555,9 @@ func (r *moduleManager) Shutdown(ctx context.Context) error {
 
 	var errs []error
 	for index := len(entries) - 1; index >= 0; index-- {
+		if !entries[index].enabled {
+			continue
+		}
 		if err := entries[index].module.Shutdown(ctx); err != nil {
 			label := entries[index].metadata.Title
 			if strings.TrimSpace(label) == "" {
@@ -540,12 +603,18 @@ func (r *moduleManager) wrapCommandResult(cmd protocol.Command, err error) proto
 func (r *moduleManager) remoteDesktopModule() *remoteDesktopModule {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
+	if r.remoteEntry != nil && !r.remoteEntry.enabled {
+		return nil
+	}
 	return r.remote
 }
 
 func (r *moduleManager) appVncModule() appVncInputHandler {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
+	if r.appEntry != nil && !r.appEntry.enabled {
+		return nil
+	}
 	return r.appVnc
 }
 

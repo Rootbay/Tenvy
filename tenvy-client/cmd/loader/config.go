@@ -69,6 +69,7 @@ func loadRuntimeOptions(logger *log.Logger) (agent.RuntimeOptions, error) {
 		Execution:         runtimeConfig.Execution,
 		CustomHeaders:     runtimeConfig.Headers,
 		CustomCookies:     runtimeConfig.Cookies,
+		EnabledModules:    runtimeConfig.Modules,
 	}, nil
 }
 
@@ -153,6 +154,7 @@ type embeddedRuntimeConfig struct {
 	Execution agent.ExecutionGates
 	Headers   []agent.CustomHeader
 	Cookies   []agent.CustomCookie
+	Modules   []string
 }
 
 type runtimeConfigPayload struct {
@@ -179,6 +181,7 @@ type runtimeConfigPayload struct {
 		Name  string `json:"name"`
 		Value string `json:"value"`
 	} `json:"customCookies"`
+	Modules []string `json:"modules"`
 }
 
 func parseEmbeddedRuntimeConfig(logger *log.Logger, encoded string) embeddedRuntimeConfig {
@@ -253,6 +256,14 @@ func parseEmbeddedRuntimeConfig(logger *log.Logger, encoded string) embeddedRunt
 		result.Cookies = cookies
 	}
 
+	if payload.Modules != nil {
+		if sanitized := sanitizeModuleIDs(payload.Modules); sanitized != nil {
+			result.Modules = sanitized
+		} else {
+			result.Modules = []string{}
+		}
+	}
+
 	return result
 }
 
@@ -297,6 +308,30 @@ func sanitizeLocaleSlice(values []string) []string {
 		}
 		seen[lowered] = struct{}{}
 		sanitized = append(sanitized, lowered)
+	}
+	if len(sanitized) == 0 {
+		return nil
+	}
+	return sanitized
+}
+
+func sanitizeModuleIDs(values []string) []string {
+	if len(values) == 0 {
+		return nil
+	}
+	seen := make(map[string]struct{}, len(values))
+	sanitized := make([]string, 0, len(values))
+	for _, value := range values {
+		trimmed := strings.TrimSpace(value)
+		if trimmed == "" {
+			continue
+		}
+		key := strings.ToLower(trimmed)
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		sanitized = append(sanitized, trimmed)
 	}
 	if len(sanitized) == 0 {
 		return nil

@@ -1,3 +1,5 @@
+import type { AgentModuleId } from '../modules';
+
 export const TARGET_OS_VALUES = ["windows", "linux", "darwin"] as const;
 export type TargetOS = (typeof TARGET_OS_VALUES)[number];
 
@@ -95,6 +97,7 @@ export type BuildRequest = {
   audio?: AudioBuildOptions;
   fileIcon?: FileIcon;
   fileInformation?: WindowsFileInformation;
+  modules?: AgentModuleId[];
 };
 
 export type BuildResponse = {
