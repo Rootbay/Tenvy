@@ -1,10 +1,12 @@
 import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
+import { createHash } from 'node:crypto';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { db } from '$lib/server/db/index.js';
 import { plugin as pluginTable } from '$lib/server/db/schema.js';
 import { eq } from 'drizzle-orm';
+import { refreshSignaturePolicy } from '$lib/server/plugins/signature-policy.js';
 
 const mockEnv = vi.hoisted(() => {
         process.env.DATABASE_URL = ':memory:';
@@ -31,6 +33,7 @@ vi.mock('$lib/server/rat/store.js', async () => {
 
 describe('agent plugin API', () => {
         let manifestDir: string;
+        let trustDir: string;
         let trustPath: string;
         const manifestId = 'test-plugin';
         const artifactContent = 'artifact payload';
@@ -39,6 +42,9 @@ describe('agent plugin API', () => {
                 manifestDir = mkdtempSync(join(tmpdir(), 'tenvy-agent-manifests-'));
                 const manifestPath = join(manifestDir, `${manifestId}.json`);
                 const artifactPath = join(manifestDir, 'pkg.zip');
+                const artifactBuffer = Buffer.from(artifactContent, 'utf8');
+                const artifactHash = createHash('sha256').update(artifactBuffer).digest('hex');
+                writeFileSync(artifactPath, artifactBuffer);
                 writeFileSync(
                         manifestPath,
                         JSON.stringify({
@@ -54,13 +60,17 @@ describe('agent plugin API', () => {
                                         autoUpdate: true,
                                         signature: 'sha256'
                                 },
-                                package: { artifact: 'pkg.zip', hash: 'abc123' }
+                                package: {
+                                        artifact: 'pkg.zip',
+                                        hash: artifactHash,
+                                        sizeBytes: artifactBuffer.byteLength
+                                }
                         })
                 );
-                writeFileSync(artifactPath, artifactContent);
 
-                trustPath = join(manifestDir, 'trust.json');
-                writeFileSync(trustPath, JSON.stringify({ sha256AllowList: ['abc123'] }));
+                trustDir = mkdtempSync(join(tmpdir(), 'tenvy-plugin-trust-'));
+                trustPath = join(trustDir, 'trust.json');
+                writeFileSync(trustPath, JSON.stringify({ sha256AllowList: [artifactHash] }));
 
                 process.env.TENVY_PLUGIN_MANIFEST_DIR = manifestDir;
                 process.env.TENVY_PLUGIN_TRUST_CONFIG = trustPath;
@@ -70,12 +80,15 @@ describe('agent plugin API', () => {
                         TENVY_PLUGIN_TRUST_CONFIG: trustPath
                 };
 
+                refreshSignaturePolicy();
+
                 authorizeAgent.mockReset();
         });
 
         afterEach(async () => {
                 await db.delete(pluginTable);
                 rmSync(manifestDir, { recursive: true, force: true });
+                rmSync(trustDir, { recursive: true, force: true });
                 delete process.env.TENVY_PLUGIN_MANIFEST_DIR;
                 delete process.env.TENVY_PLUGIN_TRUST_CONFIG;
                 mockEnv.env = { DATABASE_URL: ':memory:' };
@@ -129,5 +142,152 @@ describe('agent plugin API', () => {
 
                 const artifactBuffer = await artifactResponse.arrayBuffer();
                 expect(Buffer.from(artifactBuffer).toString()).toBe(artifactContent);
+        });
+
+        it('accepts plugin uploads and persists runtime metadata', async () => {
+                const { POST } = await import('../src/routes/api/plugins/+server.ts');
+
+                const artifactPayload = 'uploaded artifact payload';
+                const artifactBuffer = Buffer.from(artifactPayload, 'utf8');
+                const artifactHash = createHash('sha256').update(artifactBuffer).digest('hex');
+
+                writeFileSync(
+                        trustPath,
+                        JSON.stringify({ sha256AllowList: [
+                                createHash('sha256').update(artifactContent, 'utf8').digest('hex'),
+                                artifactHash
+                        ] })
+                );
+                refreshSignaturePolicy();
+
+                const manifest = {
+                        id: 'uploaded-plugin',
+                        name: 'Uploaded Plugin',
+                        version: '1.0.0',
+                        entry: 'uploaded.exe',
+                        repositoryUrl: 'https://github.com/rootbay/uploaded-plugin',
+                        license: { spdxId: 'MIT' },
+                        requirements: { requiredModules: [] },
+                        distribution: {
+                                defaultMode: 'manual',
+                                autoUpdate: false,
+                                signature: 'sha256'
+                        },
+                        package: {
+                                artifact: 'uploaded.zip',
+                                hash: artifactHash,
+                                sizeBytes: artifactBuffer.byteLength
+                        }
+                } satisfies Record<string, unknown>;
+
+                const form = new FormData();
+                form.set(
+                        'manifest',
+                        new File([JSON.stringify(manifest)], 'manifest.json', { type: 'application/json' })
+                );
+                form.set(
+                        'artifact',
+                        new File([artifactBuffer], 'uploaded.zip', { type: 'application/octet-stream' })
+                );
+
+                const response = await POST({
+                        request: new Request('https://controller.test/api/plugins', {
+                                method: 'POST',
+                                body: form
+                        })
+                } as Parameters<typeof POST>[0]);
+
+                expect(response.status).toBe(201);
+                const body = (await response.json()) as {
+                        plugin: { id: string; version: string; approvalStatus?: string };
+                        approvalStatus: string;
+                };
+                expect(body.plugin.id).toBe('uploaded-plugin');
+                expect(body.plugin.version).toBe('1.0.0');
+                expect(body.approvalStatus).toBe('pending');
+
+                const [row] = await db
+                        .select()
+                        .from(pluginTable)
+                        .where(eq(pluginTable.id, 'uploaded-plugin'));
+                expect(row?.approvalStatus).toBe('pending');
+        });
+
+        it('rejects uploads with invalid manifests', async () => {
+                const { POST } = await import('../src/routes/api/plugins/+server.ts');
+
+                const artifactBuffer = Buffer.from('broken', 'utf8');
+
+                const manifest = {
+                        id: '',
+                        name: '',
+                        version: 'not-a-version',
+                        entry: '',
+                        requirements: {},
+                        distribution: { defaultMode: 'invalid', autoUpdate: false, signature: 'sha256' },
+                        package: { artifact: '', hash: '' }
+                } satisfies Record<string, unknown>;
+
+                const form = new FormData();
+                form.set(
+                        'manifest',
+                        new File([JSON.stringify(manifest)], 'manifest.json', { type: 'application/json' })
+                );
+                form.set('artifact', new File([artifactBuffer], 'broken.zip', { type: 'application/octet-stream' }));
+
+                await expect(
+                        POST({
+                                request: new Request('https://controller.test/api/plugins', {
+                                        method: 'POST',
+                                        body: form
+                                })
+                        } as Parameters<typeof POST>[0])
+                ).rejects.toMatchObject({ status: 400 });
+        });
+
+        it('rejects uploads with duplicate version numbers', async () => {
+                const { POST } = await import('../src/routes/api/plugins/+server.ts');
+
+                const artifactBuffer = Buffer.from(artifactContent, 'utf8');
+                const manifestHash = createHash('sha256').update(artifactBuffer).digest('hex');
+
+                const manifest = {
+                        id: manifestId,
+                        name: 'Test Plugin',
+                        version: '1.0.0',
+                        entry: 'plugin.exe',
+                        repositoryUrl: 'https://github.com/rootbay/test-plugin',
+                        license: { spdxId: 'MIT' },
+                        requirements: {},
+                        distribution: {
+                                defaultMode: 'automatic',
+                                autoUpdate: true,
+                                signature: 'sha256'
+                        },
+                        package: {
+                                artifact: 'pkg.zip',
+                                hash: manifestHash,
+                                sizeBytes: artifactBuffer.byteLength
+                        }
+                } satisfies Record<string, unknown>;
+
+                const form = new FormData();
+                form.set(
+                        'manifest',
+                        new File([JSON.stringify(manifest)], 'manifest.json', { type: 'application/json' })
+                );
+                form.set(
+                        'artifact',
+                        new File([artifactBuffer], 'pkg.zip', { type: 'application/octet-stream' })
+                );
+
+                await expect(
+                        POST({
+                                request: new Request('https://controller.test/api/plugins', {
+                                        method: 'POST',
+                                        body: form
+                                })
+                        } as Parameters<typeof POST>[0])
+                ).rejects.toMatchObject({ status: 409 });
         });
 });
