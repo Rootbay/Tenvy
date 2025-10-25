@@ -1165,7 +1165,8 @@ export class AgentRegistry {
                         );
                 }
 
-                const manifestDelta = await this.pluginTelemetry.getManifestDelta(
+                const manifestDelta = await this.pluginTelemetry.getAgentManifestDelta(
+                        record.id,
                         payload.plugins?.manifests
                 );
 

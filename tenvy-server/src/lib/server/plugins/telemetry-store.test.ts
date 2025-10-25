@@ -73,13 +73,18 @@ function createManifest(hash: string): PluginManifest {
 }
 
 const expectDateCloseTo = (value: Date | null | undefined, expectedMs: number) => {
-	expect(value).not.toBeNull();
-	const actual = value?.getTime();
-	expect(actual).toBeDefined();
-	if (actual !== undefined) {
-		expect(Math.abs(actual - expectedMs)).toBeLessThanOrEqual(1000);
-	}
+        expect(value).not.toBeNull();
+        const actual = value?.getTime();
+        expect(actual).toBeDefined();
+        if (actual !== undefined) {
+                expect(Math.abs(actual - expectedMs)).toBeLessThanOrEqual(1000);
+        }
 };
+
+const descriptorFingerprint = (descriptor: { manifestDigest: string; manualPushAt: string | null }) =>
+        descriptor.manualPushAt && descriptor.manualPushAt.trim().length > 0
+                ? `${descriptor.manifestDigest}:${descriptor.manualPushAt}`
+                : descriptor.manifestDigest;
 
 beforeEach(async () => {
 	process.env.DATABASE_URL = ':memory:';
@@ -325,6 +330,70 @@ describe('PluginTelemetryStore', () => {
 
                 const approvedManifest = await store.getApprovedManifest('test-plugin');
                 expect(approvedManifest?.descriptor.manifestDigest).toBe(descriptor.manifestDigest);
+        });
+
+        it('excludes disabled plugins from agent manifest deltas', async () => {
+                const runtimeStore = createPluginRuntimeStore();
+                const [record] = await loadPluginManifests({ directory: manifestDir });
+                expect(record).toBeDefined();
+                await runtimeStore.ensure(record!);
+                await runtimeStore.update(record!.manifest.id, {
+                        approvalStatus: 'approved',
+                        approvedAt: new Date()
+                });
+
+                const store = new PluginTelemetryStore({
+                        runtimeStore,
+                        manifestDirectory: manifestDir
+                });
+
+                const initialDelta = await store.getAgentManifestDelta('agent-1', { digests: {} });
+                expect(initialDelta.updated).toHaveLength(1);
+                const descriptor = initialDelta.updated[0]!;
+                const fingerprint = descriptorFingerprint({
+                        manifestDigest: descriptor.manifestDigest,
+                        manualPushAt: descriptor.manualPushAt ?? null
+                });
+
+                const knownState = {
+                        version: initialDelta.version,
+                        digests: { [descriptor.pluginId]: fingerprint }
+                };
+
+                await store.syncAgent('agent-1', baseMetadata, [
+                        {
+                                pluginId: descriptor.pluginId,
+                                version: descriptor.version ?? '1.0.0',
+                                status: 'installed',
+                                hash: manifestHash,
+                                timestamp: Date.now(),
+                                error: null
+                        }
+                ]);
+
+                await store.updateAgentPlugin('agent-1', descriptor.pluginId, { enabled: false });
+
+                const afterDisable = await store.listAgentPlugins('agent-1');
+                const disabledRecord = afterDisable.find((entry) => entry.pluginId === descriptor.pluginId);
+                expect(disabledRecord?.enabled).toBe(false);
+
+                const removalDelta = await store.getAgentManifestDelta('agent-1', knownState);
+                expect(removalDelta.removed).toEqual([descriptor.pluginId]);
+                expect(removalDelta.updated).toHaveLength(0);
+                expect(removalDelta.version).not.toBe(initialDelta.version);
+
+                const removedState = {
+                        version: removalDelta.version,
+                        digests: {}
+                };
+
+                await store.updateAgentPlugin('agent-1', descriptor.pluginId, { enabled: true });
+
+                const restorationDelta = await store.getAgentManifestDelta('agent-1', removedState);
+                expect(restorationDelta.removed).toHaveLength(0);
+                expect(
+                        restorationDelta.updated.some((entry) => entry.pluginId === descriptor.pluginId)
+                ).toBe(true);
         });
 
         it('records manual push timestamps and surfaces them in manifest deltas', async () => {
