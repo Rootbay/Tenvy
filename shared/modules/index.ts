@@ -172,7 +172,7 @@ export const agentModules: AgentModuleDefinition[] = [
     title: "Incident Notes",
     description:
       "Secure local note taking synchronized with the controller vault.",
-    commands: [],
+    commands: ["notes.sync"],
     capabilities: [
       {
         id: "notes.sync",

@@ -4,10 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"path/filepath"
 	"strings"
 	"testing"
 
 	remotedesktop "github.com/rootbay/tenvy-client/internal/modules/control/remotedesktop"
+	notes "github.com/rootbay/tenvy-client/internal/modules/notes"
 	"github.com/rootbay/tenvy-client/internal/protocol"
 )
 
@@ -265,6 +267,73 @@ func TestModuleManagerRemoteModuleDisabled(t *testing.T) {
 		if strings.EqualFold(entry.ID, "remote-desktop") {
 			t.Fatalf("expected remote desktop metadata to be filtered out: %+v", metadata)
 		}
+	}
+}
+
+func TestNotesModuleRegistrationAndSync(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	notesPath := filepath.Join(dir, "notes.json")
+	manager, err := notes.NewManager(notesPath, "local", "shared", "legacy")
+	if err != nil {
+		t.Fatalf("create notes manager: %v", err)
+	}
+
+	moduleManager := newDefaultModuleManager()
+	moduleManager.SetEnabledModules([]string{"notes"})
+
+	runtime := Config{
+		AgentID: "agent-notes",
+		AuthKey: "secret",
+		BaseURL: "https://example.invalid",
+		Notes:   manager,
+	}
+
+	if err := moduleManager.Init(context.Background(), runtime); err != nil {
+		t.Fatalf("initialize modules: %v", err)
+	}
+
+	metadata := moduleManager.Metadata()
+	if len(metadata) != 1 {
+		t.Fatalf("expected only notes module metadata, got %d", len(metadata))
+	}
+
+	entry := metadata[0]
+	if entry.ID != "notes" {
+		t.Fatalf("unexpected module id %s", entry.ID)
+	}
+	if entry.Title != "Incident Notes" {
+		t.Fatalf("unexpected module title %q", entry.Title)
+	}
+	if entry.Description != "Secure local note taking synchronized with the controller vault." {
+		t.Fatalf("unexpected module description %q", entry.Description)
+	}
+
+	if len(entry.Commands) != 1 || entry.Commands[0] != "notes.sync" {
+		t.Fatalf("unexpected commands: %+v", entry.Commands)
+	}
+
+	if len(entry.Capabilities) != 1 {
+		t.Fatalf("expected single capability, got %d", len(entry.Capabilities))
+	}
+	capability := entry.Capabilities[0]
+	if capability.ID != "notes.sync" {
+		t.Fatalf("unexpected capability id %s", capability.ID)
+	}
+	if capability.Name != "Notes sync" {
+		t.Fatalf("unexpected capability name %q", capability.Name)
+	}
+	if capability.Description != "Synchronize local incident notes to the operator vault with delta compression." {
+		t.Fatalf("unexpected capability description %q", capability.Description)
+	}
+
+	handled, result := moduleManager.HandleCommand(context.Background(), protocol.Command{ID: "cmd-1", Name: "notes.sync"})
+	if !handled {
+		t.Fatal("expected notes command to be handled")
+	}
+	if !result.Success {
+		t.Fatalf("expected successful sync result, got %+v", result)
 	}
 }
 

@@ -24,6 +24,7 @@ import (
 	taskmanager "github.com/rootbay/tenvy-client/internal/modules/management/taskmanager"
 	tcpconnections "github.com/rootbay/tenvy-client/internal/modules/management/tcpconnections"
 	clientchat "github.com/rootbay/tenvy-client/internal/modules/misc/clientchat"
+	notes "github.com/rootbay/tenvy-client/internal/modules/notes"
 	recovery "github.com/rootbay/tenvy-client/internal/modules/operations/recovery"
 	systeminfo "github.com/rootbay/tenvy-client/internal/modules/systeminfo"
 	"github.com/rootbay/tenvy-client/internal/plugins"
@@ -45,6 +46,7 @@ type Config struct {
 	ActiveModules   []string
 	Extensions      ModuleExtensionRegistry
 	PluginManifests map[string]manifest.ManifestDescriptor
+	Notes           *notes.Manager
 }
 
 func envBool(name string) bool {
@@ -233,6 +235,7 @@ func newDefaultModuleManager() *moduleManager {
 	registry.register(newClientChatModule())
 	registry.register(&recoveryModule{})
 	registry.register(newSystemInfoModule())
+	registry.register(newNotesModule())
 	return registry
 }
 
@@ -863,6 +866,7 @@ func (a *Agent) moduleRuntime() Config {
 		ActiveModules:   activeModules,
 		Extensions:      a.modules,
 		PluginManifests: a.pluginManifestSnapshot(),
+		Notes:           a.notes,
 	}
 }
 
@@ -2312,5 +2316,103 @@ func (m *systemInfoModule) Handle(ctx context.Context, cmd protocol.Command) err
 }
 
 func (m *systemInfoModule) Shutdown(context.Context) error {
+	return nil
+}
+
+func newNotesModule() *notesModule {
+	return &notesModule{}
+}
+
+type notesModule struct {
+	mu        sync.RWMutex
+	manager   *notes.Manager
+	agentID   string
+	baseURL   string
+	authKey   string
+	client    *http.Client
+	logger    *log.Logger
+	userAgent string
+}
+
+func (m *notesModule) Metadata() ModuleMetadata {
+	return ModuleMetadata{
+		ID:          "notes",
+		Title:       "Incident Notes",
+		Description: "Secure local note taking synchronized with the controller vault.",
+		Commands:    []string{"notes.sync"},
+		Capabilities: []ModuleCapability{
+			{
+				ID:          "notes.sync",
+				Name:        "Notes sync",
+				Description: "Synchronize local incident notes to the operator vault with delta compression.",
+			},
+		},
+	}
+}
+
+func (m *notesModule) ID() string {
+	return "notes"
+}
+
+func (m *notesModule) Init(_ context.Context, cfg Config) error {
+	m.applyConfig(cfg)
+	return nil
+}
+
+func (m *notesModule) UpdateConfig(cfg Config) error {
+	m.applyConfig(cfg)
+	return nil
+}
+
+func (m *notesModule) applyConfig(cfg Config) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.manager = cfg.Notes
+	m.agentID = cfg.AgentID
+	m.baseURL = cfg.BaseURL
+	m.authKey = cfg.AuthKey
+	m.client = cfg.HTTPClient
+	m.logger = cfg.Logger
+	m.userAgent = cfg.UserAgent
+}
+
+func (m *notesModule) snapshot() (*notes.Manager, *http.Client, string, string, string, string, *log.Logger) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.manager, m.client, m.baseURL, m.agentID, m.authKey, m.userAgent, m.logger
+}
+
+func (m *notesModule) Handle(ctx context.Context, cmd protocol.Command) error {
+	manager, client, baseURL, agentID, authKey, userAgent, logger := m.snapshot()
+	completedAt := time.Now().UTC().Format(time.RFC3339Nano)
+	if manager == nil {
+		return WrapCommandResult(protocol.CommandResult{
+			CommandID:   cmd.ID,
+			Success:     false,
+			Error:       "notes manager unavailable",
+			CompletedAt: completedAt,
+		})
+	}
+
+	if err := manager.SyncShared(ctx, client, baseURL, agentID, authKey, userAgent); err != nil {
+		if logger != nil {
+			logger.Printf("notes sync failed: %v", err)
+		}
+		return WrapCommandResult(protocol.CommandResult{
+			CommandID:   cmd.ID,
+			Success:     false,
+			Error:       err.Error(),
+			CompletedAt: completedAt,
+		})
+	}
+
+	return WrapCommandResult(protocol.CommandResult{
+		CommandID:   cmd.ID,
+		Success:     true,
+		CompletedAt: completedAt,
+	})
+}
+
+func (m *notesModule) Shutdown(context.Context) error {
 	return nil
 }
