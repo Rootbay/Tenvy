@@ -141,13 +141,13 @@ func (a *Agent) fetchApprovedPluginList(ctx context.Context) (*manifest.Manifest
 		return nil, errors.New("agent identity not established")
 	}
 
-	endpoint := fmt.Sprintf("%s/api/agents/%s/plugins", strings.TrimRight(base, "/"), url.PathEscape(agentID))
+	endpoint := fmt.Sprintf("%s/api/clients/%s/plugins", strings.TrimRight(base, "/"), url.PathEscape(agentID))
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
 	if err != nil {
 		return nil, err
 	}
 
-	req.Header.Set("Accept", "application/json")
+	req.Header.Set("Accept", "application/vnd.tenvy.plugin-manifest+json")
 	req.Header.Set("User-Agent", a.userAgent())
 	if key := strings.TrimSpace(a.key); key != "" {
 		req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", key))

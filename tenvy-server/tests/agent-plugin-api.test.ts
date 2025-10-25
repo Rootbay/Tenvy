@@ -125,7 +125,7 @@ describe('agent plugin API', () => {
                         .where(eq(pluginTable.id, manifestId));
                 (telemetryStore as { manifestSnapshot?: unknown }).manifestSnapshot = null;
 
-                const listModule = await import('../src/routes/api/agents/[id]/plugins/+server.js');
+                const listModule = await import('../src/routes/api/clients/[id]/plugins/+server.js');
                 const manifestModule = await import(
                         '../src/routes/api/agents/[id]/plugins/[pluginId]/+server.js'
                 );
@@ -133,14 +133,36 @@ describe('agent plugin API', () => {
                         '../src/routes/api/agents/[id]/plugins/[pluginId]/artifact/+server.js'
                 );
 
-                const requestHeaders = { Authorization: 'Bearer agent-key' };
+                const uiResponse = await listModule.GET({
+                        params: { id: 'agent-1' },
+                        request: new Request('https://controller.test/api/clients/agent-1/plugins', {
+                                headers: { Accept: 'application/json' }
+                        }),
+                        url: new URL('https://controller.test/api/clients/agent-1/plugins')
+                } as Parameters<typeof listModule.GET>[0]);
+
+                expect(getAgent).toHaveBeenCalledWith('agent-1');
+
+                const uiPayload = (await uiResponse.json()) as { plugins: Array<{ id: string }> };
+                expect(uiPayload.plugins[0]?.id).toBe(manifestId);
+
+                const requestHeaders = {
+                        Authorization: 'Bearer agent-key',
+                        Accept: 'application/vnd.tenvy.plugin-manifest+json'
+                };
 
                 const listResponse = await listModule.GET({
                         params: { id: 'agent-1' },
-                        request: new Request('https://controller.test', { headers: requestHeaders })
+                        request: new Request('https://controller.test/api/clients/agent-1/plugins', {
+                                headers: requestHeaders
+                        }),
+                        url: new URL('https://controller.test/api/clients/agent-1/plugins')
                 } as Parameters<typeof listModule.GET>[0]);
 
                 expect(authorizeAgent).toHaveBeenCalledWith('agent-1', 'agent-key');
+                expect(listResponse.headers.get('content-type')).toContain(
+                        'application/vnd.tenvy.plugin-manifest+json'
+                );
 
                 const snapshot = (await listResponse.json()) as {
                         version: string;
@@ -150,7 +172,10 @@ describe('agent plugin API', () => {
 
                 const manifestResponse = await manifestModule.GET({
                         params: { id: 'agent-1', pluginId: manifestId },
-                        request: new Request('https://controller.test', { headers: requestHeaders })
+                        request: new Request('https://controller.test', { headers: requestHeaders }),
+                        url: new URL(
+                                `https://controller.test/api/agents/agent-1/plugins/${manifestId}`
+                        )
                 } as Parameters<typeof manifestModule.GET>[0]);
 
                 const manifestText = await manifestResponse.text();
@@ -158,7 +183,10 @@ describe('agent plugin API', () => {
 
                 const artifactResponse = await artifactModule.GET({
                         params: { id: 'agent-1', pluginId: manifestId },
-                        request: new Request('https://controller.test', { headers: requestHeaders })
+                        request: new Request('https://controller.test', { headers: requestHeaders }),
+                        url: new URL(
+                                `https://controller.test/api/agents/agent-1/plugins/${manifestId}/artifact`
+                        )
                 } as Parameters<typeof artifactModule.GET>[0]);
 
                 const artifactBuffer = await artifactResponse.arrayBuffer();
