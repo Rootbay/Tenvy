@@ -165,7 +165,7 @@ func TestStageRemoteDesktopEngineRecordsFailure(t *testing.T) {
 	}
 }
 
-func TestStageRemoteDesktopEngineRespectsManualPolicy(t *testing.T) {
+func TestStageRemoteDesktopEngineRespectsManualPolicyWithoutSignal(t *testing.T) {
 	t.Parallel()
 
 	root := t.TempDir()
@@ -220,6 +220,103 @@ func TestStageRemoteDesktopEngineRespectsManualPolicy(t *testing.T) {
 	}
 	if install.PluginID != plugins.RemoteDesktopEnginePluginID {
 		t.Fatalf("unexpected plugin id %q", install.PluginID)
+	}
+}
+
+func TestStageRemoteDesktopEngineAllowsManualWhenRequested(t *testing.T) {
+	t.Parallel()
+
+	artifactData := buildRemoteDesktopArtifact(t, map[string][]byte{
+		"remote-desktop-engine/remote-desktop-engine": []byte("engine payload"),
+	})
+	hash := sha256.Sum256(artifactData)
+	hashHex := fmt.Sprintf("%x", hash[:])
+
+	manifestJSON := fmt.Sprintf(`{
+                "id": "remote-desktop-engine",
+                "name": "Remote Desktop Engine",
+                "version": "5.5.5",
+                "entry": "remote-desktop-engine/remote-desktop-engine",
+                "repositoryUrl": "https://github.com/rootbay/tenvy-client",
+                "license": {"spdxId": "MIT"},
+                "requirements": {"platforms": ["windows"], "architectures": ["x86_64"]},
+                "distribution": {"defaultMode": "manual", "autoUpdate": false, "signature": "sha256", "signatureHash": "%[1]s"},
+                "package": {"artifact": "remote-desktop-engine/remote-desktop-engine.zip", "hash": "%[1]s"}
+        }`, hashHex)
+
+	var artifactServed atomic.Bool
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasSuffix(r.URL.Path, "/artifact") {
+			artifactServed.Store(true)
+			w.Header().Set("Content-Type", "application/octet-stream")
+			if _, err := w.Write(artifactData); err != nil {
+				t.Fatalf("write artifact: %v", err)
+			}
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		if _, err := io.WriteString(w, manifestJSON); err != nil {
+			t.Fatalf("write manifest: %v", err)
+		}
+	}))
+	defer server.Close()
+
+	root := t.TempDir()
+	opts := manifest.VerifyOptions{SHA256AllowList: []string{hashHex}}
+	manager, err := plugins.NewManager(root, log.New(io.Discard, "", 0), opts)
+	if err != nil {
+		t.Fatalf("new manager: %v", err)
+	}
+
+	descriptor := buildDescriptor(
+		manifestJSON,
+		"5.5.5",
+		hashHex,
+		manifest.ManifestBriefing{DefaultMode: manifest.DeliveryManual, AutoUpdate: false},
+	)
+	descriptor.ManualPushAt = "2024-01-02T03:04:05Z"
+
+	facts := manifest.RuntimeFacts{
+		Platform:       "windows",
+		Architecture:   "x86_64",
+		AgentVersion:   "1.0.0",
+		EnabledModules: []string{"remote-desktop"},
+	}
+
+	result, err := plugins.StageRemoteDesktopEngine(
+		context.Background(),
+		manager,
+		server.Client(),
+		server.URL,
+		"agent-1",
+		"",
+		"stage-test",
+		facts,
+		descriptor,
+	)
+	if err != nil {
+		t.Fatalf("stage manual plugin: %v", err)
+	}
+	if !result.Updated {
+		t.Fatal("expected staging to update installation")
+	}
+	if !artifactServed.Load() {
+		t.Fatal("expected artifact download to occur")
+	}
+
+	snapshot := manager.Snapshot()
+	if snapshot == nil || len(snapshot.Installations) != 1 {
+		t.Fatalf("expected installation telemetry, got %#v", snapshot)
+	}
+	install := snapshot.Installations[0]
+	if install.Status != manifest.InstallInstalled {
+		t.Fatalf("expected installed status, got %s", install.Status)
+	}
+	if install.Version != "5.5.5" {
+		t.Fatalf("expected version recorded, got %q", install.Version)
+	}
+	if install.Hash == "" {
+		t.Fatal("expected hash recorded")
 	}
 }
 

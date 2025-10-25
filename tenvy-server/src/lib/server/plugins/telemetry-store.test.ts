@@ -287,11 +287,11 @@ describe('PluginTelemetryStore', () => {
 		expectDateCloseTo(telemetry?.lastCheckedAt ?? null, new Date(iso).getTime());
 	});
 
-	it('exposes approved manifest snapshots and deltas', async () => {
-		const runtimeStore = createPluginRuntimeStore();
-		const [record] = await loadPluginManifests({ directory: manifestDir });
-		expect(record).toBeDefined();
-		await runtimeStore.ensure(record!);
+        it('exposes approved manifest snapshots and deltas', async () => {
+                const runtimeStore = createPluginRuntimeStore();
+                const [record] = await loadPluginManifests({ directory: manifestDir });
+                expect(record).toBeDefined();
+                await runtimeStore.ensure(record!);
 		const approvedAt = new Date();
 		approvedAt.setMilliseconds(0);
 		await runtimeStore.update(record!.manifest.id, {
@@ -304,16 +304,17 @@ describe('PluginTelemetryStore', () => {
 			manifestDirectory: manifestDir
 		});
 
-		const snapshot = await store.getManifestSnapshot();
-		expect(snapshot.manifests).toHaveLength(1);
-		const descriptor = snapshot.manifests[0];
-		expect(descriptor.pluginId).toBe('test-plugin');
-		expect(descriptor.manifestDigest).toMatch(/^[0-9a-f]{64}$/);
-		expect(descriptor.approvedAt).toBe(approvedAt.toISOString());
+                const snapshot = await store.getManifestSnapshot();
+                expect(snapshot.manifests).toHaveLength(1);
+                const descriptor = snapshot.manifests[0];
+                expect(descriptor.pluginId).toBe('test-plugin');
+                expect(descriptor.manifestDigest).toMatch(/^[0-9a-f]{64}$/);
+                expect(descriptor.approvedAt).toBe(approvedAt.toISOString());
+                expect(descriptor.manualPushAt).toBeNull();
 
-		const fullDelta = await store.getManifestDelta({ digests: {} });
-		expect(fullDelta.updated).toHaveLength(1);
-		expect(fullDelta.updated[0]?.pluginId).toBe('test-plugin');
+                const fullDelta = await store.getManifestDelta({ digests: {} });
+                expect(fullDelta.updated).toHaveLength(1);
+                expect(fullDelta.updated[0]?.pluginId).toBe('test-plugin');
 
 		const noDelta = await store.getManifestDelta({
 			version: snapshot.version,
@@ -322,7 +323,40 @@ describe('PluginTelemetryStore', () => {
 		expect(noDelta.updated).toHaveLength(0);
 		expect(noDelta.removed).toHaveLength(0);
 
-		const approvedManifest = await store.getApprovedManifest('test-plugin');
-		expect(approvedManifest?.descriptor.manifestDigest).toBe(descriptor.manifestDigest);
-	});
+                const approvedManifest = await store.getApprovedManifest('test-plugin');
+                expect(approvedManifest?.descriptor.manifestDigest).toBe(descriptor.manifestDigest);
+        });
+
+        it('records manual push timestamps and surfaces them in manifest deltas', async () => {
+                const runtimeStore = createPluginRuntimeStore();
+                const store = new PluginTelemetryStore({
+                        runtimeStore,
+                        manifestDirectory: manifestDir
+                });
+
+                await store.getManifestSnapshot();
+                const approvedAt = new Date();
+                await db
+                        .update(pluginTable)
+                        .set({ approvalStatus: 'approved', approvedAt })
+                        .where(eq(pluginTable.id, 'test-plugin'));
+
+                (store as { manifestSnapshot?: unknown }).manifestSnapshot = null;
+
+                const baseline = await store.getManifestSnapshot();
+                const descriptor = baseline.manifests[0];
+                expect(descriptor.manualPushAt).toBeNull();
+
+                await store.recordManualPush('agent-1', 'test-plugin');
+
+                const refreshed = await store.getManifestSnapshot();
+                const updated = refreshed.manifests[0];
+                expect(updated.manualPushAt).not.toBeNull();
+
+                const delta = await store.getManifestDelta({
+                        digests: { 'test-plugin': descriptor.manifestDigest }
+                });
+                expect(delta.updated).toHaveLength(1);
+                expect(delta.updated[0]?.manualPushAt).toBe(updated.manualPushAt);
+        });
 });

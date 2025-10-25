@@ -7,6 +7,7 @@ import { db } from '$lib/server/db/index.js';
 import { plugin as pluginTable } from '$lib/server/db/schema.js';
 import { eq } from 'drizzle-orm';
 import { refreshSignaturePolicy } from '$lib/server/plugins/signature-policy.js';
+import { PluginTelemetryStore } from '$lib/server/plugins/telemetry-store.js';
 
 const mockEnv = vi.hoisted(() => {
         process.env.DATABASE_URL = ':memory:';
@@ -16,19 +17,21 @@ const mockEnv = vi.hoisted(() => {
 vi.mock('$env/dynamic/private', () => mockEnv, { virtual: true });
 
 const authorizeAgent = vi.fn();
+const getAgent = vi.fn();
 
 vi.mock('$lib/server/rat/store.js', async () => {
         const mod = await vi.importActual<typeof import('$lib/server/rat/store.js')>(
                 '$lib/server/rat/store.js'
         );
-        return {
-                ...mod,
-                registry: {
-                        ...mod.registry,
-                        authorizeAgent
-                },
-                RegistryError: mod.RegistryError
-        };
+                return {
+                        ...mod,
+                        registry: {
+                                ...mod.registry,
+                                authorizeAgent,
+                                getAgent
+                        },
+                        RegistryError: mod.RegistryError
+                };
 });
 
 describe('agent plugin API', () => {
@@ -83,6 +86,8 @@ describe('agent plugin API', () => {
                 refreshSignaturePolicy();
 
                 authorizeAgent.mockReset();
+                getAgent.mockReset();
+                getAgent.mockReturnValue({ id: 'agent-1' });
         });
 
         afterEach(async () => {
@@ -289,5 +294,49 @@ describe('agent plugin API', () => {
                                 })
                         } as Parameters<typeof POST>[0])
                 ).rejects.toMatchObject({ status: 409 });
+        });
+
+        it('records manual stage requests for clients', async () => {
+                const bootstrapStore = new PluginTelemetryStore();
+                await bootstrapStore.getManifestSnapshot();
+                const approvedAt = new Date();
+                await db
+                        .update(pluginTable)
+                        .set({ approvalStatus: 'approved', approvedAt })
+                        .where(eq(pluginTable.id, manifestId));
+                (bootstrapStore as { manifestSnapshot?: unknown }).manifestSnapshot = null;
+
+                const stageModule = await import(
+                        '../src/routes/api/clients/[id]/plugins/[pluginId]/stage/+server.ts'
+                );
+
+                const response = await stageModule.POST({
+                        params: { id: 'agent-1', pluginId: manifestId },
+                        request: new Request('https://controller.test/api/clients/agent-1/plugins/test-plugin/stage', {
+                                method: 'POST'
+                        })
+                } as Parameters<typeof stageModule.POST>[0]);
+
+                expect(getAgent).toHaveBeenCalledWith('agent-1');
+                expect(response.status).toBe(200);
+
+                const payload = (await response.json()) as { plugin: { id: string } };
+                expect(payload.plugin.id).toBe(manifestId);
+
+                const [pluginRow] = await db
+                        .select({ lastManualPushAt: pluginTable.lastManualPushAt })
+                        .from(pluginTable)
+                        .where(eq(pluginTable.id, manifestId));
+                expect(pluginRow?.lastManualPushAt).toBeInstanceOf(Date);
+
+                const verificationStore = new PluginTelemetryStore();
+                const snapshot = await verificationStore.getManifestSnapshot();
+                const descriptor = snapshot.manifests.find((entry) => entry.pluginId === manifestId);
+                expect(descriptor?.manualPushAt).not.toBeNull();
+
+                const delta = await verificationStore.getManifestDelta({
+                        digests: { [manifestId]: descriptor?.manifestDigest ?? '' }
+                });
+                expect(delta.updated.some((entry) => entry.pluginId === manifestId)).toBe(true);
         });
 });
