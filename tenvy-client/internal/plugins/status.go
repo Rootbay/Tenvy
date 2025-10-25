@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -19,7 +20,61 @@ type installationStatusRecord struct {
 	Version   string                       `json:"version,omitempty"`
 	Status    manifest.PluginInstallStatus `json:"status,omitempty"`
 	Error     string                       `json:"error,omitempty"`
-	Timestamp string                       `json:"timestamp,omitempty"`
+	Timestamp *int64                       `json:"timestamp,omitempty"`
+}
+
+func (r *installationStatusRecord) UnmarshalJSON(data []byte) error {
+	type rawRecord struct {
+		ID        string      `json:"pluginId,omitempty"`
+		Version   string      `json:"version,omitempty"`
+		Status    string      `json:"status,omitempty"`
+		Error     string      `json:"error,omitempty"`
+		Timestamp interface{} `json:"timestamp,omitempty"`
+	}
+
+	var raw rawRecord
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+
+	r.ID = raw.ID
+	r.Version = raw.Version
+	r.Status = manifest.PluginInstallStatus(raw.Status)
+	r.Error = raw.Error
+	r.Timestamp = parseStatusTimestamp(raw.Timestamp)
+	return nil
+}
+
+func parseStatusTimestamp(value interface{}) *int64 {
+	switch ts := value.(type) {
+	case nil:
+		return nil
+	case float64:
+		millis := int64(ts)
+		return &millis
+	case int64:
+		millis := ts
+		return &millis
+	case json.Number:
+		if v, err := ts.Int64(); err == nil {
+			millis := v
+			return &millis
+		}
+	case string:
+		trimmed := strings.TrimSpace(ts)
+		if trimmed == "" {
+			return nil
+		}
+		if parsed, err := time.Parse(time.RFC3339Nano, trimmed); err == nil {
+			millis := parsed.UTC().UnixMilli()
+			return &millis
+		}
+		if numeric, err := strconv.ParseInt(trimmed, 10, 64); err == nil {
+			millis := numeric
+			return &millis
+		}
+	}
+	return nil
 }
 
 func normalizeInstallStatus(status manifest.PluginInstallStatus) manifest.PluginInstallStatus {
@@ -114,13 +169,13 @@ func (m *Manager) recordInstallStatusLocked(pluginID, version string, status man
 		return errors.New("plugin id not provided")
 	}
 	dir := filepath.Join(m.root, pluginID)
-	now := time.Now().UTC().Format(time.RFC3339Nano)
+	timestamp := time.Now().UTC().UnixMilli()
 	record := installationStatusRecord{
 		ID:        pluginID,
 		Version:   strings.TrimSpace(version),
 		Status:    normalizeInstallStatus(status),
 		Error:     strings.TrimSpace(message),
-		Timestamp: now,
+		Timestamp: &timestamp,
 	}
 	return writeInstallationStatus(dir, record)
 }

@@ -108,7 +108,7 @@ export interface PluginInstallationTelemetry {
   version: string;
   status: PluginInstallStatus;
   hash?: string;
-  timestamp?: string | null;
+  timestamp?: number | null;
   error?: string;
 }
 

@@ -44,11 +44,32 @@ export interface AgentPluginRecord {
 
 const MANIFEST_CACHE_TTL_MS = 30_000;
 
-function toDate(value: string | Date | null | undefined): Date | null {
-	if (!value) return null;
-	if (value instanceof Date) return new Date(value);
-	const parsed = new Date(value);
-	return Number.isNaN(parsed.getTime()) ? null : parsed;
+function toDate(value: number | string | Date | null | undefined): Date | null {
+        if (value == null) return null;
+        if (value instanceof Date) return new Date(value);
+        if (typeof value === 'number') {
+                if (!Number.isFinite(value)) {
+                        return null;
+                }
+                const parsed = new Date(value);
+                return Number.isNaN(parsed.getTime()) ? null : parsed;
+        }
+        if (typeof value === 'string') {
+                const trimmed = value.trim();
+                if (trimmed === '') {
+                        return null;
+                }
+                const numeric = Number(trimmed);
+                if (!Number.isNaN(numeric)) {
+                        const numericDate = new Date(numeric);
+                        if (!Number.isNaN(numericDate.getTime())) {
+                                return numericDate;
+                        }
+                }
+                const parsed = new Date(trimmed);
+                return Number.isNaN(parsed.getTime()) ? null : parsed;
+        }
+        return null;
 }
 
 function normalizeStatus(status: string | undefined): string {
