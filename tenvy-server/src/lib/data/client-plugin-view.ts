@@ -1,3 +1,4 @@
+import { agentModuleCapabilityIndex } from '../../../../shared/modules/index.js';
 import type { PluginManifest } from '../../../../shared/types/plugin-manifest.js';
 import { formatFileSize, formatRelativeTime } from './plugin-view.js';
 import type { Plugin } from './plugins.js';
@@ -41,15 +42,20 @@ export type ClientPlugin = {
 };
 
 export function buildClientPlugin(
-	manifest: PluginManifest,
-	plugin: Plugin,
-	telemetry: AgentPluginRecord | undefined
+        manifest: PluginManifest,
+        plugin: Plugin,
+        telemetry: AgentPluginRecord | undefined
 ): ClientPlugin {
-	return {
-		id: plugin.id,
-		name: plugin.name,
-		description: plugin.description,
-		version: plugin.version,
+        const capabilities = (manifest.capabilities ?? []).map((capabilityId) => {
+                const capability = agentModuleCapabilityIndex.get(capabilityId);
+                return capability?.name ?? capabilityId;
+        });
+
+        return {
+                id: plugin.id,
+                name: plugin.name,
+                description: plugin.description,
+                version: plugin.version,
 		category: plugin.category,
 		approvalStatus: plugin.approvalStatus,
 		approvedAt: plugin.approvedAt,
@@ -59,7 +65,7 @@ export function buildClientPlugin(
 		size: formatFileSize(manifest.package.sizeBytes),
 		expectedHash: manifest.package.hash ?? undefined,
 		artifact: manifest.package.artifact,
-		capabilities: manifest.capabilities?.map((capability) => capability.name) ?? [],
+                capabilities,
 		requirements: {
 			platforms: manifest.requirements.platforms ?? [],
 			architectures: manifest.requirements.architectures ?? [],

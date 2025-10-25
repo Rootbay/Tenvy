@@ -1,4 +1,4 @@
-import { agentModuleIds } from "../modules/index.js";
+import { agentModuleCapabilityIndex, agentModuleIds } from "../modules/index.js";
 import nacl from "tweetnacl";
 
 export const pluginDeliveryModes = ["manual", "automatic"] as const;
@@ -43,11 +43,8 @@ const SEMVER_PATTERN =
 const hasModule = (moduleId: string | undefined | null): boolean =>
   moduleId != null && agentModuleIds.has(moduleId.trim());
 
-export interface PluginCapability {
-  name: string;
-  module: string;
-  description?: string;
-}
+const hasCapability = (capabilityId: string | undefined | null): boolean =>
+  capabilityId != null && agentModuleCapabilityIndex.has(capabilityId.trim());
 
 export interface PluginRequirements {
   minAgentVersion?: string;
@@ -97,7 +94,7 @@ export interface PluginManifest {
   repositoryUrl: string;
   license: PluginLicenseInfo;
   categories?: string[];
-  capabilities?: PluginCapability[];
+  capabilities?: string[];
   requirements: PluginRequirements;
   distribution: PluginDistribution;
   package: PluginPackageDescriptor;
@@ -317,19 +314,12 @@ export function validatePluginManifest(manifest: PluginManifest): string[] {
   );
 
   ensureArray(manifest.capabilities).forEach((capability, index) => {
-    if (isEmpty(capability.name)) {
-      problems.push(`capability ${index} is missing name`);
-    }
-    if (isEmpty(capability.module)) {
-      problems.push(
-        `capability ${capability.name ?? index} is missing module reference`,
-      );
+    if (isEmpty(capability)) {
+      problems.push(`capability ${index} is empty`);
       return;
     }
-    if (!hasModule(capability.module)) {
-      problems.push(
-        `capability ${capability.name ?? index} references unknown module ${capability.module}`,
-      );
+    if (!hasCapability(capability)) {
+      problems.push(`capability ${capability} is not registered`);
     }
   });
 

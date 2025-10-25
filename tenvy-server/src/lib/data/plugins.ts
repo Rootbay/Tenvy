@@ -1,4 +1,4 @@
-import { agentModuleIndex } from '../../../../shared/modules/index.js';
+import { agentModuleCapabilityIndex, agentModuleIndex } from '../../../../shared/modules/index.js';
 import type {
 	PluginManifest,
 	PluginSignatureStatus,
@@ -104,10 +104,16 @@ const manifestCategory = (manifest: PluginManifest): PluginCategory => {
 };
 
 const mapRequiredModules = (manifest: PluginManifest) =>
-	(manifest.requirements.requiredModules ?? [])
-		.map((moduleId) => agentModuleIndex.get(moduleId))
-		.filter((module): module is NonNullable<typeof module> => module != null)
-		.map((module) => ({ id: module.id, title: module.title }));
+        (manifest.requirements.requiredModules ?? [])
+                .map((moduleId) => agentModuleIndex.get(moduleId))
+                .filter((module): module is NonNullable<typeof module> => module != null)
+                .map((module) => ({ id: module.id, title: module.title }));
+
+const mapCapabilities = (manifest: PluginManifest): string[] =>
+        (manifest.capabilities ?? []).map((capabilityId) => {
+                const capability = agentModuleCapabilityIndex.get(capabilityId);
+                return capability?.name ?? capabilityId;
+        });
 
 const toPluginView = (record: LoadedPluginManifest, runtime: PluginRuntimeSnapshot): Plugin => ({
 	id: record.manifest.id,
@@ -123,7 +129,7 @@ const toPluginView = (record: LoadedPluginManifest, runtime: PluginRuntimeSnapsh
 	lastDeployed: formatRelativeTime(runtime.lastDeployedAt),
 	lastChecked: formatRelativeTime(runtime.lastCheckedAt),
 	size: formatFileSize(record.manifest.package.sizeBytes),
-	capabilities: record.manifest.capabilities?.map((capability) => capability.name) ?? [],
+        capabilities: mapCapabilities(record.manifest),
 	artifact: record.manifest.package.artifact,
 	distribution: {
 		defaultMode: runtime.defaultDeliveryMode,

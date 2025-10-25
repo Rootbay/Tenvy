@@ -12,21 +12,13 @@
 		"url": "https://opensource.org/license/mit"
 	},
 	"categories": ["collection"],
-	"capabilities": [
-		{
-			"name": "clipboard.capture",
-			"module": "clipboard",
-			"description": "Capture remote clipboard history and relay updates in real time."
-		},
-		{
-			"name": "clipboard.push",
-			"module": "clipboard",
-			"description": "Inject clipboard payloads into the remote workstation."
-		}
-	],
-	"requirements": {
-		"minAgentVersion": "1.2.0",
-		"platforms": ["windows", "darwin"],
+        "capabilities": [
+                "clipboard.capture",
+                "clipboard.push"
+        ],
+        "requirements": {
+                "minAgentVersion": "1.2.0",
+                "platforms": ["windows", "macos"],
 		"requiredModules": ["clipboard"]
 	},
 	"distribution": {

@@ -19,6 +19,9 @@ import type { PluginManifest } from '../../../../../shared/types/plugin-manifest
 
 vi.mock('$env/dynamic/private', () => import('../../../../tests/mocks/env-dynamic-private'));
 
+const manifestHash = '00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff';
+const mismatchedHash = 'ffeeddccbbaa99887766554433221100ffeeddccbbaa99887766554433221100';
+
 const baseMetadata: AgentMetadata = {
 	hostname: 'agent.local',
 	username: 'operator',
@@ -36,46 +39,51 @@ let manifestDir: string;
 let policyPath: string;
 
 function createManifest(hash: string): PluginManifest {
-	return {
-		id: 'test-plugin',
-		name: 'Test Plugin',
-		version: '1.0.0',
-		entry: 'plugin.dll',
-		repositoryUrl: 'https://github.com/rootbay/test-plugin',
-		license: {
-			spdxId: 'MIT',
-			name: 'MIT License'
-		},
-		distribution: {
-			defaultMode: 'automatic',
-			autoUpdate: true,
-			signature: { type: 'sha256', hash, signature: 'signed' }
-		},
-		requirements: {
-			platforms: ['windows'],
-			architectures: ['x86_64'],
-			requiredModules: []
-		},
-		package: {
-			artifact: 'plugin.dll',
-			sizeBytes: 1024,
-			hash
-		}
-	};
+        return {
+                id: 'test-plugin',
+                name: 'Test Plugin',
+                version: '1.0.0',
+                entry: 'plugin.dll',
+                repositoryUrl: 'https://github.com/rootbay/test-plugin',
+                license: {
+                        spdxId: 'MIT',
+                        name: 'MIT License'
+                },
+                capabilities: ['clipboard.capture'],
+                distribution: {
+                        defaultMode: 'automatic',
+                        autoUpdate: true,
+                        signature: {
+                                type: 'sha256',
+                                hash,
+                                signature: '0123456789abcdef0123456789abcdef'
+                        }
+                },
+                requirements: {
+                        platforms: ['windows'],
+                        architectures: ['x86_64'],
+                        requiredModules: ['clipboard']
+                },
+                package: {
+                        artifact: 'plugin.dll',
+                        sizeBytes: 1024,
+                        hash
+                }
+        };
 }
 
 beforeEach(async () => {
 	process.env.DATABASE_URL = ':memory:';
 	manifestDir = mkdtempSync(join(tmpdir(), 'tenvy-plugin-manifests-'));
-	writeFileSync(join(manifestDir, 'test-plugin.json'), JSON.stringify(createManifest('abc123')));
+        writeFileSync(join(manifestDir, 'test-plugin.json'), JSON.stringify(createManifest(manifestHash)));
 
-	policyPath = join(manifestDir, 'trust.json');
-	writeFileSync(
-		policyPath,
-		JSON.stringify({
-			sha256AllowList: ['abc123']
-		})
-	);
+        policyPath = join(manifestDir, 'trust.json');
+        writeFileSync(
+                policyPath,
+                JSON.stringify({
+                        sha256AllowList: [manifestHash]
+                })
+        );
 	process.env.TENVY_PLUGIN_TRUST_CONFIG = policyPath;
 	refreshSignaturePolicy();
 
@@ -138,15 +146,15 @@ describe('PluginTelemetryStore', () => {
 
 		const now = new Date().toISOString();
 		await store.syncAgent('agent-1', baseMetadata, [
-			{
-				pluginId: 'test-plugin',
-				version: '1.0.0',
-				status: 'installed',
-				hash: 'abc123',
-				timestamp: now,
-				error: null
-			}
-		]);
+                        {
+                                pluginId: 'test-plugin',
+                                version: '1.0.0',
+                                status: 'installed',
+                                hash: manifestHash,
+                                timestamp: now,
+                                error: null
+                        }
+                ]);
 
 		const installations = await store.listAgentPlugins('agent-1');
 		expect(installations).toHaveLength(1);
@@ -173,15 +181,15 @@ describe('PluginTelemetryStore', () => {
 		const now = new Date().toISOString();
 
 		await store.syncAgent('agent-2', baseMetadata, [
-			{
-				pluginId: 'test-plugin',
-				version: '1.0.0',
-				status: 'installed',
-				hash: 'deadbeef',
-				timestamp: now,
-				error: null
-			}
-		]);
+                        {
+                                pluginId: 'test-plugin',
+                                version: '1.0.0',
+                                status: 'installed',
+                                hash: mismatchedHash,
+                                timestamp: now,
+                                error: null
+                        }
+                ]);
 
 		const installations = await store.listAgentPlugins('agent-2');
 		expect(installations[0]?.status).toBe('blocked');
@@ -212,16 +220,16 @@ describe('PluginTelemetryStore', () => {
 		});
 
 		const now = new Date().toISOString();
-		await store.syncAgent('agent-1', baseMetadata, [
-			{
-				pluginId: 'test-plugin',
-				version: '1.0.0',
-				status: 'installed',
-				hash: 'abc123',
-				timestamp: now,
-				error: null
-			}
-		]);
+                await store.syncAgent('agent-1', baseMetadata, [
+                        {
+                                pluginId: 'test-plugin',
+                                version: '1.0.0',
+                                status: 'installed',
+                                hash: manifestHash,
+                                timestamp: now,
+                                error: null
+                        }
+                ]);
 
 		const telemetry = await store.getAgentPlugin('agent-1', 'test-plugin');
 		expect(telemetry).not.toBeNull();
@@ -238,6 +246,7 @@ describe('PluginTelemetryStore', () => {
                 expect(record).toBeDefined();
                 await runtimeStore.ensure(record!);
                 const approvedAt = new Date();
+                approvedAt.setMilliseconds(0);
                 await runtimeStore.update(record!.manifest.id, {
                         approvalStatus: 'approved',
                         approvedAt

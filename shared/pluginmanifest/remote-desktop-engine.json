@@ -12,11 +12,9 @@
     "url": "https://github.com/rootbay/tenvy-client/blob/main/LICENSE"
   },
   "capabilities": [
-    {
-      "name": "remote-desktop.stream",
-      "module": "remote-desktop",
-      "description": "Provides capture and encoding services for the remote desktop module."
-    }
+    "remote-desktop.stream",
+    "remote-desktop.codec.hevc",
+    "remote-desktop.metrics"
   ],
   "requirements": {
     "minAgentVersion": "0.1.0",

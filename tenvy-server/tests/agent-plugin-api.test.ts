@@ -6,7 +6,10 @@ import { db } from '$lib/server/db/index.js';
 import { plugin as pluginTable } from '$lib/server/db/schema.js';
 import { eq } from 'drizzle-orm';
 
-const mockEnv = { env: {} };
+const mockEnv = vi.hoisted(() => {
+        process.env.DATABASE_URL = ':memory:';
+        return { env: { DATABASE_URL: ':memory:' } };
+});
 
 vi.mock('$env/dynamic/private', () => mockEnv, { virtual: true });
 
@@ -62,6 +65,7 @@ describe('agent plugin API', () => {
                 process.env.TENVY_PLUGIN_MANIFEST_DIR = manifestDir;
                 process.env.TENVY_PLUGIN_TRUST_CONFIG = trustPath;
                 mockEnv.env = {
+                        DATABASE_URL: ':memory:',
                         TENVY_PLUGIN_MANIFEST_DIR: manifestDir,
                         TENVY_PLUGIN_TRUST_CONFIG: trustPath
                 };
@@ -74,7 +78,7 @@ describe('agent plugin API', () => {
                 rmSync(manifestDir, { recursive: true, force: true });
                 delete process.env.TENVY_PLUGIN_MANIFEST_DIR;
                 delete process.env.TENVY_PLUGIN_TRUST_CONFIG;
-                mockEnv.env = {};
+                mockEnv.env = { DATABASE_URL: ':memory:' };
         });
 
         it('returns manifest snapshots and artifacts for authorized agents', async () => {

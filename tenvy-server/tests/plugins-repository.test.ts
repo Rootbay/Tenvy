@@ -22,28 +22,27 @@ const manifestFixture = {
 		url: 'https://opensource.org/license/mit'
 	},
 	categories: ['collection'],
-	capabilities: [
-		{
-			name: 'clipboard.capture',
-			module: 'clipboard',
-			description: 'Capture remote clipboard history and relay updates in real time.'
-		}
-	],
-	requirements: {
-		minAgentVersion: '1.2.0',
-		platforms: ['windows'],
-		architectures: ['x86_64'],
-		requiredModules: ['clipboard']
-	},
-	distribution: {
-		defaultMode: 'automatic',
-		autoUpdate: true,
-		signature: { type: 'none' }
-	},
-	package: {
-		artifact: 'clipboard-sync-1.4.2.dll',
-		sizeBytes: 18_743_296
-	}
+        capabilities: ['clipboard.capture', 'clipboard.push'],
+        requirements: {
+                minAgentVersion: '1.2.0',
+                platforms: ['windows', 'macos'],
+                architectures: ['x86_64'],
+                requiredModules: ['clipboard']
+        },
+        distribution: {
+                defaultMode: 'automatic',
+                autoUpdate: true,
+                signature: {
+                        type: 'sha256',
+                        hash: 'abcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcd',
+                        signature: '0123456789abcdef0123456789abcdef'
+                }
+        },
+        package: {
+                artifact: 'clipboard-sync-1.4.2.dll',
+                sizeBytes: 18_743_296,
+                hash: 'abcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcd'
+        }
 };
 
 const PLUGIN_TABLE_DDL = `
@@ -120,7 +119,7 @@ describe('plugin repository', () => {
 			expect(clipboard?.distribution.defaultMode).toBe('automatic');
 			expect(clipboard?.distribution.allowAutoSync).toBe(true);
 			expect(clipboard?.requiredModules.map((module) => module.id)).toContain('clipboard');
-			expect(clipboard?.signature.status).toBe('unsigned');
+                        expect(clipboard?.signature.status).toBe('untrusted');
 			expect(clipboard?.signature.trusted).toBe(false);
 		} finally {
 			sqlite.close();

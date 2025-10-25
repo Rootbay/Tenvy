@@ -6,7 +6,11 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { createPluginRuntimeStore } from './runtime-store.js';
 import { plugin as pluginTable } from '$lib/server/db/schema.js';
-import type { PluginManifest } from '../../../../../shared/types/plugin-manifest.js';
+import type {
+        PluginManifest,
+        PluginSignatureVerificationSummary
+} from '../../../../../shared/types/plugin-manifest.js';
+import type { LoadedPluginManifest } from '$lib/data/plugin-manifests.js';
 
 const PLUGIN_TABLE_DDL = `
 CREATE TABLE IF NOT EXISTS plugin (
@@ -24,6 +28,17 @@ CREATE TABLE IF NOT EXISTS plugin (
         last_auto_sync_at INTEGER,
         last_deployed_at INTEGER,
         last_checked_at INTEGER,
+        signature_status TEXT NOT NULL DEFAULT 'unsigned',
+        signature_trusted INTEGER NOT NULL DEFAULT 0,
+        signature_type TEXT NOT NULL DEFAULT 'none',
+        signature_hash TEXT,
+        signature_signer TEXT,
+        signature_public_key TEXT,
+        signature_checked_at INTEGER,
+        signature_signed_at INTEGER,
+        signature_error TEXT,
+        signature_error_code TEXT,
+        signature_chain TEXT,
         approval_status TEXT NOT NULL DEFAULT 'pending',
         approved_at INTEGER,
         approval_note TEXT,
@@ -33,26 +48,56 @@ CREATE TABLE IF NOT EXISTS plugin (
 `;
 
 const baseManifest: PluginManifest = {
-	id: 'runtime-test',
-	name: 'Runtime Test',
-	version: '1.0.0',
-	description: 'Fixture plugin manifest used for runtime store tests.',
-	entry: 'runtime-test.dll',
-	author: 'Tenvy',
-	repositoryUrl: 'https://github.com/rootbay/runtime-test',
-	license: { spdxId: 'MIT', name: 'MIT License', url: 'https://opensource.org/license/mit' },
-	requirements: {
-		platforms: ['windows'],
-		architectures: ['x86_64'],
-		requiredModules: []
-	},
-	distribution: {
-		defaultMode: 'automatic',
-		autoUpdate: true,
-		signature: { type: 'none' }
-	},
-	package: { artifact: 'runtime-test.dll', sizeBytes: 1024, hash: 'abc123' }
+        id: 'runtime-test',
+        name: 'Runtime Test',
+        version: '1.0.0',
+        description: 'Fixture plugin manifest used for runtime store tests.',
+        entry: 'runtime-test.dll',
+        author: 'Tenvy',
+        repositoryUrl: 'https://github.com/rootbay/runtime-test',
+        license: { spdxId: 'MIT', name: 'MIT License', url: 'https://opensource.org/license/mit' },
+        capabilities: ['clipboard.capture'],
+        requirements: {
+                platforms: ['windows'],
+                architectures: ['x86_64'],
+                requiredModules: ['clipboard']
+        },
+        distribution: {
+                defaultMode: 'automatic',
+                autoUpdate: true,
+                signature: {
+                        type: 'sha256',
+                        hash: '00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff',
+                        signature: 'ffeeddccbbaa99887766554433221100'
+                }
+        },
+        package: {
+                artifact: 'runtime-test.dll',
+                sizeBytes: 1024,
+                hash: '00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff'
+        }
 };
+
+const baseVerification: PluginSignatureVerificationSummary = {
+        trusted: false,
+        signatureType: 'sha256',
+        status: 'untrusted',
+        hash: baseManifest.distribution.signature.hash,
+        signer: null,
+        publicKey: null,
+        certificateChain: undefined,
+        checkedAt: new Date(),
+        signedAt: null,
+        error: undefined,
+        errorCode: undefined
+};
+
+const createLoadedManifest = (): LoadedPluginManifest => ({
+        source: 'memory',
+        raw: JSON.stringify(baseManifest),
+        manifest: structuredClone(baseManifest),
+        verification: { ...baseVerification, checkedAt: new Date() }
+});
 
 let tempDir: string;
 let dbPath: string;
@@ -78,7 +123,7 @@ describe('PluginRuntimeStore', () => {
 		const { store, sqlite } = openRuntimeStore();
 
 		try {
-			const row = await store.ensure(baseManifest);
+                        const row = await store.ensure(createLoadedManifest());
 			expect(row.id).toBe(baseManifest.id);
 			expect(row.autoUpdate).toBe(true);
 			expect(row.defaultDeliveryMode).toBe('automatic');
@@ -95,7 +140,7 @@ describe('PluginRuntimeStore', () => {
 		const timestamp = new Date('2024-05-19T15:45:00.000Z');
 
 		try {
-			await first.store.ensure(baseManifest);
+                        await first.store.ensure(createLoadedManifest());
 			await first.store.update(baseManifest.id, {
 				status: 'disabled',
 				enabled: false,
@@ -120,7 +165,7 @@ describe('PluginRuntimeStore', () => {
 		const second = openRuntimeStore();
 
 		try {
-			const row = await second.store.ensure(baseManifest);
+                        const row = await second.store.ensure(createLoadedManifest());
 			expect(row.status).toBe('disabled');
 			expect(row.enabled).toBe(false);
 			expect(row.autoUpdate).toBe(false);
