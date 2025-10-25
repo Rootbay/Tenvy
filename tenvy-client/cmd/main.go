@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"io/fs"
 	"log"
 	"os"
 	"os/signal"
@@ -48,17 +49,63 @@ func run() int {
 
 	searchDirs := parseSearchDirs(os.Getenv("TENVY_LOADER_SEARCH_PATHS"))
 
+	cfg, err := loadBootstrapConfig(logger, stubPath)
+	if err != nil {
+		logger.Printf("bootstrap config: %v", err)
+		return 1
+	}
+
+	artifactURL, err := cfg.Loader.resolvedArtifactURL(cfg.Controller.BaseURL)
+	if err != nil {
+		logger.Printf("resolve loader url: %v", err)
+		return 1
+	}
+
+	mode, err := cfg.Loader.parsedMode()
+	if err != nil {
+		logger.Printf("loader mode: %v", err)
+		return 1
+	}
+
+	artifactType := bootstrap.LoaderArtifactType(strings.ToLower(strings.TrimSpace(cfg.Loader.ArtifactType)))
+	if artifactType == "" {
+		artifactType = bootstrap.LoaderArtifactTypeBinary
+	}
+
+	downloader, err := bootstrap.NewHTTPDownloader(bootstrap.HTTPDownloaderConfig{
+		Client:       bootstrap.DefaultHTTPClient(),
+		URL:          artifactURL,
+		ArtifactType: artifactType,
+		Mode:         fs.FileMode(mode),
+	})
+	if err != nil {
+		logger.Printf("configure loader downloader: %v", err)
+		return 1
+	}
+
+	metadata := &bootstrap.LoaderMetadata{
+		Version:    cfg.Loader.Version,
+		Checksum:   cfg.Loader.Checksum,
+		Signature:  cfg.Loader.Signature,
+		Executable: cfg.Loader.Executable,
+	}
+
 	opts := bootstrap.Options{
 		ExecutablePath: stubPath,
 		OverridePath:   override,
 		LoaderArgs:     os.Args[1:],
 		AdditionalEnv: map[string]string{
-			"TENVY_PARENT_PID":      strconv.Itoa(os.Getpid()),
-			"TENVY_STUB_EXECUTABLE": stubPath,
-			"TENVY_STUB_DIRECTORY":  filepath.Dir(stubPath),
-			"TENVY_STUB_VERSION":    buildVersion,
+			"TENVY_PARENT_PID":          strconv.Itoa(os.Getpid()),
+			"TENVY_STUB_EXECUTABLE":     stubPath,
+			"TENVY_STUB_DIRECTORY":      filepath.Dir(stubPath),
+			"TENVY_STUB_VERSION":        buildVersion,
+			"TENVY_CONTROLLER_BASE_URL": cfg.Controller.BaseURL,
+			"TENVY_LOADER_VERSION":      cfg.Loader.Version,
 		},
-		SearchDirs: searchDirs,
+		SearchDirs:              searchDirs,
+		DesiredLoader:           metadata,
+		LoaderDownloader:        downloader,
+		LoaderSignatureVerifier: bootstrap.NewLoaderSignatureVerifier(),
 	}
 
 	cmd, err := bootstrap.Command(ctx, opts)

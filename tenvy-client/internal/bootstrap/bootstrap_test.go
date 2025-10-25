@@ -4,9 +4,13 @@ import (
 	"archive/zip"
 	"bytes"
 	"context"
+	"crypto/ed25519"
 	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -476,6 +480,164 @@ func TestEnvironmentDefaultBase(t *testing.T) {
 	}
 	if env["TEST_ENV_KEY"] != "VALUE" {
 		t.Fatalf("expected TEST_ENV_KEY inherited, got %q", env["TEST_ENV_KEY"])
+	}
+}
+
+func TestCommandInstallsLoaderViaHTTPDownloader(t *testing.T) {
+	t.Parallel()
+
+	payload := []byte("http-loader")
+	hash := sha256.Sum256(payload)
+	pub, priv, err := ed25519.GenerateKey(nil)
+	if err != nil {
+		t.Fatalf("generate ed25519 key: %v", err)
+	}
+	signature := ed25519.Sign(priv, []byte(hex.EncodeToString(hash[:])))
+	signatureString := fmt.Sprintf("ed25519:%s:%s", hex.EncodeToString(pub), hex.EncodeToString(signature))
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			t.Fatalf("unexpected method %s", r.Method)
+		}
+		if _, err := w.Write(payload); err != nil {
+			t.Fatalf("write payload: %v", err)
+		}
+	}))
+	defer server.Close()
+
+	downloader, err := NewHTTPDownloader(HTTPDownloaderConfig{
+		Client:       server.Client(),
+		URL:          server.URL,
+		ArtifactType: LoaderArtifactTypeBinary,
+	})
+	if err != nil {
+		t.Fatalf("NewHTTPDownloader error: %v", err)
+	}
+
+	verifier := NewLoaderSignatureVerifier()
+
+	tempDir := t.TempDir()
+	stubPath := filepath.Join(tempDir, "stub")
+	if err := os.WriteFile(stubPath, []byte("stub"), 0o755); err != nil {
+		t.Fatalf("write stub: %v", err)
+	}
+
+	metadata := &LoaderMetadata{
+		Version:    "1.0.0",
+		Checksum:   fmt.Sprintf("%x", hash[:]),
+		Signature:  signatureString,
+		Executable: "tenvy-client-loader",
+	}
+
+	cmd, err := Command(context.Background(), Options{
+		ExecutablePath:          stubPath,
+		DesiredLoader:           metadata,
+		LoaderDownloader:        downloader,
+		LoaderSignatureVerifier: verifier,
+	})
+	if err != nil {
+		t.Fatalf("Command returned error: %v", err)
+	}
+
+	installedPath := filepath.Join(tempDir, defaultLoaderDirectory, metadata.Executable)
+	if cmd.Path != installedPath {
+		t.Fatalf("expected loader path %q, got %q", installedPath, cmd.Path)
+	}
+
+	installed, err := os.ReadFile(installedPath)
+	if err != nil {
+		t.Fatalf("read installed loader: %v", err)
+	}
+	if !bytes.Equal(installed, payload) {
+		t.Fatalf("unexpected loader contents: %q", installed)
+	}
+
+	record, err := readStoredLoaderMetadata(filepath.Join(tempDir, defaultLoaderDirectory, loaderMetadataFileName))
+	if err != nil {
+		t.Fatalf("read stored metadata: %v", err)
+	}
+	if record.Version != metadata.Version {
+		t.Fatalf("expected version %q, got %q", metadata.Version, record.Version)
+	}
+	if !strings.EqualFold(record.Checksum, metadata.Checksum) {
+		t.Fatalf("expected checksum %q, got %q", metadata.Checksum, record.Checksum)
+	}
+	if record.Signature != metadata.Signature {
+		t.Fatalf("expected signature %q, got %q", metadata.Signature, record.Signature)
+	}
+	if record.InstalledAt.IsZero() {
+		t.Fatalf("expected installation timestamp to be recorded")
+	}
+}
+
+func TestNewHTTPDownloaderValidatesInput(t *testing.T) {
+	t.Parallel()
+
+	if _, err := NewHTTPDownloader(HTTPDownloaderConfig{}); err == nil {
+		t.Fatalf("expected url validation error")
+	}
+
+	if _, err := NewHTTPDownloader(HTTPDownloaderConfig{URL: "http://example", ArtifactType: "invalid"}); err == nil {
+		t.Fatalf("expected artifact type error")
+	}
+}
+
+func TestNewLoaderSignatureVerifierSHA256(t *testing.T) {
+	t.Parallel()
+
+	tempDir := t.TempDir()
+	loaderPath := filepath.Join(tempDir, "loader")
+	payload := []byte("hello")
+	if err := os.WriteFile(loaderPath, payload, 0o600); err != nil {
+		t.Fatalf("write loader: %v", err)
+	}
+	hash := sha256.Sum256(payload)
+	verifier := NewLoaderSignatureVerifier()
+	metadata := LoaderMetadata{Checksum: hex.EncodeToString(hash[:]), Signature: hex.EncodeToString(hash[:])}
+	if err := verifier.Verify(context.Background(), loaderPath, metadata); err != nil {
+		t.Fatalf("verify returned error: %v", err)
+	}
+}
+
+func TestNewLoaderSignatureVerifierEd25519(t *testing.T) {
+	t.Parallel()
+
+	tempDir := t.TempDir()
+	loaderPath := filepath.Join(tempDir, "loader")
+	payload := []byte("signed-loader")
+	if err := os.WriteFile(loaderPath, payload, 0o600); err != nil {
+		t.Fatalf("write loader: %v", err)
+	}
+
+	hash := sha256.Sum256(payload)
+	pub, priv, err := ed25519.GenerateKey(nil)
+	if err != nil {
+		t.Fatalf("generate key: %v", err)
+	}
+	signature := ed25519.Sign(priv, []byte(hex.EncodeToString(hash[:])))
+	metadata := LoaderMetadata{
+		Checksum:  hex.EncodeToString(hash[:]),
+		Signature: fmt.Sprintf("ed25519:%s:%s", hex.EncodeToString(pub), hex.EncodeToString(signature)),
+	}
+
+	verifier := NewLoaderSignatureVerifier()
+	if err := verifier.Verify(context.Background(), loaderPath, metadata); err != nil {
+		t.Fatalf("verify returned error: %v", err)
+	}
+}
+
+func TestNewLoaderSignatureVerifierRejectsInvalid(t *testing.T) {
+	t.Parallel()
+
+	tempDir := t.TempDir()
+	loaderPath := filepath.Join(tempDir, "loader")
+	if err := os.WriteFile(loaderPath, []byte("data"), 0o600); err != nil {
+		t.Fatalf("write loader: %v", err)
+	}
+	verifier := NewLoaderSignatureVerifier()
+	metadata := LoaderMetadata{Signature: "ed25519::"}
+	if err := verifier.Verify(context.Background(), loaderPath, metadata); err == nil {
+		t.Fatalf("expected error for invalid signature")
 	}
 }
 
