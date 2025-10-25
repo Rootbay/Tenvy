@@ -156,6 +156,60 @@ func TestApplyPluginManifestDeltaRemovesRemoteDesktopPlugin(t *testing.T) {
 	}
 }
 
+func TestFetchApprovedPluginListUsesClientPluginEndpoint(t *testing.T) {
+	t.Parallel()
+
+	var (
+		requestedPath  string
+		receivedAuth   string
+		receivedAccept string
+		receivedAgent  string
+	)
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requestedPath = r.URL.Path
+		receivedAuth = r.Header.Get("Authorization")
+		receivedAccept = r.Header.Get("Accept")
+		receivedAgent = r.Header.Get("User-Agent")
+		w.Header().Set("Content-Type", "application/vnd.tenvy.plugin-manifest+json")
+		json.NewEncoder(w).Encode(manifest.ManifestList{Version: "1"})
+	}))
+	t.Cleanup(server.Close)
+
+	agent := &Agent{
+		id:           "agent-1",
+		key:          "agent-key",
+		baseURL:      server.URL,
+		client:       server.Client(),
+		buildVersion: "1.2.3",
+	}
+
+	snapshot, err := agent.fetchApprovedPluginList(context.Background())
+	if err != nil {
+		t.Fatalf("fetch approved plugin list: %v", err)
+	}
+
+	if snapshot == nil || snapshot.Version != "1" {
+		t.Fatalf("unexpected snapshot: %#v", snapshot)
+	}
+
+	if requestedPath != "/api/clients/agent-1/plugins" {
+		t.Fatalf("unexpected request path %q", requestedPath)
+	}
+
+	if receivedAuth != "Bearer agent-key" {
+		t.Fatalf("unexpected authorization header %q", receivedAuth)
+	}
+
+	if receivedAccept != "application/vnd.tenvy.plugin-manifest+json" {
+		t.Fatalf("unexpected accept header %q", receivedAccept)
+	}
+
+	if receivedAgent == "" {
+		t.Fatal("expected user agent header to be set")
+	}
+}
+
 func TestStagePluginsFromListSkipsManualRemoteDesktopWithoutSignal(t *testing.T) {
 	t.Parallel()
 
