@@ -3,6 +3,7 @@ import { and, eq, sql } from 'drizzle-orm';
 import type { AgentMetadata } from '../../../../../shared/types/agent.js';
 import {
         pluginInstallStatuses,
+        resolveManifestSignature,
         type PluginInstallationTelemetry,
         type PluginManifest,
         type PluginPlatform,
@@ -142,18 +143,21 @@ function verificationBlockReason(record: LoadedPluginManifest): string | null {
         }
 
 	let message: string;
-	switch (verification.status) {
-		case 'unsigned':
-			message = 'plugin manifest is unsigned';
-			break;
-		case 'untrusted':
-			message = 'plugin signature is not trusted';
-			if (verification.signer) {
-				message += ` (${verification.signer})`;
-			} else if (manifest.distribution.signature.publicKey) {
-				message += ` (${manifest.distribution.signature.publicKey})`;
-			}
-			break;
+        switch (verification.status) {
+                case 'unsigned':
+                        message = 'plugin manifest is unsigned';
+                        break;
+                case 'untrusted':
+                        message = 'plugin signature is not trusted';
+                        if (verification.signer) {
+                                message += ` (${verification.signer})`;
+                        } else {
+                                const { metadata } = resolveManifestSignature(manifest);
+                                if (metadata?.publicKey) {
+                                        message += ` (${metadata.publicKey})`;
+                                }
+                        }
+                        break;
 		case 'invalid':
 		default:
 			message = 'plugin signature verification failed';
@@ -233,7 +237,8 @@ export class PluginTelemetryStore {
 					manifest.requirements.maxAgentVersion
 				);
 
-			const signatureReason = verificationBlockReason(record);
+                        const { type: signatureType } = resolveManifestSignature(manifest);
+                        const signatureReason = verificationBlockReason(record);
 
 			const signedHash = manifest.package.hash?.toLowerCase();
 			const observedHash = installation.hash?.toLowerCase();
@@ -247,12 +252,12 @@ export class PluginTelemetryStore {
 			} else if (!compatible) {
 				status = 'blocked';
 				reason = reason ?? 'agent incompatible with plugin requirements';
-			} else if (manifest.distribution.signature.type !== 'none') {
-				if (!observedHash) {
-					status = 'blocked';
-					reason = reason ?? 'missing signature hash';
-				} else if (signedHash && signedHash !== observedHash) {
-					status = 'blocked';
+                        } else if (signatureType && signatureType !== 'none') {
+                                if (!observedHash) {
+                                        status = 'blocked';
+                                        reason = reason ?? 'missing signature hash';
+                                } else if (signedHash && signedHash !== observedHash) {
+                                        status = 'blocked';
 					reason = `hash mismatch (expected ${signedHash})`;
 				}
 			}

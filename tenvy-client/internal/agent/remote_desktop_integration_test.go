@@ -45,7 +45,7 @@ func TestRemoteDesktopModuleNegotiationWithManagedEngine(t *testing.T) {
 			"remote-desktop.transport.quic",
 			"remote-desktop.codec.hevc",
 		},
-		License: manifest.LicenseInfo{SPDXID: "MIT"},
+		License: &manifest.LicenseInfo{SPDXID: "MIT"},
 		Requirements: manifest.Requirements{
 			MinAgentVersion: "0.1.0",
 			RequiredModules: []string{"remote-desktop"},

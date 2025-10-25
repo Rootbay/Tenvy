@@ -1,6 +1,7 @@
 package pluginmanifest
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/url"
@@ -17,8 +18,8 @@ type Manifest struct {
 	Entry         string            `json:"entry"`
 	Author        string            `json:"author,omitempty"`
 	Homepage      string            `json:"homepage,omitempty"`
-	RepositoryURL string            `json:"repositoryUrl"`
-	License       LicenseInfo       `json:"license"`
+	RepositoryURL string            `json:"repositoryUrl,omitempty"`
+	License       *LicenseInfo      `json:"license,omitempty"`
 	Categories    []string          `json:"categories,omitempty"`
 	Capabilities  []string          `json:"capabilities,omitempty"`
 	Requirements  Requirements      `json:"requirements"`
@@ -55,13 +56,54 @@ type PackageDescriptor struct {
 }
 
 type Signature struct {
-	Type      SignatureType `json:"type"`
-	Hash      string        `json:"hash,omitempty"`
-	PublicKey string        `json:"publicKey,omitempty"`
-	Signature string        `json:"signature,omitempty"`
-	SignedAt  string        `json:"signedAt,omitempty"`
-	Signer    string        `json:"signer,omitempty"`
-	Chain     []string      `json:"certificateChain,omitempty"`
+	Type      SignatureType
+	Hash      string
+	PublicKey string
+	Signature string
+	SignedAt  string
+	Signer    string
+	Chain     []string
+}
+
+func (s *Signature) UnmarshalJSON(data []byte) error {
+	if len(data) == 0 {
+		return nil
+	}
+
+	var asString string
+	if err := json.Unmarshal(data, &asString); err == nil {
+		s.Type = SignatureType(strings.TrimSpace(asString))
+		s.Hash = ""
+		s.PublicKey = ""
+		s.Signature = ""
+		s.SignedAt = ""
+		s.Signer = ""
+		s.Chain = nil
+		return nil
+	}
+
+	var payload struct {
+		Type      SignatureType `json:"type"`
+		Hash      string        `json:"hash"`
+		PublicKey string        `json:"publicKey"`
+		Signature string        `json:"signature"`
+		SignedAt  string        `json:"signedAt"`
+		Signer    string        `json:"signer"`
+		Chain     []string      `json:"certificateChain"`
+	}
+
+	if err := json.Unmarshal(data, &payload); err != nil {
+		return err
+	}
+
+	s.Type = payload.Type
+	s.Hash = payload.Hash
+	s.PublicKey = payload.PublicKey
+	s.Signature = payload.Signature
+	s.SignedAt = payload.SignedAt
+	s.Signer = payload.Signer
+	s.Chain = append([]string(nil), payload.Chain...)
+	return nil
 }
 
 type LicenseInfo struct {
@@ -295,7 +337,7 @@ func (m Manifest) Validate() error {
 	if strings.TrimSpace(m.Entry) == "" {
 		problems = append(problems, errors.New("missing entry"))
 	}
-	if err := validateGitHubRepository(m.RepositoryURL); err != nil {
+	if err := validateRepositoryURL(m.RepositoryURL); err != nil {
 		problems = append(problems, err)
 	}
 	if err := m.validateLicense(); err != nil {
@@ -373,35 +415,30 @@ func (m Manifest) validateDistribution() error {
 	}
 
 	sig := m.Distribution.Signature
-	if !containsSignatureType(sig.Type) {
-		return fmt.Errorf("unsupported signature type: %s", sig.Type)
+	sigType := strings.TrimSpace(string(sig.Type))
+	if sigType == "" {
+		return errors.New("distribution signature is required")
+	}
+	if !containsSignatureType(SignatureType(sigType)) {
+		return fmt.Errorf("unsupported signature type: %s", sigType)
 	}
 
-	switch sig.Type {
-	case SignatureSHA256:
-		if strings.TrimSpace(sig.Hash) == "" {
-			return errors.New("sha256 signature requires hash")
-		}
-	case SignatureEd25519:
-		if strings.TrimSpace(sig.PublicKey) == "" {
-			return errors.New("ed25519 signature requires publicKey")
-		}
-		if strings.TrimSpace(sig.Hash) == "" {
-			return errors.New("ed25519 signature requires hash")
-		}
-	}
-
-	if strings.TrimSpace(m.Package.Hash) == "" {
+	packageHash := strings.TrimSpace(m.Package.Hash)
+	if packageHash == "" {
 		return errors.New("signed packages must include a hash")
 	}
-	if strings.TrimSpace(sig.Signature) == "" {
-		return errors.New("signed manifests must provide signature value")
+
+	if sigHash := strings.TrimSpace(sig.Hash); sigHash != "" && !strings.EqualFold(sigHash, packageHash) {
+		return errors.New("signature hash does not match package hash")
 	}
 
 	return nil
 }
 
 func (m Manifest) validateLicense() error {
+	if m.License == nil {
+		return nil
+	}
 	if strings.TrimSpace(m.License.SPDXID) == "" {
 		return errors.New("license requires spdxId")
 	}
@@ -429,24 +466,20 @@ func LookupCapability(id string) (CapabilityMetadata, bool) {
 	return CapabilityMetadata{}, false
 }
 
-func validateGitHubRepository(raw string) error {
+func validateRepositoryURL(raw string) error {
 	trimmed := strings.TrimSpace(raw)
 	if trimmed == "" {
-		return errors.New("repositoryUrl is required")
+		return nil
 	}
 	parsed, err := url.Parse(trimmed)
 	if err != nil {
 		return fmt.Errorf("repositoryUrl invalid: %v", err)
 	}
+	if !parsed.IsAbs() {
+		return errors.New("repositoryUrl must be an absolute URL")
+	}
 	if parsed.Scheme != "https" {
 		return errors.New("repositoryUrl must use https")
-	}
-	if !strings.EqualFold(parsed.Host, "github.com") {
-		return errors.New("repositoryUrl must reference github.com")
-	}
-	segments := strings.Split(strings.Trim(parsed.Path, "/"), "/")
-	if len(segments) < 2 {
-		return errors.New("repositoryUrl must include owner and repository")
 	}
 	return nil
 }

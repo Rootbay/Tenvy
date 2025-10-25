@@ -65,11 +65,7 @@ const baseManifest: PluginManifest = {
         distribution: {
                 defaultMode: 'automatic',
                 autoUpdate: true,
-                signature: {
-                        type: 'sha256',
-                        hash: '00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff',
-                        signature: 'ffeeddccbbaa99887766554433221100'
-                }
+                signature: 'sha256'
         },
         package: {
                 artifact: 'runtime-test.dll',
@@ -82,7 +78,7 @@ const baseVerification: PluginSignatureVerificationSummary = {
         trusted: false,
         signatureType: 'sha256',
         status: 'untrusted',
-        hash: baseManifest.distribution.signature.hash,
+        hash: baseManifest.package.hash,
         signer: null,
         publicKey: null,
         certificateChain: undefined,
