@@ -108,3 +108,32 @@ func TestManifestValidateDependencies(t *testing.T) {
 		t.Fatal("expected self dependency validation failure")
 	}
 }
+
+func TestManifestValidateRecognizesRegisteredModulesAndCapabilities(t *testing.T) {
+	for moduleID := range registeredModules {
+		manifest := buildTestManifest()
+		manifest.Requirements.RequiredModules = []string{moduleID}
+
+		if err := manifest.Validate(); err != nil {
+			t.Fatalf("expected module %s to be registered, got %v", moduleID, err)
+		}
+	}
+
+	for capabilityID := range registeredCapabilities {
+		manifest := buildTestManifest()
+		manifest.Capabilities = []string{capabilityID}
+
+		if err := manifest.Validate(); err != nil {
+			t.Fatalf("expected capability %s to be registered, got %v", capabilityID, err)
+		}
+	}
+
+	for telemetryID := range registeredTelemetry {
+		manifest := buildTestManifest()
+		manifest.Telemetry = []string{telemetryID}
+
+		if err := manifest.Validate(); err != nil {
+			t.Fatalf("expected telemetry %s to be registered, got %v", telemetryID, err)
+		}
+	}
+}

