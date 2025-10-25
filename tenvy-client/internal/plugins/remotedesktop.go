@@ -4,6 +4,7 @@ import (
 	"archive/zip"
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -43,6 +44,7 @@ func StageRemoteDesktopEngine(
 	client HTTPDoer,
 	baseURL, agentID, authKey, userAgent string,
 	runtimeFacts manifest.RuntimeFacts,
+	descriptor manifest.ManifestDescriptor,
 ) (RemoteDesktopStageResult, error) {
 	var result RemoteDesktopStageResult
 
@@ -69,16 +71,46 @@ func StageRemoteDesktopEngine(
 		return result, fmt.Errorf("ensure plugin root: %w", err)
 	}
 
-	pluginDir := filepath.Join(manager.root, RemoteDesktopEnginePluginID)
-	manifestURL, artifactURL := remoteDesktopEndpoints(baseURL, agentID)
+	pluginID := strings.TrimSpace(descriptor.PluginID)
+	if pluginID == "" {
+		pluginID = RemoteDesktopEnginePluginID
+	}
+	if !strings.EqualFold(pluginID, RemoteDesktopEnginePluginID) {
+		return result, fmt.Errorf("plugin %s is not supported for remote desktop staging", descriptor.PluginID)
+	}
 
-	manifestData, mf, err := fetchRemoteDesktopManifest(ctx, client, manifestURL, authKey, userAgent)
+	pluginDir := filepath.Join(manager.root, RemoteDesktopEnginePluginID)
+	manifestPath := filepath.Join(pluginDir, manifestFileName)
+
+	if cached, entryPath, ok := reuseRemoteDesktopInstallation(manifestPath, pluginDir, descriptor); ok {
+		result.Manifest = *cached
+		result.EntryPath = entryPath
+		result.Updated = false
+		return result, nil
+	}
+
+	manifestURL, artifactURL := remoteDesktopEndpoints(baseURL, agentID, pluginID)
+
+	manifestData, mf, err := fetchRemoteDesktopManifest(
+		ctx,
+		client,
+		manifestURL,
+		authKey,
+		userAgent,
+		descriptor.ManifestDigest,
+	)
 	if err != nil {
 		manager.recordInstallStatusLocked(RemoteDesktopEnginePluginID, "", manifest.InstallFailed, err.Error())
 		return result, err
 	}
 
 	result.Manifest = mf
+
+	if !strings.EqualFold(strings.TrimSpace(mf.ID), pluginID) {
+		message := fmt.Sprintf("unexpected manifest id %s", mf.ID)
+		manager.recordInstallStatusLocked(RemoteDesktopEnginePluginID, mf.Version, manifest.InstallFailed, message)
+		return result, errors.New(message)
+	}
 
 	verificationResult, verifyErr := manifest.VerifySignature(mf, manager.verificationOptions())
 	if verifyErr != nil {
@@ -111,7 +143,6 @@ func StageRemoteDesktopEngine(
 		return result, errors.New(message)
 	}
 
-	manifestPath := filepath.Join(pluginDir, manifestFileName)
 	artifactPath := filepath.Join(pluginDir, artifactRel)
 	entryPath := filepath.Join(pluginDir, entryRel)
 
@@ -198,15 +229,59 @@ func StageRemoteDesktopEngine(
 	return result, nil
 }
 
-func remoteDesktopEndpoints(baseURL, agentID string) (string, string) {
+func reuseRemoteDesktopInstallation(
+	manifestPath, pluginDir string,
+	descriptor manifest.ManifestDescriptor,
+) (*manifest.Manifest, string, bool) {
+	expected := strings.TrimSpace(descriptor.ManifestDigest)
+	if expected == "" {
+		return nil, "", false
+	}
+
+	data, err := os.ReadFile(manifestPath)
+	if err != nil {
+		return nil, "", false
+	}
+	sum := sha256.Sum256(data)
+	digest := fmt.Sprintf("%x", sum[:])
+	if !strings.EqualFold(digest, expected) {
+		return nil, "", false
+	}
+
+	var mf manifest.Manifest
+	if err := json.Unmarshal(data, &mf); err != nil {
+		return nil, "", false
+	}
+
+	artifactRel := filepath.Clean(filepath.FromSlash(mf.Package.Artifact))
+	entryRel := filepath.Clean(filepath.FromSlash(mf.Entry))
+	if artifactRel == "" || entryRel == "" {
+		return nil, "", false
+	}
+
+	artifactPath := filepath.Join(pluginDir, artifactRel)
+	entryPath := filepath.Join(pluginDir, entryRel)
+	upToDate, err := installationUpToDate(manifestPath, artifactPath, entryPath, data, mf)
+	if err != nil || !upToDate {
+		return nil, "", false
+	}
+
+	return &mf, entryPath, true
+}
+
+func remoteDesktopEndpoints(baseURL, agentID, pluginID string) (string, string) {
 	trimmed := strings.TrimRight(baseURL, "/")
 	encodedAgent := url.PathEscape(agentID)
-	manifestURL := fmt.Sprintf("%s/api/agents/%s/plugins/%s", trimmed, encodedAgent, url.PathEscape(RemoteDesktopEnginePluginID))
+	manifestURL := fmt.Sprintf("%s/api/agents/%s/plugins/%s", trimmed, encodedAgent, url.PathEscape(pluginID))
 	artifactURL := fmt.Sprintf("%s/artifact", manifestURL)
 	return manifestURL, artifactURL
 }
 
-func fetchRemoteDesktopManifest(ctx context.Context, client HTTPDoer, endpoint, authKey, userAgent string) ([]byte, manifest.Manifest, error) {
+func fetchRemoteDesktopManifest(
+	ctx context.Context,
+	client HTTPDoer,
+	endpoint, authKey, userAgent, expectedDigest string,
+) ([]byte, manifest.Manifest, error) {
 	var mf manifest.Manifest
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
@@ -242,6 +317,13 @@ func fetchRemoteDesktopManifest(ctx context.Context, client HTTPDoer, endpoint, 
 	}
 	if err := json.Unmarshal(data, &mf); err != nil {
 		return nil, mf, fmt.Errorf("decode manifest: %w", err)
+	}
+	if expectedDigest != "" {
+		sum := sha256.Sum256(data)
+		digest := fmt.Sprintf("%x", sum[:])
+		if !strings.EqualFold(digest, strings.TrimSpace(expectedDigest)) {
+			return nil, mf, fmt.Errorf("manifest digest mismatch: expected %s", expectedDigest)
+		}
 	}
 	if err := mf.Validate(); err != nil {
 		return nil, mf, fmt.Errorf("manifest validation failed: %w", err)

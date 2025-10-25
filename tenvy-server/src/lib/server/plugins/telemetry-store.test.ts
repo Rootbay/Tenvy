@@ -198,11 +198,11 @@ describe('PluginTelemetryStore', () => {
 		expect(audits.length).toBeGreaterThan(0);
 	});
 
-	it('retrieves individual plugin telemetry records', async () => {
-		const runtimeStore = createPluginRuntimeStore();
-		const [record] = await loadPluginManifests({ directory: manifestDir });
-		expect(record).toBeDefined();
-		await runtimeStore.ensure(record!);
+        it('retrieves individual plugin telemetry records', async () => {
+                const runtimeStore = createPluginRuntimeStore();
+                const [record] = await loadPluginManifests({ directory: manifestDir });
+                expect(record).toBeDefined();
+                await runtimeStore.ensure(record!);
 		await runtimeStore.update(record!.manifest.id, {
 			approvalStatus: 'approved',
 			approvedAt: new Date()
@@ -231,7 +231,45 @@ describe('PluginTelemetryStore', () => {
 		expect(telemetry?.status).toBe('installed');
 		expect(telemetry?.version).toBe('1.0.0');
 
-		const missing = await store.getAgentPlugin('agent-1', 'missing-plugin');
-		expect(missing).toBeNull();
-	});
+                const missing = await store.getAgentPlugin('agent-1', 'missing-plugin');
+                expect(missing).toBeNull();
+        });
+
+        it('exposes approved manifest snapshots and deltas', async () => {
+                const runtimeStore = createPluginRuntimeStore();
+                const [record] = await loadPluginManifests({ directory: manifestDir });
+                expect(record).toBeDefined();
+                await runtimeStore.ensure(record!);
+                const approvedAt = new Date();
+                await runtimeStore.update(record!.manifest.id, {
+                        approvalStatus: 'approved',
+                        approvedAt
+                });
+
+                const store = new PluginTelemetryStore({
+                        runtimeStore,
+                        manifestDirectory: manifestDir
+                });
+
+                const snapshot = await store.getManifestSnapshot();
+                expect(snapshot.manifests).toHaveLength(1);
+                const descriptor = snapshot.manifests[0];
+                expect(descriptor.pluginId).toBe('test-plugin');
+                expect(descriptor.manifestDigest).toMatch(/^[0-9a-f]{64}$/);
+                expect(descriptor.approvedAt).toBe(approvedAt.toISOString());
+
+                const fullDelta = await store.getManifestDelta({ digests: {} });
+                expect(fullDelta.updated).toHaveLength(1);
+                expect(fullDelta.updated[0]?.pluginId).toBe('test-plugin');
+
+                const noDelta = await store.getManifestDelta({
+                        version: snapshot.version,
+                        digests: { 'test-plugin': descriptor.manifestDigest }
+                });
+                expect(noDelta.updated).toHaveLength(0);
+                expect(noDelta.removed).toHaveLength(0);
+
+                const approvedManifest = await store.getApprovedManifest('test-plugin');
+                expect(approvedManifest?.descriptor.manifestDigest).toBe(descriptor.manifestDigest);
+        });
 });

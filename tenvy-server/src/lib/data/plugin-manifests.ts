@@ -14,9 +14,10 @@ import {
 import { getVerificationOptions } from '$lib/server/plugins/signature-policy.js';
 
 export interface LoadedPluginManifest {
-	source: string;
-	manifest: PluginManifest;
-	verification: PluginSignatureVerificationSummary;
+        source: string;
+        manifest: PluginManifest;
+        verification: PluginSignatureVerificationSummary;
+        raw: string;
 }
 
 const defaultManifestDirectory = resolve(process.cwd(), 'resources/plugin-manifests');
@@ -133,10 +134,10 @@ export async function loadPluginManifests(
 		}
 
 		const source = join(directory, entry.name);
-		try {
-			const fileContents = await readFile(source, 'utf8');
-			const manifest = JSON.parse(fileContents) as PluginManifest;
-			const errors = validatePluginManifest(manifest);
+                try {
+                        const fileContents = await readFile(source, 'utf8');
+                        const manifest = JSON.parse(fileContents) as PluginManifest;
+                        const errors = validatePluginManifest(manifest);
 
 			if (errors.length > 0) {
 				console.warn(`Skipping invalid plugin manifest at ${source}`, errors);
@@ -161,7 +162,7 @@ export async function loadPluginManifests(
 				);
 			}
 
-			manifests.push({ source, manifest, verification });
+                        manifests.push({ source, manifest, verification, raw: fileContents });
 		} catch (error) {
 			console.warn(`Failed to load plugin manifest at ${source}`, error);
 		}

@@ -20,6 +20,20 @@ import (
 	manifest "github.com/rootbay/tenvy-client/shared/pluginmanifest"
 )
 
+func buildDescriptor(manifestJSON, version, artifactHash string, briefing manifest.ManifestBriefing) manifest.ManifestDescriptor {
+	digest := sha256.Sum256([]byte(manifestJSON))
+	descriptor := manifest.ManifestDescriptor{
+		PluginID:       plugins.RemoteDesktopEnginePluginID,
+		Version:        version,
+		ManifestDigest: fmt.Sprintf("%x", digest[:]),
+		Distribution:   briefing,
+	}
+	if artifactHash != "" {
+		descriptor.ArtifactHash = artifactHash
+	}
+	return descriptor
+}
+
 func TestStageRemoteDesktopEngineSuccess(t *testing.T) {
 	t.Parallel()
 
@@ -63,8 +77,15 @@ func TestStageRemoteDesktopEngineSuccess(t *testing.T) {
 		t.Fatalf("new manager: %v", err)
 	}
 
+	descriptor := buildDescriptor(
+		manifestJSON,
+		"9.9.9",
+		hashHex,
+		manifest.ManifestBriefing{DefaultMode: manifest.DeliveryAutomatic, AutoUpdate: true},
+	)
+
 	ctx := context.Background()
-	result, err := plugins.StageRemoteDesktopEngine(ctx, manager, server.Client(), server.URL, "agent-1", "", "stage-test", manifest.RuntimeFacts{})
+	result, err := plugins.StageRemoteDesktopEngine(ctx, manager, server.Client(), server.URL, "agent-1", "", "stage-test", manifest.RuntimeFacts{}, descriptor)
 	if err != nil {
 		t.Fatalf("stage engine: %v", err)
 	}
@@ -97,7 +118,7 @@ func TestStageRemoteDesktopEngineSuccess(t *testing.T) {
 	}
 
 	// Subsequent staging should be a no-op.
-	result2, err := plugins.StageRemoteDesktopEngine(ctx, manager, server.Client(), server.URL, "agent-1", "", "stage-test", manifest.RuntimeFacts{})
+	result2, err := plugins.StageRemoteDesktopEngine(ctx, manager, server.Client(), server.URL, "agent-1", "", "stage-test", manifest.RuntimeFacts{}, descriptor)
 	if err != nil {
 		t.Fatalf("restage engine: %v", err)
 	}
@@ -120,7 +141,13 @@ func TestStageRemoteDesktopEngineRecordsFailure(t *testing.T) {
 		t.Fatalf("new manager: %v", err)
 	}
 
-	_, err = plugins.StageRemoteDesktopEngine(context.Background(), manager, server.Client(), server.URL, "agent-1", "", "stage-test", manifest.RuntimeFacts{})
+	descriptor := manifest.ManifestDescriptor{
+		PluginID:     plugins.RemoteDesktopEnginePluginID,
+		Version:      "0.0.0",
+		Distribution: manifest.ManifestBriefing{DefaultMode: manifest.DeliveryAutomatic, AutoUpdate: true},
+	}
+
+	_, err = plugins.StageRemoteDesktopEngine(context.Background(), manager, server.Client(), server.URL, "agent-1", "", "stage-test", manifest.RuntimeFacts{}, descriptor)
 	if err == nil {
 		t.Fatal("expected staging to fail")
 	}
@@ -181,7 +208,14 @@ func TestStageRemoteDesktopEngineBlocksIncompatiblePlatform(t *testing.T) {
 		EnabledModules: []string{"remote-desktop"},
 	}
 
-	_, err = plugins.StageRemoteDesktopEngine(context.Background(), manager, server.Client(), server.URL, "agent-1", "", "stage-test", facts)
+	descriptor := buildDescriptor(
+		manifestJSON,
+		"1.0.0",
+		hashHex,
+		manifest.ManifestBriefing{DefaultMode: manifest.DeliveryManual, AutoUpdate: false},
+	)
+
+	_, err = plugins.StageRemoteDesktopEngine(context.Background(), manager, server.Client(), server.URL, "agent-1", "", "stage-test", facts, descriptor)
 	if err == nil {
 		t.Fatal("expected staging to be blocked")
 	}
@@ -248,7 +282,14 @@ func TestStageRemoteDesktopEngineBlocksIncompatibleArchitecture(t *testing.T) {
 		EnabledModules: []string{"remote-desktop"},
 	}
 
-	_, err = plugins.StageRemoteDesktopEngine(context.Background(), manager, server.Client(), server.URL, "agent-1", "", "stage-test", facts)
+	descriptor := buildDescriptor(
+		manifestJSON,
+		"1.0.0",
+		hashHex,
+		manifest.ManifestBriefing{DefaultMode: manifest.DeliveryManual, AutoUpdate: false},
+	)
+
+	_, err = plugins.StageRemoteDesktopEngine(context.Background(), manager, server.Client(), server.URL, "agent-1", "", "stage-test", facts, descriptor)
 	if err == nil {
 		t.Fatal("expected staging to be blocked")
 	}
@@ -315,7 +356,14 @@ func TestStageRemoteDesktopEngineBlocksIncompatibleAgentVersion(t *testing.T) {
 		EnabledModules: []string{"remote-desktop"},
 	}
 
-	_, err = plugins.StageRemoteDesktopEngine(context.Background(), manager, server.Client(), server.URL, "agent-1", "", "stage-test", facts)
+	descriptor := buildDescriptor(
+		manifestJSON,
+		"1.0.0",
+		hashHex,
+		manifest.ManifestBriefing{DefaultMode: manifest.DeliveryManual, AutoUpdate: false},
+	)
+
+	_, err = plugins.StageRemoteDesktopEngine(context.Background(), manager, server.Client(), server.URL, "agent-1", "", "stage-test", facts, descriptor)
 	if err == nil {
 		t.Fatal("expected staging to be blocked")
 	}

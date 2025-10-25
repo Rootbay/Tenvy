@@ -115,6 +115,36 @@ export interface PluginInstallationTelemetry {
 
 export interface PluginSyncPayload {
   installations: PluginInstallationTelemetry[];
+  manifests?: AgentPluginManifestState;
+}
+
+export interface AgentPluginManifestState {
+  version?: string;
+  digests?: Record<string, string>;
+}
+
+export interface PluginManifestDescriptor {
+  pluginId: string;
+  version: string;
+  manifestDigest: string;
+  artifactHash?: string | null;
+  artifactSizeBytes?: number | null;
+  approvedAt?: string | null;
+  distribution: {
+    defaultMode: PluginDeliveryMode;
+    autoUpdate: boolean;
+  };
+}
+
+export interface PluginManifestSnapshot {
+  version: string;
+  manifests: PluginManifestDescriptor[];
+}
+
+export interface PluginManifestDelta {
+  version: string;
+  updated: PluginManifestDescriptor[];
+  removed: string[];
 }
 
 export type PluginSignatureVerificationErrorCode =

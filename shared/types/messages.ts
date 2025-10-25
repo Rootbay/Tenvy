@@ -1,6 +1,6 @@
 import type { AgentConfig } from "./config";
 import type { AgentMetrics, AgentStatus } from "./agent";
-import type { PluginSyncPayload } from "./plugin-manifest";
+import type { PluginSyncPayload, PluginManifestDelta } from "./plugin-manifest";
 import type {
   RemoteDesktopCommandPayload,
   RemoteDesktopInputBurst,
@@ -119,6 +119,7 @@ export interface AgentSyncResponse {
   commands: Command[];
   config: AgentConfig;
   serverTime: string;
+  pluginManifests?: PluginManifestDelta;
 }
 
 export type CommandDeliveryMode = "session" | "queued";
