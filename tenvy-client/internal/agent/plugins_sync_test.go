@@ -9,9 +9,12 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
+	"time"
 
 	remotedesktop "github.com/rootbay/tenvy-client/internal/modules/control/remotedesktop"
 	"github.com/rootbay/tenvy-client/internal/plugins"
@@ -210,6 +213,111 @@ func TestFetchApprovedPluginListUsesClientPluginEndpoint(t *testing.T) {
 	}
 }
 
+func TestActivatePluginLaunchesRuntime(t *testing.T) {
+	marker := filepath.Join(t.TempDir(), "started.txt")
+	source := "package main\nimport (\n\t\"os\"\n\t\"time\"\n)\nfunc main() {\n\tmarker := os.Getenv(\"PLUGIN_TEST_MARKER\")\n\tos.WriteFile(marker, []byte(\"started\"), 0o644)\n\tfor {\n\t\ttime.Sleep(10 * time.Millisecond)\n\t}\n}\n"
+	binary := buildPluginBinary(t, source)
+
+	agent := &Agent{
+		modules: newModuleManager(),
+		logger:  log.New(io.Discard, "", 0),
+	}
+
+	mf := manifest.Manifest{ID: "test-plugin", Version: "1.0.0"}
+	t.Setenv("PLUGIN_TEST_MARKER", marker)
+
+	if err := agent.activatePlugin(context.Background(), mf, binary); err != nil {
+		t.Fatalf("activate plugin: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = agent.modules.DeactivatePlugin(context.Background(), "test-plugin")
+	})
+
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		if _, err := os.Stat(marker); err == nil {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("plugin did not create marker file %s", marker)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	if agent.modules.PluginHandle("test-plugin") == nil {
+		t.Fatal("expected plugin handle to be registered")
+	}
+}
+
+func TestActivatePluginRecordsRuntimeFailure(t *testing.T) {
+	t.Parallel()
+
+	logger := log.New(io.Discard, "", 0)
+	manager, err := plugins.NewManager(t.TempDir(), logger, manifest.VerifyOptions{})
+	if err != nil {
+		t.Fatalf("new plugin manager: %v", err)
+	}
+
+	agent := &Agent{
+		modules: newModuleManager(),
+		plugins: manager,
+		logger:  logger,
+	}
+
+	mf := manifest.Manifest{ID: "broken-plugin", Version: "2.0.0"}
+	missing := filepath.Join(t.TempDir(), "missing.exe")
+
+	if err := agent.activatePlugin(context.Background(), mf, missing); err == nil {
+		t.Fatal("expected activation to fail for missing binary")
+	}
+
+	statusPath := filepath.Join(manager.Root(), "broken-plugin", ".status.json")
+	data, err := os.ReadFile(statusPath)
+	if err != nil {
+		t.Fatalf("read status file: %v", err)
+	}
+
+	var record map[string]any
+	if err := json.Unmarshal(data, &record); err != nil {
+		t.Fatalf("unmarshal status file: %v", err)
+	}
+	statusValue, ok := record["status"].(string)
+	if !ok {
+		t.Fatalf("status field missing from record: %+v", record)
+	}
+	if !strings.EqualFold(statusValue, string(manifest.InstallError)) {
+		t.Fatalf("expected install error status, got %v", statusValue)
+	}
+	errValue, _ := record["error"].(string)
+	if strings.TrimSpace(errValue) == "" {
+		t.Fatalf("expected error message in status file, got %+v", record)
+	}
+}
+
+func buildPluginBinary(t *testing.T, source string) string {
+	t.Helper()
+
+	dir := t.TempDir()
+	src := filepath.Join(dir, "main.go")
+	if err := os.WriteFile(src, []byte(source), 0o644); err != nil {
+		t.Fatalf("write plugin source: %v", err)
+	}
+
+	binary := filepath.Join(dir, "plugin")
+	if runtime.GOOS == "windows" {
+		binary += ".exe"
+	}
+
+	cmd := exec.Command("go", "build", "-o", binary, src)
+	cmd.Stdout = io.Discard
+	cmd.Stderr = io.Discard
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("build plugin: %v", err)
+	}
+
+	return binary
+}
+
 func TestStagePluginsFromListSkipsManualRemoteDesktopWithoutSignal(t *testing.T) {
 	t.Parallel()
 
@@ -272,8 +380,10 @@ func TestStagePluginsFromListStagesManualRemoteDesktopWhenRequested(t *testing.T
 	if err := os.MkdirAll(filepath.Dir(entryPath), 0o755); err != nil {
 		t.Fatalf("create entry dir: %v", err)
 	}
-	if err := os.WriteFile(entryPath, []byte("engine"), 0o644); err != nil {
-		t.Fatalf("write entry: %v", err)
+	source := "package main\nimport \"time\"\nfunc main() { for { time.Sleep(10 * time.Millisecond) } }\n"
+	binary := buildPluginBinary(t, source)
+	if err := os.Rename(binary, entryPath); err != nil {
+		t.Fatalf("place entry binary: %v", err)
 	}
 
 	handler := &testPluginStageHandler{
@@ -305,6 +415,10 @@ func TestStagePluginsFromListStagesManualRemoteDesktopWhenRequested(t *testing.T
 		logger:   log.New(io.Discard, "", 0),
 		metadata: protocol.AgentMetadata{OS: "windows", Architecture: "amd64", Version: "1.0.0"},
 	}
+
+	t.Cleanup(func() {
+		_ = agent.modules.DeactivatePlugin(context.Background(), pluginID)
+	})
 
 	snapshot := &manifest.ManifestList{
 		Version: "1",
@@ -369,8 +483,10 @@ func TestStagePluginsFromListRegistersCapabilitiesForCustomPlugin(t *testing.T) 
 	if err := os.MkdirAll(filepath.Dir(entryPath), 0o755); err != nil {
 		t.Fatalf("create entry dir: %v", err)
 	}
-	if err := os.WriteFile(entryPath, []byte("plugin"), 0o644); err != nil {
-		t.Fatalf("write entry: %v", err)
+	source := "package main\nimport \"time\"\nfunc main() { for { time.Sleep(10 * time.Millisecond) } }\n"
+	binary := buildPluginBinary(t, source)
+	if err := os.Rename(binary, entryPath); err != nil {
+		t.Fatalf("place entry binary: %v", err)
 	}
 
 	handler := &testPluginStageHandler{
@@ -396,6 +512,10 @@ func TestStagePluginsFromListRegistersCapabilitiesForCustomPlugin(t *testing.T) 
 		modules: newDefaultModuleManager(),
 		logger:  log.New(io.Discard, "", 0),
 	}
+
+	t.Cleanup(func() {
+		_ = agent.modules.DeactivatePlugin(context.Background(), pluginID)
+	})
 
 	snapshot := &manifest.ManifestList{
 		Version: "3",

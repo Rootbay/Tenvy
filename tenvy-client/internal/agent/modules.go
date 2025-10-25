@@ -44,6 +44,7 @@ type Config struct {
 	AgentConfig     protocol.AgentConfig
 	Plugins         *plugins.Manager
 	ActiveModules   []string
+	PluginHandles   map[string]PluginActivationHandle
 	Extensions      ModuleExtensionRegistry
 	PluginManifests map[string]manifest.ManifestDescriptor
 	Notes           *notes.Manager
@@ -373,6 +374,7 @@ func (r *moduleManager) rebuildCommandIndexLocked() {
 func (r *moduleManager) Init(ctx context.Context, cfg Config) error {
 	r.mu.Lock()
 	cfg.Extensions = r
+	cfg.PluginHandles = r.pluginHandlesLocked()
 	entries := append([]*moduleEntry(nil), r.lifecycle...)
 	r.mu.Unlock()
 
@@ -396,6 +398,7 @@ func (r *moduleManager) Init(ctx context.Context, cfg Config) error {
 func (r *moduleManager) UpdateConfig(cfg Config) error {
 	r.mu.Lock()
 	cfg.Extensions = r
+	cfg.PluginHandles = r.pluginHandlesLocked()
 	entries := append([]*moduleEntry(nil), r.lifecycle...)
 	r.mu.Unlock()
 
@@ -428,6 +431,40 @@ func (r *moduleManager) Metadata() []ModuleMetadata {
 		metadata = append(metadata, copyModuleMetadata(entry.metadata))
 	}
 	return metadata
+}
+
+func (r *moduleManager) pluginHandlesLocked() map[string]PluginActivationHandle {
+	if len(r.pluginActivations) == 0 {
+		return nil
+	}
+	handles := make(map[string]PluginActivationHandle, len(r.pluginActivations))
+	for id, activation := range r.pluginActivations {
+		handles[id] = activation.handle
+	}
+	if len(handles) == 0 {
+		return nil
+	}
+	return handles
+}
+
+func (r *moduleManager) pluginHandleSnapshot() map[string]PluginActivationHandle {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return r.pluginHandlesLocked()
+}
+
+func (r *moduleManager) PluginHandle(pluginID string) PluginActivationHandle {
+	pluginID = strings.TrimSpace(pluginID)
+	if pluginID == "" {
+		return nil
+	}
+	r.mu.RLock()
+	activation, ok := r.pluginActivations[pluginID]
+	r.mu.RUnlock()
+	if !ok {
+		return nil
+	}
+	return activation.handle
 }
 
 func (r *moduleManager) RegisterModuleExtension(moduleID string, extension ModuleExtension) error {
@@ -969,6 +1006,11 @@ func (a *Agent) moduleRuntime() Config {
 		}
 	}
 
+	var pluginHandles map[string]PluginActivationHandle
+	if a.modules != nil {
+		pluginHandles = a.modules.pluginHandleSnapshot()
+	}
+
 	return Config{
 		AgentID:         a.id,
 		BaseURL:         a.baseURL,
@@ -981,6 +1023,7 @@ func (a *Agent) moduleRuntime() Config {
 		AgentConfig:     a.config,
 		Plugins:         a.plugins,
 		ActiveModules:   activeModules,
+		PluginHandles:   pluginHandles,
 		Extensions:      a.modules,
 		PluginManifests: a.pluginManifestSnapshot(),
 		Notes:           a.notes,

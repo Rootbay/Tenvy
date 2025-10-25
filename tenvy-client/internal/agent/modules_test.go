@@ -556,6 +556,10 @@ func TestModuleManagerShutdownInvokesPluginHandles(t *testing.T) {
 		t.Fatalf("activate plugin: %v", err)
 	}
 
+	if manager.PluginHandle("plugin.remote") == nil {
+		t.Fatal("expected plugin handle to be registered")
+	}
+
 	if err := manager.Shutdown(context.Background()); err != nil {
 		t.Fatalf("shutdown manager: %v", err)
 	}
@@ -568,6 +572,43 @@ func TestModuleManagerShutdownInvokesPluginHandles(t *testing.T) {
 	}
 	if module.shutdownCalled != 1 {
 		t.Fatalf("expected module shutdown to be called once, got %d", module.shutdownCalled)
+	}
+	if manager.PluginHandle("plugin.remote") != nil {
+		t.Fatal("expected plugin handle removed after shutdown")
+	}
+}
+
+func TestAgentModuleRuntimeIncludesPluginHandles(t *testing.T) {
+	t.Parallel()
+
+	module := &stubModule{
+		metadata: ModuleMetadata{
+			ID:       "ext-module",
+			Title:    "Extension Module",
+			Commands: []string{"ext.command"},
+		},
+	}
+
+	manager := newModuleManager()
+	manager.register(module)
+
+	handle := PluginActivationFunc(func(context.Context) error { return nil })
+	if err := manager.ActivatePlugin(context.Background(), "plugin.remote", nil, handle); err != nil {
+		t.Fatalf("activate plugin: %v", err)
+	}
+
+	agent := &Agent{modules: manager}
+	runtime := agent.moduleRuntime()
+
+	if runtime.PluginHandles == nil {
+		t.Fatal("expected plugin handles to be populated")
+	}
+	registered, ok := runtime.PluginHandles["plugin.remote"]
+	if !ok {
+		t.Fatalf("expected plugin.remote handle in runtime config, got %+v", runtime.PluginHandles)
+	}
+	if registered == nil {
+		t.Fatal("expected non-nil plugin handle")
 	}
 }
 
