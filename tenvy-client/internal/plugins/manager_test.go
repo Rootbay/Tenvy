@@ -207,7 +207,7 @@ func TestSnapshotAppliesRecordedStatus(t *testing.T) {
 		t.Fatalf("new manager: %v", err)
 	}
 
-	if err := plugins.RecordInstallStatus(manager, "remote-desktop-engine", "1.0.0", manifest.InstallFailed, "download failed"); err != nil {
+	if err := plugins.RecordInstallStatus(manager, "remote-desktop-engine", "1.0.0", manifest.InstallError, "download failed"); err != nil {
 		t.Fatalf("record status: %v", err)
 	}
 
@@ -216,7 +216,7 @@ func TestSnapshotAppliesRecordedStatus(t *testing.T) {
 		t.Fatalf("expected single installation, got %#v", snapshot)
 	}
 	install := snapshot.Installations[0]
-	if install.Status != manifest.InstallFailed {
+	if install.Status != manifest.InstallError {
 		t.Fatalf("expected failed status, got %s", install.Status)
 	}
 	if install.Error != "download failed" {
@@ -233,7 +233,7 @@ func TestSnapshotWithoutManifestUsesStatus(t *testing.T) {
 		t.Fatalf("new manager: %v", err)
 	}
 
-	if err := plugins.RecordInstallStatus(manager, "remote-desktop-engine", "1.2.3", manifest.InstallFailed, "network error"); err != nil {
+	if err := plugins.RecordInstallStatus(manager, "remote-desktop-engine", "1.2.3", manifest.InstallError, "network error"); err != nil {
 		t.Fatalf("record status: %v", err)
 	}
 
@@ -248,11 +248,110 @@ func TestSnapshotWithoutManifestUsesStatus(t *testing.T) {
 	if install.Version != "1.2.3" {
 		t.Fatalf("unexpected version %s", install.Version)
 	}
-	if install.Status != manifest.InstallFailed {
+	if install.Status != manifest.InstallError {
 		t.Fatalf("expected failed status, got %s", install.Status)
 	}
 	if install.Error != "network error" {
 		t.Fatalf("expected error propagated, got %q", install.Error)
+	}
+}
+
+func TestSnapshotEmitsDocumentedStatuses(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+
+	installedDir := filepath.Join(root, "installed-plugin")
+	installedArtifact := filepath.Join(installedDir, "plugin.bin")
+	installedPayload := []byte("installed artifact")
+	writeFile(t, installedArtifact, installedPayload)
+	installedHash := sha256SumHex(installedPayload)
+	installedManifest := fmt.Sprintf(`{
+                "id": "installed-plugin",
+                "name": "Installed Plugin",
+                "version": "1.0.0",
+                "entry": "plugin.bin",
+                "requirements": {},
+                "distribution": {"defaultMode": "manual", "autoUpdate": false, "signature": {"type": "sha256", "hash": "%[1]s", "signature": "%[1]s"}},
+                "package": {"artifact": "plugin.bin", "hash": "%[1]s"}
+        }`, installedHash)
+	writeFile(t, filepath.Join(installedDir, "manifest.json"), []byte(installedManifest))
+
+	blockedDir := filepath.Join(root, "blocked-plugin")
+	blockedArtifact := filepath.Join(blockedDir, "plugin.bin")
+	blockedPayload := []byte("blocked artifact")
+	writeFile(t, blockedArtifact, blockedPayload)
+	blockedHash := sha256SumHex(blockedPayload)
+	pub, _, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatalf("generate key: %v", err)
+	}
+	blockedManifest := fmt.Sprintf(`{
+                "id": "blocked-plugin",
+                "name": "Blocked Plugin",
+                "version": "1.0.0",
+                "entry": "plugin.bin",
+                "requirements": {},
+                "distribution": {
+                        "defaultMode": "manual",
+                        "autoUpdate": false,
+                        "signature": {"type": "ed25519", "hash": "%[1]s", "publicKey": "primary", "signature": "%[2]s"}
+                },
+                "package": {"artifact": "plugin.bin", "hash": "%[1]s"}
+        }`, blockedHash, strings.Repeat("00", ed25519.SignatureSize))
+	writeFile(t, filepath.Join(blockedDir, "manifest.json"), []byte(blockedManifest))
+
+	errorDir := filepath.Join(root, "error-plugin")
+	errorHash := sha256SumHex([]byte("missing artifact payload"))
+	errorManifest := fmt.Sprintf(`{
+                "id": "error-plugin",
+                "name": "Error Plugin",
+                "version": "1.0.0",
+                "entry": "missing.bin",
+                "requirements": {},
+                "distribution": {"defaultMode": "manual", "autoUpdate": false, "signature": {"type": "sha256", "hash": "%[1]s", "signature": "%[1]s"}},
+                "package": {"artifact": "missing.bin", "hash": "%[1]s"}
+        }`, errorHash)
+	writeFile(t, filepath.Join(errorDir, "manifest.json"), []byte(errorManifest))
+
+	opts := manifest.VerifyOptions{
+		SHA256AllowList:   []string{installedHash, errorHash},
+		Ed25519PublicKeys: map[string]ed25519.PublicKey{"primary": pub},
+	}
+	manager, err := plugins.NewManager(root, log.New(io.Discard, "", 0), opts)
+	if err != nil {
+		t.Fatalf("new manager: %v", err)
+	}
+
+	if err := plugins.RecordInstallStatus(manager, "disabled-plugin", "0.0.1", manifest.InstallDisabled, "disabled by policy"); err != nil {
+		t.Fatalf("record disabled status: %v", err)
+	}
+
+	snapshot := manager.Snapshot()
+	if snapshot == nil {
+		t.Fatal("expected snapshot payload")
+	}
+	if len(snapshot.Installations) != 4 {
+		t.Fatalf("expected 4 installations, got %d", len(snapshot.Installations))
+	}
+
+	allowed := map[manifest.PluginInstallStatus]struct{}{
+		manifest.InstallInstalled: {},
+		manifest.InstallBlocked:   {},
+		manifest.InstallError:     {},
+		manifest.InstallDisabled:  {},
+	}
+	seen := make(map[manifest.PluginInstallStatus]bool)
+	for _, install := range snapshot.Installations {
+		if _, ok := allowed[install.Status]; !ok {
+			t.Fatalf("unexpected status emitted: %s", install.Status)
+		}
+		seen[install.Status] = true
+	}
+	for status := range allowed {
+		if !seen[status] {
+			t.Fatalf("expected status %s to be included", status)
+		}
 	}
 }
 

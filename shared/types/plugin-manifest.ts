@@ -22,11 +22,10 @@ export const pluginArchitectures = ["x86_64", "arm64"] as const;
 export type PluginArchitecture = (typeof pluginArchitectures)[number];
 
 export const pluginInstallStatuses = [
-  "pending",
-  "installing",
   "installed",
-  "failed",
   "blocked",
+  "error",
+  "disabled",
 ] as const;
 export type PluginInstallStatus = (typeof pluginInstallStatuses)[number];
 

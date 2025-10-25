@@ -102,7 +102,7 @@ func (m *Manager) Snapshot() *manifest.SyncPayload {
 		installation := manifest.InstallationTelemetry{
 			PluginID:  mf.ID,
 			Version:   mf.Version,
-			Status:    manifest.InstallPending,
+			Status:    manifest.InstallInstalled,
 			Timestamp: &now,
 		}
 
@@ -125,7 +125,7 @@ func (m *Manager) Snapshot() *manifest.SyncPayload {
 
 		artifactRel := filepath.Clean(mf.Package.Artifact)
 		if strings.HasPrefix(artifactRel, "..") {
-			installation.Status = manifest.InstallFailed
+			installation.Status = manifest.InstallError
 			installation.Error = "artifact path escapes plugin directory"
 			installation.Timestamp = &now
 			payload.Installations = append(payload.Installations, installation)
@@ -138,25 +138,25 @@ func (m *Manager) Snapshot() *manifest.SyncPayload {
 		case statErr == nil && !info.IsDir():
 			hash, hashErr := fileHash(artifactPath)
 			if hashErr != nil {
-				installation.Status = manifest.InstallFailed
+				installation.Status = manifest.InstallError
 				installation.Error = fmt.Sprintf("hash: %v", hashErr)
 			} else {
 				installation.Hash = hash
 				if mf.Package.Hash != "" && !strings.EqualFold(mf.Package.Hash, hash) {
-					installation.Status = manifest.InstallFailed
+					installation.Status = manifest.InstallError
 					installation.Error = "hash mismatch"
 				} else {
 					installation.Status = manifest.InstallInstalled
 				}
 			}
 		case errors.Is(statErr, fs.ErrNotExist):
-			installation.Status = manifest.InstallPending
+			installation.Status = manifest.InstallError
 			installation.Error = "artifact missing"
 		case statErr != nil:
-			installation.Status = manifest.InstallFailed
+			installation.Status = manifest.InstallError
 			installation.Error = statErr.Error()
 		default:
-			installation.Status = manifest.InstallFailed
+			installation.Status = manifest.InstallError
 			installation.Error = "artifact is a directory"
 		}
 

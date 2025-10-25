@@ -157,7 +157,7 @@ func TestStageRemoteDesktopEngineRecordsFailure(t *testing.T) {
 		t.Fatalf("expected failure snapshot entry, got %#v", snapshot)
 	}
 	install := snapshot.Installations[0]
-	if install.Status != manifest.InstallFailed {
+	if install.Status != manifest.InstallError {
 		t.Fatalf("expected failure status, got %s", install.Status)
 	}
 	if !strings.Contains(install.Error, "boom") {

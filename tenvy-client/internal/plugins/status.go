@@ -22,6 +22,21 @@ type installationStatusRecord struct {
 	Timestamp string                       `json:"timestamp,omitempty"`
 }
 
+func normalizeInstallStatus(status manifest.PluginInstallStatus) manifest.PluginInstallStatus {
+	switch strings.ToLower(strings.TrimSpace(string(status))) {
+	case string(manifest.InstallInstalled):
+		return manifest.InstallInstalled
+	case string(manifest.InstallBlocked):
+		return manifest.InstallBlocked
+	case string(manifest.InstallDisabled):
+		return manifest.InstallDisabled
+	case string(manifest.InstallError), "failed", "pending", "installing":
+		return manifest.InstallError
+	default:
+		return manifest.InstallError
+	}
+}
+
 func (r *installationStatusRecord) PluginID(defaultID string) string {
 	if r == nil {
 		return strings.TrimSpace(defaultID)
@@ -42,6 +57,7 @@ func loadInstallationStatus(dir string) *installationStatusRecord {
 	if err := json.Unmarshal(data, &record); err != nil {
 		return nil
 	}
+	record.Status = normalizeInstallStatus(record.Status)
 	return &record
 }
 
@@ -102,7 +118,7 @@ func (m *Manager) recordInstallStatusLocked(pluginID, version string, status man
 	record := installationStatusRecord{
 		ID:        pluginID,
 		Version:   strings.TrimSpace(version),
-		Status:    status,
+		Status:    normalizeInstallStatus(status),
 		Error:     strings.TrimSpace(message),
 		Timestamp: now,
 	}
