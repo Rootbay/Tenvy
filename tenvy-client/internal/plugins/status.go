@@ -15,11 +15,11 @@ import (
 const statusFileName = ".status.json"
 
 type installationStatusRecord struct {
-	ID            string                       `json:"pluginId,omitempty"`
-	Version       string                       `json:"version,omitempty"`
-	Status        manifest.PluginInstallStatus `json:"status,omitempty"`
-	Error         string                       `json:"error,omitempty"`
-	LastCheckedAt string                       `json:"lastCheckedAt,omitempty"`
+	ID        string                       `json:"pluginId,omitempty"`
+	Version   string                       `json:"version,omitempty"`
+	Status    manifest.PluginInstallStatus `json:"status,omitempty"`
+	Error     string                       `json:"error,omitempty"`
+	Timestamp string                       `json:"timestamp,omitempty"`
 }
 
 func (r *installationStatusRecord) PluginID(defaultID string) string {
@@ -100,11 +100,11 @@ func (m *Manager) recordInstallStatusLocked(pluginID, version string, status man
 	dir := filepath.Join(m.root, pluginID)
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 	record := installationStatusRecord{
-		ID:            pluginID,
-		Version:       strings.TrimSpace(version),
-		Status:        status,
-		Error:         strings.TrimSpace(message),
-		LastCheckedAt: now,
+		ID:        pluginID,
+		Version:   strings.TrimSpace(version),
+		Status:    status,
+		Error:     strings.TrimSpace(message),
+		Timestamp: now,
 	}
 	return writeInstallationStatus(dir, record)
 }

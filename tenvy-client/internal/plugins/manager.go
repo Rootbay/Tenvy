@@ -71,15 +71,16 @@ func (m *Manager) Snapshot() *manifest.SyncPayload {
 		if err != nil {
 			if status := loadInstallationStatus(pluginDir); status != nil {
 				telemetry := manifest.InstallationTelemetry{
-					PluginID: status.PluginID(entry.Name()),
-					Version:  status.Version,
-					Status:   status.Status,
+					PluginID:  status.PluginID(entry.Name()),
+					Version:   status.Version,
+					Status:    status.Status,
+					Timestamp: &now,
 				}
 				if status.Error != "" {
 					telemetry.Error = status.Error
 				}
-				if ts := status.LastCheckedAt; ts != "" {
-					telemetry.LastCheckedAt = &ts
+				if ts := status.Timestamp; ts != "" {
+					telemetry.Timestamp = &ts
 				}
 				payload.Installations = append(payload.Installations, telemetry)
 			} else if !errors.Is(err, fs.ErrNotExist) {
@@ -99,16 +100,17 @@ func (m *Manager) Snapshot() *manifest.SyncPayload {
 		}
 
 		installation := manifest.InstallationTelemetry{
-			PluginID: mf.ID,
-			Version:  mf.Version,
-			Status:   manifest.InstallPending,
+			PluginID:  mf.ID,
+			Version:   mf.Version,
+			Status:    manifest.InstallPending,
+			Timestamp: &now,
 		}
 
 		verificationResult, verifyErr := manifest.VerifySignature(mf, m.verificationOptions())
 		if verifyErr != nil {
 			installation.Status = manifest.InstallBlocked
 			installation.Error = fmt.Sprintf("signature: %s", signatureErrorMessage(verifyErr))
-			installation.LastCheckedAt = &now
+			installation.Timestamp = &now
 			payload.Installations = append(payload.Installations, installation)
 			continue
 		}
@@ -116,7 +118,7 @@ func (m *Manager) Snapshot() *manifest.SyncPayload {
 		if verificationResult == nil || !verificationResult.Trusted {
 			installation.Status = manifest.InstallBlocked
 			installation.Error = fmt.Sprintf("signature: %s", signatureUntrustedReason(mf, verificationResult))
-			installation.LastCheckedAt = &now
+			installation.Timestamp = &now
 			payload.Installations = append(payload.Installations, installation)
 			continue
 		}
@@ -125,7 +127,7 @@ func (m *Manager) Snapshot() *manifest.SyncPayload {
 		if strings.HasPrefix(artifactRel, "..") {
 			installation.Status = manifest.InstallFailed
 			installation.Error = "artifact path escapes plugin directory"
-			installation.LastCheckedAt = &now
+			installation.Timestamp = &now
 			payload.Installations = append(payload.Installations, installation)
 			continue
 		}
@@ -145,8 +147,6 @@ func (m *Manager) Snapshot() *manifest.SyncPayload {
 					installation.Error = "hash mismatch"
 				} else {
 					installation.Status = manifest.InstallInstalled
-					ts := info.ModTime().UTC().Format(time.RFC3339Nano)
-					installation.LastDeployedAt = &ts
 				}
 			}
 		case errors.Is(statErr, fs.ErrNotExist):
@@ -160,7 +160,7 @@ func (m *Manager) Snapshot() *manifest.SyncPayload {
 			installation.Error = "artifact is a directory"
 		}
 
-		installation.LastCheckedAt = &now
+		installation.Timestamp = &now
 
 		if status := loadInstallationStatus(pluginDir); status != nil {
 			if status.Status != "" {
@@ -169,8 +169,8 @@ func (m *Manager) Snapshot() *manifest.SyncPayload {
 			if status.Error != "" {
 				installation.Error = status.Error
 			}
-			if ts := status.LastCheckedAt; ts != "" {
-				installation.LastCheckedAt = &ts
+			if ts := status.Timestamp; ts != "" {
+				installation.Timestamp = &ts
 			}
 			if version := status.Version; version != "" {
 				installation.Version = version
