@@ -359,4 +359,36 @@ describe('PluginTelemetryStore', () => {
                 expect(delta.updated).toHaveLength(1);
                 expect(delta.updated[0]?.manualPushAt).toBe(updated.manualPushAt);
         });
+
+        it('omits conflicting manifests from snapshots and deltas', async () => {
+                const conflictManifest = createManifest(manifestHash);
+                conflictManifest.version = '2.0.0';
+                writeFileSync(
+                        join(manifestDir, 'test-plugin-alt.json'),
+                        JSON.stringify(conflictManifest)
+                );
+
+                const runtimeStore = createPluginRuntimeStore();
+                const records = await loadPluginManifests({ directory: manifestDir });
+                for (const record of records) {
+                        await runtimeStore.ensure(record);
+                }
+                const approvedAt = new Date();
+                await runtimeStore.update('test-plugin', { approvalStatus: 'approved', approvedAt });
+
+                const store = new PluginTelemetryStore({
+                        runtimeStore,
+                        manifestDirectory: manifestDir
+                });
+
+                const snapshot = await store.getManifestSnapshot();
+                expect(snapshot.manifests).toHaveLength(0);
+
+                const delta = await store.getManifestDelta({ digests: {} });
+                expect(delta.updated).toHaveLength(0);
+                expect(delta.removed).toHaveLength(0);
+
+                const approved = await store.getApprovedManifest('test-plugin');
+                expect(approved).toBeNull();
+        });
 });

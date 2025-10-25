@@ -167,10 +167,10 @@ function computeManifestDigest(record: LoadedPluginManifest): string {
 }
 
 function verificationBlockReason(record: LoadedPluginManifest): string | null {
-	const { verification, manifest } = record;
-	if (!verification || verification.status === 'trusted') {
-		return null;
-	}
+        const { verification, manifest } = record;
+        if (!verification || verification.status === 'trusted') {
+                return null;
+        }
 
 	let message: string;
 	switch (verification.status) {
@@ -200,10 +200,152 @@ function verificationBlockReason(record: LoadedPluginManifest): string | null {
 	return message;
 }
 
+type ManifestConflictInfo = {
+        pluginId: string;
+        entries: LoadedPluginManifest[];
+        preferred?: LoadedPluginManifest;
+        summary: string;
+        message: string;
+};
+
+function dedupeManifestRecords(records: LoadedPluginManifest[]): LoadedPluginManifest[] {
+        const unique: LoadedPluginManifest[] = [];
+        const seen = new Set<string>();
+
+        for (const record of records) {
+                const version = record.manifest.version?.trim().toLowerCase() ?? '';
+                const digest = computeManifestDigest(record);
+                const key = `${version}|${digest}`;
+                if (seen.has(key)) continue;
+                seen.add(key);
+                unique.push(record);
+        }
+
+        return unique;
+}
+
+function selectPreferredRecord(records: LoadedPluginManifest[]): number | null {
+        let bestIndex = -1;
+        let bestVersion: string | null = null;
+        let bestComparable = false;
+
+        for (let i = 0; i < records.length; i += 1) {
+                const version = records[i]?.manifest.version?.trim();
+                if (!version) {
+                        if (bestIndex === -1) {
+                                bestIndex = i;
+                        }
+                        continue;
+                }
+
+                const comparable = compareSemver(version, version) !== null;
+
+                if (bestIndex === -1) {
+                        bestIndex = i;
+                        bestVersion = version;
+                        bestComparable = comparable;
+                        continue;
+                }
+
+                if (!bestComparable) {
+                        if (comparable) {
+                                bestIndex = i;
+                                bestVersion = version;
+                                bestComparable = true;
+                        }
+                        continue;
+                }
+
+                if (!comparable || !bestVersion) {
+                        continue;
+                }
+
+                const cmp = compareSemver(version, bestVersion);
+                if (cmp === null) {
+                        continue;
+                }
+                if (cmp > 0) {
+                        bestIndex = i;
+                        bestVersion = version;
+                } else if (cmp === 0) {
+                        return null;
+                }
+        }
+
+        if (bestIndex === -1 || !bestComparable) {
+                return null;
+        }
+        return bestIndex;
+}
+
+function buildConflictSummary(records: LoadedPluginManifest[]): string {
+        return records
+                .map((record) => {
+                        const version = record.manifest.version?.trim() ?? 'unspecified';
+                        const digest = computeManifestDigest(record);
+                        return `version ${version} (digest ${digest})`;
+                })
+                .join('; ');
+}
+
+function resolveManifestRecords(records: LoadedPluginManifest[]): {
+        resolved: Map<string, LoadedPluginManifest>;
+        conflicts: Map<string, ManifestConflictInfo>;
+} {
+        const buckets = new Map<string, LoadedPluginManifest[]>();
+
+        for (const record of records) {
+                const pluginId = record.manifest.id?.trim();
+                if (!pluginId) continue;
+                const bucket = buckets.get(pluginId) ?? [];
+                bucket.push(record);
+                buckets.set(pluginId, bucket);
+        }
+
+        const resolved = new Map<string, LoadedPluginManifest>();
+        const conflicts = new Map<string, ManifestConflictInfo>();
+
+        for (const [pluginId, bucket] of buckets) {
+                const unique = dedupeManifestRecords(bucket);
+                if (unique.length === 0) {
+                        continue;
+                }
+                if (unique.length === 1) {
+                        resolved.set(pluginId, unique[0]!);
+                        continue;
+                }
+
+                const summary = buildConflictSummary(unique);
+                const info: ManifestConflictInfo = {
+                        pluginId,
+                        entries: unique,
+                        summary,
+                        message: `conflicting manifests detected: ${summary}; staging deferred`
+                };
+
+                const preferredIndex = selectPreferredRecord(unique);
+                if (preferredIndex !== null) {
+                        info.preferred = unique[preferredIndex]!;
+                        const version = info.preferred.manifest.version?.trim();
+                        if (version) {
+                                info.message = `conflicting manifests detected: ${summary}; preferred ${version}; staging deferred`;
+                        }
+                }
+
+                conflicts.set(pluginId, info);
+                if (info.preferred) {
+                        resolved.set(pluginId, info.preferred);
+                }
+        }
+
+        return { resolved, conflicts };
+}
+
 export class PluginTelemetryStore {
 	private readonly runtimeStore: PluginRuntimeStore;
 	private readonly manifestDirectory?: string;
-	private manifestCache = new Map<string, LoadedPluginManifest>();
+        private manifestCache = new Map<string, LoadedPluginManifest>();
+        private manifestConflicts = new Map<string, ManifestConflictInfo>();
 	private manifestLoadedAt = 0;
 	private manifestSnapshot: {
 		version: string;
@@ -229,14 +371,20 @@ export class PluginTelemetryStore {
 		const now = new Date();
 		const processed = new Set<string>();
 
-		for (const installation of installations) {
-			const record = this.manifestCache.get(installation.pluginId);
-			if (!record) {
-				console.warn(`agent ${agentId} reported unknown plugin ${installation.pluginId}`);
-				continue;
-			}
+                for (const installation of installations) {
+                        const record = this.manifestCache.get(installation.pluginId);
+                        if (!record) {
+                                if (this.manifestConflicts.has(installation.pluginId)) {
+                                        console.warn(
+                                                `agent ${agentId} reported plugin ${installation.pluginId} but deployment is deferred due to conflicting manifests`
+                                        );
+                                        continue;
+                                }
+                                console.warn(`agent ${agentId} reported unknown plugin ${installation.pluginId}`);
+                                continue;
+                        }
 
-			const runtimeRow = await this.runtimeStore.ensure(record);
+                        const runtimeRow = await this.runtimeStore.ensure(record);
 			const manifest = record.manifest;
 
 			const current = await db
@@ -406,16 +554,19 @@ export class PluginTelemetryStore {
 	async getApprovedManifest(
 		pluginId: string
 	): Promise<{ record: LoadedPluginManifest; descriptor: PluginManifestDescriptor } | null> {
-		const trimmed = pluginId.trim();
-		if (trimmed.length === 0) {
-			return null;
-		}
+                const trimmed = pluginId.trim();
+                if (trimmed.length === 0) {
+                        return null;
+                }
 
-		const snapshot = await this.ensureManifestSnapshot();
-		const descriptor = snapshot.entries.find((entry) => entry.pluginId === trimmed);
-		if (!descriptor) {
-			return null;
-		}
+                const snapshot = await this.ensureManifestSnapshot();
+                if (this.manifestConflicts.has(trimmed)) {
+                        return null;
+                }
+                const descriptor = snapshot.entries.find((entry) => entry.pluginId === trimmed);
+                if (!descriptor) {
+                        return null;
+                }
 
 		const record = this.manifestCache.get(trimmed);
 		if (!record) {
@@ -567,6 +718,9 @@ export class PluginTelemetryStore {
                 }
 
                 await this.ensureManifestIndex();
+                if (this.manifestConflicts.has(trimmed)) {
+                        throw new Error(`Plugin ${trimmed} has conflicting manifests`);
+                }
                 const record = this.manifestCache.get(trimmed);
                 if (!record) {
                         throw new Error(`Plugin ${trimmed} not registered`);
@@ -593,16 +747,20 @@ export class PluginTelemetryStore {
 		return this.manifestSnapshot;
 	}
 
-	private async buildManifestSnapshot(): Promise<void> {
-		await this.ensureManifestIndex();
+        private async buildManifestSnapshot(): Promise<void> {
+                await this.ensureManifestIndex();
 
-		const entries: PluginManifestDescriptor[] = [];
-		for (const record of this.manifestCache.values()) {
-			if (record.verification.status !== 'trusted') {
-				continue;
-			}
+                const entries: PluginManifestDescriptor[] = [];
+                for (const record of this.manifestCache.values()) {
+                        if (this.manifestConflicts.has(record.manifest.id)) {
+                                await this.runtimeStore.ensure(record);
+                                continue;
+                        }
+                        if (record.verification.status !== 'trusted') {
+                                continue;
+                        }
 
-			const runtime = await this.runtimeStore.ensure(record);
+                        const runtime = await this.runtimeStore.ensure(record);
 			if (runtime.approvalStatus !== 'approved') {
 				continue;
 			}
@@ -653,21 +811,26 @@ export class PluginTelemetryStore {
 		this.manifestSnapshot = { version, entries, digests };
 	}
 
-	private async ensureManifestIndex(): Promise<void> {
-		const now = Date.now();
-		if (now - this.manifestLoadedAt < MANIFEST_CACHE_TTL_MS && this.manifestCache.size > 0) {
-			return;
-		}
+        private async ensureManifestIndex(): Promise<void> {
+                const now = Date.now();
+                if (now - this.manifestLoadedAt < MANIFEST_CACHE_TTL_MS && this.manifestCache.size > 0) {
+                        return;
+                }
 
-		const records = await loadPluginManifests({ directory: this.manifestDirectory });
-		const index = new Map<string, LoadedPluginManifest>();
-		for (const record of records) {
-			index.set(record.manifest.id, record);
-		}
-		this.manifestCache = index;
-		this.manifestLoadedAt = now;
-		this.manifestSnapshot = null;
-	}
+                const records = await loadPluginManifests({ directory: this.manifestDirectory });
+                const { resolved, conflicts } = resolveManifestRecords(records);
+                this.manifestCache = resolved;
+                this.manifestConflicts = conflicts;
+                if (conflicts.size > 0) {
+                        for (const conflict of conflicts.values()) {
+                                console.warn(
+                                        `Plugin ${conflict.pluginId} has conflicting manifests: ${conflict.message}`
+                                );
+                        }
+                }
+                this.manifestLoadedAt = now;
+                this.manifestSnapshot = null;
+        }
 
 	private async refreshAggregates(pluginId: string): Promise<void> {
 		const [row] = await db
