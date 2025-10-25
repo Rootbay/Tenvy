@@ -279,7 +279,7 @@ type InstallationTelemetry struct {
 	Version   string              `json:"version"`
 	Status    PluginInstallStatus `json:"status"`
 	Hash      string              `json:"hash,omitempty"`
-	Timestamp *string             `json:"timestamp,omitempty"`
+	Timestamp *int64              `json:"timestamp,omitempty"`
 	Error     string              `json:"error,omitempty"`
 }
 

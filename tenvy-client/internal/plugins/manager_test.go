@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"io"
 	"log"
@@ -12,6 +13,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	plugins "github.com/rootbay/tenvy-client/internal/plugins"
 	manifest "github.com/rootbay/tenvy-client/shared/pluginmanifest"
@@ -118,6 +120,9 @@ func TestSnapshotAllowsTrustedSignature(t *testing.T) {
 	if !strings.EqualFold(install.Hash, hash) {
 		t.Fatalf("expected hash %s, got %s", hash, install.Hash)
 	}
+	if install.Timestamp == nil || *install.Timestamp == 0 {
+		t.Fatalf("expected timestamp to be populated, got %#v", install.Timestamp)
+	}
 }
 
 func TestSnapshotBlocksInvalidSignature(t *testing.T) {
@@ -176,6 +181,9 @@ func TestSnapshotBlocksInvalidSignature(t *testing.T) {
 	if install.Error == "" || !strings.Contains(install.Error, "invalid") {
 		t.Fatalf("expected invalid signature error, got %q", install.Error)
 	}
+	if install.Timestamp == nil || *install.Timestamp == 0 {
+		t.Fatalf("expected timestamp to be populated, got %#v", install.Timestamp)
+	}
 }
 
 func TestSnapshotAppliesRecordedStatus(t *testing.T) {
@@ -222,6 +230,9 @@ func TestSnapshotAppliesRecordedStatus(t *testing.T) {
 	if install.Error != "download failed" {
 		t.Fatalf("expected error message propagated, got %q", install.Error)
 	}
+	if install.Timestamp == nil || *install.Timestamp == 0 {
+		t.Fatalf("expected timestamp from status file, got %#v", install.Timestamp)
+	}
 }
 
 func TestSnapshotWithoutManifestUsesStatus(t *testing.T) {
@@ -253,6 +264,9 @@ func TestSnapshotWithoutManifestUsesStatus(t *testing.T) {
 	}
 	if install.Error != "network error" {
 		t.Fatalf("expected error propagated, got %q", install.Error)
+	}
+	if install.Timestamp == nil || *install.Timestamp == 0 {
+		t.Fatalf("expected timestamp from status record, got %#v", install.Timestamp)
 	}
 }
 
@@ -352,6 +366,84 @@ func TestSnapshotEmitsDocumentedStatuses(t *testing.T) {
 		if !seen[status] {
 			t.Fatalf("expected status %s to be included", status)
 		}
+	}
+}
+
+func TestRecordInstallStatusStoresEpochMillis(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+
+	manager, err := plugins.NewManager(root, log.New(io.Discard, "", 0), manifest.VerifyOptions{})
+	if err != nil {
+		t.Fatalf("new manager: %v", err)
+	}
+
+	if err := plugins.RecordInstallStatus(manager, "example", "1.0.0", manifest.InstallError, "oops"); err != nil {
+		t.Fatalf("record status: %v", err)
+	}
+
+	data, err := os.ReadFile(filepath.Join(root, "example", ".status.json"))
+	if err != nil {
+		t.Fatalf("read status file: %v", err)
+	}
+
+	var payload map[string]any
+	if err := json.Unmarshal(data, &payload); err != nil {
+		t.Fatalf("unmarshal status file: %v", err)
+	}
+	raw, ok := payload["timestamp"]
+	if !ok {
+		t.Fatalf("expected timestamp field in status payload: %#v", payload)
+	}
+	millis, ok := raw.(float64)
+	if !ok {
+		t.Fatalf("expected timestamp to be numeric, got %T (%v)", raw, raw)
+	}
+	if millis <= 0 {
+		t.Fatalf("expected positive timestamp, got %f", millis)
+	}
+}
+
+func TestSnapshotConvertsLegacyTimestamp(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	manager, err := plugins.NewManager(root, log.New(io.Discard, "", 0), manifest.VerifyOptions{})
+	if err != nil {
+		t.Fatalf("new manager: %v", err)
+	}
+
+	pluginDir := filepath.Join(root, "legacy-plugin")
+	if err := os.MkdirAll(pluginDir, 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+
+	legacy := time.Now().UTC().Truncate(time.Millisecond)
+	legacyStatus := map[string]any{
+		"pluginId":  "legacy-plugin",
+		"version":   "9.9.9",
+		"status":    string(manifest.InstallInstalled),
+		"timestamp": legacy.Format(time.RFC3339Nano),
+	}
+	data, err := json.Marshal(legacyStatus)
+	if err != nil {
+		t.Fatalf("marshal legacy status: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(pluginDir, ".status.json"), data, 0o644); err != nil {
+		t.Fatalf("write status file: %v", err)
+	}
+
+	snapshot := manager.Snapshot()
+	if snapshot == nil || len(snapshot.Installations) != 1 {
+		t.Fatalf("expected legacy status in snapshot, got %#v", snapshot)
+	}
+	install := snapshot.Installations[0]
+	if install.Timestamp == nil {
+		t.Fatalf("expected timestamp parsed from legacy status, got nil")
+	}
+	if *install.Timestamp != legacy.UnixMilli() {
+		t.Fatalf("expected timestamp %d, got %d", legacy.UnixMilli(), *install.Timestamp)
 	}
 }
 

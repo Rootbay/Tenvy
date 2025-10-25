@@ -57,7 +57,7 @@ func (m *Manager) Snapshot() *manifest.SyncPayload {
 		return nil
 	}
 
-	now := time.Now().UTC().Format(time.RFC3339Nano)
+	now := time.Now().UTC().UnixMilli()
 	payload := manifest.SyncPayload{Installations: make([]manifest.InstallationTelemetry, 0, len(entries))}
 
 	for _, entry := range entries {
@@ -79,8 +79,8 @@ func (m *Manager) Snapshot() *manifest.SyncPayload {
 				if status.Error != "" {
 					telemetry.Error = status.Error
 				}
-				if ts := status.Timestamp; ts != "" {
-					telemetry.Timestamp = &ts
+				if ts := status.Timestamp; ts != nil {
+					telemetry.Timestamp = ts
 				}
 				payload.Installations = append(payload.Installations, telemetry)
 			} else if !errors.Is(err, fs.ErrNotExist) {
@@ -169,8 +169,8 @@ func (m *Manager) Snapshot() *manifest.SyncPayload {
 			if status.Error != "" {
 				installation.Error = status.Error
 			}
-			if ts := status.Timestamp; ts != "" {
-				installation.Timestamp = &ts
+			if ts := status.Timestamp; ts != nil {
+				installation.Timestamp = ts
 			}
 			if version := status.Version; version != "" {
 				installation.Version = version
