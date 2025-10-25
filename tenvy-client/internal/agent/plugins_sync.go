@@ -19,8 +19,9 @@ import (
 )
 
 type pluginStageOutcome struct {
-	Manifest *manifest.Manifest
-	Staged   bool
+	Manifest  *manifest.Manifest
+	EntryPath string
+	Staged    bool
 }
 
 type pluginStageHandler interface {
@@ -100,6 +101,7 @@ func (genericPluginStageHandler) Stage(ctx context.Context, agent *Agent, descri
 		return outcome, err
 	}
 	outcome.Manifest = &result.Manifest
+	outcome.EntryPath = result.EntryPath
 	outcome.Staged = true
 	return outcome, nil
 }
@@ -154,6 +156,7 @@ func (remoteDesktopStageHandler) Stage(ctx context.Context, agent *Agent, descri
 	}
 
 	outcome.Manifest = &result.Manifest
+	outcome.EntryPath = result.EntryPath
 	outcome.Staged = true
 	return outcome, nil
 }
@@ -278,6 +281,7 @@ func (a *Agent) stagePluginsFromList(ctx context.Context, snapshot *manifest.Man
 		stageCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
 		var (
 			manifestResult *manifest.Manifest
+			entryPath      string
 			stageErr       error
 		)
 
@@ -286,12 +290,20 @@ func (a *Agent) stagePluginsFromList(ctx context.Context, snapshot *manifest.Man
 			stageErr = err
 			if err == nil {
 				manifestResult = &res.Manifest
+				entryPath = res.EntryPath
 			}
 		} else {
 			outcome, err := handler.Stage(stageCtx, a, entry)
 			stageErr = err
 			if err == nil && outcome.Manifest != nil {
 				manifestResult = outcome.Manifest
+				entryPath = outcome.EntryPath
+			}
+		}
+		if stageErr == nil && manifestResult != nil {
+			if err := a.activatePlugin(stageCtx, *manifestResult, entryPath); err != nil {
+				stageErr = err
+				manifestResult = nil
 			}
 		}
 		cancel()
@@ -325,56 +337,8 @@ func (a *Agent) stagePluginsFromList(ctx context.Context, snapshot *manifest.Man
 			}
 		}
 
-		if err := a.registerPluginCapabilities(*manifestResult); err != nil {
-			resultErr = combineErrors(resultErr, fmt.Errorf("register capabilities for %s: %w", id, err))
-		}
 	}
 
-	return resultErr
-}
-
-func (a *Agent) registerPluginCapabilities(mf manifest.Manifest) error {
-	if a.modules == nil {
-		return nil
-	}
-	mf.ID = strings.TrimSpace(mf.ID)
-	mf.Version = strings.TrimSpace(mf.Version)
-	if mf.ID == "" || len(mf.Capabilities) == 0 {
-		return nil
-	}
-
-	extensions := make(map[string][]ModuleCapability)
-	for _, capabilityID := range mf.Capabilities {
-		capabilityID = strings.TrimSpace(capabilityID)
-		if capabilityID == "" {
-			continue
-		}
-		descriptor, ok := manifest.LookupCapability(capabilityID)
-		if !ok {
-			continue
-		}
-		moduleID := strings.TrimSpace(descriptor.Module)
-		if moduleID == "" {
-			continue
-		}
-		extensions[moduleID] = append(extensions[moduleID], ModuleCapability{
-			ID:          descriptor.ID,
-			Name:        descriptor.Name,
-			Description: descriptor.Description,
-		})
-	}
-
-	var resultErr error
-	for moduleID, caps := range extensions {
-		extension := ModuleExtension{
-			Source:       mf.ID,
-			Version:      mf.Version,
-			Capabilities: caps,
-		}
-		if err := a.modules.RegisterModuleExtension(moduleID, extension); err != nil {
-			resultErr = combineErrors(resultErr, err)
-		}
-	}
 	return resultErr
 }
 
@@ -463,6 +427,28 @@ func (a *Agent) handlePluginRemoval(ctx context.Context, pluginIDs []string) err
 			remoteRemoved = true
 		}
 
+		if a.modules != nil {
+			if err := a.modules.DeactivatePlugin(ctx, id); err != nil {
+				resultErr = combineErrors(resultErr, fmt.Errorf("deactivate plugin %s: %w", id, err))
+			}
+			metadata := a.modules.Metadata()
+			for _, moduleMeta := range metadata {
+				removed := false
+				for _, ext := range moduleMeta.Extensions {
+					if strings.EqualFold(ext.Source, id) {
+						if err := a.modules.UnregisterModuleExtension(moduleMeta.ID, id); err != nil {
+							resultErr = combineErrors(resultErr, err)
+						}
+						removed = true
+						break
+					}
+				}
+				if removed {
+					break
+				}
+			}
+		}
+
 		if a.plugins != nil {
 			if err := plugins.ClearInstallStatus(a.plugins, id); err != nil {
 				resultErr = combineErrors(resultErr, fmt.Errorf("clear install status for %s: %w", id, err))
@@ -483,6 +469,71 @@ func (a *Agent) handlePluginRemoval(ctx context.Context, pluginIDs []string) err
 	}
 
 	return resultErr
+}
+
+func (a *Agent) activatePlugin(ctx context.Context, mf manifest.Manifest, entryPath string) error {
+	if a.modules == nil {
+		return nil
+	}
+	pluginID := strings.TrimSpace(mf.ID)
+	if pluginID == "" {
+		return errors.New("manifest missing identifier")
+	}
+	entryPath = strings.TrimSpace(entryPath)
+	if entryPath == "" {
+		return fmt.Errorf("plugin %s entry path not resolved", pluginID)
+	}
+	info, err := os.Stat(entryPath)
+	if err != nil {
+		return fmt.Errorf("verify plugin entry: %w", err)
+	}
+	if info.IsDir() {
+		return fmt.Errorf("plugin entry %s is a directory", entryPath)
+	}
+	file, err := os.Open(entryPath)
+	if err != nil {
+		return fmt.Errorf("open plugin entry: %w", err)
+	}
+	file.Close()
+
+	extensions := buildModuleExtensions(mf)
+	return a.modules.ActivatePlugin(ctx, pluginID, extensions, PluginActivationFunc(func(context.Context) error { return nil }))
+}
+
+func buildModuleExtensions(mf manifest.Manifest) map[string]ModuleExtension {
+	pluginID := strings.TrimSpace(mf.ID)
+	version := strings.TrimSpace(mf.Version)
+	if pluginID == "" {
+		return nil
+	}
+
+	extensions := make(map[string]ModuleExtension)
+	for _, capabilityID := range mf.Capabilities {
+		capabilityID = strings.TrimSpace(capabilityID)
+		if capabilityID == "" {
+			continue
+		}
+		descriptor, ok := manifest.LookupCapability(capabilityID)
+		if !ok {
+			continue
+		}
+		moduleID := strings.TrimSpace(descriptor.Module)
+		if moduleID == "" {
+			continue
+		}
+		extension := extensions[moduleID]
+		if extension.Source == "" {
+			extension.Source = pluginID
+			extension.Version = version
+		}
+		extension.Capabilities = append(extension.Capabilities, ModuleCapability{
+			ID:          descriptor.ID,
+			Name:        descriptor.Name,
+			Description: descriptor.Description,
+		})
+		extensions[moduleID] = extension
+	}
+	return extensions
 }
 
 func (a *Agent) removePluginManifestEntries(pluginIDs []string) {
@@ -552,7 +603,7 @@ func (a *Agent) resetRemoteDesktopEngine(ctx context.Context) error {
 	}
 
 	var resultErr error
-	if err := a.modules.UnregisterModuleExtension("remote-desktop", plugins.RemoteDesktopEnginePluginID); err != nil {
+	if err := a.modules.DeactivatePlugin(ctx, plugins.RemoteDesktopEnginePluginID); err != nil {
 		resultErr = combineErrors(resultErr, err)
 	}
 

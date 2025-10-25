@@ -115,6 +115,19 @@ type ModuleExtension struct {
 	Capabilities []ModuleCapability
 }
 
+type PluginActivationHandle interface {
+	Shutdown(context.Context) error
+}
+
+type PluginActivationFunc func(context.Context) error
+
+func (f PluginActivationFunc) Shutdown(ctx context.Context) error {
+	if f == nil {
+		return nil
+	}
+	return f(ctx)
+}
+
 type ModuleExtensionRegistrar interface {
 	RegisterExtension(ModuleExtension) error
 }
@@ -184,6 +197,11 @@ type moduleEntry struct {
 	enabled     bool
 }
 
+type pluginActivation struct {
+	modules []string
+	handle  PluginActivationHandle
+}
+
 func (e *moduleEntry) rebuildMetadata() {
 	metadata := copyModuleMetadata(e.base)
 	if len(e.extensions) > 0 {
@@ -211,14 +229,15 @@ type appVncInputHandler interface {
 }
 
 type moduleManager struct {
-	mu          sync.RWMutex
-	modules     map[string]*moduleEntry
-	byID        map[string]*moduleEntry
-	lifecycle   []*moduleEntry
-	remote      *remoteDesktopModule
-	remoteEntry *moduleEntry
-	appVnc      appVncInputHandler
-	appEntry    *moduleEntry
+	mu                sync.RWMutex
+	modules           map[string]*moduleEntry
+	byID              map[string]*moduleEntry
+	lifecycle         []*moduleEntry
+	remote            *remoteDesktopModule
+	remoteEntry       *moduleEntry
+	appVnc            appVncInputHandler
+	appEntry          *moduleEntry
+	pluginActivations map[string]pluginActivation
 }
 
 func newDefaultModuleManager() *moduleManager {
@@ -241,9 +260,10 @@ func newDefaultModuleManager() *moduleManager {
 
 func newModuleManager() *moduleManager {
 	return &moduleManager{
-		modules:   make(map[string]*moduleEntry),
-		byID:      make(map[string]*moduleEntry),
-		lifecycle: make([]*moduleEntry, 0, 6),
+		modules:           make(map[string]*moduleEntry),
+		byID:              make(map[string]*moduleEntry),
+		lifecycle:         make([]*moduleEntry, 0, 6),
+		pluginActivations: make(map[string]pluginActivation),
 	}
 }
 
@@ -471,6 +491,90 @@ func (r *moduleManager) UnregisterModuleExtension(moduleID, source string) error
 	}
 
 	return nil
+}
+
+func (r *moduleManager) ActivatePlugin(ctx context.Context, pluginID string, moduleExtensions map[string]ModuleExtension, handle PluginActivationHandle) error {
+	pluginID = strings.TrimSpace(pluginID)
+	if pluginID == "" {
+		return errors.New("plugin identifier is required")
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
+	r.mu.RLock()
+	_, exists := r.pluginActivations[pluginID]
+	r.mu.RUnlock()
+	if exists {
+		if err := r.DeactivatePlugin(ctx, pluginID); err != nil {
+			return err
+		}
+	}
+
+	var registered []string
+	for moduleID, extension := range moduleExtensions {
+		moduleID = strings.TrimSpace(moduleID)
+		if moduleID == "" {
+			continue
+		}
+		if strings.TrimSpace(extension.Source) == "" {
+			extension.Source = pluginID
+		}
+		if err := r.RegisterModuleExtension(moduleID, extension); err != nil {
+			var rollbackErr error
+			for _, id := range registered {
+				if undoErr := r.UnregisterModuleExtension(id, pluginID); undoErr != nil {
+					rollbackErr = errors.Join(rollbackErr, undoErr)
+				}
+			}
+			if rollbackErr != nil {
+				err = errors.Join(err, rollbackErr)
+			}
+			return err
+		}
+		registered = append(registered, moduleID)
+	}
+
+	r.mu.Lock()
+	if r.pluginActivations == nil {
+		r.pluginActivations = make(map[string]pluginActivation)
+	}
+	r.pluginActivations[pluginID] = pluginActivation{modules: append([]string(nil), registered...), handle: handle}
+	r.mu.Unlock()
+	return nil
+}
+
+func (r *moduleManager) DeactivatePlugin(ctx context.Context, pluginID string) error {
+	pluginID = strings.TrimSpace(pluginID)
+	if pluginID == "" {
+		return errors.New("plugin identifier is required")
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
+	r.mu.Lock()
+	activation, ok := r.pluginActivations[pluginID]
+	if ok {
+		delete(r.pluginActivations, pluginID)
+	}
+	r.mu.Unlock()
+	if !ok {
+		return nil
+	}
+
+	var errs []error
+	for _, moduleID := range activation.modules {
+		if err := r.UnregisterModuleExtension(moduleID, pluginID); err != nil {
+			errs = append(errs, err)
+		}
+	}
+	if activation.handle != nil {
+		if err := activation.handle.Shutdown(ctx); err != nil {
+			errs = append(errs, err)
+		}
+	}
+	return errors.Join(errs...)
 }
 
 func copyModuleMetadata(metadata ModuleMetadata) ModuleMetadata {
@@ -706,6 +810,19 @@ func (r *moduleManager) Shutdown(ctx context.Context) error {
 				label = entries[index].metadata.ID
 			}
 			errs = append(errs, fmt.Errorf("%s: %w", label, err))
+		}
+	}
+
+	r.mu.RLock()
+	pluginIDs := make([]string, 0, len(r.pluginActivations))
+	for id := range r.pluginActivations {
+		pluginIDs = append(pluginIDs, id)
+	}
+	r.mu.RUnlock()
+
+	for _, pluginID := range pluginIDs {
+		if err := r.DeactivatePlugin(ctx, pluginID); err != nil {
+			errs = append(errs, fmt.Errorf("plugin %s: %w", pluginID, err))
 		}
 	}
 

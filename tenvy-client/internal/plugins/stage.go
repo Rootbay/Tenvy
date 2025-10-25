@@ -19,8 +19,9 @@ import (
 
 // StageResult describes the outcome of a generic plugin staging operation.
 type StageResult struct {
-	Manifest manifest.Manifest
-	Updated  bool
+	Manifest  manifest.Manifest
+	EntryPath string
+	Updated   bool
 }
 
 // StageError conveys the plugin installation status associated with a staging
@@ -164,12 +165,19 @@ func StagePlugin(
 		return result, newStageError(manifest.InstallError, mf.Version, errors.New("manifest artifact path is invalid"))
 	}
 
+	entryRel := filepath.Clean(filepath.FromSlash(mf.Entry))
+	if entryRel == "" || strings.HasPrefix(entryRel, "..") {
+		return result, newStageError(manifest.InstallError, mf.Version, errors.New("manifest entry path is invalid"))
+	}
+
 	pluginDir := filepath.Join(manager.root, pluginID)
 	manifestPath := filepath.Join(pluginDir, manifestFileName)
 	artifactPath := filepath.Join(pluginDir, artifactRel)
+	entryPath := filepath.Join(pluginDir, entryRel)
 
-	if upToDate, err := genericInstallationUpToDate(manifestPath, artifactPath, manifestData, mf); err == nil && upToDate {
+	if upToDate, err := genericInstallationUpToDate(manifestPath, artifactPath, entryPath, manifestData, mf); err == nil && upToDate {
 		result.Updated = false
+		result.EntryPath = entryPath
 		return result, nil
 	}
 
@@ -208,6 +216,19 @@ func StagePlugin(
 		}
 	}
 
+	if strings.EqualFold(filepath.Ext(artifactRel), ".zip") {
+		if err := unpackZipArchive(stagingArtifact, stagingDir); err != nil {
+			return result, newStageError(manifest.InstallError, mf.Version, err)
+		}
+	}
+
+	stagedEntry := filepath.Join(stagingDir, entryRel)
+	if info, err := os.Stat(stagedEntry); err != nil {
+		return result, newStageError(manifest.InstallError, mf.Version, fmt.Errorf("plugin entry verification failed: %w", err))
+	} else if info.IsDir() {
+		return result, newStageError(manifest.InstallError, mf.Version, errors.New("plugin entry path points to a directory"))
+	}
+
 	if err := os.RemoveAll(pluginDir); err != nil && !errors.Is(err, os.ErrNotExist) {
 		return result, newStageError(manifest.InstallError, mf.Version, fmt.Errorf("remove previous installation: %w", err))
 	}
@@ -218,6 +239,7 @@ func StagePlugin(
 	cleanup = false
 
 	result.Updated = true
+	result.EntryPath = filepath.Join(pluginDir, entryRel)
 	return result, nil
 }
 
@@ -341,13 +363,22 @@ func downloadPluginArtifact(ctx context.Context, client HTTPDoer, endpoint, auth
 	return nil
 }
 
-func genericInstallationUpToDate(manifestPath, artifactPath string, expectedManifest []byte, mf manifest.Manifest) (bool, error) {
+func genericInstallationUpToDate(manifestPath, artifactPath, entryPath string, expectedManifest []byte, mf manifest.Manifest) (bool, error) {
 	manifestData, err := os.ReadFile(manifestPath)
 	if err != nil {
 		return false, err
 	}
 	if !bytes.Equal(manifestData, expectedManifest) {
 		return false, nil
+	}
+	if entryPath != "" {
+		info, err := os.Stat(entryPath)
+		if err != nil {
+			return false, err
+		}
+		if info.IsDir() {
+			return false, fmt.Errorf("plugin entry is a directory")
+		}
 	}
 	if strings.TrimSpace(mf.Package.Hash) == "" {
 		if _, err := os.Stat(artifactPath); err != nil {
