@@ -118,6 +118,11 @@ type ModuleExtensionRegistrar interface {
 
 type ModuleExtensionRegistry interface {
 	RegisterModuleExtension(moduleID string, extension ModuleExtension) error
+	UnregisterModuleExtension(moduleID, source string) error
+}
+
+type ModuleExtensionUnregistrar interface {
+	UnregisterExtension(source string) error
 }
 
 type ModuleMetadata struct {
@@ -166,12 +171,13 @@ func WrapCommandResult(result protocol.CommandResult) error {
 }
 
 type moduleEntry struct {
-	module     Module
-	metadata   ModuleMetadata
-	commands   []string
-	base       ModuleMetadata
-	registrar  ModuleExtensionRegistrar
-	extensions map[string]ModuleExtension
+	module      Module
+	metadata    ModuleMetadata
+	commands    []string
+	base        ModuleMetadata
+	registrar   ModuleExtensionRegistrar
+	unregistrar ModuleExtensionUnregistrar
+	extensions  map[string]ModuleExtension
 }
 
 func (e *moduleEntry) rebuildMetadata() {
@@ -270,6 +276,9 @@ func (r *moduleManager) register(m Module) {
 	if registrar, ok := any(m).(ModuleExtensionRegistrar); ok {
 		entry.registrar = registrar
 	}
+	if unregistrar, ok := any(m).(ModuleExtensionUnregistrar); ok {
+		entry.unregistrar = unregistrar
+	}
 	if _, exists := r.byID[moduleID]; exists {
 		panic(fmt.Sprintf("module %s already registered", moduleID))
 	}
@@ -364,6 +373,36 @@ func (r *moduleManager) RegisterModuleExtension(moduleID string, extension Modul
 	if registrar != nil {
 		if err := registrar.RegisterExtension(sanitized); err != nil {
 			return fmt.Errorf("module %s extension registration failed: %w", moduleID, err)
+		}
+	}
+
+	return nil
+}
+
+func (r *moduleManager) UnregisterModuleExtension(moduleID, source string) error {
+	moduleID = strings.TrimSpace(moduleID)
+	if moduleID == "" {
+		return errors.New("module identifier is required")
+	}
+	source = strings.TrimSpace(source)
+	if source == "" {
+		return errors.New("extension source is required")
+	}
+
+	r.mu.Lock()
+	entry, ok := r.byID[moduleID]
+	if !ok {
+		r.mu.Unlock()
+		return fmt.Errorf("module %s not registered", moduleID)
+	}
+	unregistrar := entry.unregistrar
+	delete(entry.extensions, source)
+	entry.rebuildMetadata()
+	r.mu.Unlock()
+
+	if unregistrar != nil {
+		if err := unregistrar.UnregisterExtension(source); err != nil {
+			return fmt.Errorf("module %s extension removal failed: %w", moduleID, err)
 		}
 	}
 
@@ -684,6 +723,26 @@ func (m *remoteDesktopModule) RegisterExtension(extension ModuleExtension) error
 		m.extensions = make(map[string]ModuleExtension)
 	}
 	m.extensions[source] = copyModuleExtension(extension)
+	return nil
+}
+
+func (m *remoteDesktopModule) UnregisterExtension(source string) error {
+	source = strings.TrimSpace(source)
+
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	if len(m.extensions) == 0 {
+		return nil
+	}
+	if source == "" {
+		m.extensions = nil
+		return nil
+	}
+	delete(m.extensions, source)
+	if len(m.extensions) == 0 {
+		m.extensions = nil
+	}
 	return nil
 }
 

@@ -24,6 +24,8 @@ type stubModule struct {
 	acceptExtensions bool
 	registerErr      error
 	registered       []ModuleExtension
+	unregisterErr    error
+	unregistered     []string
 }
 
 func (m *stubModule) Metadata() ModuleMetadata {
@@ -75,6 +77,14 @@ func (m *stubModule) RegisterExtension(extension ModuleExtension) error {
 	}
 	m.registered = append(m.registered, copyModuleExtension(extension))
 	return m.registerErr
+}
+
+func (m *stubModule) UnregisterExtension(source string) error {
+	if !m.acceptExtensions {
+		return m.unregisterErr
+	}
+	m.unregistered = append(m.unregistered, strings.TrimSpace(source))
+	return m.unregisterErr
 }
 
 func TestModuleManagerLifecycle(t *testing.T) {
@@ -248,6 +258,63 @@ func TestModuleManagerRegisterExtension(t *testing.T) {
 	}
 	if module.registered[0].Source != "plugin.remote" {
 		t.Fatalf("unexpected registrar extension source %s", module.registered[0].Source)
+	}
+}
+
+func TestModuleManagerUnregisterExtension(t *testing.T) {
+	t.Parallel()
+
+	module := &stubModule{
+		metadata: ModuleMetadata{
+			ID:           "ext-module",
+			Title:        "Extension Module",
+			Commands:     []string{"ext.command"},
+			Capabilities: []ModuleCapability{{ID: "base.capability", Name: "base.capability"}},
+		},
+		acceptExtensions: true,
+	}
+
+	manager := newModuleManager()
+	manager.register(module)
+
+	extension := ModuleExtension{
+		Source:  "plugin.remote",
+		Version: "1.0.0",
+		Capabilities: []ModuleCapability{
+			{ID: "ext.capability", Name: "ext.capability"},
+		},
+	}
+	if err := manager.RegisterModuleExtension("ext-module", extension); err != nil {
+		t.Fatalf("register extension: %v", err)
+	}
+
+	if err := manager.UnregisterModuleExtension("ext-module", "plugin.remote"); err != nil {
+		t.Fatalf("unregister extension: %v", err)
+	}
+
+	metadata := manager.Metadata()
+	if len(metadata) != 1 {
+		t.Fatalf("expected metadata for one module, got %d", len(metadata))
+	}
+	entry := metadata[0]
+	if entry.ID != "ext-module" {
+		t.Fatalf("unexpected metadata id %s", entry.ID)
+	}
+	if len(entry.Extensions) != 0 {
+		t.Fatalf("expected no metadata extensions, got %d", len(entry.Extensions))
+	}
+	if len(entry.Capabilities) != 1 {
+		t.Fatalf("expected base capability only, got %d", len(entry.Capabilities))
+	}
+	if entry.Capabilities[0].ID != "base.capability" {
+		t.Fatalf("unexpected capability id %s", entry.Capabilities[0].ID)
+	}
+
+	if len(module.unregistered) != 1 {
+		t.Fatalf("expected registrar to receive unregister call, got %d", len(module.unregistered))
+	}
+	if module.unregistered[0] != "plugin.remote" {
+		t.Fatalf("unexpected unregister source %s", module.unregistered[0])
 	}
 }
 
