@@ -9,6 +9,12 @@ import { eq } from 'drizzle-orm';
 import { refreshSignaturePolicy } from '$lib/server/plugins/signature-policy.js';
 import { PluginTelemetryStore } from '$lib/server/plugins/telemetry-store.js';
 
+const RELEASE_SIGNER = 'release';
+const RELEASE_PUBLIC_KEY = 'ea9ceca1c7c7176859b235e095cbca9b5755746b741865cab5458d6f0e754cc2';
+const RELEASE_SIGNATURE_TIMESTAMP = '2024-01-01T00:00:00Z';
+const RELEASE_ARTIFACT_SIGNATURE =
+        '2b4a75ee35bc4f9f9b15b84e8c993886f1ae98ce73e289df36c03835fc2920a71e9df3018650e99b0e48df6483d1adb112efec64edcd883725ef1e9dcc7c040b';
+
 const mockEnv = vi.hoisted(() => {
         process.env.DATABASE_URL = ':memory:';
         return { env: { DATABASE_URL: ':memory:' } };
@@ -44,36 +50,46 @@ describe('agent plugin API', () => {
         beforeEach(async () => {
                 manifestDir = mkdtempSync(join(tmpdir(), 'tenvy-agent-manifests-'));
                 const manifestPath = join(manifestDir, `${manifestId}.json`);
-                const artifactPath = join(manifestDir, 'pkg.zip');
-                const artifactBuffer = Buffer.from(artifactContent, 'utf8');
-                const artifactHash = createHash('sha256').update(artifactBuffer).digest('hex');
-                writeFileSync(artifactPath, artifactBuffer);
-                writeFileSync(
-                        manifestPath,
-                        JSON.stringify({
-                                id: manifestId,
+        const artifactPath = join(manifestDir, 'pkg.zip');
+        const artifactBuffer = Buffer.from(artifactContent, 'utf8');
+        const artifactHash = createHash('sha256').update(artifactBuffer).digest('hex');
+        writeFileSync(artifactPath, artifactBuffer);
+        writeFileSync(
+                manifestPath,
+                JSON.stringify({
+                        id: manifestId,
                                 name: 'Test Plugin',
                                 version: '1.0.0',
                                 entry: 'plugin.exe',
                                 repositoryUrl: 'https://github.com/rootbay/test-plugin',
                                 license: { spdxId: 'MIT' },
                                 requirements: {},
-                                distribution: {
-                                        defaultMode: 'automatic',
-                                        autoUpdate: true,
-                                        signature: 'sha256'
-                                },
-                                package: {
-                                        artifact: 'pkg.zip',
-                                        hash: artifactHash,
-                                        sizeBytes: artifactBuffer.byteLength
-                                }
+                        distribution: {
+                                defaultMode: 'automatic',
+                                autoUpdate: true,
+                                signature: 'ed25519',
+                                signatureHash: artifactHash,
+                                signatureSigner: RELEASE_SIGNER,
+                                signatureValue: RELEASE_ARTIFACT_SIGNATURE,
+                                signatureTimestamp: RELEASE_SIGNATURE_TIMESTAMP
+                        },
+                        package: {
+                                artifact: 'pkg.zip',
+                                hash: artifactHash,
+                                sizeBytes: artifactBuffer.byteLength
+                        }
                         })
                 );
 
                 trustDir = mkdtempSync(join(tmpdir(), 'tenvy-plugin-trust-'));
                 trustPath = join(trustDir, 'trust.json');
-                writeFileSync(trustPath, JSON.stringify({ sha256AllowList: [artifactHash] }));
+        writeFileSync(
+                trustPath,
+                JSON.stringify({
+                        sha256AllowList: [artifactHash],
+                        ed25519PublicKeys: { [RELEASE_SIGNER]: RELEASE_PUBLIC_KEY }
+                })
+        );
 
                 process.env.TENVY_PLUGIN_MANIFEST_DIR = manifestDir;
                 process.env.TENVY_PLUGIN_TRUST_CONFIG = trustPath;
@@ -158,10 +174,13 @@ describe('agent plugin API', () => {
 
                 writeFileSync(
                         trustPath,
-                        JSON.stringify({ sha256AllowList: [
-                                createHash('sha256').update(artifactContent, 'utf8').digest('hex'),
-                                artifactHash
-                        ] })
+                        JSON.stringify({
+                                sha256AllowList: [
+                                        createHash('sha256').update(artifactContent, 'utf8').digest('hex'),
+                                        artifactHash
+                                ],
+                                ed25519PublicKeys: { [RELEASE_SIGNER]: RELEASE_PUBLIC_KEY }
+                        })
                 );
                 refreshSignaturePolicy();
 
@@ -176,7 +195,8 @@ describe('agent plugin API', () => {
                         distribution: {
                                 defaultMode: 'manual',
                                 autoUpdate: false,
-                                signature: 'sha256'
+                                signature: 'sha256',
+                                signatureHash: artifactHash
                         },
                         package: {
                                 artifact: 'uploaded.zip',
@@ -267,7 +287,8 @@ describe('agent plugin API', () => {
                         distribution: {
                                 defaultMode: 'automatic',
                                 autoUpdate: true,
-                                signature: 'sha256'
+                                signature: 'sha256',
+                                signatureHash: manifestHash
                         },
                         package: {
                                 artifact: 'pkg.zip',
