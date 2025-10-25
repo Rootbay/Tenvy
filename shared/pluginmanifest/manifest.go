@@ -21,12 +21,20 @@ type Manifest struct {
 	License       *LicenseInfo      `json:"license,omitempty"`
 	Categories    []string          `json:"categories,omitempty"`
 	Capabilities  []string          `json:"capabilities,omitempty"`
+	Telemetry     []string          `json:"telemetry,omitempty"`
 	Requirements  Requirements      `json:"requirements"`
 	Distribution  Distribution      `json:"distribution"`
 	Package       PackageDescriptor `json:"package"`
 }
 
 type CapabilityMetadata struct {
+	ID          string
+	Module      string
+	Name        string
+	Description string
+}
+
+type TelemetryMetadata struct {
 	ID          string
 	Module      string
 	Name        string
@@ -225,7 +233,32 @@ var (
 			Description: "Synchronize local incident notes to the operator vault with delta compression.",
 		},
 	}
+	registeredTelemetry = map[string]TelemetryMetadata{
+		"remote-desktop.metrics": {
+			ID:          "remote-desktop.metrics",
+			Module:      "remote-desktop",
+			Name:        "Performance telemetry",
+			Description: "Emit adaptive streaming metrics describing encoder performance and transport health.",
+		},
+		"audio.telemetry": {
+			ID:          "audio.telemetry",
+			Module:      "audio-control",
+			Name:        "Audio telemetry",
+			Description: "Report capture bridge levels, buffer health, and device availability to the controller.",
+		},
+		"system-info.telemetry": {
+			ID:          "system-info.telemetry",
+			Module:      "system-info",
+			Name:        "System telemetry",
+			Description: "Stream host performance counters, thermal states, and resource utilization snapshots.",
+		},
+	}
 )
+
+func LookupTelemetry(id string) (TelemetryMetadata, bool) {
+	descriptor, ok := registeredTelemetry[strings.TrimSpace(id)]
+	return descriptor, ok
+}
 
 type InstallationTelemetry struct {
 	PluginID  string              `json:"pluginId"`
@@ -296,12 +329,12 @@ func (m Manifest) Validate() error {
 	if err := m.validateLicense(); err != nil {
 		problems = append(problems, err)
 	}
-        artifact := strings.TrimSpace(m.Package.Artifact)
-        if artifact == "" {
-                problems = append(problems, errors.New("missing package artifact"))
-        } else if strings.ContainsAny(artifact, "/\\") {
-                problems = append(problems, errors.New("package artifact must be a file name"))
-        }
+	artifact := strings.TrimSpace(m.Package.Artifact)
+	if artifact == "" {
+		problems = append(problems, errors.New("missing package artifact"))
+	} else if strings.ContainsAny(artifact, "/\\") {
+		problems = append(problems, errors.New("package artifact must be a file name"))
+	}
 
 	if err := m.validateDistribution(); err != nil {
 		problems = append(problems, err)
@@ -333,6 +366,25 @@ func (m Manifest) Validate() error {
 		}
 		if _, ok := registeredModules[descriptor.Module]; !ok {
 			problems = append(problems, fmt.Errorf("capability %s references unknown module %s", descriptor.ID, descriptor.Module))
+		}
+	}
+
+	for index, telemetryID := range m.Telemetry {
+		trimmed := strings.TrimSpace(telemetryID)
+		if trimmed == "" {
+			problems = append(problems, fmt.Errorf("telemetry %d is empty", index))
+			continue
+		}
+		descriptor, ok := LookupTelemetry(trimmed)
+		if !ok {
+			problems = append(problems, fmt.Errorf("telemetry %s is not registered", trimmed))
+			continue
+		}
+		if descriptor.Module == "" {
+			continue
+		}
+		if _, ok := registeredModules[descriptor.Module]; !ok {
+			problems = append(problems, fmt.Errorf("telemetry %s references unknown module %s", descriptor.ID, descriptor.Module))
 		}
 	}
 

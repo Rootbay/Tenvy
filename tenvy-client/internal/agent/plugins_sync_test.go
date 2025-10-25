@@ -578,3 +578,40 @@ func (h *testPluginStageHandler) Stage(ctx context.Context, agent *Agent, descri
 	h.calls++
 	return h.outcome, h.err
 }
+
+func TestBuildModuleExtensionsIncludesTelemetry(t *testing.T) {
+	t.Parallel()
+
+	mf := manifest.Manifest{
+		ID:           "test-plugin",
+		Version:      "1.0.0",
+		Capabilities: []string{"remote-desktop.stream"},
+		Telemetry:    []string{"remote-desktop.metrics"},
+	}
+
+	extensions := buildModuleExtensions(mf)
+	if len(extensions) != 1 {
+		t.Fatalf("expected single module extension, got %d", len(extensions))
+	}
+
+	ext, ok := extensions["remote-desktop"]
+	if !ok {
+		t.Fatalf("expected remote-desktop extension")
+	}
+	if ext.Source != "test-plugin" {
+		t.Fatalf("unexpected extension source %q", ext.Source)
+	}
+	if ext.Version != "1.0.0" {
+		t.Fatalf("unexpected extension version %q", ext.Version)
+	}
+	if len(ext.Telemetry) != 1 {
+		t.Fatalf("expected telemetry descriptor, got %d", len(ext.Telemetry))
+	}
+	descriptor := ext.Telemetry[0]
+	if descriptor.ID != "remote-desktop.metrics" {
+		t.Fatalf("unexpected telemetry id %q", descriptor.ID)
+	}
+	if descriptor.Name == "" {
+		t.Fatal("expected telemetry descriptor name populated")
+	}
+}

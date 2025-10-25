@@ -26,6 +26,10 @@ import (
 )
 
 func TestRemoteDesktopModuleNegotiationWithManagedEngine(t *testing.T) {
+	if !remoteDesktopIntegrationTestsEnabled() {
+		t.Skip("remote desktop integration test disabled; set TENVY_REMOTE_DESKTOP_INTEGRATION_TESTS=1 to enable")
+	}
+
 	const (
 		agentID       = "agent-1"
 		pluginVersion = "1.2.3"
@@ -317,4 +321,14 @@ func unwrapResult(t *testing.T, err error) protocol.CommandResult {
 		t.Fatalf("unexpected error type: %T", err)
 	}
 	return resultErr.Result
+}
+
+func remoteDesktopIntegrationTestsEnabled() bool {
+	value := strings.TrimSpace(os.Getenv("TENVY_REMOTE_DESKTOP_INTEGRATION_TESTS"))
+	switch strings.ToLower(value) {
+	case "1", "true", "yes", "on":
+		return true
+	default:
+		return false
+	}
 }

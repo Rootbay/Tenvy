@@ -50,3 +50,21 @@ func TestManifestValidateRejectsPathQualifiedArtifact(t *testing.T) {
 		t.Fatalf("expected artifact file name error, got %v", err)
 	}
 }
+
+func TestManifestValidateTelemetry(t *testing.T) {
+	manifest := buildTestManifest()
+	manifest.Telemetry = []string{"remote-desktop.metrics"}
+
+	if err := manifest.Validate(); err != nil {
+		t.Fatalf("expected telemetry validation success, got %v", err)
+	}
+
+	manifest.Telemetry = []string{"unknown.telemetry"}
+	err := manifest.Validate()
+	if err == nil {
+		t.Fatal("expected telemetry validation to fail for unknown descriptor")
+	}
+	if !strings.Contains(err.Error(), "telemetry unknown.telemetry is not registered") {
+		t.Fatalf("expected unknown telemetry error, got %v", err)
+	}
+}

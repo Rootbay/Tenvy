@@ -16,6 +16,9 @@
     "remote-desktop.codec.hevc",
     "remote-desktop.metrics"
   ],
+  "telemetry": [
+    "remote-desktop.metrics"
+  ],
   "requirements": {
     "minAgentVersion": "0.1.0",
     "platforms": [

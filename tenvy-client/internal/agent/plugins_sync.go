@@ -542,6 +542,33 @@ func buildModuleExtensions(mf manifest.Manifest) map[string]ModuleExtension {
 		})
 		extensions[moduleID] = extension
 	}
+
+	for _, telemetryID := range mf.Telemetry {
+		telemetryID = strings.TrimSpace(telemetryID)
+		if telemetryID == "" {
+			continue
+		}
+		descriptor, ok := manifest.LookupTelemetry(telemetryID)
+		if !ok {
+			continue
+		}
+		moduleID := strings.TrimSpace(descriptor.Module)
+		if moduleID == "" {
+			continue
+		}
+		extension := extensions[moduleID]
+		if extension.Source == "" {
+			extension.Source = pluginID
+			extension.Version = version
+		}
+		extension.Telemetry = append(extension.Telemetry, ModuleTelemetryDescriptor{
+			ID:          descriptor.ID,
+			Name:        descriptor.Name,
+			Description: descriptor.Description,
+		})
+		extensions[moduleID] = extension
+	}
+
 	return extensions
 }
 

