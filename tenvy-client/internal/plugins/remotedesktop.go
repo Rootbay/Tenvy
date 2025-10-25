@@ -208,9 +208,17 @@ func StageRemoteDesktopEngine(
 		}
 	}
 
-	if err := unpackZipArchive(stagingArtifact, stagingDir); err != nil {
-		manager.recordInstallStatusLocked(RemoteDesktopEnginePluginID, mf.Version, manifest.InstallError, err.Error())
-		return result, err
+	loweredArtifact := strings.ToLower(artifactRel)
+	var unpackErr error
+	switch {
+	case strings.EqualFold(filepath.Ext(artifactRel), ".zip"):
+		unpackErr = unpackZipArchive(stagingArtifact, stagingDir)
+	case strings.HasSuffix(loweredArtifact, ".tar.gz"), strings.HasSuffix(loweredArtifact, ".tgz"):
+		unpackErr = unpackTarGzArchive(stagingArtifact, stagingDir)
+	}
+	if unpackErr != nil {
+		manager.recordInstallStatusLocked(RemoteDesktopEnginePluginID, mf.Version, manifest.InstallError, unpackErr.Error())
+		return result, unpackErr
 	}
 
 	stagedEntry := filepath.Join(stagingDir, entryRel)
