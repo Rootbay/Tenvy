@@ -1,6 +1,7 @@
 import {
   agentModuleCapabilityIndex,
   agentModuleIds,
+  agentModuleTelemetryIndex,
 } from "../modules/index.js";
 import nacl from "tweetnacl";
 
@@ -48,6 +49,9 @@ const hasModule = (moduleId: string | undefined | null): boolean =>
 const hasCapability = (capabilityId: string | undefined | null): boolean =>
   capabilityId != null && agentModuleCapabilityIndex.has(capabilityId.trim());
 
+const hasTelemetry = (descriptorId: string | undefined | null): boolean =>
+  descriptorId != null && agentModuleTelemetryIndex.has(descriptorId.trim());
+
 export interface PluginRequirements {
   minAgentVersion?: string;
   maxAgentVersion?: string;
@@ -92,6 +96,7 @@ export interface PluginManifest {
   license?: PluginLicenseInfo;
   categories?: string[];
   capabilities?: string[];
+  telemetry?: string[];
   requirements: PluginRequirements;
   distribution: PluginDistribution;
   package: PluginPackageDescriptor;
@@ -366,6 +371,16 @@ export function validatePluginManifest(manifest: PluginManifest): string[] {
     }
     if (!hasCapability(capability)) {
       problems.push(`capability ${capability} is not registered`);
+    }
+  });
+
+  ensureArray(manifest.telemetry).forEach((descriptor, index) => {
+    if (isEmpty(descriptor)) {
+      problems.push(`telemetry ${index} is empty`);
+      return;
+    }
+    if (!hasTelemetry(descriptor)) {
+      problems.push(`telemetry ${descriptor} is not registered`);
     }
   });
 

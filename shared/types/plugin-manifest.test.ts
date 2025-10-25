@@ -47,4 +47,19 @@ describe('validatePluginManifest', () => {
 
     expect(problems).toContain('package artifact must be a file name');
   });
+
+  it('validates telemetry descriptors', () => {
+    const manifest = cloneManifest();
+    manifest.telemetry = ['remote-desktop.metrics'];
+
+    let problems = validatePluginManifest(manifest);
+    expect(problems).not.toContain(
+      'telemetry remote-desktop.metrics is not registered',
+    );
+
+    manifest.telemetry = ['unknown.telemetry'];
+    problems = validatePluginManifest(manifest);
+
+    expect(problems).toContain('telemetry unknown.telemetry is not registered');
+  });
 });

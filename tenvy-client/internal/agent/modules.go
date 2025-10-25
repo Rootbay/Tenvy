@@ -110,10 +110,17 @@ type ModuleCapability struct {
 	Description string
 }
 
+type ModuleTelemetryDescriptor struct {
+	ID          string
+	Name        string
+	Description string
+}
+
 type ModuleExtension struct {
 	Source       string
 	Version      string
 	Capabilities []ModuleCapability
+	Telemetry    []ModuleTelemetryDescriptor
 }
 
 type PluginActivationHandle interface {
@@ -142,12 +149,21 @@ type ModuleExtensionUnregistrar interface {
 	UnregisterExtension(source string) error
 }
 
+type ModuleTelemetryRegistrar interface {
+	RegisterTelemetry(source string, descriptors []ModuleTelemetryDescriptor) error
+}
+
+type ModuleTelemetryUnregistrar interface {
+	UnregisterTelemetry(source string) error
+}
+
 type ModuleMetadata struct {
 	ID           string
 	Title        string
 	Description  string
 	Commands     []string
 	Capabilities []ModuleCapability
+	Telemetry    []ModuleTelemetryDescriptor
 	Extensions   []ModuleExtension
 }
 
@@ -188,14 +204,16 @@ func WrapCommandResult(result protocol.CommandResult) error {
 }
 
 type moduleEntry struct {
-	module      Module
-	metadata    ModuleMetadata
-	commands    []string
-	base        ModuleMetadata
-	registrar   ModuleExtensionRegistrar
-	unregistrar ModuleExtensionUnregistrar
-	extensions  map[string]ModuleExtension
-	enabled     bool
+	module               Module
+	metadata             ModuleMetadata
+	commands             []string
+	base                 ModuleMetadata
+	registrar            ModuleExtensionRegistrar
+	unregistrar          ModuleExtensionUnregistrar
+	telemetryRegistrar   ModuleTelemetryRegistrar
+	telemetryUnregistrar ModuleTelemetryUnregistrar
+	extensions           map[string]ModuleExtension
+	enabled              bool
 }
 
 type pluginActivation struct {
@@ -217,6 +235,9 @@ func (e *moduleEntry) rebuildMetadata() {
 			metadata.Extensions = append(metadata.Extensions, ext)
 			if len(ext.Capabilities) > 0 {
 				metadata.Capabilities = append(metadata.Capabilities, ext.Capabilities...)
+			}
+			if len(ext.Telemetry) > 0 {
+				metadata.Telemetry = append(metadata.Telemetry, copyModuleTelemetry(ext.Telemetry)...)
 			}
 		}
 	} else {
@@ -309,6 +330,12 @@ func (r *moduleManager) register(m Module) {
 	}
 	if unregistrar, ok := any(m).(ModuleExtensionUnregistrar); ok {
 		entry.unregistrar = unregistrar
+	}
+	if telemetryRegistrar, ok := any(m).(ModuleTelemetryRegistrar); ok {
+		entry.telemetryRegistrar = telemetryRegistrar
+	}
+	if telemetryUnregistrar, ok := any(m).(ModuleTelemetryUnregistrar); ok {
+		entry.telemetryUnregistrar = telemetryUnregistrar
 	}
 	if _, exists := r.byID[moduleID]; exists {
 		panic(fmt.Sprintf("module %s already registered", moduleID))
@@ -479,6 +506,7 @@ func (r *moduleManager) RegisterModuleExtension(moduleID string, extension Modul
 
 	sanitized := copyModuleExtension(extension)
 	sanitized.Capabilities = sanitizeModuleCapabilities(sanitized.Capabilities)
+	sanitized.Telemetry = sanitizeModuleTelemetry(sanitized.Telemetry)
 
 	r.mu.Lock()
 	entry, ok := r.byID[moduleID]
@@ -489,11 +517,18 @@ func (r *moduleManager) RegisterModuleExtension(moduleID string, extension Modul
 	entry.extensions[sanitized.Source] = sanitized
 	entry.rebuildMetadata()
 	registrar := entry.registrar
+	telemetryRegistrar := entry.telemetryRegistrar
 	r.mu.Unlock()
 
 	if registrar != nil {
 		if err := registrar.RegisterExtension(sanitized); err != nil {
 			return fmt.Errorf("module %s extension registration failed: %w", moduleID, err)
+		}
+	}
+
+	if telemetryRegistrar != nil {
+		if err := telemetryRegistrar.RegisterTelemetry(sanitized.Source, sanitized.Telemetry); err != nil {
+			return fmt.Errorf("module %s telemetry registration failed: %w", moduleID, err)
 		}
 	}
 
@@ -517,6 +552,7 @@ func (r *moduleManager) UnregisterModuleExtension(moduleID, source string) error
 		return fmt.Errorf("module %s not registered", moduleID)
 	}
 	unregistrar := entry.unregistrar
+	telemetryUnregistrar := entry.telemetryUnregistrar
 	delete(entry.extensions, source)
 	entry.rebuildMetadata()
 	r.mu.Unlock()
@@ -524,6 +560,12 @@ func (r *moduleManager) UnregisterModuleExtension(moduleID, source string) error
 	if unregistrar != nil {
 		if err := unregistrar.UnregisterExtension(source); err != nil {
 			return fmt.Errorf("module %s extension removal failed: %w", moduleID, err)
+		}
+	}
+
+	if telemetryUnregistrar != nil {
+		if err := telemetryUnregistrar.UnregisterTelemetry(source); err != nil {
+			return fmt.Errorf("module %s telemetry removal failed: %w", moduleID, err)
 		}
 	}
 
@@ -621,6 +663,7 @@ func copyModuleMetadata(metadata ModuleMetadata) ModuleMetadata {
 		Description:  metadata.Description,
 		Commands:     append([]string(nil), metadata.Commands...),
 		Capabilities: append([]ModuleCapability(nil), metadata.Capabilities...),
+		Telemetry:    copyModuleTelemetry(metadata.Telemetry),
 	}
 	if len(metadata.Extensions) > 0 {
 		clone.Extensions = make([]ModuleExtension, 0, len(metadata.Extensions))
@@ -636,7 +679,23 @@ func copyModuleExtension(extension ModuleExtension) ModuleExtension {
 		Source:       extension.Source,
 		Version:      extension.Version,
 		Capabilities: append([]ModuleCapability(nil), extension.Capabilities...),
+		Telemetry:    copyModuleTelemetry(extension.Telemetry),
 	}
+}
+
+func copyModuleTelemetry(descriptors []ModuleTelemetryDescriptor) []ModuleTelemetryDescriptor {
+	if len(descriptors) == 0 {
+		return nil
+	}
+	clone := make([]ModuleTelemetryDescriptor, len(descriptors))
+	for i, descriptor := range descriptors {
+		clone[i] = ModuleTelemetryDescriptor{
+			ID:          descriptor.ID,
+			Name:        descriptor.Name,
+			Description: descriptor.Description,
+		}
+	}
+	return clone
 }
 
 func sanitizeModuleCapabilities(caps []ModuleCapability) []ModuleCapability {
@@ -674,6 +733,50 @@ func sanitizeModuleCapabilities(caps []ModuleCapability) []ModuleCapability {
 			ID:          id,
 			Name:        name,
 			Description: strings.TrimSpace(capability.Description),
+		})
+		seen[key] = struct{}{}
+	}
+	if len(sanitized) == 0 {
+		return nil
+	}
+	return sanitized
+}
+
+func sanitizeModuleTelemetry(descriptors []ModuleTelemetryDescriptor) []ModuleTelemetryDescriptor {
+	if len(descriptors) == 0 {
+		return nil
+	}
+	sanitized := make([]ModuleTelemetryDescriptor, 0, len(descriptors))
+	seen := make(map[string]struct{})
+	for _, descriptor := range descriptors {
+		id := strings.TrimSpace(descriptor.ID)
+		if id == "" {
+			id = strings.TrimSpace(descriptor.Name)
+		}
+		if id == "" {
+			continue
+		}
+		key := strings.ToLower(id)
+		if _, duplicate := seen[key]; duplicate {
+			continue
+		}
+		if metadata, ok := manifest.LookupTelemetry(id); ok {
+			sanitized = append(sanitized, ModuleTelemetryDescriptor{
+				ID:          metadata.ID,
+				Name:        metadata.Name,
+				Description: metadata.Description,
+			})
+			seen[key] = struct{}{}
+			continue
+		}
+		name := strings.TrimSpace(descriptor.Name)
+		if name == "" {
+			name = id
+		}
+		sanitized = append(sanitized, ModuleTelemetryDescriptor{
+			ID:          id,
+			Name:        name,
+			Description: strings.TrimSpace(descriptor.Description),
 		})
 		seen[key] = struct{}{}
 	}
@@ -804,6 +907,65 @@ func (s *moduleExtensionState) hasAnyCapability(ids ...string) bool {
 		}
 	}
 	return false
+}
+
+type moduleTelemetryRegistry struct {
+	mu      sync.Mutex
+	entries map[string][]ModuleTelemetryDescriptor
+}
+
+func newModuleTelemetryRegistry() *moduleTelemetryRegistry {
+	return &moduleTelemetryRegistry{}
+}
+
+func (r *moduleTelemetryRegistry) register(source string, descriptors []ModuleTelemetryDescriptor) error {
+	if r == nil {
+		return errors.New("module telemetry registry not initialized")
+	}
+	source = strings.TrimSpace(source)
+	if source == "" {
+		return errors.New("telemetry source required")
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if len(descriptors) == 0 {
+		if r.entries != nil {
+			delete(r.entries, source)
+			if len(r.entries) == 0 {
+				r.entries = nil
+			}
+		}
+		return nil
+	}
+	clones := copyModuleTelemetry(descriptors)
+	if r.entries == nil {
+		r.entries = make(map[string][]ModuleTelemetryDescriptor)
+	}
+	r.entries[source] = clones
+	return nil
+}
+
+func (r *moduleTelemetryRegistry) unregister(source string) error {
+	if r == nil {
+		return nil
+	}
+	trimmed := strings.TrimSpace(source)
+	r.mu.Lock()
+	if len(r.entries) == 0 {
+		r.entries = nil
+		r.mu.Unlock()
+		return nil
+	}
+	if trimmed == "" {
+		r.entries = nil
+	} else {
+		delete(r.entries, trimmed)
+		if len(r.entries) == 0 {
+			r.entries = nil
+		}
+	}
+	r.mu.Unlock()
+	return nil
 }
 
 func capabilityUnavailableResult(cmd protocol.Command, moduleID string, capabilities ...string) protocol.CommandResult {
@@ -1039,6 +1201,8 @@ type remoteDesktopModule struct {
 	factory         remoteDesktopEngineFactory
 	requiredVersion string
 	extensions      map[string]ModuleExtension
+	telemetryOnce   sync.Once
+	telemetry       *moduleTelemetryRegistry
 }
 
 func newRemoteDesktopModule(engine remotedesktop.Engine) *remoteDesktopModule {
@@ -1050,7 +1214,7 @@ func newRemoteDesktopModule(engine remotedesktop.Engine) *remoteDesktopModule {
 }
 
 func (m *remoteDesktopModule) Metadata() ModuleMetadata {
-	return ModuleMetadata{
+	metadata := ModuleMetadata{
 		ID:          "remote-desktop",
 		Title:       "Remote Desktop",
 		Description: "Interactive remote desktop streaming and control.",
@@ -1068,6 +1232,14 @@ func (m *remoteDesktopModule) Metadata() ModuleMetadata {
 			},
 		},
 	}
+	if descriptor, ok := manifest.LookupTelemetry("remote-desktop.metrics"); ok {
+		metadata.Telemetry = append(metadata.Telemetry, ModuleTelemetryDescriptor{
+			ID:          descriptor.ID,
+			Name:        descriptor.Name,
+			Description: descriptor.Description,
+		})
+	}
+	return metadata
 }
 
 func (m *remoteDesktopModule) ID() string {
@@ -1116,6 +1288,33 @@ func (m *remoteDesktopModule) UnregisterExtension(source string) error {
 		m.extensions = nil
 	}
 	return nil
+}
+
+func (m *remoteDesktopModule) telemetryRegistry() *moduleTelemetryRegistry {
+	if m == nil {
+		return nil
+	}
+	m.telemetryOnce.Do(func() {
+		if m.telemetry == nil {
+			m.telemetry = newModuleTelemetryRegistry()
+		}
+	})
+	return m.telemetry
+}
+
+func (m *remoteDesktopModule) RegisterTelemetry(source string, descriptors []ModuleTelemetryDescriptor) error {
+	registry := m.telemetryRegistry()
+	if registry == nil {
+		return nil
+	}
+	return registry.register(source, descriptors)
+}
+
+func (m *remoteDesktopModule) UnregisterTelemetry(source string) error {
+	if m == nil || m.telemetry == nil {
+		return nil
+	}
+	return m.telemetry.unregister(source)
 }
 
 func (m *remoteDesktopModule) configure(ctx context.Context, runtime Config) error {
@@ -1416,9 +1615,11 @@ func newClientChatModule() *clientChatModule         { return &clientChatModule{
 func newSystemInfoModule() *systemInfoModule         { return &systemInfoModule{} }
 
 type audioModule struct {
-	bridge     *audioctrl.AudioBridge
-	extensions *moduleExtensionState
-	extOnce    sync.Once
+	bridge        *audioctrl.AudioBridge
+	extensions    *moduleExtensionState
+	extOnce       sync.Once
+	telemetryOnce sync.Once
+	telemetry     *moduleTelemetryRegistry
 }
 
 type keyloggerModule struct {
@@ -1532,7 +1733,7 @@ func (m *webcamModule) Shutdown(context.Context) error {
 }
 
 func (m *audioModule) Metadata() ModuleMetadata {
-	return ModuleMetadata{
+	metadata := ModuleMetadata{
 		ID:          "audio-control",
 		Title:       "Audio Control",
 		Description: "Capture and inject audio streams across the remote session.",
@@ -1550,6 +1751,14 @@ func (m *audioModule) Metadata() ModuleMetadata {
 			},
 		},
 	}
+	if descriptor, ok := manifest.LookupTelemetry("audio.telemetry"); ok {
+		metadata.Telemetry = append(metadata.Telemetry, ModuleTelemetryDescriptor{
+			ID:          descriptor.ID,
+			Name:        descriptor.Name,
+			Description: descriptor.Description,
+		})
+	}
+	return metadata
 }
 
 func (m *audioModule) ID() string {
@@ -1577,6 +1786,33 @@ func (m *audioModule) RegisterExtension(extension ModuleExtension) error {
 
 func (m *audioModule) UnregisterExtension(source string) error {
 	return m.extensionState().unregister(source)
+}
+
+func (m *audioModule) telemetryRegistry() *moduleTelemetryRegistry {
+	if m == nil {
+		return nil
+	}
+	m.telemetryOnce.Do(func() {
+		if m.telemetry == nil {
+			m.telemetry = newModuleTelemetryRegistry()
+		}
+	})
+	return m.telemetry
+}
+
+func (m *audioModule) RegisterTelemetry(source string, descriptors []ModuleTelemetryDescriptor) error {
+	registry := m.telemetryRegistry()
+	if registry == nil {
+		return nil
+	}
+	return registry.register(source, descriptors)
+}
+
+func (m *audioModule) UnregisterTelemetry(source string) error {
+	if m == nil || m.telemetry == nil {
+		return nil
+	}
+	return m.telemetry.unregister(source)
 }
 
 func (m *audioModule) configure(runtime Config) error {
@@ -2390,13 +2626,15 @@ func (m *clientChatModule) Shutdown(ctx context.Context) error {
 }
 
 type systemInfoModule struct {
-	collector  *systeminfo.Collector
-	extensions *moduleExtensionState
-	extOnce    sync.Once
+	collector     *systeminfo.Collector
+	extensions    *moduleExtensionState
+	extOnce       sync.Once
+	telemetryOnce sync.Once
+	telemetry     *moduleTelemetryRegistry
 }
 
 func (m *systemInfoModule) Metadata() ModuleMetadata {
-	return ModuleMetadata{
+	metadata := ModuleMetadata{
 		ID:          "system-info",
 		Title:       "System Information",
 		Description: "Collect host metadata, hardware configuration, and runtime inventory.",
@@ -2414,6 +2652,14 @@ func (m *systemInfoModule) Metadata() ModuleMetadata {
 			},
 		},
 	}
+	if descriptor, ok := manifest.LookupTelemetry("system-info.telemetry"); ok {
+		metadata.Telemetry = append(metadata.Telemetry, ModuleTelemetryDescriptor{
+			ID:          descriptor.ID,
+			Name:        descriptor.Name,
+			Description: descriptor.Description,
+		})
+	}
+	return metadata
 }
 
 func (m *systemInfoModule) ID() string {
@@ -2441,6 +2687,33 @@ func (m *systemInfoModule) RegisterExtension(extension ModuleExtension) error {
 
 func (m *systemInfoModule) UnregisterExtension(source string) error {
 	return m.extensionState().unregister(source)
+}
+
+func (m *systemInfoModule) telemetryRegistry() *moduleTelemetryRegistry {
+	if m == nil {
+		return nil
+	}
+	m.telemetryOnce.Do(func() {
+		if m.telemetry == nil {
+			m.telemetry = newModuleTelemetryRegistry()
+		}
+	})
+	return m.telemetry
+}
+
+func (m *systemInfoModule) RegisterTelemetry(source string, descriptors []ModuleTelemetryDescriptor) error {
+	registry := m.telemetryRegistry()
+	if registry == nil {
+		return nil
+	}
+	return registry.register(source, descriptors)
+}
+
+func (m *systemInfoModule) UnregisterTelemetry(source string) error {
+	if m == nil || m.telemetry == nil {
+		return nil
+	}
+	return m.telemetry.unregister(source)
 }
 
 func (m *systemInfoModule) configure(runtime Config) error {
