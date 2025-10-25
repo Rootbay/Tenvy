@@ -8,6 +8,8 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -90,8 +92,16 @@ func (a *Agent) applyPluginManifestDelta(ctx context.Context, delta *manifest.Ma
 		return nil
 	}
 
+	removed := a.pluginIDsForRemoval(delta)
+	var removalErr error
+	if len(removed) > 0 {
+		if err := a.handlePluginRemoval(ctx, removed); err != nil {
+			removalErr = err
+		}
+	}
+
 	if a.plugins == nil || a.client == nil {
-		return nil
+		return removalErr
 	}
 
 	requestCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
@@ -99,10 +109,11 @@ func (a *Agent) applyPluginManifestDelta(ctx context.Context, delta *manifest.Ma
 
 	snapshot, err := a.fetchApprovedPluginList(requestCtx)
 	if err != nil {
-		return err
+		return combineErrors(removalErr, err)
 	}
 	a.setPluginManifestList(snapshot)
-	return a.stagePluginsFromList(requestCtx, snapshot)
+	stageErr := a.stagePluginsFromList(requestCtx, snapshot)
+	return combineErrors(removalErr, stageErr)
 }
 
 func (a *Agent) stagePluginsFromList(ctx context.Context, snapshot *manifest.ManifestList) error {
@@ -166,4 +177,176 @@ func (a *Agent) remoteDesktopRuntimeFacts() manifest.RuntimeFacts {
 		AgentVersion:   version,
 		EnabledModules: append([]string(nil), activeModules...),
 	}
+}
+
+func (a *Agent) pluginIDsForRemoval(delta *manifest.ManifestDelta) []string {
+	if delta == nil || len(delta.Removed) == 0 {
+		return nil
+	}
+
+	snapshot := a.pluginManifestSnapshot()
+	lowercase := make(map[string]string, len(snapshot))
+	for id := range snapshot {
+		lowered := strings.ToLower(strings.TrimSpace(id))
+		if lowered == "" {
+			continue
+		}
+		lowercase[lowered] = id
+	}
+
+	seen := make(map[string]struct{}, len(delta.Removed))
+	var ids []string
+	for _, raw := range delta.Removed {
+		trimmed := strings.TrimSpace(raw)
+		if trimmed == "" {
+			continue
+		}
+		candidate := trimmed
+		if actual, ok := lowercase[strings.ToLower(trimmed)]; ok {
+			candidate = actual
+		}
+		normalized := strings.ToLower(candidate)
+		if _, ok := seen[normalized]; ok {
+			continue
+		}
+		seen[normalized] = struct{}{}
+		ids = append(ids, candidate)
+	}
+	return ids
+}
+
+func (a *Agent) handlePluginRemoval(ctx context.Context, pluginIDs []string) error {
+	if len(pluginIDs) == 0 {
+		return nil
+	}
+
+	a.removePluginManifestEntries(pluginIDs)
+
+	var resultErr error
+	pluginRoot := ""
+	if a.plugins != nil {
+		pluginRoot = strings.TrimSpace(a.plugins.Root())
+	}
+	remoteRemoved := false
+
+	for _, rawID := range pluginIDs {
+		id := strings.TrimSpace(rawID)
+		if id == "" {
+			continue
+		}
+		if strings.EqualFold(id, plugins.RemoteDesktopEnginePluginID) {
+			remoteRemoved = true
+		}
+
+		if a.plugins != nil {
+			if err := plugins.ClearInstallStatus(a.plugins, id); err != nil {
+				resultErr = combineErrors(resultErr, fmt.Errorf("clear install status for %s: %w", id, err))
+			}
+			if pluginRoot != "" {
+				dir := filepath.Join(pluginRoot, id)
+				if err := os.RemoveAll(dir); err != nil {
+					resultErr = combineErrors(resultErr, fmt.Errorf("remove plugin %s: %w", id, err))
+				}
+			}
+		}
+	}
+
+	if remoteRemoved {
+		if err := a.resetRemoteDesktopEngine(ctx); err != nil {
+			resultErr = combineErrors(resultErr, err)
+		}
+	}
+
+	return resultErr
+}
+
+func (a *Agent) removePluginManifestEntries(pluginIDs []string) {
+	if len(pluginIDs) == 0 {
+		return
+	}
+
+	a.pluginManifestMu.Lock()
+	defer a.pluginManifestMu.Unlock()
+
+	if len(a.pluginManifestDigests) == 0 && len(a.pluginManifestDescriptors) == 0 {
+		return
+	}
+
+	lookup := make(map[string]string)
+	for id := range a.pluginManifestDescriptors {
+		lowered := strings.ToLower(strings.TrimSpace(id))
+		if lowered != "" {
+			lookup[lowered] = id
+		}
+	}
+	for id := range a.pluginManifestDigests {
+		lowered := strings.ToLower(strings.TrimSpace(id))
+		if lowered != "" {
+			if _, ok := lookup[lowered]; !ok {
+				lookup[lowered] = id
+			}
+		}
+	}
+
+	for _, raw := range pluginIDs {
+		trimmed := strings.TrimSpace(raw)
+		if trimmed == "" {
+			continue
+		}
+		key := trimmed
+		if actual, ok := lookup[strings.ToLower(trimmed)]; ok {
+			key = actual
+		}
+		if a.pluginManifestDescriptors != nil {
+			delete(a.pluginManifestDescriptors, key)
+		}
+		if a.pluginManifestDigests != nil {
+			delete(a.pluginManifestDigests, key)
+		}
+	}
+}
+
+func (a *Agent) resetRemoteDesktopEngine(ctx context.Context) error {
+	if a.modules == nil {
+		return nil
+	}
+
+	module := a.modules.remoteDesktopModule()
+	if module == nil {
+		return nil
+	}
+
+	module.mu.Lock()
+	previous := module.engine
+	module.engine = nil
+	module.requiredVersion = ""
+	module.mu.Unlock()
+
+	if previous != nil {
+		previous.Shutdown()
+	}
+
+	var resultErr error
+	if err := a.modules.UnregisterModuleExtension("remote-desktop", plugins.RemoteDesktopEnginePluginID); err != nil {
+		resultErr = combineErrors(resultErr, err)
+	}
+
+	runtime := a.moduleRuntime()
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if err := module.configure(ctx, runtime); err != nil {
+		resultErr = combineErrors(resultErr, err)
+	}
+	return resultErr
+}
+
+func combineErrors(a, b error) error {
+	if a == nil {
+		return b
+	}
+	if b == nil {
+		return a
+	}
+	return errors.Join(a, b)
 }
