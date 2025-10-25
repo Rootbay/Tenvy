@@ -175,6 +175,7 @@ func runAgentOnce(ctx context.Context, opts RuntimeOptions) error {
 	}
 
 	modules := newDefaultModuleManager()
+	modules.SetEnabledModules(opts.EnabledModules)
 	agent.modules = modules
 	if err := modules.Init(ctx, agent.moduleRuntime()); err != nil {
 		return fmt.Errorf("initialize modules: %w", err)
