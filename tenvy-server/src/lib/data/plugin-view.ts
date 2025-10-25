@@ -66,32 +66,33 @@ export type PluginDistributionView = {
 };
 
 export type PluginRuntimeSummary = {
-        type: PluginRuntimeType;
-        sandboxed: boolean;
+	type: PluginRuntimeType;
+	sandboxed: boolean;
 };
 
 export type Plugin = {
-        id: string;
-        name: string;
-        description: string;
-        version: string;
-        author: string;
-        category: PluginCategory;
-        status: PluginStatus;
-        enabled: boolean;
-        autoUpdate: boolean;
-        installations: number;
-        lastDeployed: string;
-        lastChecked: string;
-        size: string;
-        capabilities: string[];
-        artifact: string;
-        runtime: PluginRuntimeSummary;
-        distribution: PluginDistributionView;
-        requiredModules: { id: string; title: string }[];
-        approvalStatus: PluginApprovalStatus;
-        approvedAt?: string;
-        signature: PluginSignatureState;
+	id: string;
+	name: string;
+	description: string;
+	version: string;
+	author: string;
+	category: PluginCategory;
+	status: PluginStatus;
+	enabled: boolean;
+	autoUpdate: boolean;
+	installations: number;
+	lastDeployed: string;
+	lastChecked: string;
+	size: string;
+	capabilities: string[];
+	artifact: string;
+	runtime: PluginRuntimeSummary;
+	distribution: PluginDistributionView;
+	dependencies: string[];
+	requiredModules: { id: string; title: string }[];
+	approvalStatus: PluginApprovalStatus;
+	approvedAt?: string;
+	signature: PluginSignatureState;
 };
 
 export type PluginSignatureState = {
@@ -186,7 +187,7 @@ export function formatRelativeTime(input?: Date | null): string {
 	return input.toISOString();
 }
 import type {
-        PluginSignatureStatus,
-        PluginSignatureType,
-        PluginRuntimeType
+	PluginSignatureStatus,
+	PluginSignatureType,
+	PluginRuntimeType
 } from '../../../../shared/types/plugin-manifest.js';

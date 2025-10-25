@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -297,11 +298,88 @@ func (a *Agent) stagePluginsFromList(ctx context.Context, snapshot *manifest.Man
 		resultErr = combineErrors(resultErr, fmt.Errorf("manifest conflict for %s: %s", conflict.PluginID, conflict.Summary))
 	}
 
+	ordered, cyclic := orderManifestDescriptorsByDependency(resolved)
+
+	if len(cyclic) > 0 {
+		cycleIDs := make([]string, 0, len(cyclic))
+		for _, descriptor := range cyclic {
+			cycleID := strings.TrimSpace(descriptor.PluginID)
+			if cycleID == "" {
+				continue
+			}
+			cycleIDs = append(cycleIDs, cycleID)
+		}
+		if len(cycleIDs) > 0 {
+			message := fmt.Sprintf("dependency cycle detected among plugins: %s", strings.Join(cycleIDs, " -> "))
+			if a.logger != nil {
+				a.logger.Printf("plugin sync: %s", message)
+			}
+			if a.plugins != nil {
+				for _, descriptor := range cyclic {
+					cycleID := strings.TrimSpace(descriptor.PluginID)
+					if cycleID == "" {
+						continue
+					}
+					version := strings.TrimSpace(descriptor.Version)
+					if err := plugins.RecordInstallStatus(a.plugins, cycleID, version, manifest.InstallBlocked, message); err != nil && a.logger != nil {
+						a.logger.Printf("plugin sync: failed to record cycle status for %s: %v", cycleID, err)
+					}
+				}
+			}
+			resultErr = combineErrors(resultErr, errors.New(message))
+		}
+	}
+
+	resolved = ordered
+	if len(resolved) == 0 {
+		return resultErr
+	}
+
+	activeDependencies := make(map[string]struct{})
+	if a.modules != nil {
+		for _, pluginID := range a.modules.ActivePluginIDs() {
+			normalized := strings.ToLower(strings.TrimSpace(pluginID))
+			if normalized == "" {
+				continue
+			}
+			activeDependencies[normalized] = struct{}{}
+		}
+	}
+
 	for _, entry := range resolved {
 		id := strings.TrimSpace(entry.PluginID)
+		if id == "" {
+			continue
+		}
 		handler := pluginStages.Lookup(id)
 		if handler == nil {
 			continue
+		}
+
+		depsTrimmed, depsNormalized := sanitizeDescriptorDependencies(entry.Dependencies)
+		if len(depsNormalized) > 0 {
+			missing := make([]string, 0, len(depsNormalized))
+			for idx, dep := range depsNormalized {
+				if _, ok := activeDependencies[dep]; ok {
+					continue
+				}
+				missing = append(missing, depsTrimmed[idx])
+			}
+			if len(missing) > 0 {
+				sort.Strings(missing)
+				message := fmt.Sprintf("missing dependencies: %s", strings.Join(missing, ", "))
+				if a.logger != nil {
+					a.logger.Printf("plugin sync: skipping %s (%s)", id, message)
+				}
+				if a.plugins != nil {
+					version := strings.TrimSpace(entry.Version)
+					if err := plugins.RecordInstallStatus(a.plugins, id, version, manifest.InstallBlocked, message); err != nil && a.logger != nil {
+						a.logger.Printf("plugin sync: failed to record dependency status for %s: %v", id, err)
+					}
+				}
+				resultErr = combineErrors(resultErr, fmt.Errorf("plugin %s blocked: %s", id, message))
+				continue
+			}
 		}
 
 		_, generic := handler.(genericPluginStageHandler)
@@ -339,6 +417,13 @@ func (a *Agent) stagePluginsFromList(ctx context.Context, snapshot *manifest.Man
 		}
 		cancel()
 
+		if stageErr == nil && manifestResult != nil {
+			normalizedID := strings.ToLower(strings.TrimSpace(manifestResult.ID))
+			if normalizedID != "" {
+				activeDependencies[normalizedID] = struct{}{}
+			}
+		}
+
 		if stageErr != nil {
 			resultErr = combineErrors(resultErr, fmt.Errorf("stage %s: %w", id, stageErr))
 			if generic && a.plugins != nil {
@@ -371,6 +456,121 @@ func (a *Agent) stagePluginsFromList(ctx context.Context, snapshot *manifest.Man
 	}
 
 	return resultErr
+}
+
+func sanitizeDescriptorDependencies(values []string) ([]string, []string) {
+	if len(values) == 0 {
+		return nil, nil
+	}
+	trimmed := make([]string, 0, len(values))
+	normalized := make([]string, 0, len(values))
+	seen := make(map[string]struct{}, len(values))
+	for _, value := range values {
+		candidate := strings.TrimSpace(value)
+		if candidate == "" {
+			continue
+		}
+		lowered := strings.ToLower(candidate)
+		if _, ok := seen[lowered]; ok {
+			continue
+		}
+		seen[lowered] = struct{}{}
+		trimmed = append(trimmed, candidate)
+		normalized = append(normalized, lowered)
+	}
+	if len(trimmed) == 0 {
+		return nil, nil
+	}
+	return trimmed, normalized
+}
+
+func orderManifestDescriptorsByDependency(entries []manifest.ManifestDescriptor) ([]manifest.ManifestDescriptor, []manifest.ManifestDescriptor) {
+	if len(entries) == 0 {
+		return nil, nil
+	}
+
+	descriptorByID := make(map[string]manifest.ManifestDescriptor, len(entries))
+	orderIndex := make(map[string]int, len(entries))
+	normalizedDeps := make(map[string][]string, len(entries))
+
+	for idx, entry := range entries {
+		id := strings.TrimSpace(entry.PluginID)
+		if id == "" {
+			continue
+		}
+		key := strings.ToLower(id)
+		descriptorByID[key] = entry
+		orderIndex[key] = idx
+		_, deps := sanitizeDescriptorDependencies(entry.Dependencies)
+		if len(deps) > 0 {
+			normalizedDeps[key] = deps
+		}
+	}
+
+	adjacency := make(map[string][]string, len(descriptorByID))
+	indegree := make(map[string]int, len(descriptorByID))
+	for key := range descriptorByID {
+		indegree[key] = 0
+	}
+
+	for key, deps := range normalizedDeps {
+		for _, dep := range deps {
+			if _, ok := descriptorByID[dep]; !ok {
+				continue
+			}
+			adjacency[dep] = append(adjacency[dep], key)
+			indegree[key]++
+		}
+	}
+
+	queue := make([]string, 0, len(descriptorByID))
+	for key, degree := range indegree {
+		if degree == 0 {
+			queue = append(queue, key)
+		}
+	}
+	sort.Slice(queue, func(i, j int) bool { return orderIndex[queue[i]] < orderIndex[queue[j]] })
+
+	orderedKeys := make([]string, 0, len(descriptorByID))
+	for len(queue) > 0 {
+		current := queue[0]
+		queue = queue[1:]
+		orderedKeys = append(orderedKeys, current)
+		for _, neighbor := range adjacency[current] {
+			indegree[neighbor]--
+			if indegree[neighbor] == 0 {
+				queue = append(queue, neighbor)
+				sort.Slice(queue, func(i, j int) bool { return orderIndex[queue[i]] < orderIndex[queue[j]] })
+			}
+		}
+	}
+
+	ordered := make([]manifest.ManifestDescriptor, 0, len(orderedKeys))
+	for _, key := range orderedKeys {
+		ordered = append(ordered, descriptorByID[key])
+		delete(indegree, key)
+	}
+
+	if len(indegree) == 0 {
+		return ordered, nil
+	}
+
+	type blockedNode struct {
+		key   string
+		index int
+	}
+	nodes := make([]blockedNode, 0, len(indegree))
+	for key := range indegree {
+		nodes = append(nodes, blockedNode{key: key, index: orderIndex[key]})
+	}
+	sort.Slice(nodes, func(i, j int) bool { return nodes[i].index < nodes[j].index })
+
+	blocked := make([]manifest.ManifestDescriptor, 0, len(nodes))
+	for _, node := range nodes {
+		blocked = append(blocked, descriptorByID[node.key])
+	}
+
+	return ordered, blocked
 }
 
 type semverParts struct {

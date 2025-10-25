@@ -25,6 +25,7 @@ export type ClientPlugin = {
 		minAgentVersion: string | null;
 		maxAgentVersion: string | null;
 		requiredModules: string[];
+		dependencies: string[];
 	};
 	distribution: {
 		defaultMode: string;
@@ -41,21 +42,42 @@ export type ClientPlugin = {
 	};
 };
 
-export function buildClientPlugin(
-        manifest: PluginManifest,
-        plugin: Plugin,
-        telemetry: AgentPluginRecord | undefined
-): ClientPlugin {
-        const capabilities = (manifest.capabilities ?? []).map((capabilityId) => {
-                const capability = agentModuleCapabilityIndex.get(capabilityId);
-                return capability?.name ?? capabilityId;
-        });
+const normalizeDependencies = (values: readonly string[] | undefined): string[] => {
+	if (!values || values.length === 0) {
+		return [];
+	}
+	const unique = new Set<string>();
+	const normalized: string[] = [];
+	for (const value of values) {
+		const trimmed = value?.trim();
+		if (!trimmed) {
+			continue;
+		}
+		const lowered = trimmed.toLowerCase();
+		if (unique.has(lowered)) {
+			continue;
+		}
+		unique.add(lowered);
+		normalized.push(trimmed);
+	}
+	return normalized;
+};
 
-        return {
-                id: plugin.id,
-                name: plugin.name,
-                description: plugin.description,
-                version: plugin.version,
+export function buildClientPlugin(
+	manifest: PluginManifest,
+	plugin: Plugin,
+	telemetry: AgentPluginRecord | undefined
+): ClientPlugin {
+	const capabilities = (manifest.capabilities ?? []).map((capabilityId) => {
+		const capability = agentModuleCapabilityIndex.get(capabilityId);
+		return capability?.name ?? capabilityId;
+	});
+
+	return {
+		id: plugin.id,
+		name: plugin.name,
+		description: plugin.description,
+		version: plugin.version,
 		category: plugin.category,
 		approvalStatus: plugin.approvalStatus,
 		approvedAt: plugin.approvedAt,
@@ -65,13 +87,14 @@ export function buildClientPlugin(
 		size: formatFileSize(manifest.package.sizeBytes),
 		expectedHash: manifest.package.hash ?? undefined,
 		artifact: manifest.package.artifact,
-                capabilities,
+		capabilities,
 		requirements: {
 			platforms: manifest.requirements.platforms ?? [],
 			architectures: manifest.requirements.architectures ?? [],
 			minAgentVersion: manifest.requirements.minAgentVersion ?? null,
 			maxAgentVersion: manifest.requirements.maxAgentVersion ?? null,
-			requiredModules: manifest.requirements.requiredModules ?? []
+			requiredModules: manifest.requirements.requiredModules ?? [],
+			dependencies: normalizeDependencies(manifest.dependencies)
 		},
 		distribution: {
 			defaultMode: manifest.distribution.defaultMode,

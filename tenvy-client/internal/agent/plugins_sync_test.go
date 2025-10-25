@@ -489,6 +489,17 @@ func buildPluginBinary(t *testing.T, source string) string {
 	return binary
 }
 
+func copyExecutable(t *testing.T, src, dst string) {
+	t.Helper()
+	data, err := os.ReadFile(src)
+	if err != nil {
+		t.Fatalf("read executable: %v", err)
+	}
+	if err := os.WriteFile(dst, data, 0o755); err != nil {
+		t.Fatalf("write executable: %v", err)
+	}
+}
+
 func buildWasmModule(t *testing.T) string {
 	t.Helper()
 
@@ -826,6 +837,219 @@ func TestStagePluginsFromListDefersConflictingDescriptors(t *testing.T) {
 	}
 }
 
+func TestStagePluginsFromListOrdersDependencies(t *testing.T) {
+	t.Parallel()
+
+	pluginRoot := t.TempDir()
+	manager, err := plugins.NewManager(pluginRoot, log.New(io.Discard, "", 0), manifest.VerifyOptions{})
+	if err != nil {
+		t.Fatalf("new plugin manager: %v", err)
+	}
+
+	agent := &Agent{
+		id:      "agent-1",
+		baseURL: "https://controller.test",
+		client:  &http.Client{},
+		plugins: manager,
+		modules: newDefaultModuleManager(),
+		logger:  log.New(io.Discard, "", 0),
+		metadata: protocol.AgentMetadata{
+			OS:           runtime.GOOS,
+			Architecture: runtime.GOARCH,
+			Version:      "1.0.0",
+		},
+	}
+
+	source := "package main\nimport \"time\"\nfunc main() { for { time.Sleep(10 * time.Millisecond) } }\n"
+	binary := buildPluginBinary(t, source)
+
+	calls := make([]string, 0, 2)
+
+	registerHandler := func(id string) {
+		entryDir := filepath.Join(pluginRoot, id)
+		if err := os.MkdirAll(entryDir, 0o755); err != nil {
+			t.Fatalf("create entry dir: %v", err)
+		}
+		entryPath := filepath.Join(entryDir, "plugin.bin")
+		copyExecutable(t, binary, entryPath)
+
+		handler := &recordingStageHandler{id: id, entryPath: entryPath, calls: &calls}
+		original := pluginStages.Lookup(id)
+		pluginStages.Register(id, handler)
+		t.Cleanup(func() {
+			if original != nil {
+				pluginStages.Register(id, original)
+			} else {
+				pluginStages.Unregister(id)
+			}
+			_ = agent.modules.DeactivatePlugin(context.Background(), id)
+		})
+	}
+
+	registerHandler("alpha")
+	registerHandler("beta")
+
+	snapshot := &manifest.ManifestList{
+		Version: "1",
+		Manifests: []manifest.ManifestDescriptor{
+			{
+				PluginID:     "beta",
+				Version:      "1.0.0",
+				Dependencies: []string{"alpha"},
+			},
+			{
+				PluginID: "alpha",
+				Version:  "1.0.0",
+			},
+		},
+	}
+
+	if err := agent.stagePluginsFromList(context.Background(), snapshot); err != nil {
+		t.Fatalf("stage plugins: %v", err)
+	}
+
+	if len(calls) != 2 || calls[0] != "alpha" || calls[1] != "beta" {
+		t.Fatalf("expected staging order [alpha beta], got %v", calls)
+	}
+}
+
+func TestStagePluginsFromListBlocksMissingDependencies(t *testing.T) {
+	t.Parallel()
+
+	pluginRoot := t.TempDir()
+	manager, err := plugins.NewManager(pluginRoot, log.New(io.Discard, "", 0), manifest.VerifyOptions{})
+	if err != nil {
+		t.Fatalf("new plugin manager: %v", err)
+	}
+
+	handler := &testPluginStageHandler{}
+	pluginStages.Register("beta", handler)
+	t.Cleanup(func() { pluginStages.Unregister("beta") })
+
+	agent := &Agent{
+		id:       "agent-1",
+		baseURL:  "https://controller.test",
+		client:   &http.Client{},
+		plugins:  manager,
+		modules:  newDefaultModuleManager(),
+		logger:   log.New(io.Discard, "", 0),
+		metadata: protocol.AgentMetadata{OS: "windows", Architecture: "amd64", Version: "1.0.0"},
+	}
+
+	snapshot := &manifest.ManifestList{
+		Version: "1",
+		Manifests: []manifest.ManifestDescriptor{
+			{
+				PluginID:     "beta",
+				Version:      "1.0.0",
+				Dependencies: []string{"alpha"},
+			},
+		},
+	}
+
+	err = agent.stagePluginsFromList(context.Background(), snapshot)
+	if err == nil || !strings.Contains(err.Error(), "missing dependencies") {
+		t.Fatalf("expected missing dependency error, got %v", err)
+	}
+	if handler.calls != 0 {
+		t.Fatalf("expected handler not invoked, got %d", handler.calls)
+	}
+
+	statusPath := filepath.Join(pluginRoot, "beta", ".status.json")
+	data, readErr := os.ReadFile(statusPath)
+	if readErr != nil {
+		t.Fatalf("read status: %v", readErr)
+	}
+
+	var status struct {
+		Status string `json:"status"`
+		Error  string `json:"error"`
+	}
+	if decodeErr := json.Unmarshal(data, &status); decodeErr != nil {
+		t.Fatalf("decode status: %v", decodeErr)
+	}
+	if status.Status != string(manifest.InstallBlocked) {
+		t.Fatalf("expected status blocked, got %q", status.Status)
+	}
+	if !strings.Contains(status.Error, "missing dependencies") {
+		t.Fatalf("expected missing dependency message, got %q", status.Error)
+	}
+}
+
+func TestStagePluginsFromListDetectsDependencyCycles(t *testing.T) {
+	t.Parallel()
+
+	pluginRoot := t.TempDir()
+	manager, err := plugins.NewManager(pluginRoot, log.New(io.Discard, "", 0), manifest.VerifyOptions{})
+	if err != nil {
+		t.Fatalf("new plugin manager: %v", err)
+	}
+
+	alphaHandler := &testPluginStageHandler{}
+	betaHandler := &testPluginStageHandler{}
+	pluginStages.Register("alpha", alphaHandler)
+	pluginStages.Register("beta", betaHandler)
+	t.Cleanup(func() {
+		pluginStages.Unregister("alpha")
+		pluginStages.Unregister("beta")
+	})
+
+	agent := &Agent{
+		id:       "agent-1",
+		baseURL:  "https://controller.test",
+		client:   &http.Client{},
+		plugins:  manager,
+		modules:  newDefaultModuleManager(),
+		logger:   log.New(io.Discard, "", 0),
+		metadata: protocol.AgentMetadata{OS: "windows", Architecture: "amd64", Version: "1.0.0"},
+	}
+
+	snapshot := &manifest.ManifestList{
+		Version: "1",
+		Manifests: []manifest.ManifestDescriptor{
+			{
+				PluginID:     "alpha",
+				Version:      "1.0.0",
+				Dependencies: []string{"beta"},
+			},
+			{
+				PluginID:     "beta",
+				Version:      "1.0.0",
+				Dependencies: []string{"alpha"},
+			},
+		},
+	}
+
+	err = agent.stagePluginsFromList(context.Background(), snapshot)
+	if err == nil || !strings.Contains(err.Error(), "dependency cycle") {
+		t.Fatalf("expected dependency cycle error, got %v", err)
+	}
+	if alphaHandler.calls != 0 || betaHandler.calls != 0 {
+		t.Fatalf("expected handlers skipped, got alpha=%d beta=%d", alphaHandler.calls, betaHandler.calls)
+	}
+
+	for _, id := range []string{"alpha", "beta"} {
+		statusPath := filepath.Join(pluginRoot, id, ".status.json")
+		data, readErr := os.ReadFile(statusPath)
+		if readErr != nil {
+			t.Fatalf("read status for %s: %v", id, readErr)
+		}
+		var status struct {
+			Status string `json:"status"`
+			Error  string `json:"error"`
+		}
+		if decodeErr := json.Unmarshal(data, &status); decodeErr != nil {
+			t.Fatalf("decode status for %s: %v", id, decodeErr)
+		}
+		if status.Status != string(manifest.InstallBlocked) {
+			t.Fatalf("expected blocked status for %s, got %q", id, status.Status)
+		}
+		if !strings.Contains(status.Error, "dependency cycle") {
+			t.Fatalf("expected cycle message for %s, got %q", id, status.Error)
+		}
+	}
+}
+
 type testPluginStageHandler struct {
 	outcome pluginStageOutcome
 	err     error
@@ -835,6 +1059,20 @@ type testPluginStageHandler struct {
 func (h *testPluginStageHandler) Stage(ctx context.Context, agent *Agent, descriptor manifest.ManifestDescriptor) (pluginStageOutcome, error) {
 	h.calls++
 	return h.outcome, h.err
+}
+
+type recordingStageHandler struct {
+	id        string
+	entryPath string
+	calls     *[]string
+}
+
+func (h *recordingStageHandler) Stage(ctx context.Context, agent *Agent, descriptor manifest.ManifestDescriptor) (pluginStageOutcome, error) {
+	if h.calls != nil {
+		*h.calls = append(*h.calls, h.id)
+	}
+	mf := &manifest.Manifest{ID: h.id, Version: strings.TrimSpace(descriptor.Version)}
+	return pluginStageOutcome{Manifest: mf, EntryPath: h.entryPath, Staged: true}, nil
 }
 
 func TestBuildModuleExtensionsIncludesTelemetry(t *testing.T) {

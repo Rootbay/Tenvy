@@ -19,15 +19,15 @@
 		type Plugin,
 		type PluginUpdatePayload
 	} from '$lib/data/plugin-view.js';
-        import {
-                Download,
-                Info,
-                PackageSearch,
-                RefreshCcw,
-                ShieldAlert,
-                ShieldCheck,
-                Wifi
-        } from '@lucide/svelte';
+	import {
+		Download,
+		Info,
+		PackageSearch,
+		RefreshCcw,
+		ShieldAlert,
+		ShieldCheck,
+		Wifi
+	} from '@lucide/svelte';
 
 	import {
 		distributionModes,
@@ -106,6 +106,19 @@
 						</Badge>
 					{/each}
 				{/if}
+				{#if plugin.dependencies.length > 0}
+					<span class="text-[10px] font-semibold tracking-wide text-muted-foreground uppercase">
+						Depends on
+					</span>
+					{#each plugin.dependencies as dependency (dependency)}
+						<Badge
+							variant="secondary"
+							class="border border-border/60 bg-background/60 text-foreground"
+						>
+							{dependency}
+						</Badge>
+					{/each}
+				{/if}
 			</div>
 		</div>
 		<div class="flex flex-col gap-4 text-sm text-muted-foreground">
@@ -146,28 +159,26 @@
 				<span class="text-xs tracking-wide uppercase">Package size</span>
 				<p class="text-lg font-semibold text-foreground">{plugin.size}</p>
 			</div>
-                        <div class="space-y-1 rounded-md border border-border/60 px-3 py-2">
-                                <span class="text-xs tracking-wide uppercase">Status</span>
-                                <p class="text-lg font-semibold text-foreground">{pluginStatusLabels[plugin.status]}</p>
-                        </div>
-                        <div class="space-y-1 rounded-md border border-border/60 px-3 py-2">
-                                <div class="flex items-center justify-between">
-                                        <span class="text-xs tracking-wide uppercase">Runtime</span>
-                                        {#if plugin.runtime.type === 'wasm'}
-                                                <ShieldCheck class="h-4 w-4 text-emerald-500" />
-                                        {:else}
-                                                <ShieldAlert class="h-4 w-4 text-muted-foreground" />
-                                        {/if}
-                                </div>
-                                <p class="text-lg font-semibold text-foreground">
-                                        {plugin.runtime.type === 'wasm' ? 'WebAssembly' : 'Native'}
-                                </p>
-                                <p class="text-xs text-muted-foreground">
-                                        {plugin.runtime.sandboxed
-                                                ? 'Sandboxed execution enforced'
-                                                : 'Runs with host privileges'}
-                                </p>
-                        </div>
+			<div class="space-y-1 rounded-md border border-border/60 px-3 py-2">
+				<span class="text-xs tracking-wide uppercase">Status</span>
+				<p class="text-lg font-semibold text-foreground">{pluginStatusLabels[plugin.status]}</p>
+			</div>
+			<div class="space-y-1 rounded-md border border-border/60 px-3 py-2">
+				<div class="flex items-center justify-between">
+					<span class="text-xs tracking-wide uppercase">Runtime</span>
+					{#if plugin.runtime.type === 'wasm'}
+						<ShieldCheck class="h-4 w-4 text-emerald-500" />
+					{:else}
+						<ShieldAlert class="h-4 w-4 text-muted-foreground" />
+					{/if}
+				</div>
+				<p class="text-lg font-semibold text-foreground">
+					{plugin.runtime.type === 'wasm' ? 'WebAssembly' : 'Native'}
+				</p>
+				<p class="text-xs text-muted-foreground">
+					{plugin.runtime.sandboxed ? 'Sandboxed execution enforced' : 'Runs with host privileges'}
+				</p>
+			</div>
 			<div class="space-y-1 rounded-md border border-border/60 px-3 py-2">
 				<div class="flex items-center justify-between">
 					<span class="text-xs tracking-wide uppercase">Manual deployments</span>

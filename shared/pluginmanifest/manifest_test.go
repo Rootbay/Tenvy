@@ -89,3 +89,22 @@ func TestManifestValidateRuntime(t *testing.T) {
 		t.Fatal("expected runtime validation to fail for empty interface")
 	}
 }
+
+func TestManifestValidateDependencies(t *testing.T) {
+	manifest := buildTestManifest()
+	manifest.Dependencies = []string{"helper-plugin"}
+
+	if err := manifest.Validate(); err != nil {
+		t.Fatalf("expected dependency validation success, got %v", err)
+	}
+
+	manifest.Dependencies = []string{"helper-plugin", "HELPER-plugin"}
+	if err := manifest.Validate(); err == nil {
+		t.Fatal("expected duplicate dependency validation failure")
+	}
+
+	manifest.Dependencies = []string{"test-plugin"}
+	if err := manifest.Validate(); err == nil {
+		t.Fatal("expected self dependency validation failure")
+	}
+}
