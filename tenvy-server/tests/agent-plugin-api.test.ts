@@ -3,17 +3,58 @@ import { createHash } from 'node:crypto';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
+import { gzipSync } from 'node:zlib';
 import { db } from '$lib/server/db/index.js';
 import { plugin as pluginTable } from '$lib/server/db/schema.js';
 import { eq } from 'drizzle-orm';
 import { refreshSignaturePolicy } from '$lib/server/plugins/signature-policy.js';
 import { PluginTelemetryStore } from '$lib/server/plugins/telemetry-store.js';
+import JSZip from 'jszip';
+import { pack as createTarPack } from 'tar-stream';
 
 const RELEASE_SIGNER = 'release';
 const RELEASE_PUBLIC_KEY = 'ea9ceca1c7c7176859b235e095cbca9b5755746b741865cab5458d6f0e754cc2';
 const RELEASE_SIGNATURE_TIMESTAMP = '2024-01-01T00:00:00Z';
 const RELEASE_ARTIFACT_SIGNATURE =
         '2b4a75ee35bc4f9f9b15b84e8c993886f1ae98ce73e289df36c03835fc2920a71e9df3018650e99b0e48df6483d1adb112efec64edcd883725ef1e9dcc7c040b';
+
+const toBuffer = (value: string | Uint8Array | Buffer): Buffer =>
+        typeof value === 'string' ? Buffer.from(value, 'utf8') : Buffer.from(value);
+
+const createZipPluginPackage = async (files: Record<string, string | Uint8Array | Buffer>) => {
+        const zip = new JSZip();
+        for (const [name, content] of Object.entries(files)) {
+                zip.file(name, toBuffer(content));
+        }
+        return zip.generateAsync({ type: 'nodebuffer' });
+};
+
+const createTarGzPluginPackage = async (files: Record<string, string | Uint8Array | Buffer>) => {
+        const pack = createTarPack();
+        const chunks: Buffer[] = [];
+        pack.on('data', (chunk) => {
+                chunks.push(Buffer.from(chunk));
+        });
+        const completion = new Promise<void>((resolve, reject) => {
+                pack.on('end', () => resolve());
+                pack.on('error', (err) => reject(err));
+        });
+        for (const [name, content] of Object.entries(files)) {
+                await new Promise<void>((resolveEntry, rejectEntry) => {
+                        pack.entry({ name }, toBuffer(content), (err) => {
+                                if (err) {
+                                        rejectEntry(err);
+                                } else {
+                                        resolveEntry();
+                                }
+                        });
+                });
+        }
+        pack.finalize();
+        await completion;
+        const tarBuffer = Buffer.concat(chunks);
+        return gzipSync(tarBuffer);
+};
 
 const mockEnv = vi.hoisted(() => {
         process.env.DATABASE_URL = ':memory:';
@@ -50,46 +91,46 @@ describe('agent plugin API', () => {
         beforeEach(async () => {
                 manifestDir = mkdtempSync(join(tmpdir(), 'tenvy-agent-manifests-'));
                 const manifestPath = join(manifestDir, `${manifestId}.json`);
-        const artifactPath = join(manifestDir, 'pkg.zip');
-        const artifactBuffer = Buffer.from(artifactContent, 'utf8');
-        const artifactHash = createHash('sha256').update(artifactBuffer).digest('hex');
-        writeFileSync(artifactPath, artifactBuffer);
-        writeFileSync(
-                manifestPath,
-                JSON.stringify({
-                        id: manifestId,
+                const artifactPath = join(manifestDir, 'pkg.zip');
+                const artifactBuffer = Buffer.from(artifactContent, 'utf8');
+                const artifactHash = createHash('sha256').update(artifactBuffer).digest('hex');
+                writeFileSync(artifactPath, artifactBuffer);
+                writeFileSync(
+                        manifestPath,
+                        JSON.stringify({
+                                id: manifestId,
                                 name: 'Test Plugin',
                                 version: '1.0.0',
                                 entry: 'plugin.exe',
                                 repositoryUrl: 'https://github.com/rootbay/test-plugin',
                                 license: { spdxId: 'MIT' },
                                 requirements: {},
-                        distribution: {
-                                defaultMode: 'automatic',
-                                autoUpdate: true,
-                                signature: 'ed25519',
-                                signatureHash: artifactHash,
-                                signatureSigner: RELEASE_SIGNER,
-                                signatureValue: RELEASE_ARTIFACT_SIGNATURE,
-                                signatureTimestamp: RELEASE_SIGNATURE_TIMESTAMP
-                        },
-                        package: {
-                                artifact: 'pkg.zip',
-                                hash: artifactHash,
-                                sizeBytes: artifactBuffer.byteLength
-                        }
+                                distribution: {
+                                        defaultMode: 'automatic',
+                                        autoUpdate: true,
+                                        signature: 'ed25519',
+                                        signatureHash: artifactHash,
+                                        signatureSigner: RELEASE_SIGNER,
+                                        signatureValue: RELEASE_ARTIFACT_SIGNATURE,
+                                        signatureTimestamp: RELEASE_SIGNATURE_TIMESTAMP
+                                },
+                                package: {
+                                        artifact: 'pkg.zip',
+                                        hash: artifactHash,
+                                        sizeBytes: artifactBuffer.byteLength
+                                }
                         })
                 );
 
                 trustDir = mkdtempSync(join(tmpdir(), 'tenvy-plugin-trust-'));
                 trustPath = join(trustDir, 'trust.json');
-        writeFileSync(
-                trustPath,
-                JSON.stringify({
-                        sha256AllowList: [artifactHash],
-                        ed25519PublicKeys: { [RELEASE_SIGNER]: RELEASE_PUBLIC_KEY }
-                })
-        );
+                writeFileSync(
+                        trustPath,
+                        JSON.stringify({
+                                sha256AllowList: [artifactHash],
+                                ed25519PublicKeys: { [RELEASE_SIGNER]: RELEASE_PUBLIC_KEY }
+                        })
+                );
 
                 process.env.TENVY_PLUGIN_MANIFEST_DIR = manifestDir;
                 process.env.TENVY_PLUGIN_TRUST_CONFIG = trustPath;
@@ -193,20 +234,18 @@ describe('agent plugin API', () => {
                 expect(Buffer.from(artifactBuffer).toString()).toBe(artifactContent);
         });
 
-        it('accepts plugin uploads and persists runtime metadata', async () => {
+        it('accepts plugin uploads from zip archives and persists runtime metadata', async () => {
                 const { POST } = await import('../src/routes/api/plugins/+server.ts');
 
                 const artifactPayload = 'uploaded artifact payload';
                 const artifactBuffer = Buffer.from(artifactPayload, 'utf8');
                 const artifactHash = createHash('sha256').update(artifactBuffer).digest('hex');
+                const existingHash = createHash('sha256').update(artifactContent, 'utf8').digest('hex');
 
                 writeFileSync(
                         trustPath,
                         JSON.stringify({
-                                sha256AllowList: [
-                                        createHash('sha256').update(artifactContent, 'utf8').digest('hex'),
-                                        artifactHash
-                                ],
+                                sha256AllowList: [existingHash, artifactHash],
                                 ed25519PublicKeys: { [RELEASE_SIGNER]: RELEASE_PUBLIC_KEY }
                         })
                 );
@@ -227,20 +266,21 @@ describe('agent plugin API', () => {
                                 signatureHash: artifactHash
                         },
                         package: {
-                                artifact: 'uploaded.zip',
+                                artifact: 'uploaded.bin',
                                 hash: artifactHash,
                                 sizeBytes: artifactBuffer.byteLength
                         }
                 } satisfies Record<string, unknown>;
 
+                const archiveBuffer = await createZipPluginPackage({
+                        'manifest.json': JSON.stringify(manifest),
+                        'uploaded.bin': artifactBuffer
+                });
+
                 const form = new FormData();
                 form.set(
-                        'manifest',
-                        new File([JSON.stringify(manifest)], 'manifest.json', { type: 'application/json' })
-                );
-                form.set(
                         'artifact',
-                        new File([artifactBuffer], 'uploaded.zip', { type: 'application/octet-stream' })
+                        new File([archiveBuffer], 'uploaded.zip', { type: 'application/octet-stream' })
                 );
 
                 const response = await POST({
@@ -266,27 +306,174 @@ describe('agent plugin API', () => {
                 expect(row?.approvalStatus).toBe('pending');
         });
 
+        it('accepts plugin uploads from tar.gz archives', async () => {
+                const { POST } = await import('../src/routes/api/plugins/+server.ts');
+
+                const artifactBuffer = Buffer.from('tar payload', 'utf8');
+                const artifactHash = createHash('sha256').update(artifactBuffer).digest('hex');
+                const existingHash = createHash('sha256').update(artifactContent, 'utf8').digest('hex');
+
+                writeFileSync(
+                        trustPath,
+                        JSON.stringify({
+                                sha256AllowList: [existingHash, artifactHash],
+                                ed25519PublicKeys: { [RELEASE_SIGNER]: RELEASE_PUBLIC_KEY }
+                        })
+                );
+                refreshSignaturePolicy();
+
+                const manifest = {
+                        id: 'tar-plugin',
+                        name: 'Tar Plugin',
+                        version: '1.0.0',
+                        entry: 'tar.exe',
+                        requirements: {},
+                        distribution: {
+                                defaultMode: 'manual',
+                                autoUpdate: false,
+                                signature: 'sha256',
+                                signatureHash: artifactHash
+                        },
+                        package: {
+                                artifact: 'tar.bin',
+                                hash: artifactHash
+                        }
+                } satisfies Record<string, unknown>;
+
+                const archiveBuffer = await createTarGzPluginPackage({
+                        'manifest.json': JSON.stringify(manifest),
+                        'tar.bin': artifactBuffer
+                });
+
+                const form = new FormData();
+                form.set('artifact', new File([archiveBuffer], 'tar-plugin.tar.gz'));
+
+                const response = await POST({
+                        request: new Request('https://controller.test/api/plugins', {
+                                method: 'POST',
+                                body: form
+                        })
+                } as Parameters<typeof POST>[0]);
+
+                expect(response.status).toBe(201);
+        });
+
         it('rejects uploads with invalid manifests', async () => {
                 const { POST } = await import('../src/routes/api/plugins/+server.ts');
 
-                const artifactBuffer = Buffer.from('broken', 'utf8');
-
-                const manifest = {
-                        id: '',
-                        name: '',
-                        version: 'not-a-version',
-                        entry: '',
-                        requirements: {},
-                        distribution: { defaultMode: 'invalid', autoUpdate: false, signature: 'sha256' },
-                        package: { artifact: '', hash: '' }
-                } satisfies Record<string, unknown>;
+                const archiveBuffer = await createZipPluginPackage({
+                        'manifest.json': JSON.stringify({
+                                id: '',
+                                name: '',
+                                version: 'not-a-version',
+                                entry: '',
+                                requirements: {},
+                                distribution: { defaultMode: 'invalid', autoUpdate: false, signature: 'sha256' },
+                                package: { artifact: '', hash: '' }
+                        }),
+                        'artifact.bin': 'broken'
+                });
 
                 const form = new FormData();
-                form.set(
-                        'manifest',
-                        new File([JSON.stringify(manifest)], 'manifest.json', { type: 'application/json' })
-                );
-                form.set('artifact', new File([artifactBuffer], 'broken.zip', { type: 'application/octet-stream' }));
+                form.set('artifact', new File([archiveBuffer], 'invalid.zip'));
+
+                await expect(
+                        POST({
+                                request: new Request('https://controller.test/api/plugins', {
+                                        method: 'POST',
+                                        body: form
+                                })
+                        } as Parameters<typeof POST>[0])
+                ).rejects.toMatchObject({ status: 400 });
+        });
+
+        it('rejects uploads when manifest is missing from archive', async () => {
+                const { POST } = await import('../src/routes/api/plugins/+server.ts');
+
+                const archiveBuffer = await createZipPluginPackage({ 'plugin.bin': 'content' });
+
+                const form = new FormData();
+                form.set('artifact', new File([archiveBuffer], 'no-manifest.zip'));
+
+                await expect(
+                        POST({
+                                request: new Request('https://controller.test/api/plugins', {
+                                        method: 'POST',
+                                        body: form
+                                })
+                        } as Parameters<typeof POST>[0])
+                ).rejects.toMatchObject({ status: 400 });
+        });
+
+        it('rejects uploads when artifact hash mismatches manifest', async () => {
+                const { POST } = await import('../src/routes/api/plugins/+server.ts');
+
+                const artifactBuffer = Buffer.from('actual artifact', 'utf8');
+                const manifestHash = '0'.repeat(64);
+
+                const archiveBuffer = await createZipPluginPackage({
+                        'manifest.json': JSON.stringify({
+                                id: 'hash-mismatch',
+                                name: 'Hash Mismatch',
+                                version: '1.0.0',
+                                entry: 'mismatch.exe',
+                                requirements: {},
+                                distribution: {
+                                        defaultMode: 'manual',
+                                        autoUpdate: false,
+                                        signature: 'sha256',
+                                        signatureHash: manifestHash
+                                },
+                                package: {
+                                        artifact: 'mismatch.bin',
+                                        hash: manifestHash
+                                }
+                        }),
+                        'mismatch.bin': artifactBuffer
+                });
+
+                const form = new FormData();
+                form.set('artifact', new File([archiveBuffer], 'hash-mismatch.zip'));
+
+                await expect(
+                        POST({
+                                request: new Request('https://controller.test/api/plugins', {
+                                        method: 'POST',
+                                        body: form
+                                })
+                        } as Parameters<typeof POST>[0])
+                ).rejects.toMatchObject({ status: 400 });
+        });
+
+        it('rejects uploads when signature verification fails', async () => {
+                const { POST } = await import('../src/routes/api/plugins/+server.ts');
+
+                const artifactBuffer = Buffer.from('unsigned artifact', 'utf8');
+                const artifactHash = createHash('sha256').update(artifactBuffer).digest('hex');
+
+                const archiveBuffer = await createZipPluginPackage({
+                        'manifest.json': JSON.stringify({
+                                id: 'signature-failure',
+                                name: 'Signature Failure',
+                                version: '1.0.0',
+                                entry: 'signature.exe',
+                                requirements: {},
+                                distribution: {
+                                        defaultMode: 'manual',
+                                        autoUpdate: false,
+                                        signature: 'sha256',
+                                        signatureHash: artifactHash
+                                },
+                                package: {
+                                        artifact: 'signature.bin',
+                                        hash: artifactHash
+                                }
+                        }),
+                        'signature.bin': artifactBuffer
+                });
+
+                const form = new FormData();
+                form.set('artifact', new File([archiveBuffer], 'signature-failure.zip'));
 
                 await expect(
                         POST({
@@ -304,36 +491,32 @@ describe('agent plugin API', () => {
                 const artifactBuffer = Buffer.from(artifactContent, 'utf8');
                 const manifestHash = createHash('sha256').update(artifactBuffer).digest('hex');
 
-                const manifest = {
-                        id: manifestId,
-                        name: 'Test Plugin',
-                        version: '1.0.0',
-                        entry: 'plugin.exe',
-                        repositoryUrl: 'https://github.com/rootbay/test-plugin',
-                        license: { spdxId: 'MIT' },
-                        requirements: {},
-                        distribution: {
-                                defaultMode: 'automatic',
-                                autoUpdate: true,
-                                signature: 'sha256',
-                                signatureHash: manifestHash
-                        },
-                        package: {
-                                artifact: 'pkg.zip',
-                                hash: manifestHash,
-                                sizeBytes: artifactBuffer.byteLength
-                        }
-                } satisfies Record<string, unknown>;
+                const archiveBuffer = await createZipPluginPackage({
+                        'manifest.json': JSON.stringify({
+                                id: manifestId,
+                                name: 'Test Plugin',
+                                version: '1.0.0',
+                                entry: 'plugin.exe',
+                                repositoryUrl: 'https://github.com/rootbay/test-plugin',
+                                license: { spdxId: 'MIT' },
+                                requirements: {},
+                                distribution: {
+                                        defaultMode: 'automatic',
+                                        autoUpdate: true,
+                                        signature: 'sha256',
+                                        signatureHash: manifestHash
+                                },
+                                package: {
+                                        artifact: 'pkg.zip',
+                                        hash: manifestHash,
+                                        sizeBytes: artifactBuffer.byteLength
+                                }
+                        }),
+                        'pkg.zip': artifactBuffer
+                });
 
                 const form = new FormData();
-                form.set(
-                        'manifest',
-                        new File([JSON.stringify(manifest)], 'manifest.json', { type: 'application/json' })
-                );
-                form.set(
-                        'artifact',
-                        new File([artifactBuffer], 'pkg.zip', { type: 'application/octet-stream' })
-                );
+                form.set('artifact', new File([archiveBuffer], 'pkg.zip'));
 
                 await expect(
                         POST({

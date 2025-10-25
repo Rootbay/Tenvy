@@ -32,11 +32,9 @@ const manifestFixture = {
         distribution: {
                 defaultMode: 'automatic',
                 autoUpdate: true,
-                signature: {
-                        type: 'sha256',
-                        hash: 'abcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcd',
-                        signature: '0123456789abcdef0123456789abcdef'
-                }
+                signature: 'sha256',
+                signatureHash: 'abcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcd',
+                signatureValue: '0123456789abcdef0123456789abcdef'
         },
         package: {
                 artifact: 'clipboard-sync-1.4.2.dll',

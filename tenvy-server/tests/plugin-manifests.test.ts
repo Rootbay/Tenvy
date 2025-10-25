@@ -37,7 +37,9 @@ describe('loadPluginManifests', () => {
                         distribution: {
                                 defaultMode: 'manual',
                                 autoUpdate: false,
-                                signature: 'sha256'
+                                signature: 'sha256',
+                                signatureHash:
+                                        '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef'
                         },
                         requirements: {
                                 platforms: ['windows'],
