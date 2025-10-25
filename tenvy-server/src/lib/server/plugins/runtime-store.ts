@@ -3,7 +3,10 @@ import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
 import type { PluginDeliveryMode, PluginStatus } from '$lib/data/plugin-view.js';
 import { db } from '$lib/server/db/index.js';
 import { plugin } from '$lib/server/db/schema.js';
-import type { PluginApprovalStatus } from '../../../../shared/types/plugin-manifest.js';
+import type {
+        PluginApprovalStatus,
+        PluginRuntimeType
+} from '../../../../shared/types/plugin-manifest.js';
 import type { LoadedPluginManifest } from '$lib/data/plugin-manifests.js';
 
 type PluginTable = typeof plugin;
@@ -14,12 +17,14 @@ export type PluginRuntimeRow = typeof plugin.$inferSelect;
 type DatabaseClient = BetterSQLite3Database<PluginTable>;
 
 export type PluginRuntimePatch = Partial<{
-	status: PluginStatus;
-	enabled: boolean;
-	autoUpdate: boolean;
-	installations: number;
-	manualTargets: number;
-	autoTargets: number;
+        status: PluginStatus;
+        enabled: boolean;
+        autoUpdate: boolean;
+        runtimeType: PluginRuntimeType;
+        sandboxed: boolean;
+        installations: number;
+        manualTargets: number;
+        autoTargets: number;
 	defaultDeliveryMode: PluginDeliveryMode;
 	allowManualPush: boolean;
 	allowAutoSync: boolean;
@@ -39,12 +44,16 @@ export interface PluginRuntimeStore {
 }
 
 const ensureDefaults = (record: LoadedPluginManifest): PluginInsert => {
-	const { manifest, verification } = record;
-	return {
-		id: manifest.id,
-		status: 'active',
-		enabled: true,
-		autoUpdate: manifest.distribution.autoUpdate,
+        const { manifest, verification } = record;
+        const runtimeType = (manifest.runtime?.type ?? 'native') as PluginRuntimeType;
+        const sandboxed = manifest.runtime?.sandboxed ?? runtimeType === 'wasm';
+        return {
+                id: manifest.id,
+                status: 'active',
+                enabled: true,
+                autoUpdate: manifest.distribution.autoUpdate,
+                runtimeType,
+                sandboxed,
 		installations: 0,
 		manualTargets: 0,
 		autoTargets: 0,
@@ -76,11 +85,13 @@ const ensureDefaults = (record: LoadedPluginManifest): PluginInsert => {
 };
 
 const normalizePatch = (patch: PluginRuntimePatch): Partial<PluginInsert> => {
-	const update: Partial<PluginInsert> = {};
+        const update: Partial<PluginInsert> = {};
 
-	if (patch.status !== undefined) update.status = patch.status;
-	if (patch.enabled !== undefined) update.enabled = patch.enabled;
-	if (patch.autoUpdate !== undefined) update.autoUpdate = patch.autoUpdate;
+        if (patch.status !== undefined) update.status = patch.status;
+        if (patch.enabled !== undefined) update.enabled = patch.enabled;
+        if (patch.autoUpdate !== undefined) update.autoUpdate = patch.autoUpdate;
+        if (patch.runtimeType !== undefined) update.runtimeType = patch.runtimeType;
+        if (patch.sandboxed !== undefined) update.sandboxed = patch.sandboxed;
 	if (patch.installations !== undefined) update.installations = patch.installations;
 	if (patch.manualTargets !== undefined) update.manualTargets = patch.manualTargets;
 	if (patch.autoTargets !== undefined) update.autoTargets = patch.autoTargets;

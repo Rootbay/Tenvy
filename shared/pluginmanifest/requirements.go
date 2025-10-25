@@ -7,10 +7,13 @@ import (
 )
 
 type RuntimeFacts struct {
-	Platform       string
-	Architecture   string
-	AgentVersion   string
-	EnabledModules []string
+	Platform          string
+	Architecture      string
+	AgentVersion      string
+	EnabledModules    []string
+	SupportedRuntimes []RuntimeType
+	HostInterfaces    []string
+	HostAPIVersion    string
 }
 
 func CheckRuntimeCompatibility(m Manifest, facts RuntimeFacts) error {
@@ -34,6 +37,15 @@ func CheckRuntimeCompatibility(m Manifest, facts RuntimeFacts) error {
 		return err
 	}
 	if err := evaluateModuleRequirements(label, requirements.RequiredModules, facts.EnabledModules); err != nil {
+		return err
+	}
+	if err := evaluateRuntimeTypeRequirement(label, m.RuntimeType(), facts.SupportedRuntimes); err != nil {
+		return err
+	}
+	if err := evaluateHostInterfaceRequirement(label, m.RuntimeHostInterfaces(), facts.HostInterfaces); err != nil {
+		return err
+	}
+	if err := evaluateHostAPIVersionRequirement(label, m.RuntimeHostAPIVersion(), facts.HostAPIVersion); err != nil {
 		return err
 	}
 	return nil
@@ -136,6 +148,66 @@ func evaluateModuleRequirements(label string, required, enabled []string) error 
 		return fmt.Errorf("%s requires agent module(s) %s but no modules are active", label, joinStringSlice(missing))
 	}
 	return fmt.Errorf("%s requires agent module(s) %s but only %s are active", label, joinStringSlice(missing), joinStringSlice(enabled))
+}
+
+func evaluateRuntimeTypeRequirement(label string, required RuntimeType, supported []RuntimeType) error {
+	if required == "" {
+		required = RuntimeNative
+	}
+	if len(supported) == 0 {
+		supported = []RuntimeType{RuntimeNative}
+	}
+	normalized := strings.ToLower(string(required))
+	for _, candidate := range supported {
+		if strings.ToLower(string(candidate)) == normalized {
+			return nil
+		}
+	}
+	return fmt.Errorf("%s requires runtime %s but it is not supported", label, required)
+}
+
+func evaluateHostInterfaceRequirement(label string, required, supported []string) error {
+	if len(required) == 0 {
+		return nil
+	}
+	normalized := make(map[string]struct{}, len(supported))
+	for _, iface := range supported {
+		trimmed := strings.ToLower(strings.TrimSpace(iface))
+		if trimmed == "" {
+			continue
+		}
+		normalized[trimmed] = struct{}{}
+	}
+	var missing []string
+	for _, iface := range required {
+		trimmed := strings.ToLower(strings.TrimSpace(iface))
+		if trimmed == "" {
+			continue
+		}
+		if _, ok := normalized[trimmed]; !ok {
+			missing = append(missing, iface)
+		}
+	}
+	if len(missing) == 0 {
+		return nil
+	}
+	sort.Strings(missing)
+	return fmt.Errorf("%s requires host interface(s) %s but they are unavailable", label, strings.Join(missing, ", "))
+}
+
+func evaluateHostAPIVersionRequirement(label, required, provided string) error {
+	required = strings.TrimSpace(required)
+	if required == "" {
+		return nil
+	}
+	provided = strings.TrimSpace(provided)
+	if provided == "" {
+		return fmt.Errorf("%s requires host API version %s but runtime API version is unknown", label, required)
+	}
+	if !strings.EqualFold(required, provided) {
+		return fmt.Errorf("%s requires host API version %s but runtime provides %s", label, required, provided)
+	}
+	return nil
 }
 
 func joinStringSlice(values []string) string {

@@ -613,10 +613,13 @@ func (a *Agent) pluginRuntimeFacts() manifest.RuntimeFacts {
 	}
 
 	return manifest.RuntimeFacts{
-		Platform:       metadata.OS,
-		Architecture:   metadata.Architecture,
-		AgentVersion:   version,
-		EnabledModules: append([]string(nil), activeModules...),
+		Platform:          metadata.OS,
+		Architecture:      metadata.Architecture,
+		AgentVersion:      version,
+		EnabledModules:    append([]string(nil), activeModules...),
+		SupportedRuntimes: []manifest.RuntimeType{manifest.RuntimeNative, manifest.RuntimeWASM},
+		HostInterfaces:    []string{manifest.HostInterfaceCoreV1},
+		HostAPIVersion:    plugins.WasmHostAPIVersion,
 	}
 }
 
@@ -760,9 +763,29 @@ func (a *Agent) activatePlugin(ctx context.Context, mf manifest.Manifest, entryP
 	}
 
 	extensions := buildModuleExtensions(mf)
+
+	runtimeKind := plugins.RuntimeKindNative
+	hostInterfaces := mf.RuntimeHostInterfaces()
+	hostAPIVersion := mf.RuntimeHostAPIVersion()
+	sandboxed := mf.RuntimeSandboxed()
+
+	if mf.RuntimeType() == manifest.RuntimeWASM {
+		runtimeKind = plugins.RuntimeKindWASM
+		if len(hostInterfaces) == 0 {
+			hostInterfaces = []string{manifest.HostInterfaceCoreV1}
+		}
+		if hostAPIVersion == "" {
+			hostAPIVersion = plugins.WasmHostAPIVersion
+		}
+	}
+
 	handle, err := plugins.LaunchRuntime(ctx, entryPath, plugins.RuntimeOptions{
-		Name:   pluginID,
-		Logger: a.logger,
+		Name:           pluginID,
+		Logger:         a.logger,
+		Kind:           runtimeKind,
+		HostInterfaces: hostInterfaces,
+		HostAPIVersion: hostAPIVersion,
+		Sandboxed:      sandboxed,
 	})
 	if err != nil {
 		err = restoreOnFailure(err)

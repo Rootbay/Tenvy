@@ -72,7 +72,7 @@ func TestLaunchRuntimeStartsProcess(t *testing.T) {
 		t.Fatalf("shutdown runtime: %v", err)
 	}
 
-	rh, ok := handle.(*runtimeHandle)
+	rh, ok := handle.(*processRuntimeHandle)
 	if !ok {
 		t.Fatalf("unexpected handle type %T", handle)
 	}

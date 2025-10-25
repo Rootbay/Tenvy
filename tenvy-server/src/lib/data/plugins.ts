@@ -1,8 +1,9 @@
 import { agentModuleCapabilityIndex, agentModuleIndex } from '../../../../shared/modules/index.js';
 import type {
-	PluginManifest,
-	PluginSignatureStatus,
-	PluginSignatureType
+        PluginManifest,
+        PluginRuntimeType,
+        PluginSignatureStatus,
+        PluginSignatureType
 } from '../../../../shared/types/plugin-manifest.js';
 import { loadPluginManifests, type LoadedPluginManifest } from './plugin-manifests.js';
 import {
@@ -29,12 +30,13 @@ import {
 } from '$lib/server/plugins/runtime-store.js';
 
 export type {
-	Plugin,
-	PluginCategory,
-	PluginDeliveryMode,
-	PluginDistributionView,
-	PluginStatus,
-	PluginUpdatePayload
+        Plugin,
+        PluginRuntimeSummary,
+        PluginCategory,
+        PluginDeliveryMode,
+        PluginDistributionView,
+        PluginStatus,
+        PluginUpdatePayload
 } from './plugin-view.js';
 export {
 	formatFileSize,
@@ -66,10 +68,12 @@ export type PluginRepositoryUpdate = PluginUpdatePayload & {
 };
 
 type PluginRuntimeSnapshot = {
-	status: PluginStatus;
-	enabled: boolean;
-	autoUpdate: boolean;
-	installations: number;
+        status: PluginStatus;
+        enabled: boolean;
+        autoUpdate: boolean;
+        runtimeType: PluginRuntimeType;
+        sandboxed: boolean;
+        installations: number;
 	manualTargets: number;
 	autoTargets: number;
 	defaultDeliveryMode: PluginDeliveryMode;
@@ -116,21 +120,25 @@ const mapCapabilities = (manifest: PluginManifest): string[] =>
         });
 
 const toPluginView = (record: LoadedPluginManifest, runtime: PluginRuntimeSnapshot): Plugin => ({
-	id: record.manifest.id,
-	name: record.manifest.name,
-	description: record.manifest.description ?? '',
-	version: record.manifest.version,
-	author: record.manifest.author ?? 'Unknown',
-	category: manifestCategory(record.manifest),
-	status: runtime.status,
-	enabled: runtime.enabled,
-	autoUpdate: runtime.autoUpdate,
-	installations: runtime.installations,
-	lastDeployed: formatRelativeTime(runtime.lastDeployedAt),
-	lastChecked: formatRelativeTime(runtime.lastCheckedAt),
-	size: formatFileSize(record.manifest.package.sizeBytes),
+        id: record.manifest.id,
+        name: record.manifest.name,
+        description: record.manifest.description ?? '',
+        version: record.manifest.version,
+        author: record.manifest.author ?? 'Unknown',
+        category: manifestCategory(record.manifest),
+        status: runtime.status,
+        enabled: runtime.enabled,
+        autoUpdate: runtime.autoUpdate,
+        installations: runtime.installations,
+        lastDeployed: formatRelativeTime(runtime.lastDeployedAt),
+        lastChecked: formatRelativeTime(runtime.lastCheckedAt),
+        size: formatFileSize(record.manifest.package.sizeBytes),
         capabilities: mapCapabilities(record.manifest),
-	artifact: record.manifest.package.artifact,
+        artifact: record.manifest.package.artifact,
+        runtime: {
+                type: runtime.runtimeType,
+                sandboxed: runtime.sandboxed
+        },
 	distribution: {
 		defaultMode: runtime.defaultDeliveryMode,
 		allowManualPush: runtime.allowManualPush,
@@ -190,10 +198,12 @@ const toRuntimePatch = (update: PluginRepositoryUpdate): PluginRuntimePatch => {
 };
 
 const snapshotFromRow = (row: PluginRuntimeRow): PluginRuntimeSnapshot => ({
-	status: row.status as PluginStatus,
-	enabled: row.enabled,
-	autoUpdate: row.autoUpdate,
-	installations: row.installations,
+        status: row.status as PluginStatus,
+        enabled: row.enabled,
+        autoUpdate: row.autoUpdate,
+        runtimeType: row.runtimeType as PluginRuntimeType,
+        sandboxed: row.sandboxed,
+        installations: row.installations,
 	manualTargets: row.manualTargets,
 	autoTargets: row.autoTargets,
 	defaultDeliveryMode: row.defaultDeliveryMode as PluginDeliveryMode,

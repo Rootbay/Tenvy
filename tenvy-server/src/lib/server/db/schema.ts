@@ -84,11 +84,13 @@ export const recoveryCode = sqliteTable('recovery_code', {
 });
 
 export const plugin = sqliteTable('plugin', {
-	id: text('id').primaryKey(),
-	status: text('status').notNull().default('active'),
-	enabled: integer('enabled', { mode: 'boolean' }).notNull().default(true),
-	autoUpdate: integer('auto_update', { mode: 'boolean' }).notNull().default(false),
-	installations: integer('installations').notNull().default(0),
+        id: text('id').primaryKey(),
+        status: text('status').notNull().default('active'),
+        enabled: integer('enabled', { mode: 'boolean' }).notNull().default(true),
+        autoUpdate: integer('auto_update', { mode: 'boolean' }).notNull().default(false),
+        runtimeType: text('runtime_type').notNull().default('native'),
+        sandboxed: integer('sandboxed', { mode: 'boolean' }).notNull().default(false),
+        installations: integer('installations').notNull().default(0),
 	manualTargets: integer('manual_targets').notNull().default(0),
 	autoTargets: integer('auto_targets').notNull().default(0),
 	defaultDeliveryMode: text('default_delivery_mode').notNull().default('manual'),
