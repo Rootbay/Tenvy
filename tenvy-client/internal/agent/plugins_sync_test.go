@@ -201,3 +201,98 @@ func TestStagePluginsFromListSkipsManualRemoteDesktop(t *testing.T) {
 		t.Fatalf("expected no plugin installations recorded, got %#v", snapshot.Installations)
 	}
 }
+
+func TestStagePluginsFromListRegistersCapabilitiesForCustomPlugin(t *testing.T) {
+	t.Parallel()
+
+	pluginID := "custom-plugin"
+	handler := &testPluginStageHandler{
+		outcome: pluginStageOutcome{
+			Manifest: &manifest.Manifest{
+				ID:           pluginID,
+				Version:      "2.0.0",
+				Capabilities: []string{"remote-desktop.metrics"},
+			},
+			Staged: true,
+		},
+	}
+	pluginStages.Register(pluginID, handler)
+	t.Cleanup(func() {
+		pluginStages.Unregister(pluginID)
+	})
+
+	pluginRoot := t.TempDir()
+	manager, err := plugins.NewManager(pluginRoot, log.New(io.Discard, "", 0), manifest.VerifyOptions{})
+	if err != nil {
+		t.Fatalf("new plugin manager: %v", err)
+	}
+
+	agent := &Agent{
+		id:      "agent-1",
+		plugins: manager,
+		client:  &http.Client{},
+		modules: newDefaultModuleManager(),
+		logger:  log.New(io.Discard, "", 0),
+	}
+
+	snapshot := &manifest.ManifestList{
+		Version: "3",
+		Manifests: []manifest.ManifestDescriptor{
+			{
+				PluginID:       pluginID,
+				ManifestDigest: "digest-123",
+			},
+		},
+	}
+
+	if err := agent.stagePluginsFromList(context.Background(), snapshot); err != nil {
+		t.Fatalf("stage plugins: %v", err)
+	}
+
+	if handler.calls != 1 {
+		t.Fatalf("expected handler to be invoked once, got %d", handler.calls)
+	}
+
+	metadata := agent.modules.Metadata()
+	var remoteMetadata *ModuleMetadata
+	for index := range metadata {
+		if metadata[index].ID == "remote-desktop" {
+			remoteMetadata = &metadata[index]
+			break
+		}
+	}
+	if remoteMetadata == nil {
+		t.Fatal("remote desktop metadata missing")
+	}
+
+	found := false
+	for _, ext := range remoteMetadata.Extensions {
+		if ext.Source != pluginID {
+			continue
+		}
+		found = true
+		if ext.Version != "2.0.0" {
+			t.Fatalf("unexpected extension version %q", ext.Version)
+		}
+		if len(ext.Capabilities) != 1 {
+			t.Fatalf("expected one capability, got %d", len(ext.Capabilities))
+		}
+		if ext.Capabilities[0].ID != "remote-desktop.metrics" {
+			t.Fatalf("unexpected capability id %q", ext.Capabilities[0].ID)
+		}
+	}
+	if !found {
+		t.Fatalf("expected extension registered for %s", pluginID)
+	}
+}
+
+type testPluginStageHandler struct {
+	outcome pluginStageOutcome
+	err     error
+	calls   int
+}
+
+func (h *testPluginStageHandler) Stage(ctx context.Context, agent *Agent, descriptor manifest.ManifestDescriptor) (pluginStageOutcome, error) {
+	h.calls++
+	return h.outcome, h.err
+}

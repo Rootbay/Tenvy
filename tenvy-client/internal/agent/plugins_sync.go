@@ -11,11 +11,111 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/rootbay/tenvy-client/internal/plugins"
 	manifest "github.com/rootbay/tenvy-client/shared/pluginmanifest"
 )
+
+type pluginStageOutcome struct {
+	Manifest *manifest.Manifest
+	Staged   bool
+}
+
+type pluginStageHandler interface {
+	Stage(context.Context, *Agent, manifest.ManifestDescriptor) (pluginStageOutcome, error)
+}
+
+type pluginStageRegistry struct {
+	mu       sync.RWMutex
+	handlers map[string]pluginStageHandler
+}
+
+func newPluginStageRegistry() *pluginStageRegistry {
+	registry := &pluginStageRegistry{handlers: make(map[string]pluginStageHandler)}
+	registry.Register(plugins.RemoteDesktopEnginePluginID, remoteDesktopStageHandler{})
+	return registry
+}
+
+func (r *pluginStageRegistry) Register(id string, handler pluginStageHandler) {
+	if r == nil {
+		return
+	}
+	normalized := strings.ToLower(strings.TrimSpace(id))
+	if normalized == "" {
+		return
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if handler == nil {
+		delete(r.handlers, normalized)
+		return
+	}
+	r.handlers[normalized] = handler
+}
+
+func (r *pluginStageRegistry) Unregister(id string) {
+	r.Register(id, nil)
+}
+
+func (r *pluginStageRegistry) Lookup(id string) pluginStageHandler {
+	if r == nil {
+		return nil
+	}
+	normalized := strings.ToLower(strings.TrimSpace(id))
+	if normalized == "" {
+		return nil
+	}
+	r.mu.RLock()
+	handler := r.handlers[normalized]
+	r.mu.RUnlock()
+	return handler
+}
+
+var pluginStages = newPluginStageRegistry()
+
+type remoteDesktopStageHandler struct{}
+
+func (remoteDesktopStageHandler) Stage(ctx context.Context, agent *Agent, descriptor manifest.ManifestDescriptor) (pluginStageOutcome, error) {
+	var outcome pluginStageOutcome
+
+	if agent == nil {
+		return outcome, errors.New("agent not initialized")
+	}
+
+	if !plugins.RemoteDesktopAutoSyncAllowed(descriptor) {
+		if agent.logger != nil {
+			mode := strings.TrimSpace(string(descriptor.Distribution.DefaultMode))
+			if mode == "" {
+				mode = "unspecified"
+			}
+			agent.logger.Printf("plugin sync: skipping remote desktop plugin %s (delivery mode: %s, auto-update: %t)",
+				strings.TrimSpace(descriptor.PluginID), mode, descriptor.Distribution.AutoUpdate)
+		}
+		return outcome, nil
+	}
+
+	facts := agent.remoteDesktopRuntimeFacts()
+	result, err := plugins.StageRemoteDesktopEngine(
+		ctx,
+		agent.plugins,
+		agent.client,
+		agent.baseURL,
+		agent.id,
+		agent.key,
+		agent.userAgent(),
+		facts,
+		descriptor,
+	)
+	if err != nil {
+		return outcome, err
+	}
+
+	outcome.Manifest = &result.Manifest
+	outcome.Staged = true
+	return outcome, nil
+}
 
 func (a *Agent) fetchApprovedPluginList(ctx context.Context) (*manifest.ManifestList, error) {
 	if a.client == nil {
@@ -126,41 +226,74 @@ func (a *Agent) stagePluginsFromList(ctx context.Context, snapshot *manifest.Man
 
 	var resultErr error
 	for _, entry := range snapshot.Manifests {
-		if !strings.EqualFold(strings.TrimSpace(entry.PluginID), plugins.RemoteDesktopEnginePluginID) {
-			continue
-		}
-
-		if !plugins.RemoteDesktopAutoSyncAllowed(entry) {
-			if a.logger != nil {
-				mode := strings.TrimSpace(string(entry.Distribution.DefaultMode))
-				if mode == "" {
-					mode = "unspecified"
-				}
-				a.logger.Printf("plugin sync: skipping remote desktop plugin %s (delivery mode: %s, auto-update: %t)", strings.TrimSpace(entry.PluginID), mode, entry.Distribution.AutoUpdate)
-			}
+		id := strings.TrimSpace(entry.PluginID)
+		handler := pluginStages.Lookup(id)
+		if handler == nil {
 			continue
 		}
 
 		stageCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
-		facts := a.remoteDesktopRuntimeFacts()
-		if _, err := plugins.StageRemoteDesktopEngine(
-			stageCtx,
-			a.plugins,
-			a.client,
-			a.baseURL,
-			a.id,
-			a.key,
-			a.userAgent(),
-			facts,
-			entry,
-		); err != nil {
-			if resultErr == nil {
-				resultErr = err
-			}
-		}
+		outcome, err := handler.Stage(stageCtx, a, entry)
 		cancel()
+		if err != nil {
+			resultErr = combineErrors(resultErr, fmt.Errorf("stage %s: %w", id, err))
+			continue
+		}
+
+		if !outcome.Staged || outcome.Manifest == nil {
+			continue
+		}
+
+		if err := a.registerPluginCapabilities(*outcome.Manifest); err != nil {
+			resultErr = combineErrors(resultErr, fmt.Errorf("register capabilities for %s: %w", id, err))
+		}
 	}
 
+	return resultErr
+}
+
+func (a *Agent) registerPluginCapabilities(mf manifest.Manifest) error {
+	if a.modules == nil {
+		return nil
+	}
+	mf.ID = strings.TrimSpace(mf.ID)
+	mf.Version = strings.TrimSpace(mf.Version)
+	if mf.ID == "" || len(mf.Capabilities) == 0 {
+		return nil
+	}
+
+	extensions := make(map[string][]ModuleCapability)
+	for _, capabilityID := range mf.Capabilities {
+		capabilityID = strings.TrimSpace(capabilityID)
+		if capabilityID == "" {
+			continue
+		}
+		descriptor, ok := manifest.LookupCapability(capabilityID)
+		if !ok {
+			continue
+		}
+		moduleID := strings.TrimSpace(descriptor.Module)
+		if moduleID == "" {
+			continue
+		}
+		extensions[moduleID] = append(extensions[moduleID], ModuleCapability{
+			ID:          descriptor.ID,
+			Name:        descriptor.Name,
+			Description: descriptor.Description,
+		})
+	}
+
+	var resultErr error
+	for moduleID, caps := range extensions {
+		extension := ModuleExtension{
+			Source:       mf.ID,
+			Version:      mf.Version,
+			Capabilities: caps,
+		}
+		if err := a.modules.RegisterModuleExtension(moduleID, extension); err != nil {
+			resultErr = combineErrors(resultErr, err)
+		}
+	}
 	return resultErr
 }
 
