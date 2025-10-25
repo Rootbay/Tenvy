@@ -226,7 +226,7 @@ func TestActivatePluginLaunchesRuntime(t *testing.T) {
 	mf := manifest.Manifest{ID: "test-plugin", Version: "1.0.0"}
 	t.Setenv("PLUGIN_TEST_MARKER", marker)
 
-	if err := agent.activatePlugin(context.Background(), mf, binary); err != nil {
+	if err := agent.activatePlugin(context.Background(), mf, binary, ""); err != nil {
 		t.Fatalf("activate plugin: %v", err)
 	}
 	t.Cleanup(func() {
@@ -267,7 +267,7 @@ func TestActivatePluginRecordsRuntimeFailure(t *testing.T) {
 	mf := manifest.Manifest{ID: "broken-plugin", Version: "2.0.0"}
 	missing := filepath.Join(t.TempDir(), "missing.exe")
 
-	if err := agent.activatePlugin(context.Background(), mf, missing); err == nil {
+	if err := agent.activatePlugin(context.Background(), mf, missing, ""); err == nil {
 		t.Fatal("expected activation to fail for missing binary")
 	}
 
@@ -291,6 +291,143 @@ func TestActivatePluginRecordsRuntimeFailure(t *testing.T) {
 	errValue, _ := record["error"].(string)
 	if strings.TrimSpace(errValue) == "" {
 		t.Fatalf("expected error message in status file, got %+v", record)
+	}
+}
+
+func TestActivatePluginRestoresBackupOnRuntimeFailure(t *testing.T) {
+	t.Parallel()
+
+	logger := log.New(io.Discard, "", 0)
+	pluginRoot := t.TempDir()
+	manager, err := plugins.NewManager(pluginRoot, logger, manifest.VerifyOptions{})
+	if err != nil {
+		t.Fatalf("new plugin manager: %v", err)
+	}
+
+	pluginID := "runtime-plugin"
+	pluginDir := filepath.Join(pluginRoot, pluginID)
+	if err := os.MkdirAll(pluginDir, 0o755); err != nil {
+		t.Fatalf("create plugin directory: %v", err)
+	}
+	entryPath := filepath.Join(pluginDir, "plugin.bin")
+	if err := os.WriteFile(entryPath, []byte("new payload"), 0o644); err != nil {
+		t.Fatalf("write plugin entry: %v", err)
+	}
+
+	backupDir, err := os.MkdirTemp(pluginRoot, pluginID+"-backup-")
+	if err != nil {
+		t.Fatalf("create backup directory: %v", err)
+	}
+	oldEntry := filepath.Join(backupDir, "previous.bin")
+	if err := os.WriteFile(oldEntry, []byte("previous payload"), 0o644); err != nil {
+		t.Fatalf("write backup entry: %v", err)
+	}
+
+	agent := &Agent{
+		modules: newModuleManager(),
+		plugins: manager,
+		logger:  logger,
+	}
+
+	mf := manifest.Manifest{ID: pluginID, Version: "2.0.0"}
+	err = agent.activatePlugin(context.Background(), mf, entryPath, backupDir)
+	if err == nil {
+		t.Fatal("expected runtime launch to fail")
+	}
+	if !strings.Contains(err.Error(), "previous version restored") {
+		t.Fatalf("expected error message to mention restore, got %v", err)
+	}
+
+	restoredEntry := filepath.Join(pluginDir, "previous.bin")
+	data, readErr := os.ReadFile(restoredEntry)
+	if readErr != nil {
+		t.Fatalf("read restored entry: %v", readErr)
+	}
+	if string(data) != "previous payload" {
+		t.Fatalf("unexpected restored payload %q", string(data))
+	}
+
+	if _, statErr := os.Stat(backupDir); statErr == nil {
+		t.Fatalf("expected backup directory to be removed after restore")
+	}
+
+	statusPath := filepath.Join(pluginDir, ".status.json")
+	statusData, readStatusErr := os.ReadFile(statusPath)
+	if readStatusErr != nil {
+		t.Fatalf("read status file: %v", readStatusErr)
+	}
+	if !strings.Contains(string(statusData), "previous version restored") {
+		t.Fatalf("expected status message to mention restore, got %s", statusData)
+	}
+}
+
+func TestActivatePluginRestoresBackupOnModuleFailure(t *testing.T) {
+	t.Parallel()
+
+	logger := log.New(io.Discard, "", 0)
+	pluginRoot := t.TempDir()
+	manager, err := plugins.NewManager(pluginRoot, logger, manifest.VerifyOptions{})
+	if err != nil {
+		t.Fatalf("new plugin manager: %v", err)
+	}
+
+	pluginID := "module-plugin"
+	pluginDir := filepath.Join(pluginRoot, pluginID)
+	if err := os.MkdirAll(pluginDir, 0o755); err != nil {
+		t.Fatalf("create plugin directory: %v", err)
+	}
+
+	source := "package main\nimport \"time\"\nfunc main() { for { time.Sleep(10 * time.Millisecond) } }\n"
+	binary := buildPluginBinary(t, source)
+	entryPath := filepath.Join(pluginDir, "plugin.bin")
+	if err := os.Rename(binary, entryPath); err != nil {
+		t.Fatalf("place plugin binary: %v", err)
+	}
+
+	backupDir, err := os.MkdirTemp(pluginRoot, pluginID+"-backup-")
+	if err != nil {
+		t.Fatalf("create backup directory: %v", err)
+	}
+	oldEntry := filepath.Join(backupDir, "previous.bin")
+	if err := os.WriteFile(oldEntry, []byte("previous payload"), 0o644); err != nil {
+		t.Fatalf("write backup entry: %v", err)
+	}
+
+	agent := &Agent{
+		modules: newModuleManager(),
+		plugins: manager,
+		logger:  logger,
+	}
+
+	mf := manifest.Manifest{ID: pluginID, Version: "3.0.0", Capabilities: []string{"remote-desktop.stream"}}
+	err = agent.activatePlugin(context.Background(), mf, entryPath, backupDir)
+	if err == nil {
+		t.Fatal("expected module activation to fail")
+	}
+	if !strings.Contains(err.Error(), "previous version restored") {
+		t.Fatalf("expected error message to mention restore, got %v", err)
+	}
+
+	restoredEntry := filepath.Join(pluginDir, "previous.bin")
+	data, readErr := os.ReadFile(restoredEntry)
+	if readErr != nil {
+		t.Fatalf("read restored entry: %v", readErr)
+	}
+	if string(data) != "previous payload" {
+		t.Fatalf("unexpected restored payload %q", string(data))
+	}
+
+	if _, statErr := os.Stat(backupDir); statErr == nil {
+		t.Fatalf("expected backup directory to be removed after restore")
+	}
+
+	statusPath := filepath.Join(pluginDir, ".status.json")
+	statusData, readStatusErr := os.ReadFile(statusPath)
+	if readStatusErr != nil {
+		t.Fatalf("read status file: %v", readStatusErr)
+	}
+	if !strings.Contains(string(statusData), "previous version restored") {
+		t.Fatalf("expected status message to mention restore, got %s", statusData)
 	}
 }
 

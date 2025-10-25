@@ -82,6 +82,9 @@ func TestStagePluginStagesTarGzArtifact(t *testing.T) {
 	if strings.TrimSpace(result.EntryPath) == "" {
 		t.Fatalf("expected entry path to be set")
 	}
+	if strings.TrimSpace(result.BackupPath) != "" {
+		t.Fatalf("expected no backup recorded for initial installation")
+	}
 
 	payload, err := os.ReadFile(result.EntryPath)
 	if err != nil {
@@ -98,6 +101,94 @@ func TestStagePluginStagesTarGzArtifact(t *testing.T) {
 
 	if !strings.EqualFold(result.Manifest.ID, "awesome-plugin") {
 		t.Fatalf("expected manifest id awesome-plugin, got %q", result.Manifest.ID)
+	}
+}
+
+func TestStagePluginKeepsPreviousInstallationUntilActivation(t *testing.T) {
+	t.Parallel()
+
+	artifactData := buildTarGzArchive(t, map[string][]byte{
+		"awesome-plugin/plugin.bin": []byte("plugin payload"),
+	})
+	hash := sha256.Sum256(artifactData)
+	hashHex := fmt.Sprintf("%x", hash[:])
+	signatureValue := releaseSignatureFor(t, hashHex)
+
+	manifestJSON := fmt.Sprintf(`{
+                "id": "awesome-plugin",
+                "name": "Awesome Plugin",
+                "version": "1.2.3",
+                "entry": "awesome-plugin/plugin.bin",
+                "repositoryUrl": "https://github.com/rootbay/tenvy-client",
+                "license": {"spdxId": "MIT"},
+                "requirements": {},
+                "distribution": {"defaultMode": "automatic", "autoUpdate": true, "signature": "ed25519", "signatureHash": "%[1]s", "signatureSigner": "%[2]s", "signatureValue": "%[3]s", "signatureTimestamp": "%[4]s"},
+                "package": {"artifact": "awesome-plugin.tar.gz", "hash": "%[1]s"}
+        }`, hashHex, releaseSigner, signatureValue, releaseSignedAtStamp)
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasSuffix(r.URL.Path, "/artifact") {
+			w.Header().Set("Content-Type", "application/octet-stream")
+			if _, err := w.Write(artifactData); err != nil {
+				t.Fatalf("write artifact: %v", err)
+			}
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		if _, err := io.WriteString(w, manifestJSON); err != nil {
+			t.Fatalf("write manifest: %v", err)
+		}
+	}))
+	defer server.Close()
+
+	root := t.TempDir()
+	opts := releaseVerifyOptions(t)
+	manager, err := plugins.NewManager(root, log.New(io.Discard, "", 0), opts)
+	if err != nil {
+		t.Fatalf("new manager: %v", err)
+	}
+
+	pluginDir := filepath.Join(root, "awesome-plugin")
+	if err := os.MkdirAll(pluginDir, 0o755); err != nil {
+		t.Fatalf("create plugin dir: %v", err)
+	}
+	oldEntry := filepath.Join(pluginDir, "old.bin")
+	if err := os.WriteFile(oldEntry, []byte("previous payload"), 0o644); err != nil {
+		t.Fatalf("write previous entry: %v", err)
+	}
+
+	digest := sha256.Sum256([]byte(manifestJSON))
+	descriptor := manifest.ManifestDescriptor{
+		PluginID:       "awesome-plugin",
+		Version:        "1.2.3",
+		ManifestDigest: fmt.Sprintf("%x", digest[:]),
+		Distribution:   manifest.ManifestBriefing{DefaultMode: manifest.DeliveryAutomatic, AutoUpdate: true},
+		ArtifactHash:   hashHex,
+	}
+
+	ctx := context.Background()
+	result, err := plugins.StagePlugin(ctx, manager, server.Client(), server.URL, "agent-1", "", "stage-test", manifest.RuntimeFacts{}, descriptor)
+	if err != nil {
+		t.Fatalf("stage plugin: %v", err)
+	}
+	if strings.TrimSpace(result.BackupPath) == "" {
+		t.Fatalf("expected backup path to be returned")
+	}
+	if _, err := os.Stat(result.BackupPath); err != nil {
+		t.Fatalf("expected backup directory to exist: %v", err)
+	}
+
+	backupEntry := filepath.Join(result.BackupPath, "old.bin")
+	payload, err := os.ReadFile(backupEntry)
+	if err != nil {
+		t.Fatalf("read backup entry: %v", err)
+	}
+	if string(payload) != "previous payload" {
+		t.Fatalf("unexpected backup payload %q", string(payload))
+	}
+
+	if _, err := os.Stat(oldEntry); err == nil {
+		t.Fatalf("expected previous entry moved out of plugin directory")
 	}
 }
 
