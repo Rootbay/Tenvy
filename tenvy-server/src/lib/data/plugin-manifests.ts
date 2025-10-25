@@ -8,8 +8,10 @@ import type {
 	PluginSignatureVerificationSummary
 } from '../../../../shared/types/plugin-manifest.js';
 import {
-	validatePluginManifest,
-	verifyPluginSignature
+        validatePluginManifest,
+        verifyPluginSignature,
+        resolveManifestSignature,
+        isPluginSignatureType
 } from '../../../../shared/types/plugin-manifest.js';
 import { getVerificationOptions } from '$lib/server/plugins/signature-policy.js';
 
@@ -45,24 +47,26 @@ const parseTimestamp = (value: string | undefined): Date | null => {
 };
 
 const baseVerificationSummary = (manifest: PluginManifest): PluginSignatureVerificationSummary => {
-	const signature = manifest.distribution?.signature;
-	const chain = Array.isArray(signature?.certificateChain)
-		? [...signature!.certificateChain]
-		: undefined;
+        const { type, metadata } = resolveManifestSignature(manifest);
+        const chain = metadata?.certificateChain?.length
+                ? [...metadata.certificateChain]
+                : undefined;
+        const resolvedType = isPluginSignatureType(type) ? type : 'sha256';
+        const normalizedHash = metadata?.hash?.trim().toLowerCase() ?? manifest.package.hash?.trim().toLowerCase();
 
-	return {
-		trusted: false,
-		signatureType: signature?.type ?? 'none',
-		hash: signature?.hash?.trim().toLowerCase() ?? undefined,
-		signer: signature?.signer ?? null,
-		signedAt: parseTimestamp(signature?.signedAt ?? undefined),
-		publicKey: signature?.publicKey ?? null,
-		certificateChain: chain,
-		checkedAt: new Date(),
-		status: 'unsigned',
-		error: undefined,
-		errorCode: undefined
-	};
+        return {
+                trusted: false,
+                signatureType: resolvedType,
+                hash: normalizedHash,
+                signer: metadata?.signer ?? null,
+                signedAt: parseTimestamp(metadata?.signedAt ?? undefined),
+                publicKey: metadata?.publicKey ?? null,
+                certificateChain: chain,
+                checkedAt: new Date(),
+                status: !type || type === 'none' ? 'unsigned' : 'untrusted',
+                error: undefined,
+                errorCode: undefined
+        };
 };
 
 const summarizeVerificationSuccess = (

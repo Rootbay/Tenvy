@@ -38,11 +38,11 @@ const baseListing: MarketplaceListing = {
 		categories: [],
 		capabilities: [],
 		requirements: {},
-		distribution: {
-			defaultMode: 'manual',
-			autoUpdate: false,
-			signature: { type: 'none' }
-		},
+                distribution: {
+                        defaultMode: 'manual',
+                        autoUpdate: false,
+                        signature: 'sha256'
+                },
 		package: { artifact: 'plugin.zip' }
 	},
 	submittedBy: 'author-1',

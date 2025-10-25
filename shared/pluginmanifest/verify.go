@@ -78,19 +78,32 @@ func VerifySignature(manifest Manifest, opts VerifyOptions) (*VerificationResult
 	}
 
 	normalizedManifestHash := normalizeHexString(manifest.Package.Hash)
+	if normalizedManifestHash == "" {
+		return nil, fmt.Errorf("plugin manifest is missing package hash")
+	}
+
 	normalizedSignatureHash := normalizeHexString(sig.Hash)
-	if normalizedManifestHash != "" && normalizedSignatureHash != "" && normalizedManifestHash != normalizedSignatureHash {
+	if normalizedSignatureHash != "" && normalizedManifestHash != normalizedSignatureHash {
 		return nil, ErrSignatureMismatch
 	}
+
+	hashValue := normalizedManifestHash
 
 	switch sig.Type {
 	case SignatureSHA256:
 		if len(opts.SHA256AllowList) > 0 {
-			if !hashAllowed(normalizedSignatureHash, opts.SHA256AllowList) {
+			if !hashAllowed(hashValue, opts.SHA256AllowList) {
 				return nil, ErrHashNotAllowed
 			}
 		}
 	case SignatureEd25519:
+		if strings.TrimSpace(sig.PublicKey) == "" {
+			return nil, ErrUntrustedSigner
+		}
+		if strings.TrimSpace(sig.Signature) == "" {
+			return nil, ErrInvalidSignature
+		}
+
 		publicKey, err := resolveEd25519Key(sig.PublicKey, opts)
 		if err != nil {
 			return nil, err
@@ -107,7 +120,7 @@ func VerifySignature(manifest Manifest, opts VerifyOptions) (*VerificationResult
 			return nil, fmt.Errorf("plugin signature has invalid length: %d", len(signatureBytes))
 		}
 
-		message := []byte(normalizedSignatureHash)
+		message := []byte(hashValue)
 		if !ed25519.Verify(publicKey, message, signatureBytes) {
 			return nil, ErrInvalidSignature
 		}
@@ -124,7 +137,7 @@ func VerifySignature(manifest Manifest, opts VerifyOptions) (*VerificationResult
 	return &VerificationResult{
 		Trusted:          true,
 		SignatureType:    sig.Type,
-		Hash:             normalizedSignatureHash,
+		Hash:             hashValue,
 		PublicKey:        sig.PublicKey,
 		Signer:           sig.Signer,
 		SignedAt:         signedAtPtr,

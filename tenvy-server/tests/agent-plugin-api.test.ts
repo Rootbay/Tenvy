@@ -52,7 +52,7 @@ describe('agent plugin API', () => {
                                 distribution: {
                                         defaultMode: 'automatic',
                                         autoUpdate: true,
-                                        signature: { type: 'sha256', hash: 'abc123', signature: 'abc123' }
+                                        signature: 'sha256'
                                 },
                                 package: { artifact: 'pkg.zip', hash: 'abc123' }
                         })

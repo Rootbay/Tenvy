@@ -12,9 +12,7 @@ func TestVerifySignatureSHA256AllowList(t *testing.T) {
 	manifest := Manifest{
 		Distribution: Distribution{
 			Signature: Signature{
-				Type:      SignatureSHA256,
-				Hash:      "abcdef",
-				Signature: "ignored",
+				Type: SignatureSHA256,
 			},
 		},
 		Package: PackageDescriptor{Hash: "abcdef"},
@@ -36,9 +34,7 @@ func TestVerifySignatureSHA256Disallowed(t *testing.T) {
 	manifest := Manifest{
 		Distribution: Distribution{
 			Signature: Signature{
-				Type:      SignatureSHA256,
-				Hash:      "abcdef",
-				Signature: "ignored",
+				Type: SignatureSHA256,
 			},
 		},
 		Package: PackageDescriptor{Hash: "abcdef"},
@@ -46,6 +42,34 @@ func TestVerifySignatureSHA256Disallowed(t *testing.T) {
 
 	if _, err := VerifySignature(manifest, VerifyOptions{SHA256AllowList: []string{"123456"}}); err != ErrHashNotAllowed {
 		t.Fatalf("expected ErrHashNotAllowed, got %v", err)
+	}
+}
+
+func TestVerifySignatureHashMismatch(t *testing.T) {
+	manifest := Manifest{
+		Distribution: Distribution{
+			Signature: Signature{
+				Type: SignatureSHA256,
+				Hash: "123456",
+			},
+		},
+		Package: PackageDescriptor{Hash: "abcdef"},
+	}
+
+	if _, err := VerifySignature(manifest, VerifyOptions{}); err != ErrSignatureMismatch {
+		t.Fatalf("expected ErrSignatureMismatch, got %v", err)
+	}
+}
+
+func TestVerifySignatureMissingPackageHash(t *testing.T) {
+	manifest := Manifest{
+		Distribution: Distribution{
+			Signature: Signature{Type: SignatureSHA256},
+		},
+	}
+
+	if _, err := VerifySignature(manifest, VerifyOptions{}); err == nil {
+		t.Fatalf("expected error when package hash missing")
 	}
 }
 
