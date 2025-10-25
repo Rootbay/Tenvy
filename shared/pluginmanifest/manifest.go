@@ -123,13 +123,12 @@ var (
 )
 
 type InstallationTelemetry struct {
-	PluginID       string              `json:"pluginId"`
-	Version        string              `json:"version"`
-	Status         PluginInstallStatus `json:"status"`
-	Hash           string              `json:"hash,omitempty"`
-	LastDeployedAt *string             `json:"lastDeployedAt,omitempty"`
-	LastCheckedAt  *string             `json:"lastCheckedAt,omitempty"`
-	Error          string              `json:"error,omitempty"`
+	PluginID  string              `json:"pluginId"`
+	Version   string              `json:"version"`
+	Status    PluginInstallStatus `json:"status"`
+	Hash      string              `json:"hash,omitempty"`
+	Timestamp *string             `json:"timestamp,omitempty"`
+	Error     string              `json:"error,omitempty"`
 }
 
 type SyncPayload struct {

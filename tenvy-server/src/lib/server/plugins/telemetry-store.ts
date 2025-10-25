@@ -257,8 +257,9 @@ export class PluginTelemetryStore {
 				}
 			}
 
-			const lastDeployedAt = toDate(installation.lastDeployedAt);
-			const lastCheckedAt = toDate(installation.lastCheckedAt) ?? now;
+			const observedAt = toDate(installation.timestamp) ?? now;
+			const lastDeployedAt = installation.status === 'installed' ? observedAt : null;
+			const lastCheckedAt = observedAt;
 			const payload = {
 				pluginId: installation.pluginId,
 				agentId,

@@ -143,8 +143,7 @@ describe('PluginTelemetryStore', () => {
 				version: '1.0.0',
 				status: 'installed',
 				hash: 'abc123',
-				lastDeployedAt: now,
-				lastCheckedAt: now,
+				timestamp: now,
 				error: null
 			}
 		]);
@@ -179,8 +178,7 @@ describe('PluginTelemetryStore', () => {
 				version: '1.0.0',
 				status: 'installed',
 				hash: 'deadbeef',
-				lastDeployedAt: now,
-				lastCheckedAt: now,
+				timestamp: now,
 				error: null
 			}
 		]);
@@ -220,8 +218,7 @@ describe('PluginTelemetryStore', () => {
 				version: '1.0.0',
 				status: 'installed',
 				hash: 'abc123',
-				lastDeployedAt: now,
-				lastCheckedAt: now,
+				timestamp: now,
 				error: null
 			}
 		]);
