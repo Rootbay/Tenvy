@@ -262,6 +262,20 @@ func TestStagePluginsFromListStagesManualRemoteDesktopWhenRequested(t *testing.T
 
 	pluginID := plugins.RemoteDesktopEnginePluginID
 	original := pluginStages.Lookup(pluginID)
+	pluginRoot := t.TempDir()
+	manager, err := plugins.NewManager(pluginRoot, log.New(io.Discard, "", 0), manifest.VerifyOptions{})
+	if err != nil {
+		t.Fatalf("new plugin manager: %v", err)
+	}
+
+	entryPath := filepath.Join(pluginRoot, pluginID, "engine.bin")
+	if err := os.MkdirAll(filepath.Dir(entryPath), 0o755); err != nil {
+		t.Fatalf("create entry dir: %v", err)
+	}
+	if err := os.WriteFile(entryPath, []byte("engine"), 0o644); err != nil {
+		t.Fatalf("write entry: %v", err)
+	}
+
 	handler := &testPluginStageHandler{
 		outcome: pluginStageOutcome{
 			Manifest: &manifest.Manifest{
@@ -269,7 +283,8 @@ func TestStagePluginsFromListStagesManualRemoteDesktopWhenRequested(t *testing.T
 				Version:      "2.0.0",
 				Capabilities: []string{"remote-desktop.metrics"},
 			},
-			Staged: true,
+			EntryPath: entryPath,
+			Staged:    true,
 		},
 	}
 	pluginStages.Register(pluginID, handler)
@@ -280,12 +295,6 @@ func TestStagePluginsFromListStagesManualRemoteDesktopWhenRequested(t *testing.T
 			pluginStages.Unregister(pluginID)
 		}
 	})
-
-	pluginRoot := t.TempDir()
-	manager, err := plugins.NewManager(pluginRoot, log.New(io.Discard, "", 0), manifest.VerifyOptions{})
-	if err != nil {
-		t.Fatalf("new plugin manager: %v", err)
-	}
 
 	agent := &Agent{
 		id:       "agent-1",
@@ -350,6 +359,20 @@ func TestStagePluginsFromListRegistersCapabilitiesForCustomPlugin(t *testing.T) 
 	t.Parallel()
 
 	pluginID := "custom-plugin"
+	pluginRoot := t.TempDir()
+	manager, err := plugins.NewManager(pluginRoot, log.New(io.Discard, "", 0), manifest.VerifyOptions{})
+	if err != nil {
+		t.Fatalf("new plugin manager: %v", err)
+	}
+
+	entryPath := filepath.Join(pluginRoot, pluginID, "plugin.bin")
+	if err := os.MkdirAll(filepath.Dir(entryPath), 0o755); err != nil {
+		t.Fatalf("create entry dir: %v", err)
+	}
+	if err := os.WriteFile(entryPath, []byte("plugin"), 0o644); err != nil {
+		t.Fatalf("write entry: %v", err)
+	}
+
 	handler := &testPluginStageHandler{
 		outcome: pluginStageOutcome{
 			Manifest: &manifest.Manifest{
@@ -357,19 +380,14 @@ func TestStagePluginsFromListRegistersCapabilitiesForCustomPlugin(t *testing.T) 
 				Version:      "2.0.0",
 				Capabilities: []string{"remote-desktop.metrics"},
 			},
-			Staged: true,
+			EntryPath: entryPath,
+			Staged:    true,
 		},
 	}
 	pluginStages.Register(pluginID, handler)
 	t.Cleanup(func() {
 		pluginStages.Unregister(pluginID)
 	})
-
-	pluginRoot := t.TempDir()
-	manager, err := plugins.NewManager(pluginRoot, log.New(io.Discard, "", 0), manifest.VerifyOptions{})
-	if err != nil {
-		t.Fatalf("new plugin manager: %v", err)
-	}
 
 	agent := &Agent{
 		id:      "agent-1",

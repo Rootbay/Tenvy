@@ -469,6 +469,108 @@ func TestModuleManagerUnregisterExtension(t *testing.T) {
 	}
 }
 
+func TestModuleManagerActivateAndDeactivatePlugin(t *testing.T) {
+	t.Parallel()
+
+	module := &stubModule{
+		metadata: ModuleMetadata{
+			ID:           "ext-module",
+			Title:        "Extension Module",
+			Commands:     []string{"ext.command"},
+			Capabilities: []ModuleCapability{{ID: "base.capability", Name: "base.capability"}},
+		},
+		acceptExtensions: true,
+	}
+
+	manager := newModuleManager()
+	manager.register(module)
+
+	extensions := map[string]ModuleExtension{
+		"ext-module": {
+			Source:  "plugin.remote",
+			Version: "1.2.3",
+			Capabilities: []ModuleCapability{
+				{ID: "ext.capability", Name: "ext.capability"},
+			},
+		},
+	}
+
+	var shutdownCalls int
+	handle := PluginActivationFunc(func(context.Context) error {
+		shutdownCalls++
+		return nil
+	})
+
+	if err := manager.ActivatePlugin(context.Background(), "plugin.remote", extensions, handle); err != nil {
+		t.Fatalf("activate plugin: %v", err)
+	}
+
+	metadata := manager.Metadata()
+	if len(metadata) != 1 {
+		t.Fatalf("expected one module metadata entry, got %d", len(metadata))
+	}
+	if len(metadata[0].Extensions) != 1 {
+		t.Fatalf("expected one extension registered, got %d", len(metadata[0].Extensions))
+	}
+	if shutdownCalls != 0 {
+		t.Fatalf("expected no shutdown calls before deactivation, got %d", shutdownCalls)
+	}
+
+	if err := manager.DeactivatePlugin(context.Background(), "plugin.remote"); err != nil {
+		t.Fatalf("deactivate plugin: %v", err)
+	}
+
+	if shutdownCalls != 1 {
+		t.Fatalf("expected shutdown handle invoked once, got %d", shutdownCalls)
+	}
+	if len(module.unregistered) != 1 || module.unregistered[0] != "plugin.remote" {
+		t.Fatalf("expected module to receive unregister callback, got %+v", module.unregistered)
+	}
+}
+
+func TestModuleManagerShutdownInvokesPluginHandles(t *testing.T) {
+	t.Parallel()
+
+	module := &stubModule{
+		metadata: ModuleMetadata{
+			ID:       "ext-module",
+			Title:    "Extension Module",
+			Commands: []string{"ext.command"},
+		},
+		acceptExtensions: true,
+	}
+
+	manager := newModuleManager()
+	manager.register(module)
+
+	handleInvoked := 0
+	extensions := map[string]ModuleExtension{
+		"ext-module": {Source: "plugin.remote", Version: "1.0.0"},
+	}
+	handle := PluginActivationFunc(func(context.Context) error {
+		handleInvoked++
+		return nil
+	})
+
+	if err := manager.ActivatePlugin(context.Background(), "plugin.remote", extensions, handle); err != nil {
+		t.Fatalf("activate plugin: %v", err)
+	}
+
+	if err := manager.Shutdown(context.Background()); err != nil {
+		t.Fatalf("shutdown manager: %v", err)
+	}
+
+	if handleInvoked != 1 {
+		t.Fatalf("expected plugin handle shutdown once, got %d", handleInvoked)
+	}
+	if len(module.unregistered) != 1 || module.unregistered[0] != "plugin.remote" {
+		t.Fatalf("expected unregister callback for plugin.remote, got %+v", module.unregistered)
+	}
+	if module.shutdownCalled != 1 {
+		t.Fatalf("expected module shutdown to be called once, got %d", module.shutdownCalled)
+	}
+}
+
 type fakeRemoteDesktopEngine struct {
 	configureCalls []remotedesktop.Config
 	startCalls     []remotedesktop.RemoteDesktopCommandPayload
