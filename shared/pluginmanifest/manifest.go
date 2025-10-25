@@ -248,6 +248,7 @@ type ManifestDescriptor struct {
 	ArtifactHash   string           `json:"artifactHash,omitempty"`
 	ArtifactSize   int64            `json:"artifactSizeBytes,omitempty"`
 	ApprovedAt     string           `json:"approvedAt,omitempty"`
+	ManualPushAt   string           `json:"manualPushAt,omitempty"`
 	Distribution   ManifestBriefing `json:"distribution"`
 }
 

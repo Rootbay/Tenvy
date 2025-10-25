@@ -77,6 +77,18 @@ var pluginStages = newPluginStageRegistry()
 
 type remoteDesktopStageHandler struct{}
 
+func manifestDescriptorFingerprint(descriptor manifest.ManifestDescriptor) string {
+	digest := strings.TrimSpace(descriptor.ManifestDigest)
+	manual := strings.TrimSpace(descriptor.ManualPushAt)
+	if manual == "" {
+		return digest
+	}
+	if digest == "" {
+		return manual
+	}
+	return fmt.Sprintf("%s:%s", digest, manual)
+}
+
 func (remoteDesktopStageHandler) Stage(ctx context.Context, agent *Agent, descriptor manifest.ManifestDescriptor) (pluginStageOutcome, error) {
 	var outcome pluginStageOutcome
 
@@ -84,7 +96,9 @@ func (remoteDesktopStageHandler) Stage(ctx context.Context, agent *Agent, descri
 		return outcome, errors.New("agent not initialized")
 	}
 
-	if !plugins.RemoteDesktopAutoSyncAllowed(descriptor) {
+	manualRequested := strings.TrimSpace(descriptor.ManualPushAt) != ""
+
+	if !plugins.RemoteDesktopAutoSyncAllowed(descriptor) && !manualRequested {
 		if agent.logger != nil {
 			mode := strings.TrimSpace(string(descriptor.Distribution.DefaultMode))
 			if mode == "" {

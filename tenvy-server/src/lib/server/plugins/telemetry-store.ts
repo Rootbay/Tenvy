@@ -103,10 +103,10 @@ function parseSemver(value: string | undefined): [number, number, number] | null
 }
 
 function compareSemver(a: string | undefined, b: string | undefined): number | null {
-	const left = parseSemver(a);
-	const right = parseSemver(b);
-	if (!left || !right) return null;
-	for (let i = 0; i < 3; i += 1) {
+        const left = parseSemver(a);
+        const right = parseSemver(b);
+        if (!left || !right) return null;
+        for (let i = 0; i < 3; i += 1) {
 		if (left[i] > right[i]) return 1;
 		if (left[i] < right[i]) return -1;
 	}
@@ -134,20 +134,29 @@ function isPlatformCompatible(platform: PluginPlatform | null, manifest: PluginM
 }
 
 function isArchitectureCompatible(
-	architecture: PluginArchitecture | null,
-	manifest: PluginManifest
+        architecture: PluginArchitecture | null,
+        manifest: PluginManifest
 ): boolean {
-	const required = manifest.requirements.architectures ?? [];
-	if (required.length === 0) return true;
-	if (!architecture) return false;
-	return required.includes(architecture);
+        const required = manifest.requirements.architectures ?? [];
+        if (required.length === 0) return true;
+        if (!architecture) return false;
+        return required.includes(architecture);
+}
+
+function buildDescriptorFingerprint(digest: string | undefined, manualPushAt: string | null | undefined): string {
+        const normalizedDigest = digest?.trim() ?? '';
+        const normalizedPush = manualPushAt?.trim() ?? '';
+        if (normalizedPush.length === 0) {
+                return normalizedDigest;
+        }
+        return `${normalizedDigest}:${normalizedPush}`;
 }
 
 function buildAuditPayload(details: Record<string, unknown>): {
-	payloadHash: string;
-	result: string;
+        payloadHash: string;
+        result: string;
 } {
-	const serialized = JSON.stringify(details);
+        const serialized = JSON.stringify(details);
 	const hash = createHash('sha256').update(serialized, 'utf8').digest('hex');
 	return { payloadHash: hash, result: serialized };
 }
@@ -336,18 +345,19 @@ export class PluginTelemetryStore {
 
 	async getManifestSnapshot(): Promise<PluginManifestSnapshot> {
 		const snapshot = await this.ensureManifestSnapshot();
-		const manifests = snapshot.entries.map(
-			(entry) =>
-				({
-					pluginId: entry.pluginId,
-					version: entry.version,
-					manifestDigest: entry.manifestDigest,
-					artifactHash: entry.artifactHash ?? null,
-					artifactSizeBytes: entry.artifactSizeBytes ?? null,
-					approvedAt: entry.approvedAt ?? null,
-					distribution: { ...entry.distribution }
-				}) satisfies PluginManifestDescriptor
-		);
+                const manifests = snapshot.entries.map(
+                        (entry) =>
+                                ({
+                                        pluginId: entry.pluginId,
+                                        version: entry.version,
+                                        manifestDigest: entry.manifestDigest,
+                                        artifactHash: entry.artifactHash ?? null,
+                                        artifactSizeBytes: entry.artifactSizeBytes ?? null,
+                                        approvedAt: entry.approvedAt ?? null,
+                                        manualPushAt: entry.manualPushAt ?? null,
+                                        distribution: { ...entry.distribution }
+                                }) satisfies PluginManifestDescriptor
+                );
 
 		return { version: snapshot.version, manifests } satisfies PluginManifestSnapshot;
 	}
@@ -369,21 +379,26 @@ export class PluginTelemetryStore {
 			}
 		}
 
-		const updated: PluginManifestDescriptor[] = [];
-		for (const entry of snapshot.entries) {
-			const digest = knownDigests?.[entry.pluginId];
-			if (!digest || digest !== entry.manifestDigest) {
-				updated.push({
-					pluginId: entry.pluginId,
-					version: entry.version,
-					manifestDigest: entry.manifestDigest,
-					artifactHash: entry.artifactHash ?? null,
-					artifactSizeBytes: entry.artifactSizeBytes ?? null,
-					approvedAt: entry.approvedAt ?? null,
-					distribution: { ...entry.distribution }
-				});
-			}
-		}
+                const updated: PluginManifestDescriptor[] = [];
+                for (const entry of snapshot.entries) {
+                        const digest = knownDigests?.[entry.pluginId];
+                        const fingerprint = buildDescriptorFingerprint(
+                                entry.manifestDigest,
+                                entry.manualPushAt ?? null
+                        );
+                        if (!digest || digest !== fingerprint) {
+                                updated.push({
+                                        pluginId: entry.pluginId,
+                                        version: entry.version,
+                                        manifestDigest: entry.manifestDigest,
+                                        artifactHash: entry.artifactHash ?? null,
+                                        artifactSizeBytes: entry.artifactSizeBytes ?? null,
+                                        approvedAt: entry.approvedAt ?? null,
+                                        manualPushAt: entry.manualPushAt ?? null,
+                                        distribution: { ...entry.distribution }
+                                });
+                        }
+                }
 
 		return { version: snapshot.version, updated, removed } satisfies PluginManifestDelta;
 	}
@@ -407,19 +422,20 @@ export class PluginTelemetryStore {
 			return null;
 		}
 
-		return {
-			record,
-			descriptor: {
-				pluginId: descriptor.pluginId,
-				version: descriptor.version,
-				manifestDigest: descriptor.manifestDigest,
-				artifactHash: descriptor.artifactHash ?? null,
-				artifactSizeBytes: descriptor.artifactSizeBytes ?? null,
-				approvedAt: descriptor.approvedAt ?? null,
-				distribution: { ...descriptor.distribution }
-			}
-		};
-	}
+                return {
+                        record,
+                        descriptor: {
+                                pluginId: descriptor.pluginId,
+                                version: descriptor.version,
+                                manifestDigest: descriptor.manifestDigest,
+                                artifactHash: descriptor.artifactHash ?? null,
+                                artifactSizeBytes: descriptor.artifactSizeBytes ?? null,
+                                approvedAt: descriptor.approvedAt ?? null,
+                                manualPushAt: descriptor.manualPushAt ?? null,
+                                distribution: { ...descriptor.distribution }
+                        }
+                };
+        }
 
 	async getAgentPlugin(agentId: string, pluginId: string): Promise<AgentPluginRecord | null> {
 		await this.ensureManifestIndex();
@@ -523,11 +539,11 @@ export class PluginTelemetryStore {
 					eq(pluginInstallationTable.pluginId, pluginId)
 				)
 			);
-		if (result.rowsAffected === 0) {
-			await db
-				.insert(pluginInstallationTable)
-				.values({
-					pluginId,
+                if (result.rowsAffected === 0) {
+                        await db
+                                .insert(pluginInstallationTable)
+                                .values({
+                                        pluginId,
 					agentId,
 					status: 'pending',
 					version: 'unknown',
@@ -539,15 +555,32 @@ export class PluginTelemetryStore {
 					createdAt: now,
 					updatedAt: now
 				})
-				.onConflictDoNothing();
-		}
-		await this.refreshAggregates(pluginId);
-	}
+                                .onConflictDoNothing();
+                }
+                await this.refreshAggregates(pluginId);
+        }
 
-	private async ensureManifestSnapshot(): Promise<{
-		version: string;
-		entries: PluginManifestDescriptor[];
-		digests: Map<string, string>;
+        async recordManualPush(_agentId: string, pluginId: string): Promise<void> {
+                const trimmed = pluginId.trim();
+                if (trimmed.length === 0) {
+                        return;
+                }
+
+                await this.ensureManifestIndex();
+                const record = this.manifestCache.get(trimmed);
+                if (!record) {
+                        throw new Error(`Plugin ${trimmed} not registered`);
+                }
+
+                await this.runtimeStore.ensure(record);
+                await this.runtimeStore.update(trimmed, { lastManualPushAt: new Date() });
+                this.manifestSnapshot = null;
+        }
+
+        private async ensureManifestSnapshot(): Promise<{
+                version: string;
+                entries: PluginManifestDescriptor[];
+                digests: Map<string, string>;
 	}> {
 		if (!this.manifestSnapshot) {
 			await this.buildManifestSnapshot();
@@ -574,8 +607,11 @@ export class PluginTelemetryStore {
 				continue;
 			}
 
-			const digest = computeManifestDigest(record);
-			const approvedAt = runtime.approvedAt ? runtime.approvedAt.toISOString() : null;
+                        const digest = computeManifestDigest(record);
+                        const approvedAt = runtime.approvedAt ? runtime.approvedAt.toISOString() : null;
+                        const manualPushAt = runtime.lastManualPushAt
+                                ? runtime.lastManualPushAt.toISOString()
+                                : null;
 			const size =
 				typeof record.manifest.package.sizeBytes === 'number'
 					? record.manifest.package.sizeBytes
@@ -587,8 +623,9 @@ export class PluginTelemetryStore {
 				manifestDigest: digest,
 				artifactHash: record.manifest.package.hash ?? null,
 				artifactSizeBytes: size,
-				approvedAt,
-				distribution: {
+                                approvedAt,
+                                manualPushAt,
+                                distribution: {
 					defaultMode: record.manifest.distribution.defaultMode,
 					autoUpdate: record.manifest.distribution.autoUpdate
 				}
@@ -597,10 +634,20 @@ export class PluginTelemetryStore {
 
 		entries.sort((a, b) => a.pluginId.localeCompare(b.pluginId));
 
-		const digests = new Map(entries.map((entry) => [entry.pluginId, entry.manifestDigest]));
-		const versionSeed = entries
-			.map((entry) => `${entry.pluginId}:${entry.manifestDigest}`)
-			.join('|');
+                const digests = new Map(
+                        entries.map((entry) => [
+                                entry.pluginId,
+                                buildDescriptorFingerprint(entry.manifestDigest, entry.manualPushAt ?? null)
+                        ])
+                );
+                const versionSeed = entries
+                        .map((entry) =>
+                                `${entry.pluginId}:${buildDescriptorFingerprint(
+                                        entry.manifestDigest,
+                                        entry.manualPushAt ?? null
+                                )}`
+                        )
+                        .join('|');
 		const version = createHash('sha256').update(versionSeed, 'utf8').digest('hex');
 
 		this.manifestSnapshot = { version, entries, digests };

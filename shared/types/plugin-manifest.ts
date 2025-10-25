@@ -123,6 +123,7 @@ export interface PluginManifestDescriptor {
   artifactHash?: string | null;
   artifactSizeBytes?: number | null;
   approvedAt?: string | null;
+  manualPushAt?: string | null;
   distribution: {
     defaultMode: PluginDeliveryMode;
     autoUpdate: boolean;

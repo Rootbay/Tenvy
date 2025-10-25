@@ -133,7 +133,7 @@ func (a *Agent) setPluginManifestList(list *manifest.ManifestList) {
 		if id == "" {
 			continue
 		}
-		digests[id] = entry.ManifestDigest
+		digests[id] = manifestDescriptorFingerprint(entry)
 		descriptors[id] = entry
 	}
 	a.pluginManifestDigests = digests

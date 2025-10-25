@@ -107,7 +107,9 @@ func StageRemoteDesktopEngine(
 		return result, nil
 	}
 
-	if !RemoteDesktopAutoSyncAllowed(descriptor) {
+	manualRequested := strings.TrimSpace(descriptor.ManualPushAt) != ""
+
+	if !RemoteDesktopAutoSyncAllowed(descriptor) && !manualRequested {
 		version := strings.TrimSpace(descriptor.Version)
 		message := "remote desktop plugin automatic staging disabled by policy"
 		manager.recordInstallStatusLocked(RemoteDesktopEnginePluginID, version, manifest.InstallDisabled, message)
