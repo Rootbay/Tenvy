@@ -16,10 +16,10 @@ import type {
 	PluginSignatureType
 } from '../../../../../../shared/types/plugin-manifest.js';
 import {
-        validatePluginManifest,
-        verifyPluginSignature,
-        resolveManifestSignature,
-        isPluginSignatureType
+	validatePluginManifest,
+	verifyPluginSignature,
+	resolveManifestSignature,
+	isPluginSignatureType
 } from '../../../../../../shared/types/plugin-manifest.js';
 import { getVerificationOptions } from '$lib/server/plugins/signature-policy.js';
 
@@ -99,35 +99,33 @@ const parseManifest = (raw: string): PluginManifest => {
 const now = () => new Date();
 
 const licenseDetails = (license: PluginLicenseInfo | undefined) => ({
-        licenseSpdxId: license?.spdxId ?? 'UNKNOWN',
-        licenseName: license?.name ?? null,
-        licenseUrl: license?.url ?? null
+	licenseSpdxId: license?.spdxId ?? 'UNKNOWN',
+	licenseName: license?.name ?? null,
+	licenseUrl: license?.url ?? null
 });
 
 const normalizeHash = (value: string | undefined | null): string =>
 	value?.trim().toLowerCase() ?? '';
 
 const baseSignatureSummary = (manifest: PluginManifest): PluginSignatureVerificationSummary => {
-        const { type, metadata } = resolveManifestSignature(manifest);
-        const chain = metadata?.certificateChain?.length
-                ? [...metadata.certificateChain]
-                : undefined;
-        const resolvedType = isPluginSignatureType(type) ? type : 'sha256';
-        const normalizedHash = normalizeHash(metadata?.hash ?? manifest.package?.hash);
+	const metadata = resolveManifestSignature(manifest);
+	const chain = metadata.certificateChain?.length ? [...metadata.certificateChain] : undefined;
+	const resolvedType = isPluginSignatureType(metadata.type) ? metadata.type : 'sha256';
+	const normalizedHash = normalizeHash(metadata.hash ?? manifest.package?.hash);
 
-        return {
-                trusted: false,
-                signatureType: resolvedType,
-                hash: normalizedHash,
-                signer: metadata?.signer ?? null,
-                signedAt: metadata?.signedAt ? new Date(metadata.signedAt) : null,
-                publicKey: metadata?.publicKey ?? null,
-                certificateChain: chain,
-                checkedAt: new Date(),
-                status: !type || type === 'none' ? 'unsigned' : 'untrusted',
-                error: undefined,
-                errorCode: undefined
-        };
+	return {
+		trusted: false,
+		signatureType: resolvedType,
+		hash: normalizedHash,
+		signer: metadata.signer ?? null,
+		signedAt: metadata.timestamp ? new Date(metadata.timestamp) : null,
+		publicKey: null,
+		certificateChain: chain,
+		checkedAt: new Date(),
+		status: !metadata.type || metadata.type === 'none' ? 'unsigned' : 'untrusted',
+		error: undefined,
+		errorCode: undefined
+	};
 };
 
 const summarizeVerificationSuccess = (
@@ -190,15 +188,15 @@ const resolveSignatureSummary = async (
 };
 
 const signatureDetails = async (manifest: PluginManifest) => {
-        const summary = await resolveSignatureSummary(manifest);
-        const chain = summary.certificateChain?.length ? JSON.stringify(summary.certificateChain) : null;
-        const { metadata } = resolveManifestSignature(manifest);
-        const signature = metadata?.signature ?? '';
-        return {
-                signatureType: summary.signatureType,
-                signatureHash: summary.hash ?? '',
-                signaturePublicKey: summary.publicKey ?? null,
-                signature,
+	const summary = await resolveSignatureSummary(manifest);
+	const chain = summary.certificateChain?.length ? JSON.stringify(summary.certificateChain) : null;
+	const metadata = resolveManifestSignature(manifest);
+	const signature = metadata.value ?? '';
+	return {
+		signatureType: summary.signatureType,
+		signatureHash: summary.hash ?? '',
+		signaturePublicKey: summary.publicKey ?? null,
+		signature,
 		signedAt: summary.signedAt ?? null,
 		signatureStatus: summary.status,
 		signatureTrusted: summary.trusted,

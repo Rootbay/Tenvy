@@ -51,13 +51,10 @@ func TestRemoteDesktopModuleNegotiationWithManagedEngine(t *testing.T) {
 			RequiredModules: []string{"remote-desktop"},
 		},
 		Distribution: manifest.Distribution{
-			DefaultMode: "automatic",
-			AutoUpdate:  true,
-			Signature: manifest.Signature{
-				Type:      manifest.SignatureSHA256,
-				Hash:      hashHex,
-				Signature: hashHex,
-			},
+			DefaultMode:   "automatic",
+			AutoUpdate:    true,
+			Signature:     manifest.SignatureSHA256,
+			SignatureHash: hashHex,
 		},
 		Package: manifest.PackageDescriptor{
 			Artifact: "remote-desktop-engine/engine.zip",

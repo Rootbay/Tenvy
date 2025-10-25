@@ -16,8 +16,8 @@ import {
 } from '$lib/server/db/schema.js';
 import type { AgentMetadata } from '../../../../../shared/types/agent.js';
 import type {
-        PluginInstallationTelemetry,
-        PluginManifest
+	PluginInstallationTelemetry,
+	PluginManifest
 } from '../../../../../shared/types/plugin-manifest.js';
 
 vi.mock('$env/dynamic/private', () => import('../../../../tests/mocks/env-dynamic-private'));
@@ -42,60 +42,60 @@ let manifestDir: string;
 let policyPath: string;
 
 function createManifest(hash: string): PluginManifest {
-        return {
-                id: 'test-plugin',
-                name: 'Test Plugin',
-                version: '1.0.0',
-                entry: 'plugin.dll',
-                repositoryUrl: 'https://github.com/rootbay/test-plugin',
-                license: {
-                        spdxId: 'MIT',
-                        name: 'MIT License'
-                },
-                capabilities: ['clipboard.capture'],
-                distribution: {
-                        defaultMode: 'automatic',
-                        autoUpdate: true,
-                        signature: {
-                                type: 'sha256',
-                                hash,
-                                signature: '0123456789abcdef0123456789abcdef'
-                        }
-                },
-                requirements: {
-                        platforms: ['windows'],
-                        architectures: ['x86_64'],
-                        requiredModules: ['clipboard']
-                },
-                package: {
-                        artifact: 'plugin.dll',
-                        sizeBytes: 1024,
-                        hash
-                }
-        };
+	return {
+		id: 'test-plugin',
+		name: 'Test Plugin',
+		version: '1.0.0',
+		entry: 'plugin.dll',
+		repositoryUrl: 'https://github.com/rootbay/test-plugin',
+		license: {
+			spdxId: 'MIT',
+			name: 'MIT License'
+		},
+		capabilities: ['clipboard.capture'],
+		distribution: {
+			defaultMode: 'automatic',
+			autoUpdate: true,
+			signature: 'sha256',
+			signatureHash: hash
+		},
+		requirements: {
+			platforms: ['windows'],
+			architectures: ['x86_64'],
+			requiredModules: ['clipboard']
+		},
+		package: {
+			artifact: 'plugin.dll',
+			sizeBytes: 1024,
+			hash
+		}
+	};
 }
 
 const expectDateCloseTo = (value: Date | null | undefined, expectedMs: number) => {
-        expect(value).not.toBeNull();
-        const actual = value?.getTime();
-        expect(actual).toBeDefined();
-        if (actual !== undefined) {
-                expect(Math.abs(actual - expectedMs)).toBeLessThanOrEqual(1000);
-        }
+	expect(value).not.toBeNull();
+	const actual = value?.getTime();
+	expect(actual).toBeDefined();
+	if (actual !== undefined) {
+		expect(Math.abs(actual - expectedMs)).toBeLessThanOrEqual(1000);
+	}
 };
 
 beforeEach(async () => {
 	process.env.DATABASE_URL = ':memory:';
 	manifestDir = mkdtempSync(join(tmpdir(), 'tenvy-plugin-manifests-'));
-        writeFileSync(join(manifestDir, 'test-plugin.json'), JSON.stringify(createManifest(manifestHash)));
+	writeFileSync(
+		join(manifestDir, 'test-plugin.json'),
+		JSON.stringify(createManifest(manifestHash))
+	);
 
-        policyPath = join(manifestDir, 'trust.json');
-        writeFileSync(
-                policyPath,
-                JSON.stringify({
-                        sha256AllowList: [manifestHash]
-                })
-        );
+	policyPath = join(manifestDir, 'trust.json');
+	writeFileSync(
+		policyPath,
+		JSON.stringify({
+			sha256AllowList: [manifestHash]
+		})
+	);
 	process.env.TENVY_PLUGIN_TRUST_CONFIG = policyPath;
 	refreshSignaturePolicy();
 
@@ -156,28 +156,28 @@ describe('PluginTelemetryStore', () => {
 			manifestDirectory: manifestDir
 		});
 
-                const now = Date.now();
-                await store.syncAgent('agent-1', baseMetadata, [
-                        {
-                                pluginId: 'test-plugin',
-                                version: '1.0.0',
-                                status: 'installed',
-                                hash: manifestHash,
-                                timestamp: now,
-                                error: null
-                        }
-                ]);
+		const now = Date.now();
+		await store.syncAgent('agent-1', baseMetadata, [
+			{
+				pluginId: 'test-plugin',
+				version: '1.0.0',
+				status: 'installed',
+				hash: manifestHash,
+				timestamp: now,
+				error: null
+			}
+		]);
 
-                const installations = await store.listAgentPlugins('agent-1');
-                expect(installations).toHaveLength(1);
-                const installation = installations[0];
-                expect(installation?.status).toBe('installed');
-                expectDateCloseTo(installation?.lastCheckedAt ?? null, now);
-                expectDateCloseTo(installation?.lastDeployedAt ?? null, now);
+		const installations = await store.listAgentPlugins('agent-1');
+		expect(installations).toHaveLength(1);
+		const installation = installations[0];
+		expect(installation?.status).toBe('installed');
+		expectDateCloseTo(installation?.lastCheckedAt ?? null, now);
+		expectDateCloseTo(installation?.lastDeployedAt ?? null, now);
 
-                const [runtime] = await db.select().from(pluginTable).where(eq(pluginTable.id, 'test-plugin'));
-                expect(runtime.installations).toBe(1);
-        });
+		const [runtime] = await db.select().from(pluginTable).where(eq(pluginTable.id, 'test-plugin'));
+		expect(runtime.installations).toBe(1);
+	});
 
 	it('blocks mismatched hashes and records audit events', async () => {
 		const runtimeStore = createPluginRuntimeStore();
@@ -193,18 +193,18 @@ describe('PluginTelemetryStore', () => {
 			runtimeStore,
 			manifestDirectory: manifestDir
 		});
-                const now = Date.now();
+		const now = Date.now();
 
-                await store.syncAgent('agent-2', baseMetadata, [
-                        {
-                                pluginId: 'test-plugin',
-                                version: '1.0.0',
-                                status: 'installed',
-                                hash: mismatchedHash,
-                                timestamp: now,
-                                error: null
-                        }
-                ]);
+		await store.syncAgent('agent-2', baseMetadata, [
+			{
+				pluginId: 'test-plugin',
+				version: '1.0.0',
+				status: 'installed',
+				hash: mismatchedHash,
+				timestamp: now,
+				error: null
+			}
+		]);
 
 		const installations = await store.listAgentPlugins('agent-2');
 		expect(installations[0]?.status).toBe('blocked');
@@ -219,11 +219,11 @@ describe('PluginTelemetryStore', () => {
 		expect(audits.length).toBeGreaterThan(0);
 	});
 
-        it('retrieves individual plugin telemetry records', async () => {
-                const runtimeStore = createPluginRuntimeStore();
-                const [record] = await loadPluginManifests({ directory: manifestDir });
-                expect(record).toBeDefined();
-                await runtimeStore.ensure(record!);
+	it('retrieves individual plugin telemetry records', async () => {
+		const runtimeStore = createPluginRuntimeStore();
+		const [record] = await loadPluginManifests({ directory: manifestDir });
+		expect(record).toBeDefined();
+		await runtimeStore.ensure(record!);
 		await runtimeStore.update(record!.manifest.id, {
 			approvalStatus: 'approved',
 			approvedAt: new Date()
@@ -234,95 +234,95 @@ describe('PluginTelemetryStore', () => {
 			manifestDirectory: manifestDir
 		});
 
-                const now = Date.now();
-                await store.syncAgent('agent-1', baseMetadata, [
-                        {
-                                pluginId: 'test-plugin',
-                                version: '1.0.0',
-                                status: 'installed',
-                                hash: manifestHash,
-                                timestamp: now,
-                                error: null
-                        }
-                ]);
+		const now = Date.now();
+		await store.syncAgent('agent-1', baseMetadata, [
+			{
+				pluginId: 'test-plugin',
+				version: '1.0.0',
+				status: 'installed',
+				hash: manifestHash,
+				timestamp: now,
+				error: null
+			}
+		]);
 
-                const telemetry = await store.getAgentPlugin('agent-1', 'test-plugin');
-                expect(telemetry).not.toBeNull();
-                expect(telemetry?.status).toBe('installed');
-                expect(telemetry?.version).toBe('1.0.0');
-                expectDateCloseTo(telemetry?.lastCheckedAt ?? null, now);
+		const telemetry = await store.getAgentPlugin('agent-1', 'test-plugin');
+		expect(telemetry).not.toBeNull();
+		expect(telemetry?.status).toBe('installed');
+		expect(telemetry?.version).toBe('1.0.0');
+		expectDateCloseTo(telemetry?.lastCheckedAt ?? null, now);
 
-                const missing = await store.getAgentPlugin('agent-1', 'missing-plugin');
-                expect(missing).toBeNull();
-        });
+		const missing = await store.getAgentPlugin('agent-1', 'missing-plugin');
+		expect(missing).toBeNull();
+	});
 
-        it('accepts legacy ISO timestamp strings', async () => {
-                const runtimeStore = createPluginRuntimeStore();
-                const [record] = await loadPluginManifests({ directory: manifestDir });
-                expect(record).toBeDefined();
-                await runtimeStore.ensure(record!);
-                await runtimeStore.update(record!.manifest.id, {
-                        approvalStatus: 'approved',
-                        approvedAt: new Date()
-                });
+	it('accepts legacy ISO timestamp strings', async () => {
+		const runtimeStore = createPluginRuntimeStore();
+		const [record] = await loadPluginManifests({ directory: manifestDir });
+		expect(record).toBeDefined();
+		await runtimeStore.ensure(record!);
+		await runtimeStore.update(record!.manifest.id, {
+			approvalStatus: 'approved',
+			approvedAt: new Date()
+		});
 
-                const store = new PluginTelemetryStore({
-                        runtimeStore,
-                        manifestDirectory: manifestDir
-                });
+		const store = new PluginTelemetryStore({
+			runtimeStore,
+			manifestDirectory: manifestDir
+		});
 
-                const iso = new Date().toISOString();
-                const legacyPayload = {
-                        pluginId: 'test-plugin',
-                        version: '1.0.0',
-                        status: 'installed',
-                        hash: manifestHash,
-                        timestamp: iso,
-                        error: null
-                } as unknown as PluginInstallationTelemetry;
+		const iso = new Date().toISOString();
+		const legacyPayload = {
+			pluginId: 'test-plugin',
+			version: '1.0.0',
+			status: 'installed',
+			hash: manifestHash,
+			timestamp: iso,
+			error: null
+		} as unknown as PluginInstallationTelemetry;
 
-                await store.syncAgent('agent-1', baseMetadata, [legacyPayload]);
+		await store.syncAgent('agent-1', baseMetadata, [legacyPayload]);
 
-                const telemetry = await store.getAgentPlugin('agent-1', 'test-plugin');
-                expectDateCloseTo(telemetry?.lastCheckedAt ?? null, new Date(iso).getTime());
-        });
+		const telemetry = await store.getAgentPlugin('agent-1', 'test-plugin');
+		expectDateCloseTo(telemetry?.lastCheckedAt ?? null, new Date(iso).getTime());
+	});
 
-        it('exposes approved manifest snapshots and deltas', async () => {
-                const runtimeStore = createPluginRuntimeStore();
-                const [record] = await loadPluginManifests({ directory: manifestDir });
-                expect(record).toBeDefined();
-                await runtimeStore.ensure(record!);
-                const approvedAt = new Date();
-                approvedAt.setMilliseconds(0);
-                await runtimeStore.update(record!.manifest.id, {
-                        approvalStatus: 'approved',
-                        approvedAt
-                });
+	it('exposes approved manifest snapshots and deltas', async () => {
+		const runtimeStore = createPluginRuntimeStore();
+		const [record] = await loadPluginManifests({ directory: manifestDir });
+		expect(record).toBeDefined();
+		await runtimeStore.ensure(record!);
+		const approvedAt = new Date();
+		approvedAt.setMilliseconds(0);
+		await runtimeStore.update(record!.manifest.id, {
+			approvalStatus: 'approved',
+			approvedAt
+		});
 
-                const store = new PluginTelemetryStore({
-                        runtimeStore,
-                        manifestDirectory: manifestDir
-                });
+		const store = new PluginTelemetryStore({
+			runtimeStore,
+			manifestDirectory: manifestDir
+		});
 
-                const snapshot = await store.getManifestSnapshot();
-                expect(snapshot.manifests).toHaveLength(1);
-                const descriptor = snapshot.manifests[0];
-                expect(descriptor.pluginId).toBe('test-plugin');
-                expect(descriptor.manifestDigest).toMatch(/^[0-9a-f]{64}$/);
-                expect(descriptor.approvedAt).toBe(approvedAt.toISOString());
+		const snapshot = await store.getManifestSnapshot();
+		expect(snapshot.manifests).toHaveLength(1);
+		const descriptor = snapshot.manifests[0];
+		expect(descriptor.pluginId).toBe('test-plugin');
+		expect(descriptor.manifestDigest).toMatch(/^[0-9a-f]{64}$/);
+		expect(descriptor.approvedAt).toBe(approvedAt.toISOString());
 
-                const fullDelta = await store.getManifestDelta({ digests: {} });
-                expect(fullDelta.updated).toHaveLength(1);
-                expect(fullDelta.updated[0]?.pluginId).toBe('test-plugin');
+		const fullDelta = await store.getManifestDelta({ digests: {} });
+		expect(fullDelta.updated).toHaveLength(1);
+		expect(fullDelta.updated[0]?.pluginId).toBe('test-plugin');
 
-                const noDelta = await store.getManifestDelta({
-                        version: snapshot.version,
-                        digests: { 'test-plugin': descriptor.manifestDigest }
-                });
-                expect(noDelta.updated).toHaveLength(0);
-                expect(noDelta.removed).toHaveLength(0);
+		const noDelta = await store.getManifestDelta({
+			version: snapshot.version,
+			digests: { 'test-plugin': descriptor.manifestDigest }
+		});
+		expect(noDelta.updated).toHaveLength(0);
+		expect(noDelta.removed).toHaveLength(0);
 
-                const approvedManifest = await store.getApprovedManifest('test-plugin');
-                expect(approvedManifest?.descriptor.manifestDigest).toBe(descriptor.manifestDigest);
-        });
+		const approvedManifest = await store.getApprovedManifest('test-plugin');
+		expect(approvedManifest?.descriptor.manifestDigest).toBe(descriptor.manifestDigest);
+	});
 });

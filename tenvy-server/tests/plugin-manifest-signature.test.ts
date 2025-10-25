@@ -22,11 +22,12 @@ describe('verifyPluginSignature', () => {
 			repositoryUrl: 'https://github.com/rootbay/demo',
 			license: { spdxId: 'MIT' },
 			requirements: {},
-                distribution: {
-                        defaultMode: 'manual',
-                        autoUpdate: false,
-                        signature: 'sha256'
-                },
+			distribution: {
+				defaultMode: 'manual',
+				autoUpdate: false,
+				signature: 'sha256',
+				signatureHash: 'abcdef'
+			},
 			package: {
 				artifact: 'demo.dll',
 				hash: 'abcdef'
@@ -50,11 +51,12 @@ describe('verifyPluginSignature', () => {
 			repositoryUrl: 'https://github.com/rootbay/demo',
 			license: { spdxId: 'MIT' },
 			requirements: {},
-                distribution: {
-                        defaultMode: 'manual',
-                        autoUpdate: false,
-                        signature: 'sha256'
-                },
+			distribution: {
+				defaultMode: 'manual',
+				autoUpdate: false,
+				signature: 'sha256',
+				signatureHash: 'abcdef'
+			},
 			package: {
 				artifact: 'demo.dll',
 				hash: 'abcdef'
@@ -88,13 +90,11 @@ describe('verifyPluginSignature', () => {
 			distribution: {
 				defaultMode: 'manual',
 				autoUpdate: false,
-				signature: {
-					type: 'ed25519',
-					hash,
-					publicKey: 'key-1',
-					signature: toHex(signature),
-					certificateChain: ['leaf', 'intermediate']
-				}
+				signature: 'ed25519',
+				signatureHash: hash,
+				signatureSigner: 'key-1',
+				signatureValue: toHex(signature),
+				signatureCertificateChain: ['leaf', 'intermediate']
 			},
 			package: {
 				artifact: 'demo.dll',
@@ -114,15 +114,15 @@ describe('verifyPluginSignature', () => {
 
 		expect(result.trusted).toBe(true);
 		expect(result.signatureType).toBe('ed25519');
-		expect(result.publicKey).toBe('key-1');
+		expect(result.publicKey).toBe(toHex(keyPair.publicKey));
 		expect(validated).toBe(true);
 	});
 
-        it('rejects unknown ed25519 signers', async () => {
-                const manifest: PluginManifest = {
-                        id: 'demo',
-                        name: 'Demo',
-                        version: '1.0.0',
+	it('rejects unknown ed25519 signers', async () => {
+		const manifest: PluginManifest = {
+			id: 'demo',
+			name: 'Demo',
+			version: '1.0.0',
 			entry: 'demo.dll',
 			repositoryUrl: 'https://github.com/rootbay/demo',
 			license: { spdxId: 'MIT' },
@@ -130,12 +130,10 @@ describe('verifyPluginSignature', () => {
 			distribution: {
 				defaultMode: 'manual',
 				autoUpdate: false,
-				signature: {
-					type: 'ed25519',
-					hash: 'abcdef',
-					publicKey: 'missing',
-					signature: toHex(new Uint8Array(nacl.sign.signatureLength))
-				}
+				signature: 'ed25519',
+				signatureHash: 'abcdef',
+				signatureSigner: 'missing',
+				signatureValue: toHex(new Uint8Array(nacl.sign.signatureLength))
 			},
 			package: {
 				artifact: 'demo.dll',
@@ -143,33 +141,34 @@ describe('verifyPluginSignature', () => {
 			}
 		};
 
-                await expect(verifyPluginSignature(manifest)).rejects.toMatchObject({
-                        code: 'UNTRUSTED_SIGNER'
-                });
-        });
+		await expect(verifyPluginSignature(manifest)).rejects.toMatchObject({
+			code: 'UNTRUSTED_SIGNER'
+		});
+	});
 
-        it('rejects ed25519 manifests that omit legacy metadata', async () => {
-                const manifest: PluginManifest = {
-                        id: 'demo',
-                        name: 'Demo',
-                        version: '1.0.0',
-                        entry: 'demo.dll',
-                        repositoryUrl: 'https://github.com/rootbay/demo',
-                        license: { spdxId: 'MIT' },
-                        requirements: {},
-                        distribution: {
-                                defaultMode: 'manual',
-                                autoUpdate: false,
-                                signature: 'ed25519'
-                        },
-                        package: {
-                                artifact: 'demo.dll',
-                                hash: 'abcdef'
-                        }
-                };
+	it('rejects ed25519 manifests that omit legacy metadata', async () => {
+		const manifest: PluginManifest = {
+			id: 'demo',
+			name: 'Demo',
+			version: '1.0.0',
+			entry: 'demo.dll',
+			repositoryUrl: 'https://github.com/rootbay/demo',
+			license: { spdxId: 'MIT' },
+			requirements: {},
+			distribution: {
+				defaultMode: 'manual',
+				autoUpdate: false,
+				signature: 'ed25519',
+				signatureHash: 'abcdef'
+			},
+			package: {
+				artifact: 'demo.dll',
+				hash: 'abcdef'
+			}
+		};
 
-                await expect(verifyPluginSignature(manifest)).rejects.toMatchObject({
-                        code: 'UNTRUSTED_SIGNER'
-                });
-        });
+		await expect(verifyPluginSignature(manifest)).rejects.toMatchObject({
+			code: 'UNTRUSTED_SIGNER'
+		});
+	});
 });

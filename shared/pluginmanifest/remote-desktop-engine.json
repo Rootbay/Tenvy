@@ -25,14 +25,11 @@
   "distribution": {
     "defaultMode": "automatic",
     "autoUpdate": true,
-    "signature": {
-      "type": "ed25519",
-      "hash": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
-      "publicKey": "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789",
-      "signature": "fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210",
-      "signedAt": "2025-01-01T00:00:00Z",
-      "signer": "release"
-    }
+    "signature": "ed25519",
+    "signatureHash": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+    "signatureSigner": "release",
+    "signatureValue": "fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210",
+    "signatureTimestamp": "2025-01-01T00:00:00Z"
   },
   "package": {
     "artifact": "remote-desktop-engine/remote-desktop-engine.zip",

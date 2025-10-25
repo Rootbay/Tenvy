@@ -11,9 +11,7 @@ import (
 func TestVerifySignatureSHA256AllowList(t *testing.T) {
 	manifest := Manifest{
 		Distribution: Distribution{
-			Signature: Signature{
-				Type: SignatureSHA256,
-			},
+			Signature: SignatureSHA256,
 		},
 		Package: PackageDescriptor{Hash: "abcdef"},
 	}
@@ -33,9 +31,7 @@ func TestVerifySignatureSHA256AllowList(t *testing.T) {
 func TestVerifySignatureSHA256Disallowed(t *testing.T) {
 	manifest := Manifest{
 		Distribution: Distribution{
-			Signature: Signature{
-				Type: SignatureSHA256,
-			},
+			Signature: SignatureSHA256,
 		},
 		Package: PackageDescriptor{Hash: "abcdef"},
 	}
@@ -48,10 +44,8 @@ func TestVerifySignatureSHA256Disallowed(t *testing.T) {
 func TestVerifySignatureHashMismatch(t *testing.T) {
 	manifest := Manifest{
 		Distribution: Distribution{
-			Signature: Signature{
-				Type: SignatureSHA256,
-				Hash: "123456",
-			},
+			Signature:     SignatureSHA256,
+			SignatureHash: "123456",
 		},
 		Package: PackageDescriptor{Hash: "abcdef"},
 	}
@@ -64,7 +58,7 @@ func TestVerifySignatureHashMismatch(t *testing.T) {
 func TestVerifySignatureMissingPackageHash(t *testing.T) {
 	manifest := Manifest{
 		Distribution: Distribution{
-			Signature: Signature{Type: SignatureSHA256},
+			Signature: SignatureSHA256,
 		},
 	}
 
@@ -84,13 +78,11 @@ func TestVerifySignatureEd25519(t *testing.T) {
 
 	manifest := Manifest{
 		Distribution: Distribution{
-			Signature: Signature{
-				Type:      SignatureEd25519,
-				Hash:      hash,
-				PublicKey: "key-1",
-				Signature: hex.EncodeToString(sig),
-				SignedAt:  time.Now().UTC().Format(time.RFC3339),
-			},
+			Signature:          SignatureEd25519,
+			SignatureHash:      hash,
+			SignatureSigner:    "key-1",
+			SignatureValue:     hex.EncodeToString(sig),
+			SignatureTimestamp: time.Now().UTC().Format(time.RFC3339),
 		},
 		Package: PackageDescriptor{Hash: hash},
 	}
@@ -108,7 +100,8 @@ func TestVerifySignatureEd25519(t *testing.T) {
 	if !result.Trusted {
 		t.Fatalf("expected trusted result")
 	}
-	if result.PublicKey != "key-1" {
+	expectedKey := hex.EncodeToString(pub)
+	if result.PublicKey != expectedKey {
 		t.Fatalf("unexpected public key: %s", result.PublicKey)
 	}
 }
@@ -126,13 +119,11 @@ func TestVerifySignatureEd25519CertificateValidation(t *testing.T) {
 
 	manifest := Manifest{
 		Distribution: Distribution{
-			Signature: Signature{
-				Type:      SignatureEd25519,
-				Hash:      hash,
-				Chain:     []string{"cert-a", "cert-b"},
-				Signature: hex.EncodeToString(sig),
-				PublicKey: "key-2",
-			},
+			Signature:                 SignatureEd25519,
+			SignatureHash:             hash,
+			SignatureValue:            hex.EncodeToString(sig),
+			SignatureSigner:           "key-2",
+			SignatureCertificateChain: []string{"cert-a", "cert-b"},
 		},
 		Package: PackageDescriptor{Hash: hash},
 	}
@@ -161,12 +152,10 @@ func TestVerifySignatureEd25519CertificateValidation(t *testing.T) {
 func TestVerifySignatureEd25519UntrustedSigner(t *testing.T) {
 	manifest := Manifest{
 		Distribution: Distribution{
-			Signature: Signature{
-				Type:      SignatureEd25519,
-				Hash:      "abcdef",
-				PublicKey: "missing",
-				Signature: hex.EncodeToString(make([]byte, ed25519.SignatureSize)),
-			},
+			Signature:       SignatureEd25519,
+			SignatureHash:   "abcdef",
+			SignatureSigner: "missing",
+			SignatureValue:  hex.EncodeToString(make([]byte, ed25519.SignatureSize)),
 		},
 		Package: PackageDescriptor{Hash: "abcdef"},
 	}
@@ -179,11 +168,9 @@ func TestVerifySignatureEd25519UntrustedSigner(t *testing.T) {
 func TestVerifySignatureExpired(t *testing.T) {
 	manifest := Manifest{
 		Distribution: Distribution{
-			Signature: Signature{
-				Type:     SignatureSHA256,
-				Hash:     "abcdef",
-				SignedAt: time.Now().UTC().Add(-48 * time.Hour).Format(time.RFC3339),
-			},
+			Signature:          SignatureSHA256,
+			SignatureHash:      "abcdef",
+			SignatureTimestamp: time.Now().UTC().Add(-48 * time.Hour).Format(time.RFC3339),
 		},
 		Package: PackageDescriptor{Hash: "abcdef"},
 	}

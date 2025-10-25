@@ -8,18 +8,18 @@ import type {
 	PluginSignatureVerificationSummary
 } from '../../../../shared/types/plugin-manifest.js';
 import {
-        validatePluginManifest,
-        verifyPluginSignature,
-        resolveManifestSignature,
-        isPluginSignatureType
+	validatePluginManifest,
+	verifyPluginSignature,
+	resolveManifestSignature,
+	isPluginSignatureType
 } from '../../../../shared/types/plugin-manifest.js';
 import { getVerificationOptions } from '$lib/server/plugins/signature-policy.js';
 
 export interface LoadedPluginManifest {
-        source: string;
-        manifest: PluginManifest;
-        verification: PluginSignatureVerificationSummary;
-        raw: string;
+	source: string;
+	manifest: PluginManifest;
+	verification: PluginSignatureVerificationSummary;
+	raw: string;
 }
 
 const defaultManifestDirectory = resolve(process.cwd(), 'resources/plugin-manifests');
@@ -47,26 +47,25 @@ const parseTimestamp = (value: string | undefined): Date | null => {
 };
 
 const baseVerificationSummary = (manifest: PluginManifest): PluginSignatureVerificationSummary => {
-        const { type, metadata } = resolveManifestSignature(manifest);
-        const chain = metadata?.certificateChain?.length
-                ? [...metadata.certificateChain]
-                : undefined;
-        const resolvedType = isPluginSignatureType(type) ? type : 'sha256';
-        const normalizedHash = metadata?.hash?.trim().toLowerCase() ?? manifest.package.hash?.trim().toLowerCase();
+	const metadata = resolveManifestSignature(manifest);
+	const chain = metadata.certificateChain?.length ? [...metadata.certificateChain] : undefined;
+	const resolvedType = isPluginSignatureType(metadata.type) ? metadata.type : 'sha256';
+	const normalizedHash =
+		metadata.hash?.trim().toLowerCase() ?? manifest.package.hash?.trim().toLowerCase();
 
-        return {
-                trusted: false,
-                signatureType: resolvedType,
-                hash: normalizedHash,
-                signer: metadata?.signer ?? null,
-                signedAt: parseTimestamp(metadata?.signedAt ?? undefined),
-                publicKey: metadata?.publicKey ?? null,
-                certificateChain: chain,
-                checkedAt: new Date(),
-                status: !type || type === 'none' ? 'unsigned' : 'untrusted',
-                error: undefined,
-                errorCode: undefined
-        };
+	return {
+		trusted: false,
+		signatureType: resolvedType,
+		hash: normalizedHash,
+		signer: metadata.signer ?? null,
+		signedAt: parseTimestamp(metadata.timestamp),
+		publicKey: null,
+		certificateChain: chain,
+		checkedAt: new Date(),
+		status: !metadata.type || metadata.type === 'none' ? 'unsigned' : 'untrusted',
+		error: undefined,
+		errorCode: undefined
+	};
 };
 
 const summarizeVerificationSuccess = (
@@ -138,10 +137,10 @@ export async function loadPluginManifests(
 		}
 
 		const source = join(directory, entry.name);
-                try {
-                        const fileContents = await readFile(source, 'utf8');
-                        const manifest = JSON.parse(fileContents) as PluginManifest;
-                        const errors = validatePluginManifest(manifest);
+		try {
+			const fileContents = await readFile(source, 'utf8');
+			const manifest = JSON.parse(fileContents) as PluginManifest;
+			const errors = validatePluginManifest(manifest);
 
 			if (errors.length > 0) {
 				console.warn(`Skipping invalid plugin manifest at ${source}`, errors);
@@ -166,7 +165,7 @@ export async function loadPluginManifests(
 				);
 			}
 
-                        manifests.push({ source, manifest, verification, raw: fileContents });
+			manifests.push({ source, manifest, verification, raw: fileContents });
 		} catch (error) {
 			console.warn(`Failed to load plugin manifest at ${source}`, error);
 		}
