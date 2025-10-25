@@ -87,6 +87,14 @@ describe('agent plugin API', () => {
         let trustPath: string;
         const manifestId = 'test-plugin';
         const artifactContent = 'artifact payload';
+        const developerUser = {
+                id: 'developer-1',
+                role: 'developer',
+                passkeyRegistered: true,
+                voucherId: 'voucher-1',
+                voucherActive: true,
+                voucherExpiresAt: null
+        } as const;
 
         beforeEach(async () => {
                 manifestDir = mkdtempSync(join(tmpdir(), 'tenvy-agent-manifests-'));
@@ -284,6 +292,7 @@ describe('agent plugin API', () => {
                 );
 
                 const response = await POST({
+                        locals: { user: developerUser },
                         request: new Request('https://controller.test/api/plugins', {
                                 method: 'POST',
                                 body: form
@@ -349,6 +358,7 @@ describe('agent plugin API', () => {
                 form.set('artifact', new File([archiveBuffer], 'tar-plugin.tar.gz'));
 
                 const response = await POST({
+                        locals: { user: developerUser },
                         request: new Request('https://controller.test/api/plugins', {
                                 method: 'POST',
                                 body: form
@@ -379,6 +389,7 @@ describe('agent plugin API', () => {
 
                 await expect(
                         POST({
+                                locals: { user: developerUser },
                                 request: new Request('https://controller.test/api/plugins', {
                                         method: 'POST',
                                         body: form
@@ -397,6 +408,7 @@ describe('agent plugin API', () => {
 
                 await expect(
                         POST({
+                                locals: { user: developerUser },
                                 request: new Request('https://controller.test/api/plugins', {
                                         method: 'POST',
                                         body: form
@@ -437,6 +449,7 @@ describe('agent plugin API', () => {
 
                 await expect(
                         POST({
+                                locals: { user: developerUser },
                                 request: new Request('https://controller.test/api/plugins', {
                                         method: 'POST',
                                         body: form
@@ -477,6 +490,7 @@ describe('agent plugin API', () => {
 
                 await expect(
                         POST({
+                                locals: { user: developerUser },
                                 request: new Request('https://controller.test/api/plugins', {
                                         method: 'POST',
                                         body: form
@@ -520,6 +534,7 @@ describe('agent plugin API', () => {
 
                 await expect(
                         POST({
+                                locals: { user: developerUser },
                                 request: new Request('https://controller.test/api/plugins', {
                                         method: 'POST',
                                         body: form

@@ -160,8 +160,13 @@ func StagePlugin(
 		return result, newStageError(manifest.InstallBlocked, mf.Version, errors.New(message))
 	}
 
-	artifactRel := filepath.Clean(filepath.FromSlash(mf.Package.Artifact))
-	if artifactRel == "" || strings.HasPrefix(artifactRel, "..") {
+	artifactRef := strings.TrimSpace(mf.Package.Artifact)
+	if artifactRef == "" || strings.ContainsAny(artifactRef, "/\\") {
+		return result, newStageError(manifest.InstallError, mf.Version, errors.New("manifest artifact path is invalid"))
+	}
+
+	artifactRel := filepath.Clean(artifactRef)
+	if artifactRel == "" || artifactRel == "." || strings.HasPrefix(artifactRel, "..") {
 		return result, newStageError(manifest.InstallError, mf.Version, errors.New("manifest artifact path is invalid"))
 	}
 

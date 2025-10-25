@@ -307,8 +307,11 @@ export function validatePluginManifest(manifest: PluginManifest): string[] {
     }
   }
 
-  if (!manifest.package || isEmpty(manifest.package.artifact)) {
+  const artifact = manifest.package?.artifact ?? "";
+  if (isEmpty(artifact)) {
     problems.push("missing package artifact");
+  } else if (artifact.includes("/") || artifact.includes("\\")) {
+    problems.push("package artifact must be a file name");
   }
 
   const mode = manifest.distribution?.defaultMode;

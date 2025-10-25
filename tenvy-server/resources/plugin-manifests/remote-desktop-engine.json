@@ -28,7 +28,7 @@
                 "signatureTimestamp": "2024-01-01T00:00:00Z"
         },
         "package": {
-                "artifact": "remote-desktop-engine/remote-desktop-engine.zip",
+                "artifact": "remote-desktop-engine.zip",
                 "sizeBytes": 216,
                 "hash": "e385e7caab88ce61adb864e33a068785645a21afb4693b81cfa9dfc9338c58ee"
         }
