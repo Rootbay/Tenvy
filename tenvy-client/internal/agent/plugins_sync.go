@@ -483,21 +483,30 @@ func (a *Agent) activatePlugin(ctx context.Context, mf manifest.Manifest, entryP
 	if entryPath == "" {
 		return fmt.Errorf("plugin %s entry path not resolved", pluginID)
 	}
-	info, err := os.Stat(entryPath)
-	if err != nil {
-		return fmt.Errorf("verify plugin entry: %w", err)
-	}
-	if info.IsDir() {
-		return fmt.Errorf("plugin entry %s is a directory", entryPath)
-	}
-	file, err := os.Open(entryPath)
-	if err != nil {
-		return fmt.Errorf("open plugin entry: %w", err)
-	}
-	file.Close()
-
 	extensions := buildModuleExtensions(mf)
-	return a.modules.ActivatePlugin(ctx, pluginID, extensions, PluginActivationFunc(func(context.Context) error { return nil }))
+	handle, err := plugins.LaunchRuntime(ctx, entryPath, plugins.RuntimeOptions{
+		Name:   pluginID,
+		Logger: a.logger,
+	})
+	if err != nil {
+		if a.plugins != nil {
+			if recordErr := plugins.RecordInstallStatus(a.plugins, pluginID, strings.TrimSpace(mf.Version), manifest.InstallError, err.Error()); recordErr != nil && a.logger != nil {
+				a.logger.Printf("plugin sync: failed to record install status for %s: %v", pluginID, recordErr)
+			}
+		}
+		return err
+	}
+
+	if err := a.modules.ActivatePlugin(ctx, pluginID, extensions, handle); err != nil {
+		_ = handle.Shutdown(ctx)
+		if a.plugins != nil {
+			if recordErr := plugins.RecordInstallStatus(a.plugins, pluginID, strings.TrimSpace(mf.Version), manifest.InstallError, err.Error()); recordErr != nil && a.logger != nil {
+				a.logger.Printf("plugin sync: failed to record install status for %s: %v", pluginID, recordErr)
+			}
+		}
+		return err
+	}
+	return nil
 }
 
 func buildModuleExtensions(mf manifest.Manifest) map[string]ModuleExtension {

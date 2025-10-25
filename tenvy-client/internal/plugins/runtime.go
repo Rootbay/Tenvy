@@ -1,0 +1,299 @@
+package plugins
+
+import (
+	"bufio"
+	"context"
+	"errors"
+	"fmt"
+	"io"
+	"log"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"runtime"
+	"strings"
+	"sync"
+	"time"
+)
+
+// RuntimeOptions describes how to launch a plugin runtime entry point.
+type RuntimeOptions struct {
+	// Name is used for logging output. If empty, the executable base name is used.
+	Name string
+	// Args specifies additional arguments to pass to the plugin entry point.
+	Args []string
+	// Env specifies the environment for the new process. If empty the current
+	// process environment is inherited.
+	Env []string
+	// Dir sets the working directory for the new process. If empty the
+	// process inherits the caller's working directory.
+	Dir string
+	// Stdout specifies the writer used for standard output. When nil the
+	// output is forwarded to the provided logger (if any) or discarded.
+	Stdout io.Writer
+	// Stderr specifies the writer used for standard error. When nil the
+	// output is forwarded to the provided logger (if any) or discarded.
+	Stderr io.Writer
+	// Logger receives lifecycle and output messages. Optional.
+	Logger *log.Logger
+	// ShutdownTimeout defines how long to wait for the process to exit after
+	// cancellation before it is forcefully killed. When zero a default is
+	// used.
+	ShutdownTimeout time.Duration
+}
+
+// RuntimeHandle controls a running plugin entry point.
+type RuntimeHandle interface {
+	Shutdown(context.Context) error
+}
+
+type runtimeHandle struct {
+	name            string
+	logger          *log.Logger
+	shutdownTimeout time.Duration
+
+	mu      sync.Mutex
+	cmd     *exec.Cmd
+	cancel  context.CancelFunc
+	done    chan struct{}
+	waitErr error
+}
+
+const defaultShutdownTimeout = 5 * time.Second
+
+// LaunchRuntime executes the provided plugin entry point and returns a handle
+// that can be used to terminate the process.
+func LaunchRuntime(ctx context.Context, entryPath string, opts RuntimeOptions) (RuntimeHandle, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+
+	trimmed := strings.TrimSpace(entryPath)
+	if trimmed == "" {
+		return nil, errors.New("plugin entry path not provided")
+	}
+	resolved, err := filepath.Abs(trimmed)
+	if err != nil {
+		return nil, fmt.Errorf("resolve entry path: %w", err)
+	}
+
+	info, err := os.Stat(resolved)
+	if err != nil {
+		return nil, fmt.Errorf("locate plugin entry: %w", err)
+	}
+	if info.IsDir() {
+		return nil, fmt.Errorf("plugin entry %s is a directory", resolved)
+	}
+
+	if runtime.GOOS != "windows" {
+		if info.Mode()&0o111 == 0 {
+			return nil, fmt.Errorf("plugin entry %s is not executable", resolved)
+		}
+	}
+
+	launchCtx, cancel := context.WithCancel(context.Background())
+	cmd := exec.CommandContext(launchCtx, resolved, opts.Args...)
+	if opts.Dir != "" {
+		cmd.Dir = opts.Dir
+	}
+	if len(opts.Env) > 0 {
+		cmd.Env = append([]string(nil), opts.Env...)
+	}
+
+	name := strings.TrimSpace(opts.Name)
+	if name == "" {
+		name = filepath.Base(resolved)
+	}
+
+	stdoutWriter := opts.Stdout
+	stderrWriter := opts.Stderr
+
+	var stdoutPipe io.ReadCloser
+	var stderrPipe io.ReadCloser
+	var pipeErr error
+
+	if stdoutWriter == nil {
+		if opts.Logger != nil {
+			stdoutPipe, pipeErr = cmd.StdoutPipe()
+			if pipeErr != nil {
+				cancel()
+				return nil, fmt.Errorf("stdout pipe: %w", pipeErr)
+			}
+		} else {
+			cmd.Stdout = io.Discard
+		}
+	} else {
+		cmd.Stdout = stdoutWriter
+	}
+
+	if stderrWriter == nil {
+		if opts.Logger != nil {
+			stderrPipe, pipeErr = cmd.StderrPipe()
+			if pipeErr != nil {
+				if stdoutPipe != nil {
+					stdoutPipe.Close()
+				}
+				cancel()
+				return nil, fmt.Errorf("stderr pipe: %w", pipeErr)
+			}
+		} else {
+			cmd.Stderr = io.Discard
+		}
+	} else {
+		cmd.Stderr = stderrWriter
+	}
+
+	if stdoutPipe != nil && stdoutWriter != nil {
+		stdoutPipe.Close()
+		stdoutPipe = nil
+	}
+	if stderrPipe != nil && stderrWriter != nil {
+		stderrPipe.Close()
+		stderrPipe = nil
+	}
+
+	if err := cmd.Start(); err != nil {
+		if stdoutPipe != nil {
+			stdoutPipe.Close()
+		}
+		if stderrPipe != nil {
+			stderrPipe.Close()
+		}
+		cancel()
+		return nil, fmt.Errorf("launch plugin runtime: %w", err)
+	}
+
+	handle := &runtimeHandle{
+		name:            name,
+		logger:          opts.Logger,
+		shutdownTimeout: opts.ShutdownTimeout,
+		cmd:             cmd,
+		cancel:          cancel,
+		done:            make(chan struct{}),
+	}
+
+	if handle.shutdownTimeout <= 0 {
+		handle.shutdownTimeout = defaultShutdownTimeout
+	}
+
+	if stdoutPipe != nil {
+		go streamProcessOutput(stdoutPipe, opts.Logger, name, "stdout")
+	}
+	if stderrPipe != nil {
+		go streamProcessOutput(stderrPipe, opts.Logger, name, "stderr")
+	}
+
+	go handle.wait()
+
+	if opts.Logger != nil {
+		opts.Logger.Printf("plugin runtime %s started (pid=%d)", name, cmd.Process.Pid)
+	}
+
+	return handle, nil
+}
+
+func (h *runtimeHandle) wait() {
+	err := h.cmd.Wait()
+	h.mu.Lock()
+	h.waitErr = err
+	close(h.done)
+	h.mu.Unlock()
+
+	if h.logger != nil {
+		if err != nil {
+			h.logger.Printf("plugin runtime %s exited: %v", h.name, err)
+		} else {
+			h.logger.Printf("plugin runtime %s exited", h.name)
+		}
+	}
+}
+
+// Shutdown stops the plugin runtime. The provided context controls how long to
+// wait for termination before returning.
+func (h *runtimeHandle) Shutdown(ctx context.Context) error {
+	if h == nil {
+		return nil
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
+	h.mu.Lock()
+	cmd := h.cmd
+	cancel := h.cancel
+	done := h.done
+	h.mu.Unlock()
+
+	if cmd == nil {
+		return h.waitErr
+	}
+
+	cancel()
+
+	timeout := h.shutdownTimeout
+	timer := time.NewTimer(timeout)
+	defer timer.Stop()
+	killed := false
+
+	for {
+		select {
+		case <-done:
+			h.mu.Lock()
+			err := normalizeRuntimeExitError(h.waitErr)
+			h.waitErr = err
+			h.cmd = nil
+			h.cancel = nil
+			h.done = nil
+			h.mu.Unlock()
+			return err
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-timer.C:
+			if !killed {
+				h.mu.Lock()
+				proc := h.cmd
+				h.mu.Unlock()
+				if proc != nil && proc.Process != nil {
+					_ = proc.Process.Kill()
+					if h.logger != nil {
+						h.logger.Printf("plugin runtime %s forcefully terminated", h.name)
+					}
+				}
+				killed = true
+				timer.Reset(timeout)
+			} else {
+				timer.Reset(timeout)
+			}
+		}
+	}
+}
+
+func normalizeRuntimeExitError(err error) error {
+	if err == nil {
+		return nil
+	}
+	if errors.Is(err, context.Canceled) {
+		return nil
+	}
+	var exitErr *exec.ExitError
+	if errors.As(err, &exitErr) {
+		return nil
+	}
+	return err
+}
+
+func streamProcessOutput(r io.ReadCloser, logger *log.Logger, name, stream string) {
+	defer r.Close()
+	if logger == nil {
+		io.Copy(io.Discard, r) //nolint:errcheck // best effort cleanup
+		return
+	}
+
+	scanner := bufio.NewScanner(r)
+	for scanner.Scan() {
+		logger.Printf("plugin runtime %s %s: %s", name, stream, scanner.Text())
+	}
+}
