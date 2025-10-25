@@ -13,6 +13,7 @@ require (
 	github.com/quic-go/quic-go v0.44.0
 	github.com/rootbay/tenvy-client/shared/pluginmanifest v0.0.0
 	github.com/shirou/gopsutil/v3 v3.24.5
+	github.com/tetratelabs/wazero v1.7.1
 	golang.org/x/image v0.18.0
 	golang.org/x/sys v0.26.0
 	nhooyr.io/websocket v1.8.10

@@ -18,6 +18,8 @@ CREATE TABLE IF NOT EXISTS plugin (
         status TEXT NOT NULL DEFAULT 'active',
         enabled INTEGER NOT NULL DEFAULT 1,
         auto_update INTEGER NOT NULL DEFAULT 0,
+        runtime_type TEXT NOT NULL DEFAULT 'native',
+        sandboxed INTEGER NOT NULL DEFAULT 0,
         installations INTEGER NOT NULL DEFAULT 0,
         manual_targets INTEGER NOT NULL DEFAULT 0,
         auto_targets INTEGER NOT NULL DEFAULT 0,
@@ -118,17 +120,19 @@ describe('PluginRuntimeStore', () => {
 	it('creates runtime rows with manifest defaults', async () => {
 		const { store, sqlite } = openRuntimeStore();
 
-		try {
+                try {
                         const row = await store.ensure(createLoadedManifest());
-			expect(row.id).toBe(baseManifest.id);
-			expect(row.autoUpdate).toBe(true);
-			expect(row.defaultDeliveryMode).toBe('automatic');
-			expect(row.allowAutoSync).toBe(true);
-			expect(row.approvalStatus).toBe('pending');
-			expect(row.approvedAt).toBeNull();
-		} finally {
-			sqlite.close();
-		}
+                        expect(row.id).toBe(baseManifest.id);
+                        expect(row.autoUpdate).toBe(true);
+                        expect(row.defaultDeliveryMode).toBe('automatic');
+                        expect(row.allowAutoSync).toBe(true);
+                        expect(row.runtimeType).toBe('native');
+                        expect(row.sandboxed).toBe(false);
+                        expect(row.approvalStatus).toBe('pending');
+                        expect(row.approvedAt).toBeNull();
+                } finally {
+                        sqlite.close();
+                }
 	});
 
 	it('persists runtime updates across store instances', async () => {
@@ -137,12 +141,14 @@ describe('PluginRuntimeStore', () => {
 
 		try {
                         await first.store.ensure(createLoadedManifest());
-			await first.store.update(baseManifest.id, {
-				status: 'disabled',
-				enabled: false,
-				autoUpdate: false,
-				manualTargets: 5,
-				autoTargets: 2,
+                        await first.store.update(baseManifest.id, {
+                                status: 'disabled',
+                                enabled: false,
+                                autoUpdate: false,
+                                runtimeType: 'wasm',
+                                sandboxed: true,
+                                manualTargets: 5,
+                                autoTargets: 2,
 				defaultDeliveryMode: 'manual',
 				allowManualPush: false,
 				allowAutoSync: false,
@@ -163,8 +169,10 @@ describe('PluginRuntimeStore', () => {
 		try {
                         const row = await second.store.ensure(createLoadedManifest());
 			expect(row.status).toBe('disabled');
-			expect(row.enabled).toBe(false);
-			expect(row.autoUpdate).toBe(false);
+                        expect(row.enabled).toBe(false);
+                        expect(row.autoUpdate).toBe(false);
+                        expect(row.runtimeType).toBe('wasm');
+                        expect(row.sandboxed).toBe(true);
 			expect(row.manualTargets).toBe(5);
 			expect(row.autoTargets).toBe(2);
 			expect(row.defaultDeliveryMode).toBe('manual');

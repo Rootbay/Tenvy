@@ -10,21 +10,22 @@ import (
 )
 
 type Manifest struct {
-	ID            string            `json:"id"`
-	Name          string            `json:"name"`
-	Version       string            `json:"version"`
-	Description   string            `json:"description,omitempty"`
-	Entry         string            `json:"entry"`
-	Author        string            `json:"author,omitempty"`
-	Homepage      string            `json:"homepage,omitempty"`
-	RepositoryURL string            `json:"repositoryUrl,omitempty"`
-	License       *LicenseInfo      `json:"license,omitempty"`
-	Categories    []string          `json:"categories,omitempty"`
-	Capabilities  []string          `json:"capabilities,omitempty"`
-	Telemetry     []string          `json:"telemetry,omitempty"`
-	Requirements  Requirements      `json:"requirements"`
-	Distribution  Distribution      `json:"distribution"`
-	Package       PackageDescriptor `json:"package"`
+	ID            string             `json:"id"`
+	Name          string             `json:"name"`
+	Version       string             `json:"version"`
+	Description   string             `json:"description,omitempty"`
+	Entry         string             `json:"entry"`
+	Author        string             `json:"author,omitempty"`
+	Homepage      string             `json:"homepage,omitempty"`
+	RepositoryURL string             `json:"repositoryUrl,omitempty"`
+	License       *LicenseInfo       `json:"license,omitempty"`
+	Categories    []string           `json:"categories,omitempty"`
+	Capabilities  []string           `json:"capabilities,omitempty"`
+	Telemetry     []string           `json:"telemetry,omitempty"`
+	Runtime       *RuntimeDescriptor `json:"runtime,omitempty"`
+	Requirements  Requirements       `json:"requirements"`
+	Distribution  Distribution       `json:"distribution"`
+	Package       PackageDescriptor  `json:"package"`
 }
 
 type CapabilityMetadata struct {
@@ -61,6 +62,17 @@ type Distribution struct {
 	SignatureCertificateChain []string      `json:"signatureCertificateChain,omitempty"`
 }
 
+type RuntimeDescriptor struct {
+	Type      RuntimeType          `json:"type"`
+	Sandboxed bool                 `json:"sandboxed,omitempty"`
+	Host      *RuntimeHostContract `json:"host,omitempty"`
+}
+
+type RuntimeHostContract struct {
+	APIVersion string   `json:"apiVersion,omitempty"`
+	Interfaces []string `json:"interfaces,omitempty"`
+}
+
 type PackageDescriptor struct {
 	Artifact  string `json:"artifact"`
 	SizeBytes int64  `json:"sizeBytes,omitempty"`
@@ -80,6 +92,7 @@ type (
 	PluginArchitecture   string
 	PluginInstallStatus  string
 	PluginApprovalStatus string
+	RuntimeType          string
 )
 
 const (
@@ -104,6 +117,11 @@ const (
 	ApprovalPending  PluginApprovalStatus = "pending"
 	ApprovalApproved PluginApprovalStatus = "approved"
 	ApprovalRejected PluginApprovalStatus = "rejected"
+
+	RuntimeNative RuntimeType = "native"
+	RuntimeWASM   RuntimeType = "wasm"
+
+	HostInterfaceCoreV1 = "tenvy.core/1"
 )
 
 var (
@@ -113,6 +131,7 @@ var (
 	knownArchitectures  = []PluginArchitecture{ArchitectureX8664, ArchitectureARM64}
 	knownInstallStates  = []PluginInstallStatus{InstallBlocked, InstallDisabled, InstallError, InstallInstalled}
 	knownApprovalStates = []PluginApprovalStatus{ApprovalPending, ApprovalApproved, ApprovalRejected}
+	knownRuntimeTypes   = []RuntimeType{RuntimeNative, RuntimeWASM}
 	semverPattern       = regexp.MustCompile(`^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-[0-9A-Za-z-.]+)?(?:\+[0-9A-Za-z-.]+)?$`)
 	registeredModules   = map[string]struct{}{
 		"remote-desktop": {},
@@ -323,6 +342,9 @@ func (m Manifest) Validate() error {
 	if strings.TrimSpace(m.Entry) == "" {
 		problems = append(problems, errors.New("missing entry"))
 	}
+	if runtimeErrs := m.validateRuntime(); len(runtimeErrs) > 0 {
+		problems = append(problems, runtimeErrs...)
+	}
 	if err := validateRepositoryURL(m.RepositoryURL); err != nil {
 		problems = append(problems, err)
 	}
@@ -451,6 +473,36 @@ func (m Manifest) validateDistribution() error {
 	return nil
 }
 
+func (m Manifest) validateRuntime() []error {
+	descriptor := m.Runtime
+	if descriptor == nil {
+		return nil
+	}
+
+	var problems []error
+	runtimeType := strings.TrimSpace(string(descriptor.Type))
+	if runtimeType != "" {
+		normalized := RuntimeType(strings.ToLower(runtimeType))
+		if !containsRuntimeType(normalized) {
+			problems = append(problems, fmt.Errorf("unsupported runtime type: %s", descriptor.Type))
+		}
+	}
+
+	if descriptor.Host != nil {
+		apiVersion := strings.TrimSpace(descriptor.Host.APIVersion)
+		if apiVersion != "" && len(apiVersion) < 2 {
+			problems = append(problems, fmt.Errorf("runtime host apiVersion is invalid: %s", descriptor.Host.APIVersion))
+		}
+		for index, iface := range descriptor.Host.Interfaces {
+			if strings.TrimSpace(iface) == "" {
+				problems = append(problems, fmt.Errorf("runtime host interface %d is empty", index))
+			}
+		}
+	}
+
+	return problems
+}
+
 func (m Manifest) validateLicense() error {
 	if m.License == nil {
 		return nil
@@ -465,6 +517,44 @@ func (m Manifest) validateLicense() error {
 		}
 	}
 	return nil
+}
+
+func (m Manifest) RuntimeType() RuntimeType {
+	if m.Runtime == nil {
+		return RuntimeNative
+	}
+	raw := strings.ToLower(strings.TrimSpace(string(m.Runtime.Type)))
+	switch raw {
+	case string(RuntimeWASM):
+		return RuntimeWASM
+	case string(RuntimeNative):
+		return RuntimeNative
+	case "":
+		return RuntimeNative
+	default:
+		return RuntimeNative
+	}
+}
+
+func (m Manifest) RuntimeSandboxed() bool {
+	if m.Runtime == nil {
+		return false
+	}
+	return m.Runtime.Sandboxed
+}
+
+func (m Manifest) RuntimeHostInterfaces() []string {
+	if m.Runtime == nil || m.Runtime.Host == nil {
+		return nil
+	}
+	return sanitizeStringSlice(m.Runtime.Host.Interfaces)
+}
+
+func (m Manifest) RuntimeHostAPIVersion() string {
+	if m.Runtime == nil || m.Runtime.Host == nil {
+		return ""
+	}
+	return strings.TrimSpace(m.Runtime.Host.APIVersion)
 }
 
 func LookupCapability(id string) (CapabilityMetadata, bool) {
@@ -524,6 +614,10 @@ func containsApprovalStatus(candidate PluginApprovalStatus) bool {
 	return containsValue(candidate, knownApprovalStates)
 }
 
+func containsRuntimeType(candidate RuntimeType) bool {
+	return containsValue(candidate, knownRuntimeTypes)
+}
+
 func containsValue[T comparable](candidate T, values []T) bool {
 	for _, value := range values {
 		if value == candidate {
@@ -544,6 +638,31 @@ func validateSemverConstraint(field string, value string) error {
 	return nil
 }
 
+func sanitizeStringSlice(values []string) []string {
+	if len(values) == 0 {
+		return nil
+	}
+	normalized := make([]string, 0, len(values))
+	seen := make(map[string]struct{}, len(values))
+	for _, value := range values {
+		trimmed := strings.TrimSpace(value)
+		if trimmed == "" {
+			continue
+		}
+		lowered := strings.ToLower(trimmed)
+		if _, ok := seen[lowered]; ok {
+			continue
+		}
+		seen[lowered] = struct{}{}
+		normalized = append(normalized, trimmed)
+	}
+	if len(normalized) == 0 {
+		return nil
+	}
+	sort.Strings(normalized)
+	return normalized
+}
+
 func init() {
 	sort.Slice(knownDeliveryModes, func(i, j int) bool { return knownDeliveryModes[i] < knownDeliveryModes[j] })
 	sort.Slice(knownSignatureTypes, func(i, j int) bool { return knownSignatureTypes[i] < knownSignatureTypes[j] })
@@ -551,4 +670,5 @@ func init() {
 	sort.Slice(knownArchitectures, func(i, j int) bool { return knownArchitectures[i] < knownArchitectures[j] })
 	sort.Slice(knownInstallStates, func(i, j int) bool { return knownInstallStates[i] < knownInstallStates[j] })
 	sort.Slice(knownApprovalStates, func(i, j int) bool { return knownApprovalStates[i] < knownApprovalStates[j] })
+	sort.Slice(knownRuntimeTypes, func(i, j int) bool { return knownRuntimeTypes[i] < knownRuntimeTypes[j] })
 }

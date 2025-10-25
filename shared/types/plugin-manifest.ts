@@ -25,6 +25,13 @@ export type PluginPlatform = (typeof pluginPlatforms)[number];
 export const pluginArchitectures = ["x86_64", "arm64"] as const;
 export type PluginArchitecture = (typeof pluginArchitectures)[number];
 
+export const pluginRuntimeTypes = ["native", "wasm"] as const;
+export type PluginRuntimeType = (typeof pluginRuntimeTypes)[number];
+
+export const pluginRuntimeHostInterfaces = ["tenvy.core/1"] as const;
+export type PluginRuntimeHostInterface =
+  (typeof pluginRuntimeHostInterfaces)[number];
+
 export const pluginInstallStatuses = [
   "installed",
   "blocked",
@@ -84,6 +91,17 @@ export interface PluginPackageDescriptor {
   hash?: string;
 }
 
+export interface PluginRuntimeHostContract {
+  apiVersion?: string;
+  interfaces?: string[];
+}
+
+export interface PluginRuntimeDescriptor {
+  type?: PluginRuntimeType;
+  sandboxed?: boolean;
+  host?: PluginRuntimeHostContract;
+}
+
 export interface PluginManifest {
   id: string;
   name: string;
@@ -97,6 +115,7 @@ export interface PluginManifest {
   categories?: string[];
   capabilities?: string[];
   telemetry?: string[];
+  runtime?: PluginRuntimeDescriptor;
   requirements: PluginRequirements;
   distribution: PluginDistribution;
   package: PluginPackageDescriptor;
@@ -216,6 +235,13 @@ const trimOptional = (value: string | undefined | null): string | undefined => {
   return trimmed.length > 0 ? trimmed : undefined;
 };
 
+const normalizeRuntimeType = (
+  value: string | undefined | null,
+): PluginRuntimeType => {
+  const normalized = value?.trim().toLowerCase();
+  return normalized === 'wasm' ? 'wasm' : 'native';
+};
+
 export const isPluginSignatureType = (
   value: string,
 ): value is PluginSignatureType =>
@@ -298,6 +324,33 @@ export function validatePluginManifest(manifest: PluginManifest): string[] {
     problems.push(`invalid semantic version: ${manifest.version}`);
   }
   if (isEmpty(manifest.entry)) problems.push("missing entry");
+
+  const runtimeType = manifest.runtime?.type;
+  const normalizedRuntimeType = normalizeRuntimeType(runtimeType);
+  if (runtimeType) {
+    const normalized = runtimeType.trim().toLowerCase();
+    if (!pluginRuntimeTypes.includes(normalized as PluginRuntimeType)) {
+      problems.push(`unsupported runtime type: ${runtimeType}`);
+    }
+  }
+
+  if (manifest.runtime?.host) {
+    const { interfaces, apiVersion } = manifest.runtime.host;
+    if (apiVersion !== undefined && apiVersion.trim().length === 0) {
+      problems.push("runtime host apiVersion cannot be empty");
+    }
+    ensureArray(interfaces).forEach((iface, index) => {
+      if (isEmpty(iface)) {
+        problems.push(`runtime host interface ${index} is empty`);
+      }
+    });
+    if (
+      normalizedRuntimeType === 'wasm' &&
+      ensureArray(interfaces).filter((value) => !isEmpty(value)).length === 0
+    ) {
+      problems.push('wasm runtime requires at least one host interface');
+    }
+  }
 
   if (!ensureRepositoryUrl(manifest.repositoryUrl)) {
     problems.push("repositoryUrl must be an absolute https url");

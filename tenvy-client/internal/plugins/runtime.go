@@ -40,6 +40,16 @@ type RuntimeOptions struct {
 	// cancellation before it is forcefully killed. When zero a default is
 	// used.
 	ShutdownTimeout time.Duration
+	// Kind selects the runtime environment used to execute the plugin.
+	Kind RuntimeKind
+	// HostInterfaces enumerates the host contracts exposed to sandboxed
+	// runtimes like WASM modules.
+	HostInterfaces []string
+	// HostAPIVersion declares the host API level exposed to the runtime.
+	HostAPIVersion string
+	// Sandboxed indicates whether the runtime should operate in sandboxed
+	// mode when supported.
+	Sandboxed bool
 }
 
 // RuntimeHandle controls a running plugin entry point.
@@ -47,7 +57,7 @@ type RuntimeHandle interface {
 	Shutdown(context.Context) error
 }
 
-type runtimeHandle struct {
+type processRuntimeHandle struct {
 	name            string
 	logger          *log.Logger
 	shutdownTimeout time.Duration
@@ -59,11 +69,36 @@ type runtimeHandle struct {
 	waitErr error
 }
 
-const defaultShutdownTimeout = 5 * time.Second
+const (
+	defaultShutdownTimeout = 5 * time.Second
+)
+
+// RuntimeKind represents the execution environment for a plugin entry point.
+type RuntimeKind string
+
+const (
+	RuntimeKindNative RuntimeKind = "native"
+	RuntimeKindWASM   RuntimeKind = "wasm"
+)
 
 // LaunchRuntime executes the provided plugin entry point and returns a handle
 // that can be used to terminate the process.
 func LaunchRuntime(ctx context.Context, entryPath string, opts RuntimeOptions) (RuntimeHandle, error) {
+	if opts.Kind == "" {
+		opts.Kind = RuntimeKindNative
+	}
+
+	switch opts.Kind {
+	case RuntimeKindWASM:
+		return launchWasmRuntime(ctx, entryPath, opts)
+	case RuntimeKindNative:
+		fallthrough
+	default:
+		return launchProcessRuntime(ctx, entryPath, opts)
+	}
+}
+
+func launchProcessRuntime(ctx context.Context, entryPath string, opts RuntimeOptions) (RuntimeHandle, error) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -166,7 +201,7 @@ func LaunchRuntime(ctx context.Context, entryPath string, opts RuntimeOptions) (
 		return nil, fmt.Errorf("launch plugin runtime: %w", err)
 	}
 
-	handle := &runtimeHandle{
+	handle := &processRuntimeHandle{
 		name:            name,
 		logger:          opts.Logger,
 		shutdownTimeout: opts.ShutdownTimeout,
@@ -195,7 +230,7 @@ func LaunchRuntime(ctx context.Context, entryPath string, opts RuntimeOptions) (
 	return handle, nil
 }
 
-func (h *runtimeHandle) wait() {
+func (h *processRuntimeHandle) wait() {
 	err := h.cmd.Wait()
 	h.mu.Lock()
 	h.waitErr = err
@@ -213,7 +248,7 @@ func (h *runtimeHandle) wait() {
 
 // Shutdown stops the plugin runtime. The provided context controls how long to
 // wait for termination before returning.
-func (h *runtimeHandle) Shutdown(ctx context.Context) error {
+func (h *processRuntimeHandle) Shutdown(ctx context.Context) error {
 	if h == nil {
 		return nil
 	}
@@ -242,7 +277,7 @@ func (h *runtimeHandle) Shutdown(ctx context.Context) error {
 		select {
 		case <-done:
 			h.mu.Lock()
-			err := normalizeRuntimeExitError(h.waitErr)
+			err := normalizeProcessExitError(h.waitErr)
 			h.waitErr = err
 			h.cmd = nil
 			h.cancel = nil
@@ -271,7 +306,7 @@ func (h *runtimeHandle) Shutdown(ctx context.Context) error {
 	}
 }
 
-func normalizeRuntimeExitError(err error) error {
+func normalizeProcessExitError(err error) error {
 	if err == nil {
 		return nil
 	}

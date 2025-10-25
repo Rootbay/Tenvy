@@ -18,6 +18,7 @@ import (
 
 	remotedesktop "github.com/rootbay/tenvy-client/internal/modules/control/remotedesktop"
 	"github.com/rootbay/tenvy-client/internal/plugins"
+	"github.com/rootbay/tenvy-client/internal/plugins/testsupport"
 	"github.com/rootbay/tenvy-client/internal/protocol"
 	manifest "github.com/rootbay/tenvy-client/shared/pluginmanifest"
 )
@@ -249,6 +250,39 @@ func TestActivatePluginLaunchesRuntime(t *testing.T) {
 	}
 }
 
+func TestActivatePluginLaunchesWasmRuntime(t *testing.T) {
+	modulePath := buildWasmModule(t)
+
+	agent := &Agent{
+		modules: newModuleManager(),
+		logger:  log.New(io.Discard, "", 0),
+	}
+
+	mf := manifest.Manifest{
+		ID:      "wasm-plugin",
+		Version: "1.0.0",
+		Runtime: &manifest.RuntimeDescriptor{
+			Type:      manifest.RuntimeWASM,
+			Sandboxed: true,
+			Host: &manifest.RuntimeHostContract{
+				Interfaces: []string{manifest.HostInterfaceCoreV1},
+				APIVersion: "1.0",
+			},
+		},
+	}
+
+	if err := agent.activatePlugin(context.Background(), mf, modulePath, ""); err != nil {
+		t.Fatalf("activate wasm plugin: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = agent.modules.DeactivatePlugin(context.Background(), mf.ID)
+	})
+
+	if agent.modules.PluginHandle(mf.ID) == nil {
+		t.Fatal("expected wasm plugin handle to be registered")
+	}
+}
+
 func TestActivatePluginRecordsRuntimeFailure(t *testing.T) {
 	t.Parallel()
 
@@ -453,6 +487,17 @@ func buildPluginBinary(t *testing.T, source string) string {
 	}
 
 	return binary
+}
+
+func buildWasmModule(t *testing.T) string {
+	t.Helper()
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "plugin.wasm")
+	if err := os.WriteFile(path, testsupport.SandboxModule, 0o644); err != nil {
+		t.Fatalf("write wasm module: %v", err)
+	}
+	return path
 }
 
 func TestStagePluginsFromListSkipsManualRemoteDesktopWithoutSignal(t *testing.T) {

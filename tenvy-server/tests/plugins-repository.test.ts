@@ -49,6 +49,8 @@ CREATE TABLE IF NOT EXISTS plugin (
         status TEXT NOT NULL DEFAULT 'active',
         enabled INTEGER NOT NULL DEFAULT 1,
         auto_update INTEGER NOT NULL DEFAULT 0,
+        runtime_type TEXT NOT NULL DEFAULT 'native',
+        sandboxed INTEGER NOT NULL DEFAULT 0,
         installations INTEGER NOT NULL DEFAULT 0,
         manual_targets INTEGER NOT NULL DEFAULT 0,
         auto_targets INTEGER NOT NULL DEFAULT 0,

@@ -62,4 +62,31 @@ describe('validatePluginManifest', () => {
 
     expect(problems).toContain('telemetry unknown.telemetry is not registered');
   });
+
+  it('accepts wasm runtime descriptors', () => {
+    const manifest = cloneManifest();
+    manifest.runtime = {
+      type: 'wasm',
+      sandboxed: true,
+      host: { interfaces: ['tenvy.core/1'], apiVersion: '1.0' },
+    };
+
+    const problems = validatePluginManifest(manifest);
+
+    expect(problems).toHaveLength(0);
+  });
+
+  it('rejects unsupported runtime metadata', () => {
+    const manifest = cloneManifest();
+    manifest.runtime = {
+      type: 'invalid-type' as never,
+      host: { interfaces: ['', 'tenvy.core/1'], apiVersion: '' },
+    };
+
+    const problems = validatePluginManifest(manifest);
+
+    expect(problems).toContain('unsupported runtime type: invalid-type');
+    expect(problems).toContain('runtime host interface 0 is empty');
+    expect(problems).toContain('runtime host apiVersion cannot be empty');
+  });
 });

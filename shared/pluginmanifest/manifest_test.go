@@ -68,3 +68,24 @@ func TestManifestValidateTelemetry(t *testing.T) {
 		t.Fatalf("expected unknown telemetry error, got %v", err)
 	}
 }
+
+func TestManifestValidateRuntime(t *testing.T) {
+	manifest := buildTestManifest()
+	manifest.Runtime = &RuntimeDescriptor{
+		Type:      RuntimeWASM,
+		Sandboxed: true,
+		Host: &RuntimeHostContract{
+			Interfaces: []string{HostInterfaceCoreV1},
+			APIVersion: "1.0",
+		},
+	}
+
+	if err := manifest.Validate(); err != nil {
+		t.Fatalf("expected runtime validation success, got %v", err)
+	}
+
+	manifest.Runtime.Host.Interfaces = []string{"", HostInterfaceCoreV1}
+	if err := manifest.Validate(); err == nil {
+		t.Fatal("expected runtime validation to fail for empty interface")
+	}
+}
