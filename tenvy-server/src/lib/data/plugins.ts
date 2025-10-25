@@ -1,9 +1,9 @@
 import { agentModuleCapabilityIndex, agentModuleIndex } from '../../../../shared/modules/index.js';
 import type {
-        PluginManifest,
-        PluginRuntimeType,
-        PluginSignatureStatus,
-        PluginSignatureType
+	PluginManifest,
+	PluginRuntimeType,
+	PluginSignatureStatus,
+	PluginSignatureType
 } from '../../../../shared/types/plugin-manifest.js';
 import { loadPluginManifests, type LoadedPluginManifest } from './plugin-manifests.js';
 import {
@@ -30,13 +30,13 @@ import {
 } from '$lib/server/plugins/runtime-store.js';
 
 export type {
-        Plugin,
-        PluginRuntimeSummary,
-        PluginCategory,
-        PluginDeliveryMode,
-        PluginDistributionView,
-        PluginStatus,
-        PluginUpdatePayload
+	Plugin,
+	PluginRuntimeSummary,
+	PluginCategory,
+	PluginDeliveryMode,
+	PluginDistributionView,
+	PluginStatus,
+	PluginUpdatePayload
 } from './plugin-view.js';
 export {
 	formatFileSize,
@@ -68,12 +68,12 @@ export type PluginRepositoryUpdate = PluginUpdatePayload & {
 };
 
 type PluginRuntimeSnapshot = {
-        status: PluginStatus;
-        enabled: boolean;
-        autoUpdate: boolean;
-        runtimeType: PluginRuntimeType;
-        sandboxed: boolean;
-        installations: number;
+	status: PluginStatus;
+	enabled: boolean;
+	autoUpdate: boolean;
+	runtimeType: PluginRuntimeType;
+	sandboxed: boolean;
+	installations: number;
 	manualTargets: number;
 	autoTargets: number;
 	defaultDeliveryMode: PluginDeliveryMode;
@@ -108,37 +108,58 @@ const manifestCategory = (manifest: PluginManifest): PluginCategory => {
 };
 
 const mapRequiredModules = (manifest: PluginManifest) =>
-        (manifest.requirements.requiredModules ?? [])
-                .map((moduleId) => agentModuleIndex.get(moduleId))
-                .filter((module): module is NonNullable<typeof module> => module != null)
-                .map((module) => ({ id: module.id, title: module.title }));
+	(manifest.requirements.requiredModules ?? [])
+		.map((moduleId) => agentModuleIndex.get(moduleId))
+		.filter((module): module is NonNullable<typeof module> => module != null)
+		.map((module) => ({ id: module.id, title: module.title }));
 
 const mapCapabilities = (manifest: PluginManifest): string[] =>
-        (manifest.capabilities ?? []).map((capabilityId) => {
-                const capability = agentModuleCapabilityIndex.get(capabilityId);
-                return capability?.name ?? capabilityId;
-        });
+	(manifest.capabilities ?? []).map((capabilityId) => {
+		const capability = agentModuleCapabilityIndex.get(capabilityId);
+		return capability?.name ?? capabilityId;
+	});
+
+const normalizeDependencies = (values: readonly string[] | undefined): string[] => {
+	if (!values || values.length === 0) {
+		return [];
+	}
+	const unique = new Set<string>();
+	const normalized: string[] = [];
+	for (const value of values) {
+		const trimmed = value?.trim();
+		if (!trimmed) {
+			continue;
+		}
+		const lowered = trimmed.toLowerCase();
+		if (unique.has(lowered)) {
+			continue;
+		}
+		unique.add(lowered);
+		normalized.push(trimmed);
+	}
+	return normalized;
+};
 
 const toPluginView = (record: LoadedPluginManifest, runtime: PluginRuntimeSnapshot): Plugin => ({
-        id: record.manifest.id,
-        name: record.manifest.name,
-        description: record.manifest.description ?? '',
-        version: record.manifest.version,
-        author: record.manifest.author ?? 'Unknown',
-        category: manifestCategory(record.manifest),
-        status: runtime.status,
-        enabled: runtime.enabled,
-        autoUpdate: runtime.autoUpdate,
-        installations: runtime.installations,
-        lastDeployed: formatRelativeTime(runtime.lastDeployedAt),
-        lastChecked: formatRelativeTime(runtime.lastCheckedAt),
-        size: formatFileSize(record.manifest.package.sizeBytes),
-        capabilities: mapCapabilities(record.manifest),
-        artifact: record.manifest.package.artifact,
-        runtime: {
-                type: runtime.runtimeType,
-                sandboxed: runtime.sandboxed
-        },
+	id: record.manifest.id,
+	name: record.manifest.name,
+	description: record.manifest.description ?? '',
+	version: record.manifest.version,
+	author: record.manifest.author ?? 'Unknown',
+	category: manifestCategory(record.manifest),
+	status: runtime.status,
+	enabled: runtime.enabled,
+	autoUpdate: runtime.autoUpdate,
+	installations: runtime.installations,
+	lastDeployed: formatRelativeTime(runtime.lastDeployedAt),
+	lastChecked: formatRelativeTime(runtime.lastCheckedAt),
+	size: formatFileSize(record.manifest.package.sizeBytes),
+	capabilities: mapCapabilities(record.manifest),
+	artifact: record.manifest.package.artifact,
+	runtime: {
+		type: runtime.runtimeType,
+		sandboxed: runtime.sandboxed
+	},
 	distribution: {
 		defaultMode: runtime.defaultDeliveryMode,
 		allowManualPush: runtime.allowManualPush,
@@ -148,6 +169,7 @@ const toPluginView = (record: LoadedPluginManifest, runtime: PluginRuntimeSnapsh
 		lastManualPush: formatRelativeTime(runtime.lastManualPushAt),
 		lastAutoSync: formatRelativeTime(runtime.lastAutoSyncAt)
 	},
+	dependencies: normalizeDependencies(record.manifest.dependencies),
 	requiredModules: mapRequiredModules(record.manifest),
 	approvalStatus: runtime.approvalStatus,
 	approvedAt: runtime.approvedAt ? runtime.approvedAt.toISOString() : undefined,
@@ -198,12 +220,12 @@ const toRuntimePatch = (update: PluginRepositoryUpdate): PluginRuntimePatch => {
 };
 
 const snapshotFromRow = (row: PluginRuntimeRow): PluginRuntimeSnapshot => ({
-        status: row.status as PluginStatus,
-        enabled: row.enabled,
-        autoUpdate: row.autoUpdate,
-        runtimeType: row.runtimeType as PluginRuntimeType,
-        sandboxed: row.sandboxed,
-        installations: row.installations,
+	status: row.status as PluginStatus,
+	enabled: row.enabled,
+	autoUpdate: row.autoUpdate,
+	runtimeType: row.runtimeType as PluginRuntimeType,
+	sandboxed: row.sandboxed,
+	installations: row.installations,
 	manualTargets: row.manualTargets,
 	autoTargets: row.autoTargets,
 	defaultDeliveryMode: row.defaultDeliveryMode as PluginDeliveryMode,

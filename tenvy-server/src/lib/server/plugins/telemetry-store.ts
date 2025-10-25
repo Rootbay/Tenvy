@@ -103,10 +103,10 @@ function parseSemver(value: string | undefined): [number, number, number] | null
 }
 
 function compareSemver(a: string | undefined, b: string | undefined): number | null {
-        const left = parseSemver(a);
-        const right = parseSemver(b);
-        if (!left || !right) return null;
-        for (let i = 0; i < 3; i += 1) {
+	const left = parseSemver(a);
+	const right = parseSemver(b);
+	if (!left || !right) return null;
+	for (let i = 0; i < 3; i += 1) {
 		if (left[i] > right[i]) return 1;
 		if (left[i] < right[i]) return -1;
 	}
@@ -134,29 +134,32 @@ function isPlatformCompatible(platform: PluginPlatform | null, manifest: PluginM
 }
 
 function isArchitectureCompatible(
-        architecture: PluginArchitecture | null,
-        manifest: PluginManifest
+	architecture: PluginArchitecture | null,
+	manifest: PluginManifest
 ): boolean {
-        const required = manifest.requirements.architectures ?? [];
-        if (required.length === 0) return true;
-        if (!architecture) return false;
-        return required.includes(architecture);
+	const required = manifest.requirements.architectures ?? [];
+	if (required.length === 0) return true;
+	if (!architecture) return false;
+	return required.includes(architecture);
 }
 
-function buildDescriptorFingerprint(digest: string | undefined, manualPushAt: string | null | undefined): string {
-        const normalizedDigest = digest?.trim() ?? '';
-        const normalizedPush = manualPushAt?.trim() ?? '';
-        if (normalizedPush.length === 0) {
-                return normalizedDigest;
-        }
-        return `${normalizedDigest}:${normalizedPush}`;
+function buildDescriptorFingerprint(
+	digest: string | undefined,
+	manualPushAt: string | null | undefined
+): string {
+	const normalizedDigest = digest?.trim() ?? '';
+	const normalizedPush = manualPushAt?.trim() ?? '';
+	if (normalizedPush.length === 0) {
+		return normalizedDigest;
+	}
+	return `${normalizedDigest}:${normalizedPush}`;
 }
 
 function buildAuditPayload(details: Record<string, unknown>): {
-        payloadHash: string;
-        result: string;
+	payloadHash: string;
+	result: string;
 } {
-        const serialized = JSON.stringify(details);
+	const serialized = JSON.stringify(details);
 	const hash = createHash('sha256').update(serialized, 'utf8').digest('hex');
 	return { payloadHash: hash, result: serialized };
 }
@@ -166,11 +169,37 @@ function computeManifestDigest(record: LoadedPluginManifest): string {
 	return createHash('sha256').update(raw, 'utf8').digest('hex');
 }
 
+function normalizeDependencies(values: readonly string[] | undefined): string[] {
+	if (!values || values.length === 0) {
+		return [];
+	}
+	const unique = new Set<string>();
+	const normalized: string[] = [];
+	for (const value of values) {
+		const trimmed = value?.trim();
+		if (!trimmed) {
+			continue;
+		}
+		const lowered = trimmed.toLowerCase();
+		if (unique.has(lowered)) {
+			continue;
+		}
+		unique.add(lowered);
+		normalized.push(trimmed);
+	}
+	return normalized;
+}
+
+function manifestDependencies(manifest: PluginManifest): string[] | undefined {
+	const normalized = normalizeDependencies(manifest.dependencies);
+	return normalized.length > 0 ? normalized : undefined;
+}
+
 function verificationBlockReason(record: LoadedPluginManifest): string | null {
-        const { verification, manifest } = record;
-        if (!verification || verification.status === 'trusted') {
-                return null;
-        }
+	const { verification, manifest } = record;
+	if (!verification || verification.status === 'trusted') {
+		return null;
+	}
 
 	let message: string;
 	switch (verification.status) {
@@ -201,151 +230,151 @@ function verificationBlockReason(record: LoadedPluginManifest): string | null {
 }
 
 type ManifestConflictInfo = {
-        pluginId: string;
-        entries: LoadedPluginManifest[];
-        preferred?: LoadedPluginManifest;
-        summary: string;
-        message: string;
+	pluginId: string;
+	entries: LoadedPluginManifest[];
+	preferred?: LoadedPluginManifest;
+	summary: string;
+	message: string;
 };
 
 function dedupeManifestRecords(records: LoadedPluginManifest[]): LoadedPluginManifest[] {
-        const unique: LoadedPluginManifest[] = [];
-        const seen = new Set<string>();
+	const unique: LoadedPluginManifest[] = [];
+	const seen = new Set<string>();
 
-        for (const record of records) {
-                const version = record.manifest.version?.trim().toLowerCase() ?? '';
-                const digest = computeManifestDigest(record);
-                const key = `${version}|${digest}`;
-                if (seen.has(key)) continue;
-                seen.add(key);
-                unique.push(record);
-        }
+	for (const record of records) {
+		const version = record.manifest.version?.trim().toLowerCase() ?? '';
+		const digest = computeManifestDigest(record);
+		const key = `${version}|${digest}`;
+		if (seen.has(key)) continue;
+		seen.add(key);
+		unique.push(record);
+	}
 
-        return unique;
+	return unique;
 }
 
 function selectPreferredRecord(records: LoadedPluginManifest[]): number | null {
-        let bestIndex = -1;
-        let bestVersion: string | null = null;
-        let bestComparable = false;
+	let bestIndex = -1;
+	let bestVersion: string | null = null;
+	let bestComparable = false;
 
-        for (let i = 0; i < records.length; i += 1) {
-                const version = records[i]?.manifest.version?.trim();
-                if (!version) {
-                        if (bestIndex === -1) {
-                                bestIndex = i;
-                        }
-                        continue;
-                }
+	for (let i = 0; i < records.length; i += 1) {
+		const version = records[i]?.manifest.version?.trim();
+		if (!version) {
+			if (bestIndex === -1) {
+				bestIndex = i;
+			}
+			continue;
+		}
 
-                const comparable = compareSemver(version, version) !== null;
+		const comparable = compareSemver(version, version) !== null;
 
-                if (bestIndex === -1) {
-                        bestIndex = i;
-                        bestVersion = version;
-                        bestComparable = comparable;
-                        continue;
-                }
+		if (bestIndex === -1) {
+			bestIndex = i;
+			bestVersion = version;
+			bestComparable = comparable;
+			continue;
+		}
 
-                if (!bestComparable) {
-                        if (comparable) {
-                                bestIndex = i;
-                                bestVersion = version;
-                                bestComparable = true;
-                        }
-                        continue;
-                }
+		if (!bestComparable) {
+			if (comparable) {
+				bestIndex = i;
+				bestVersion = version;
+				bestComparable = true;
+			}
+			continue;
+		}
 
-                if (!comparable || !bestVersion) {
-                        continue;
-                }
+		if (!comparable || !bestVersion) {
+			continue;
+		}
 
-                const cmp = compareSemver(version, bestVersion);
-                if (cmp === null) {
-                        continue;
-                }
-                if (cmp > 0) {
-                        bestIndex = i;
-                        bestVersion = version;
-                } else if (cmp === 0) {
-                        return null;
-                }
-        }
+		const cmp = compareSemver(version, bestVersion);
+		if (cmp === null) {
+			continue;
+		}
+		if (cmp > 0) {
+			bestIndex = i;
+			bestVersion = version;
+		} else if (cmp === 0) {
+			return null;
+		}
+	}
 
-        if (bestIndex === -1 || !bestComparable) {
-                return null;
-        }
-        return bestIndex;
+	if (bestIndex === -1 || !bestComparable) {
+		return null;
+	}
+	return bestIndex;
 }
 
 function buildConflictSummary(records: LoadedPluginManifest[]): string {
-        return records
-                .map((record) => {
-                        const version = record.manifest.version?.trim() ?? 'unspecified';
-                        const digest = computeManifestDigest(record);
-                        return `version ${version} (digest ${digest})`;
-                })
-                .join('; ');
+	return records
+		.map((record) => {
+			const version = record.manifest.version?.trim() ?? 'unspecified';
+			const digest = computeManifestDigest(record);
+			return `version ${version} (digest ${digest})`;
+		})
+		.join('; ');
 }
 
 function resolveManifestRecords(records: LoadedPluginManifest[]): {
-        resolved: Map<string, LoadedPluginManifest>;
-        conflicts: Map<string, ManifestConflictInfo>;
+	resolved: Map<string, LoadedPluginManifest>;
+	conflicts: Map<string, ManifestConflictInfo>;
 } {
-        const buckets = new Map<string, LoadedPluginManifest[]>();
+	const buckets = new Map<string, LoadedPluginManifest[]>();
 
-        for (const record of records) {
-                const pluginId = record.manifest.id?.trim();
-                if (!pluginId) continue;
-                const bucket = buckets.get(pluginId) ?? [];
-                bucket.push(record);
-                buckets.set(pluginId, bucket);
-        }
+	for (const record of records) {
+		const pluginId = record.manifest.id?.trim();
+		if (!pluginId) continue;
+		const bucket = buckets.get(pluginId) ?? [];
+		bucket.push(record);
+		buckets.set(pluginId, bucket);
+	}
 
-        const resolved = new Map<string, LoadedPluginManifest>();
-        const conflicts = new Map<string, ManifestConflictInfo>();
+	const resolved = new Map<string, LoadedPluginManifest>();
+	const conflicts = new Map<string, ManifestConflictInfo>();
 
-        for (const [pluginId, bucket] of buckets) {
-                const unique = dedupeManifestRecords(bucket);
-                if (unique.length === 0) {
-                        continue;
-                }
-                if (unique.length === 1) {
-                        resolved.set(pluginId, unique[0]!);
-                        continue;
-                }
+	for (const [pluginId, bucket] of buckets) {
+		const unique = dedupeManifestRecords(bucket);
+		if (unique.length === 0) {
+			continue;
+		}
+		if (unique.length === 1) {
+			resolved.set(pluginId, unique[0]!);
+			continue;
+		}
 
-                const summary = buildConflictSummary(unique);
-                const info: ManifestConflictInfo = {
-                        pluginId,
-                        entries: unique,
-                        summary,
-                        message: `conflicting manifests detected: ${summary}; staging deferred`
-                };
+		const summary = buildConflictSummary(unique);
+		const info: ManifestConflictInfo = {
+			pluginId,
+			entries: unique,
+			summary,
+			message: `conflicting manifests detected: ${summary}; staging deferred`
+		};
 
-                const preferredIndex = selectPreferredRecord(unique);
-                if (preferredIndex !== null) {
-                        info.preferred = unique[preferredIndex]!;
-                        const version = info.preferred.manifest.version?.trim();
-                        if (version) {
-                                info.message = `conflicting manifests detected: ${summary}; preferred ${version}; staging deferred`;
-                        }
-                }
+		const preferredIndex = selectPreferredRecord(unique);
+		if (preferredIndex !== null) {
+			info.preferred = unique[preferredIndex]!;
+			const version = info.preferred.manifest.version?.trim();
+			if (version) {
+				info.message = `conflicting manifests detected: ${summary}; preferred ${version}; staging deferred`;
+			}
+		}
 
-                conflicts.set(pluginId, info);
-                if (info.preferred) {
-                        resolved.set(pluginId, info.preferred);
-                }
-        }
+		conflicts.set(pluginId, info);
+		if (info.preferred) {
+			resolved.set(pluginId, info.preferred);
+		}
+	}
 
-        return { resolved, conflicts };
+	return { resolved, conflicts };
 }
 
 export class PluginTelemetryStore {
 	private readonly runtimeStore: PluginRuntimeStore;
 	private readonly manifestDirectory?: string;
-        private manifestCache = new Map<string, LoadedPluginManifest>();
-        private manifestConflicts = new Map<string, ManifestConflictInfo>();
+	private manifestCache = new Map<string, LoadedPluginManifest>();
+	private manifestConflicts = new Map<string, ManifestConflictInfo>();
 	private manifestLoadedAt = 0;
 	private manifestSnapshot: {
 		version: string;
@@ -371,20 +400,20 @@ export class PluginTelemetryStore {
 		const now = new Date();
 		const processed = new Set<string>();
 
-                for (const installation of installations) {
-                        const record = this.manifestCache.get(installation.pluginId);
-                        if (!record) {
-                                if (this.manifestConflicts.has(installation.pluginId)) {
-                                        console.warn(
-                                                `agent ${agentId} reported plugin ${installation.pluginId} but deployment is deferred due to conflicting manifests`
-                                        );
-                                        continue;
-                                }
-                                console.warn(`agent ${agentId} reported unknown plugin ${installation.pluginId}`);
-                                continue;
-                        }
+		for (const installation of installations) {
+			const record = this.manifestCache.get(installation.pluginId);
+			if (!record) {
+				if (this.manifestConflicts.has(installation.pluginId)) {
+					console.warn(
+						`agent ${agentId} reported plugin ${installation.pluginId} but deployment is deferred due to conflicting manifests`
+					);
+					continue;
+				}
+				console.warn(`agent ${agentId} reported unknown plugin ${installation.pluginId}`);
+				continue;
+			}
 
-                        const runtimeRow = await this.runtimeStore.ensure(record);
+			const runtimeRow = await this.runtimeStore.ensure(record);
 			const manifest = record.manifest;
 
 			const current = await db
@@ -493,19 +522,19 @@ export class PluginTelemetryStore {
 
 	async getManifestSnapshot(): Promise<PluginManifestSnapshot> {
 		const snapshot = await this.ensureManifestSnapshot();
-                const manifests = snapshot.entries.map(
-                        (entry) =>
-                                ({
-                                        pluginId: entry.pluginId,
-                                        version: entry.version,
-                                        manifestDigest: entry.manifestDigest,
-                                        artifactHash: entry.artifactHash ?? null,
-                                        artifactSizeBytes: entry.artifactSizeBytes ?? null,
-                                        approvedAt: entry.approvedAt ?? null,
-                                        manualPushAt: entry.manualPushAt ?? null,
-                                        distribution: { ...entry.distribution }
-                                }) satisfies PluginManifestDescriptor
-                );
+		const manifests = snapshot.entries.map(
+			(entry) =>
+				({
+					pluginId: entry.pluginId,
+					version: entry.version,
+					manifestDigest: entry.manifestDigest,
+					artifactHash: entry.artifactHash ?? null,
+					artifactSizeBytes: entry.artifactSizeBytes ?? null,
+					approvedAt: entry.approvedAt ?? null,
+					manualPushAt: entry.manualPushAt ?? null,
+					distribution: { ...entry.distribution }
+				}) satisfies PluginManifestDescriptor
+		);
 
 		return { version: snapshot.version, manifests } satisfies PluginManifestSnapshot;
 	}
@@ -527,26 +556,26 @@ export class PluginTelemetryStore {
 			}
 		}
 
-                const updated: PluginManifestDescriptor[] = [];
-                for (const entry of snapshot.entries) {
-                        const digest = knownDigests?.[entry.pluginId];
-                        const fingerprint = buildDescriptorFingerprint(
-                                entry.manifestDigest,
-                                entry.manualPushAt ?? null
-                        );
-                        if (!digest || digest !== fingerprint) {
-                                updated.push({
-                                        pluginId: entry.pluginId,
-                                        version: entry.version,
-                                        manifestDigest: entry.manifestDigest,
-                                        artifactHash: entry.artifactHash ?? null,
-                                        artifactSizeBytes: entry.artifactSizeBytes ?? null,
-                                        approvedAt: entry.approvedAt ?? null,
-                                        manualPushAt: entry.manualPushAt ?? null,
-                                        distribution: { ...entry.distribution }
-                                });
-                        }
-                }
+		const updated: PluginManifestDescriptor[] = [];
+		for (const entry of snapshot.entries) {
+			const digest = knownDigests?.[entry.pluginId];
+			const fingerprint = buildDescriptorFingerprint(
+				entry.manifestDigest,
+				entry.manualPushAt ?? null
+			);
+			if (!digest || digest !== fingerprint) {
+				updated.push({
+					pluginId: entry.pluginId,
+					version: entry.version,
+					manifestDigest: entry.manifestDigest,
+					artifactHash: entry.artifactHash ?? null,
+					artifactSizeBytes: entry.artifactSizeBytes ?? null,
+					approvedAt: entry.approvedAt ?? null,
+					manualPushAt: entry.manualPushAt ?? null,
+					distribution: { ...entry.distribution }
+				});
+			}
+		}
 
 		return { version: snapshot.version, updated, removed } satisfies PluginManifestDelta;
 	}
@@ -554,39 +583,39 @@ export class PluginTelemetryStore {
 	async getApprovedManifest(
 		pluginId: string
 	): Promise<{ record: LoadedPluginManifest; descriptor: PluginManifestDescriptor } | null> {
-                const trimmed = pluginId.trim();
-                if (trimmed.length === 0) {
-                        return null;
-                }
+		const trimmed = pluginId.trim();
+		if (trimmed.length === 0) {
+			return null;
+		}
 
-                const snapshot = await this.ensureManifestSnapshot();
-                if (this.manifestConflicts.has(trimmed)) {
-                        return null;
-                }
-                const descriptor = snapshot.entries.find((entry) => entry.pluginId === trimmed);
-                if (!descriptor) {
-                        return null;
-                }
+		const snapshot = await this.ensureManifestSnapshot();
+		if (this.manifestConflicts.has(trimmed)) {
+			return null;
+		}
+		const descriptor = snapshot.entries.find((entry) => entry.pluginId === trimmed);
+		if (!descriptor) {
+			return null;
+		}
 
 		const record = this.manifestCache.get(trimmed);
 		if (!record) {
 			return null;
 		}
 
-                return {
-                        record,
-                        descriptor: {
-                                pluginId: descriptor.pluginId,
-                                version: descriptor.version,
-                                manifestDigest: descriptor.manifestDigest,
-                                artifactHash: descriptor.artifactHash ?? null,
-                                artifactSizeBytes: descriptor.artifactSizeBytes ?? null,
-                                approvedAt: descriptor.approvedAt ?? null,
-                                manualPushAt: descriptor.manualPushAt ?? null,
-                                distribution: { ...descriptor.distribution }
-                        }
-                };
-        }
+		return {
+			record,
+			descriptor: {
+				pluginId: descriptor.pluginId,
+				version: descriptor.version,
+				manifestDigest: descriptor.manifestDigest,
+				artifactHash: descriptor.artifactHash ?? null,
+				artifactSizeBytes: descriptor.artifactSizeBytes ?? null,
+				approvedAt: descriptor.approvedAt ?? null,
+				manualPushAt: descriptor.manualPushAt ?? null,
+				distribution: { ...descriptor.distribution }
+			}
+		};
+	}
 
 	async getAgentPlugin(agentId: string, pluginId: string): Promise<AgentPluginRecord | null> {
 		await this.ensureManifestIndex();
@@ -690,11 +719,11 @@ export class PluginTelemetryStore {
 					eq(pluginInstallationTable.pluginId, pluginId)
 				)
 			);
-                if (result.rowsAffected === 0) {
-                        await db
-                                .insert(pluginInstallationTable)
-                                .values({
-                                        pluginId,
+		if (result.rowsAffected === 0) {
+			await db
+				.insert(pluginInstallationTable)
+				.values({
+					pluginId,
 					agentId,
 					status: 'pending',
 					version: 'unknown',
@@ -706,35 +735,35 @@ export class PluginTelemetryStore {
 					createdAt: now,
 					updatedAt: now
 				})
-                                .onConflictDoNothing();
-                }
-                await this.refreshAggregates(pluginId);
-        }
+				.onConflictDoNothing();
+		}
+		await this.refreshAggregates(pluginId);
+	}
 
-        async recordManualPush(_agentId: string, pluginId: string): Promise<void> {
-                const trimmed = pluginId.trim();
-                if (trimmed.length === 0) {
-                        return;
-                }
+	async recordManualPush(_agentId: string, pluginId: string): Promise<void> {
+		const trimmed = pluginId.trim();
+		if (trimmed.length === 0) {
+			return;
+		}
 
-                await this.ensureManifestIndex();
-                if (this.manifestConflicts.has(trimmed)) {
-                        throw new Error(`Plugin ${trimmed} has conflicting manifests`);
-                }
-                const record = this.manifestCache.get(trimmed);
-                if (!record) {
-                        throw new Error(`Plugin ${trimmed} not registered`);
-                }
+		await this.ensureManifestIndex();
+		if (this.manifestConflicts.has(trimmed)) {
+			throw new Error(`Plugin ${trimmed} has conflicting manifests`);
+		}
+		const record = this.manifestCache.get(trimmed);
+		if (!record) {
+			throw new Error(`Plugin ${trimmed} not registered`);
+		}
 
-                await this.runtimeStore.ensure(record);
-                await this.runtimeStore.update(trimmed, { lastManualPushAt: new Date() });
-                this.manifestSnapshot = null;
-        }
+		await this.runtimeStore.ensure(record);
+		await this.runtimeStore.update(trimmed, { lastManualPushAt: new Date() });
+		this.manifestSnapshot = null;
+	}
 
-        private async ensureManifestSnapshot(): Promise<{
-                version: string;
-                entries: PluginManifestDescriptor[];
-                digests: Map<string, string>;
+	private async ensureManifestSnapshot(): Promise<{
+		version: string;
+		entries: PluginManifestDescriptor[];
+		digests: Map<string, string>;
 	}> {
 		if (!this.manifestSnapshot) {
 			await this.buildManifestSnapshot();
@@ -747,29 +776,27 @@ export class PluginTelemetryStore {
 		return this.manifestSnapshot;
 	}
 
-        private async buildManifestSnapshot(): Promise<void> {
-                await this.ensureManifestIndex();
+	private async buildManifestSnapshot(): Promise<void> {
+		await this.ensureManifestIndex();
 
-                const entries: PluginManifestDescriptor[] = [];
-                for (const record of this.manifestCache.values()) {
-                        if (this.manifestConflicts.has(record.manifest.id)) {
-                                await this.runtimeStore.ensure(record);
-                                continue;
-                        }
-                        if (record.verification.status !== 'trusted') {
-                                continue;
-                        }
+		const entries: PluginManifestDescriptor[] = [];
+		for (const record of this.manifestCache.values()) {
+			if (this.manifestConflicts.has(record.manifest.id)) {
+				await this.runtimeStore.ensure(record);
+				continue;
+			}
+			if (record.verification.status !== 'trusted') {
+				continue;
+			}
 
-                        const runtime = await this.runtimeStore.ensure(record);
+			const runtime = await this.runtimeStore.ensure(record);
 			if (runtime.approvalStatus !== 'approved') {
 				continue;
 			}
 
-                        const digest = computeManifestDigest(record);
-                        const approvedAt = runtime.approvedAt ? runtime.approvedAt.toISOString() : null;
-                        const manualPushAt = runtime.lastManualPushAt
-                                ? runtime.lastManualPushAt.toISOString()
-                                : null;
+			const digest = computeManifestDigest(record);
+			const approvedAt = runtime.approvedAt ? runtime.approvedAt.toISOString() : null;
+			const manualPushAt = runtime.lastManualPushAt ? runtime.lastManualPushAt.toISOString() : null;
 			const size =
 				typeof record.manifest.package.sizeBytes === 'number'
 					? record.manifest.package.sizeBytes
@@ -781,9 +808,10 @@ export class PluginTelemetryStore {
 				manifestDigest: digest,
 				artifactHash: record.manifest.package.hash ?? null,
 				artifactSizeBytes: size,
-                                approvedAt,
-                                manualPushAt,
-                                distribution: {
+				approvedAt,
+				manualPushAt,
+				dependencies: manifestDependencies(record.manifest),
+				distribution: {
 					defaultMode: record.manifest.distribution.defaultMode,
 					autoUpdate: record.manifest.distribution.autoUpdate
 				}
@@ -792,45 +820,44 @@ export class PluginTelemetryStore {
 
 		entries.sort((a, b) => a.pluginId.localeCompare(b.pluginId));
 
-                const digests = new Map(
-                        entries.map((entry) => [
-                                entry.pluginId,
-                                buildDescriptorFingerprint(entry.manifestDigest, entry.manualPushAt ?? null)
-                        ])
-                );
-                const versionSeed = entries
-                        .map((entry) =>
-                                `${entry.pluginId}:${buildDescriptorFingerprint(
-                                        entry.manifestDigest,
-                                        entry.manualPushAt ?? null
-                                )}`
-                        )
-                        .join('|');
+		const digests = new Map(
+			entries.map((entry) => [
+				entry.pluginId,
+				buildDescriptorFingerprint(entry.manifestDigest, entry.manualPushAt ?? null)
+			])
+		);
+		const versionSeed = entries
+			.map(
+				(entry) =>
+					`${entry.pluginId}:${buildDescriptorFingerprint(
+						entry.manifestDigest,
+						entry.manualPushAt ?? null
+					)}`
+			)
+			.join('|');
 		const version = createHash('sha256').update(versionSeed, 'utf8').digest('hex');
 
 		this.manifestSnapshot = { version, entries, digests };
 	}
 
-        private async ensureManifestIndex(): Promise<void> {
-                const now = Date.now();
-                if (now - this.manifestLoadedAt < MANIFEST_CACHE_TTL_MS && this.manifestCache.size > 0) {
-                        return;
-                }
+	private async ensureManifestIndex(): Promise<void> {
+		const now = Date.now();
+		if (now - this.manifestLoadedAt < MANIFEST_CACHE_TTL_MS && this.manifestCache.size > 0) {
+			return;
+		}
 
-                const records = await loadPluginManifests({ directory: this.manifestDirectory });
-                const { resolved, conflicts } = resolveManifestRecords(records);
-                this.manifestCache = resolved;
-                this.manifestConflicts = conflicts;
-                if (conflicts.size > 0) {
-                        for (const conflict of conflicts.values()) {
-                                console.warn(
-                                        `Plugin ${conflict.pluginId} has conflicting manifests: ${conflict.message}`
-                                );
-                        }
-                }
-                this.manifestLoadedAt = now;
-                this.manifestSnapshot = null;
-        }
+		const records = await loadPluginManifests({ directory: this.manifestDirectory });
+		const { resolved, conflicts } = resolveManifestRecords(records);
+		this.manifestCache = resolved;
+		this.manifestConflicts = conflicts;
+		if (conflicts.size > 0) {
+			for (const conflict of conflicts.values()) {
+				console.warn(`Plugin ${conflict.pluginId} has conflicting manifests: ${conflict.message}`);
+			}
+		}
+		this.manifestLoadedAt = now;
+		this.manifestSnapshot = null;
+	}
 
 	private async refreshAggregates(pluginId: string): Promise<void> {
 		const [row] = await db

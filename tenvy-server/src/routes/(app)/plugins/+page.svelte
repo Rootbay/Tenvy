@@ -69,7 +69,8 @@
 			plugin.author ?? '',
 			plugin.version ?? '',
 			...plugin.capabilities,
-			...plugin.requiredModules.map((module) => module.title)
+			...plugin.requiredModules.map((module) => module.title),
+			...plugin.dependencies
 		]
 			.join(' ')
 			.toLowerCase();

@@ -273,6 +273,10 @@
 							<Separator orientation="vertical" />
 							<span>Requires modules: {plugin.requirements.requiredModules.join(', ')}</span>
 						{/if}
+						{#if plugin.requirements.dependencies.length > 0}
+							<Separator orientation="vertical" />
+							<span>Depends on plugins: {plugin.requirements.dependencies.join(', ')}</span>
+						{/if}
 					</div>
 				</CardFooter>
 			</Card>

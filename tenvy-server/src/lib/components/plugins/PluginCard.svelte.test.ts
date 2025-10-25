@@ -29,6 +29,7 @@ const basePlugin: Plugin = {
 		lastManualPush: '2024-01-03',
 		lastAutoSync: '2024-01-04'
 	},
+	dependencies: [],
 	requiredModules: [],
 	approvalStatus: 'approved',
 	signature: {

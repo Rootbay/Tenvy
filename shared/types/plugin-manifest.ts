@@ -115,6 +115,7 @@ export interface PluginManifest {
   categories?: string[];
   capabilities?: string[];
   telemetry?: string[];
+  dependencies?: string[];
   runtime?: PluginRuntimeDescriptor;
   requirements: PluginRequirements;
   distribution: PluginDistribution;
@@ -148,6 +149,7 @@ export interface PluginManifestDescriptor {
   artifactSizeBytes?: number | null;
   approvedAt?: string | null;
   manualPushAt?: string | null;
+  dependencies?: string[];
   distribution: {
     defaultMode: PluginDeliveryMode;
     autoUpdate: boolean;
@@ -239,7 +241,7 @@ const normalizeRuntimeType = (
   value: string | undefined | null,
 ): PluginRuntimeType => {
   const normalized = value?.trim().toLowerCase();
-  return normalized === 'wasm' ? 'wasm' : 'native';
+  return normalized === "wasm" ? "wasm" : "native";
 };
 
 export const isPluginSignatureType = (
@@ -345,10 +347,10 @@ export function validatePluginManifest(manifest: PluginManifest): string[] {
       }
     });
     if (
-      normalizedRuntimeType === 'wasm' &&
+      normalizedRuntimeType === "wasm" &&
       ensureArray(interfaces).filter((value) => !isEmpty(value)).length === 0
     ) {
-      problems.push('wasm runtime requires at least one host interface');
+      problems.push("wasm runtime requires at least one host interface");
     }
   }
 
@@ -416,6 +418,26 @@ export function validatePluginManifest(manifest: PluginManifest): string[] {
       }
     },
   );
+
+  const dependencySeen = new Set<string>();
+  const manifestId = manifest.id?.trim().toLowerCase() ?? "";
+  ensureArray(manifest.dependencies).forEach((dependency, index) => {
+    if (isEmpty(dependency)) {
+      problems.push(`dependency ${index} is empty`);
+      return;
+    }
+    const trimmed = dependency.trim();
+    const normalized = trimmed.toLowerCase();
+    if (normalized === manifestId && normalized !== "") {
+      problems.push(`dependency ${trimmed} cannot reference the plugin itself`);
+      return;
+    }
+    if (dependencySeen.has(normalized)) {
+      problems.push(`dependency ${trimmed} is duplicated`);
+      return;
+    }
+    dependencySeen.add(normalized);
+  });
 
   ensureArray(manifest.capabilities).forEach((capability, index) => {
     if (isEmpty(capability)) {

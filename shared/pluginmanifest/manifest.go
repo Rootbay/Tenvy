@@ -22,6 +22,7 @@ type Manifest struct {
 	Categories    []string           `json:"categories,omitempty"`
 	Capabilities  []string           `json:"capabilities,omitempty"`
 	Telemetry     []string           `json:"telemetry,omitempty"`
+	Dependencies  []string           `json:"dependencies,omitempty"`
 	Runtime       *RuntimeDescriptor `json:"runtime,omitempty"`
 	Requirements  Requirements       `json:"requirements"`
 	Distribution  Distribution       `json:"distribution"`
@@ -301,6 +302,7 @@ type ManifestDescriptor struct {
 	ArtifactSize   int64            `json:"artifactSizeBytes,omitempty"`
 	ApprovedAt     string           `json:"approvedAt,omitempty"`
 	ManualPushAt   string           `json:"manualPushAt,omitempty"`
+	Dependencies   []string         `json:"dependencies,omitempty"`
 	Distribution   ManifestBriefing `json:"distribution"`
 }
 
@@ -370,6 +372,26 @@ func (m Manifest) Validate() error {
 		if _, ok := registeredModules[module]; !ok {
 			problems = append(problems, fmt.Errorf("required module %s is not registered", module))
 		}
+	}
+
+	dependencySeen := make(map[string]struct{})
+	manifestID := strings.ToLower(strings.TrimSpace(m.ID))
+	for index, dependency := range m.Dependencies {
+		trimmed := strings.TrimSpace(dependency)
+		if trimmed == "" {
+			problems = append(problems, fmt.Errorf("dependency %d is empty", index))
+			continue
+		}
+		lowered := strings.ToLower(trimmed)
+		if lowered == manifestID && lowered != "" {
+			problems = append(problems, fmt.Errorf("dependency %s cannot reference the plugin itself", trimmed))
+			continue
+		}
+		if _, ok := dependencySeen[lowered]; ok {
+			problems = append(problems, fmt.Errorf("dependency %s is duplicated", trimmed))
+			continue
+		}
+		dependencySeen[lowered] = struct{}{}
 	}
 
 	for index, capabilityID := range m.Capabilities {
@@ -555,6 +577,10 @@ func (m Manifest) RuntimeHostAPIVersion() string {
 		return ""
 	}
 	return strings.TrimSpace(m.Runtime.Host.APIVersion)
+}
+
+func (m Manifest) DependenciesList() []string {
+	return sanitizeStringSlice(m.Dependencies)
 }
 
 func LookupCapability(id string) (CapabilityMetadata, bool) {

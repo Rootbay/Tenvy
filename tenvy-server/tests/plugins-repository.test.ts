@@ -16,31 +16,32 @@ const manifestFixture = {
 	entry: 'clipboard-sync.dll',
 	author: 'Tenvy Labs',
 	repositoryUrl: 'https://github.com/rootbay/tenvy-clipboard-sync',
+	dependencies: ['core-utils'],
 	license: {
 		spdxId: 'MIT',
 		name: 'MIT License',
 		url: 'https://opensource.org/license/mit'
 	},
 	categories: ['collection'],
-        capabilities: ['clipboard.capture', 'clipboard.push'],
-        requirements: {
-                minAgentVersion: '1.2.0',
-                platforms: ['windows', 'macos'],
-                architectures: ['x86_64'],
-                requiredModules: ['clipboard']
-        },
-        distribution: {
-                defaultMode: 'automatic',
-                autoUpdate: true,
-                signature: 'sha256',
-                signatureHash: 'abcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcd',
-                signatureValue: '0123456789abcdef0123456789abcdef'
-        },
-        package: {
-                artifact: 'clipboard-sync-1.4.2.dll',
-                sizeBytes: 18_743_296,
-                hash: 'abcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcd'
-        }
+	capabilities: ['clipboard.capture', 'clipboard.push'],
+	requirements: {
+		minAgentVersion: '1.2.0',
+		platforms: ['windows', 'macos'],
+		architectures: ['x86_64'],
+		requiredModules: ['clipboard']
+	},
+	distribution: {
+		defaultMode: 'automatic',
+		autoUpdate: true,
+		signature: 'sha256',
+		signatureHash: 'abcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcd',
+		signatureValue: '0123456789abcdef0123456789abcdef'
+	},
+	package: {
+		artifact: 'clipboard-sync-1.4.2.dll',
+		sizeBytes: 18_743_296,
+		hash: 'abcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcd'
+	}
 };
 
 const PLUGIN_TABLE_DDL = `
@@ -118,8 +119,9 @@ describe('plugin repository', () => {
 			expect(clipboard?.artifact).toContain('clipboard');
 			expect(clipboard?.distribution.defaultMode).toBe('automatic');
 			expect(clipboard?.distribution.allowAutoSync).toBe(true);
+			expect(clipboard?.dependencies).toContain('core-utils');
 			expect(clipboard?.requiredModules.map((module) => module.id)).toContain('clipboard');
-                        expect(clipboard?.signature.status).toBe('untrusted');
+			expect(clipboard?.signature.status).toBe('untrusted');
 			expect(clipboard?.signature.trusted).toBe(false);
 		} finally {
 			sqlite.close();

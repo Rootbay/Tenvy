@@ -494,6 +494,23 @@ func (r *moduleManager) PluginHandle(pluginID string) PluginActivationHandle {
 	return activation.handle
 }
 
+func (r *moduleManager) ActivePluginIDs() []string {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	if len(r.pluginActivations) == 0 {
+		return nil
+	}
+	ids := make([]string, 0, len(r.pluginActivations))
+	for id := range r.pluginActivations {
+		ids = append(ids, id)
+	}
+	if len(ids) == 0 {
+		return nil
+	}
+	sort.Strings(ids)
+	return ids
+}
+
 func (r *moduleManager) RegisterModuleExtension(moduleID string, extension ModuleExtension) error {
 	moduleID = strings.TrimSpace(moduleID)
 	if moduleID == "" {
