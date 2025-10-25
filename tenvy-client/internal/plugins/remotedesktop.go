@@ -10,7 +10,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -39,17 +38,7 @@ type RemoteDesktopStageResult struct {
 // delivery mode (or equivalent policy hints) disable automatic staging and
 // require an explicit operator action.
 func RemoteDesktopAutoSyncAllowed(descriptor manifest.ManifestDescriptor) bool {
-	mode := strings.TrimSpace(string(descriptor.Distribution.DefaultMode))
-	switch {
-	case strings.EqualFold(mode, string(manifest.DeliveryAutomatic)):
-		return true
-	case strings.EqualFold(mode, string(manifest.DeliveryManual)):
-		return false
-	case mode == "":
-		return descriptor.Distribution.AutoUpdate
-	default:
-		return false
-	}
+	return autoSyncAllowed(descriptor)
 }
 
 // StageRemoteDesktopEngine ensures the remote desktop engine plugin is staged on
@@ -116,9 +105,9 @@ func StageRemoteDesktopEngine(
 		return result, errors.New(message)
 	}
 
-	manifestURL, artifactURL := remoteDesktopEndpoints(baseURL, agentID, pluginID)
+	manifestURL, artifactURL := pluginEndpoints(baseURL, agentID, pluginID)
 
-	manifestData, mf, err := fetchRemoteDesktopManifest(
+	manifestData, mf, err := fetchPluginManifest(
 		ctx,
 		client,
 		manifestURL,
@@ -203,7 +192,7 @@ func StageRemoteDesktopEngine(
 		return result, fmt.Errorf("prepare artifact directory: %w", err)
 	}
 
-	if err := downloadRemoteDesktopArtifact(ctx, client, artifactURL, authKey, userAgent, stagingArtifact); err != nil {
+	if err := downloadPluginArtifact(ctx, client, artifactURL, authKey, userAgent, stagingArtifact); err != nil {
 		manager.recordInstallStatusLocked(RemoteDesktopEnginePluginID, mf.Version, manifest.InstallError, err.Error())
 		return result, err
 	}
@@ -294,108 +283,6 @@ func reuseRemoteDesktopInstallation(
 	}
 
 	return &mf, entryPath, true
-}
-
-func remoteDesktopEndpoints(baseURL, agentID, pluginID string) (string, string) {
-	trimmed := strings.TrimRight(baseURL, "/")
-	encodedAgent := url.PathEscape(agentID)
-	manifestURL := fmt.Sprintf("%s/api/agents/%s/plugins/%s", trimmed, encodedAgent, url.PathEscape(pluginID))
-	artifactURL := fmt.Sprintf("%s/artifact", manifestURL)
-	return manifestURL, artifactURL
-}
-
-func fetchRemoteDesktopManifest(
-	ctx context.Context,
-	client HTTPDoer,
-	endpoint, authKey, userAgent, expectedDigest string,
-) ([]byte, manifest.Manifest, error) {
-	var mf manifest.Manifest
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
-	if err != nil {
-		return nil, mf, fmt.Errorf("create manifest request: %w", err)
-	}
-	req.Header.Set("Accept", "application/json")
-	if userAgent = strings.TrimSpace(userAgent); userAgent != "" {
-		req.Header.Set("User-Agent", userAgent)
-	}
-	if auth := strings.TrimSpace(authKey); auth != "" {
-		req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", auth))
-	}
-
-	resp, err := client.Do(req)
-	if err != nil {
-		return nil, mf, fmt.Errorf("fetch manifest: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode >= http.StatusBadRequest {
-		body, _ := io.ReadAll(io.LimitReader(resp.Body, 2048))
-		message := strings.TrimSpace(string(body))
-		if message == "" {
-			message = fmt.Sprintf("status %d", resp.StatusCode)
-		}
-		return nil, mf, fmt.Errorf("fetch manifest: %s", message)
-	}
-
-	data, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
-	if err != nil {
-		return nil, mf, fmt.Errorf("read manifest response: %w", err)
-	}
-	if err := json.Unmarshal(data, &mf); err != nil {
-		return nil, mf, fmt.Errorf("decode manifest: %w", err)
-	}
-	if expectedDigest != "" {
-		sum := sha256.Sum256(data)
-		digest := fmt.Sprintf("%x", sum[:])
-		if !strings.EqualFold(digest, strings.TrimSpace(expectedDigest)) {
-			return nil, mf, fmt.Errorf("manifest digest mismatch: expected %s", expectedDigest)
-		}
-	}
-	if err := mf.Validate(); err != nil {
-		return nil, mf, fmt.Errorf("manifest validation failed: %w", err)
-	}
-	return data, mf, nil
-}
-
-func downloadRemoteDesktopArtifact(ctx context.Context, client HTTPDoer, endpoint, authKey, userAgent, dest string) error {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
-	if err != nil {
-		return fmt.Errorf("create artifact request: %w", err)
-	}
-	req.Header.Set("Accept", "application/octet-stream")
-	if userAgent = strings.TrimSpace(userAgent); userAgent != "" {
-		req.Header.Set("User-Agent", userAgent)
-	}
-	if auth := strings.TrimSpace(authKey); auth != "" {
-		req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", auth))
-	}
-
-	resp, err := client.Do(req)
-	if err != nil {
-		return fmt.Errorf("download artifact: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode >= http.StatusBadRequest {
-		body, _ := io.ReadAll(io.LimitReader(resp.Body, 2048))
-		message := strings.TrimSpace(string(body))
-		if message == "" {
-			message = fmt.Sprintf("status %d", resp.StatusCode)
-		}
-		return fmt.Errorf("download artifact: %s", message)
-	}
-
-	file, err := os.Create(dest)
-	if err != nil {
-		return fmt.Errorf("create artifact file: %w", err)
-	}
-	defer file.Close()
-
-	if _, err := io.Copy(file, resp.Body); err != nil {
-		return fmt.Errorf("write artifact: %w", err)
-	}
-	return nil
 }
 
 func unpackRemoteDesktopArchive(path, dest string) error {

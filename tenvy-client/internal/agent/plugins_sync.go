@@ -30,10 +30,12 @@ type pluginStageHandler interface {
 type pluginStageRegistry struct {
 	mu       sync.RWMutex
 	handlers map[string]pluginStageHandler
+	fallback pluginStageHandler
 }
 
 func newPluginStageRegistry() *pluginStageRegistry {
 	registry := &pluginStageRegistry{handlers: make(map[string]pluginStageHandler)}
+	registry.fallback = genericPluginStageHandler{}
 	registry.Register(plugins.RemoteDesktopEnginePluginID, remoteDesktopStageHandler{})
 	return registry
 }
@@ -69,13 +71,38 @@ func (r *pluginStageRegistry) Lookup(id string) pluginStageHandler {
 	}
 	r.mu.RLock()
 	handler := r.handlers[normalized]
+	fallback := r.fallback
 	r.mu.RUnlock()
-	return handler
+	if handler != nil {
+		return handler
+	}
+	return fallback
 }
 
 var pluginStages = newPluginStageRegistry()
 
 type remoteDesktopStageHandler struct{}
+
+type genericPluginStageHandler struct{}
+
+func (genericPluginStageHandler) Stage(ctx context.Context, agent *Agent, descriptor manifest.ManifestDescriptor) (pluginStageOutcome, error) {
+	var outcome pluginStageOutcome
+
+	if agent == nil {
+		return outcome, errors.New("agent not initialized")
+	}
+	if agent.plugins == nil || agent.client == nil {
+		return outcome, errors.New("plugin staging unavailable")
+	}
+
+	result, err := plugins.StagePlugin(ctx, agent.plugins, agent.client, agent.baseURL, agent.id, agent.key, agent.userAgent(), agent.pluginRuntimeFacts(), descriptor)
+	if err != nil {
+		return outcome, err
+	}
+	outcome.Manifest = &result.Manifest
+	outcome.Staged = true
+	return outcome, nil
+}
 
 func manifestDescriptorFingerprint(descriptor manifest.ManifestDescriptor) string {
 	digest := strings.TrimSpace(descriptor.ManifestDigest)
@@ -110,7 +137,7 @@ func (remoteDesktopStageHandler) Stage(ctx context.Context, agent *Agent, descri
 		return outcome, nil
 	}
 
-	facts := agent.remoteDesktopRuntimeFacts()
+	facts := agent.pluginRuntimeFacts()
 	result, err := plugins.StageRemoteDesktopEngine(
 		ctx,
 		agent.plugins,
@@ -246,19 +273,59 @@ func (a *Agent) stagePluginsFromList(ctx context.Context, snapshot *manifest.Man
 			continue
 		}
 
+		_, generic := handler.(genericPluginStageHandler)
+
 		stageCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
-		outcome, err := handler.Stage(stageCtx, a, entry)
+		var (
+			manifestResult *manifest.Manifest
+			stageErr       error
+		)
+
+		if generic {
+			res, err := plugins.StagePlugin(stageCtx, a.plugins, a.client, a.baseURL, a.id, a.key, a.userAgent(), a.pluginRuntimeFacts(), entry)
+			stageErr = err
+			if err == nil {
+				manifestResult = &res.Manifest
+			}
+		} else {
+			outcome, err := handler.Stage(stageCtx, a, entry)
+			stageErr = err
+			if err == nil && outcome.Manifest != nil {
+				manifestResult = outcome.Manifest
+			}
+		}
 		cancel()
-		if err != nil {
-			resultErr = combineErrors(resultErr, fmt.Errorf("stage %s: %w", id, err))
+
+		if stageErr != nil {
+			resultErr = combineErrors(resultErr, fmt.Errorf("stage %s: %w", id, stageErr))
+			if generic && a.plugins != nil {
+				status := manifest.InstallError
+				var stageError *plugins.StageError
+				if errors.As(stageErr, &stageError) && stageError != nil {
+					status = stageError.Status()
+				}
+				version := strings.TrimSpace(entry.Version)
+				if stageError != nil && strings.TrimSpace(stageError.Version()) != "" {
+					version = stageError.Version()
+				}
+				if err := plugins.RecordInstallStatus(a.plugins, id, version, status, stageErr.Error()); err != nil && a.logger != nil {
+					a.logger.Printf("plugin sync: failed to record install status for %s: %v", id, err)
+				}
+			}
 			continue
 		}
 
-		if !outcome.Staged || outcome.Manifest == nil {
+		if manifestResult == nil {
 			continue
 		}
 
-		if err := a.registerPluginCapabilities(*outcome.Manifest); err != nil {
+		if generic && a.plugins != nil {
+			if err := plugins.ClearInstallStatus(a.plugins, manifestResult.ID); err != nil && a.logger != nil {
+				a.logger.Printf("plugin sync: failed to clear install status for %s: %v", manifestResult.ID, err)
+			}
+		}
+
+		if err := a.registerPluginCapabilities(*manifestResult); err != nil {
 			resultErr = combineErrors(resultErr, fmt.Errorf("register capabilities for %s: %w", id, err))
 		}
 	}
@@ -311,7 +378,7 @@ func (a *Agent) registerPluginCapabilities(mf manifest.Manifest) error {
 	return resultErr
 }
 
-func (a *Agent) remoteDesktopRuntimeFacts() manifest.RuntimeFacts {
+func (a *Agent) pluginRuntimeFacts() manifest.RuntimeFacts {
 	metadata := a.metadata
 	version := strings.TrimSpace(metadata.Version)
 	if version == "" {
