@@ -133,6 +133,10 @@ func TestRemoteDesktopModuleNegotiationWithManagedEngine(t *testing.T) {
 			plugins.RemoteDesktopEnginePluginID: {
 				PluginID: plugins.RemoteDesktopEnginePluginID,
 				Version:  pluginVersion,
+				Distribution: manifest.ManifestBriefing{
+					DefaultMode: manifest.DeliveryAutomatic,
+					AutoUpdate:  true,
+				},
 			},
 		},
 	}

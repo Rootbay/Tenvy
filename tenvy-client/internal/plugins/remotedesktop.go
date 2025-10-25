@@ -34,6 +34,24 @@ type RemoteDesktopStageResult struct {
 	Updated   bool
 }
 
+// RemoteDesktopAutoSyncAllowed reports whether the manifest descriptor permits
+// automatic synchronization and staging of the remote desktop engine. Manual
+// delivery mode (or equivalent policy hints) disable automatic staging and
+// require an explicit operator action.
+func RemoteDesktopAutoSyncAllowed(descriptor manifest.ManifestDescriptor) bool {
+	mode := strings.TrimSpace(string(descriptor.Distribution.DefaultMode))
+	switch {
+	case strings.EqualFold(mode, string(manifest.DeliveryAutomatic)):
+		return true
+	case strings.EqualFold(mode, string(manifest.DeliveryManual)):
+		return false
+	case mode == "":
+		return descriptor.Distribution.AutoUpdate
+	default:
+		return false
+	}
+}
+
 // StageRemoteDesktopEngine ensures the remote desktop engine plugin is staged on
 // disk, verifying signatures and hashes before unpacking the artifact into the
 // plugin root. The returned result describes the installed manifest and the
@@ -87,6 +105,13 @@ func StageRemoteDesktopEngine(
 		result.EntryPath = entryPath
 		result.Updated = false
 		return result, nil
+	}
+
+	if !RemoteDesktopAutoSyncAllowed(descriptor) {
+		version := strings.TrimSpace(descriptor.Version)
+		message := "remote desktop plugin automatic staging disabled by policy"
+		manager.recordInstallStatusLocked(RemoteDesktopEnginePluginID, version, manifest.InstallDisabled, message)
+		return result, errors.New(message)
 	}
 
 	manifestURL, artifactURL := remoteDesktopEndpoints(baseURL, agentID, pluginID)
