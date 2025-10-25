@@ -216,8 +216,14 @@ func StagePlugin(
 		}
 	}
 
-	if strings.EqualFold(filepath.Ext(artifactRel), ".zip") {
+	loweredArtifact := strings.ToLower(artifactRel)
+	switch {
+	case strings.EqualFold(filepath.Ext(artifactRel), ".zip"):
 		if err := unpackZipArchive(stagingArtifact, stagingDir); err != nil {
+			return result, newStageError(manifest.InstallError, mf.Version, err)
+		}
+	case strings.HasSuffix(loweredArtifact, ".tar.gz"), strings.HasSuffix(loweredArtifact, ".tgz"):
+		if err := unpackTarGzArchive(stagingArtifact, stagingDir); err != nil {
 			return result, newStageError(manifest.InstallError, mf.Version, err)
 		}
 	}
