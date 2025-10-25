@@ -154,3 +154,50 @@ func TestApplyPluginManifestDeltaRemovesRemoteDesktopPlugin(t *testing.T) {
 		}
 	}
 }
+
+func TestStagePluginsFromListSkipsManualRemoteDesktop(t *testing.T) {
+	t.Parallel()
+
+	pluginRoot := t.TempDir()
+	manager, err := plugins.NewManager(pluginRoot, log.New(io.Discard, "", 0), manifest.VerifyOptions{})
+	if err != nil {
+		t.Fatalf("new plugin manager: %v", err)
+	}
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Fatalf("unexpected request: %s %s", r.Method, r.URL.Path)
+	}))
+	defer server.Close()
+
+	agent := &Agent{
+		id:       "agent-1",
+		baseURL:  server.URL,
+		client:   server.Client(),
+		plugins:  manager,
+		modules:  newDefaultModuleManager(),
+		logger:   log.New(io.Discard, "", 0),
+		metadata: protocol.AgentMetadata{OS: "windows", Architecture: "amd64", Version: "1.0.0"},
+	}
+
+	snapshot := &manifest.ManifestList{
+		Version: "1",
+		Manifests: []manifest.ManifestDescriptor{
+			{
+				PluginID:       plugins.RemoteDesktopEnginePluginID,
+				ManifestDigest: "digest-1",
+				Distribution: manifest.ManifestBriefing{
+					DefaultMode: manifest.DeliveryManual,
+					AutoUpdate:  false,
+				},
+			},
+		},
+	}
+
+	if err := agent.stagePluginsFromList(context.Background(), snapshot); err != nil {
+		t.Fatalf("stage plugins: %v", err)
+	}
+
+	if snapshot := agent.plugins.Snapshot(); snapshot != nil && len(snapshot.Installations) > 0 {
+		t.Fatalf("expected no plugin installations recorded, got %#v", snapshot.Installations)
+	}
+}

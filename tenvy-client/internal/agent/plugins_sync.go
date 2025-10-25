@@ -130,6 +130,17 @@ func (a *Agent) stagePluginsFromList(ctx context.Context, snapshot *manifest.Man
 			continue
 		}
 
+		if !plugins.RemoteDesktopAutoSyncAllowed(entry) {
+			if a.logger != nil {
+				mode := strings.TrimSpace(string(entry.Distribution.DefaultMode))
+				if mode == "" {
+					mode = "unspecified"
+				}
+				a.logger.Printf("plugin sync: skipping remote desktop plugin %s (delivery mode: %s, auto-update: %t)", strings.TrimSpace(entry.PluginID), mode, entry.Distribution.AutoUpdate)
+			}
+			continue
+		}
+
 		stageCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
 		facts := a.remoteDesktopRuntimeFacts()
 		if _, err := plugins.StageRemoteDesktopEngine(

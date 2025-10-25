@@ -165,6 +165,64 @@ func TestStageRemoteDesktopEngineRecordsFailure(t *testing.T) {
 	}
 }
 
+func TestStageRemoteDesktopEngineRespectsManualPolicy(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	manager, err := plugins.NewManager(root, log.New(io.Discard, "", 0), manifest.VerifyOptions{})
+	if err != nil {
+		t.Fatalf("new manager: %v", err)
+	}
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Fatalf("unexpected request: %s %s", r.Method, r.URL.Path)
+	}))
+	defer server.Close()
+
+	descriptor := manifest.ManifestDescriptor{
+		PluginID:       plugins.RemoteDesktopEnginePluginID,
+		Version:        "1.0.0",
+		ManifestDigest: "",
+		Distribution: manifest.ManifestBriefing{
+			DefaultMode: manifest.DeliveryManual,
+			AutoUpdate:  false,
+		},
+	}
+
+	_, err = plugins.StageRemoteDesktopEngine(
+		context.Background(),
+		manager,
+		server.Client(),
+		server.URL,
+		"agent-1",
+		"",
+		"stage-test",
+		manifest.RuntimeFacts{},
+		descriptor,
+	)
+	if err == nil {
+		t.Fatal("expected manual policy error")
+	}
+	if !strings.Contains(err.Error(), "automatic staging disabled by policy") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	snapshot := manager.Snapshot()
+	if snapshot == nil || len(snapshot.Installations) != 1 {
+		t.Fatalf("expected manual policy installation telemetry, got %#v", snapshot)
+	}
+	install := snapshot.Installations[0]
+	if install.Status != manifest.InstallDisabled {
+		t.Fatalf("expected disabled status, got %s", install.Status)
+	}
+	if install.Version != "1.0.0" {
+		t.Fatalf("expected version 1.0.0, got %q", install.Version)
+	}
+	if install.PluginID != plugins.RemoteDesktopEnginePluginID {
+		t.Fatalf("unexpected plugin id %q", install.PluginID)
+	}
+}
+
 func TestStageRemoteDesktopEngineBlocksIncompatiblePlatform(t *testing.T) {
 	t.Parallel()
 
@@ -212,7 +270,7 @@ func TestStageRemoteDesktopEngineBlocksIncompatiblePlatform(t *testing.T) {
 		manifestJSON,
 		"1.0.0",
 		hashHex,
-		manifest.ManifestBriefing{DefaultMode: manifest.DeliveryManual, AutoUpdate: false},
+		manifest.ManifestBriefing{DefaultMode: manifest.DeliveryAutomatic, AutoUpdate: true},
 	)
 
 	_, err = plugins.StageRemoteDesktopEngine(context.Background(), manager, server.Client(), server.URL, "agent-1", "", "stage-test", facts, descriptor)
@@ -286,7 +344,7 @@ func TestStageRemoteDesktopEngineBlocksIncompatibleArchitecture(t *testing.T) {
 		manifestJSON,
 		"1.0.0",
 		hashHex,
-		manifest.ManifestBriefing{DefaultMode: manifest.DeliveryManual, AutoUpdate: false},
+		manifest.ManifestBriefing{DefaultMode: manifest.DeliveryAutomatic, AutoUpdate: true},
 	)
 
 	_, err = plugins.StageRemoteDesktopEngine(context.Background(), manager, server.Client(), server.URL, "agent-1", "", "stage-test", facts, descriptor)
@@ -360,7 +418,7 @@ func TestStageRemoteDesktopEngineBlocksIncompatibleAgentVersion(t *testing.T) {
 		manifestJSON,
 		"1.0.0",
 		hashHex,
-		manifest.ManifestBriefing{DefaultMode: manifest.DeliveryManual, AutoUpdate: false},
+		manifest.ManifestBriefing{DefaultMode: manifest.DeliveryAutomatic, AutoUpdate: true},
 	)
 
 	_, err = plugins.StageRemoteDesktopEngine(context.Background(), manager, server.Client(), server.URL, "agent-1", "", "stage-test", facts, descriptor)
