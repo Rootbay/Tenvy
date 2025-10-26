@@ -127,6 +127,17 @@ type ModuleExtension struct {
 	Version      string
 	Capabilities []ModuleCapability
 	Telemetry    []ModuleTelemetryDescriptor
+	Hooks        ModuleExtensionHooks
+}
+
+// ModuleExtensionHooks exposes module-specific callbacks that can be wired in by
+// plugins or alternate user interfaces. Hooks are optional; modules ignore
+// fields they do not recognize.
+type ModuleExtensionHooks struct {
+	// ClientChatDelivery delivers operator messages emitted by the
+	// client-chat module. Registering this hook allows plugins or UIs to
+	// surface incoming operator messages locally.
+	ClientChatDelivery clientchat.OperatorMessageConsumer
 }
 
 type PluginActivationHandle interface {
@@ -708,6 +719,7 @@ func copyModuleExtension(extension ModuleExtension) ModuleExtension {
 		Version:      extension.Version,
 		Capabilities: append([]ModuleCapability(nil), extension.Capabilities...),
 		Telemetry:    copyModuleTelemetry(extension.Telemetry),
+		Hooks:        extension.Hooks,
 	}
 }
 
@@ -2849,6 +2861,9 @@ type clientChatModule struct {
 	supervisor *clientchat.Supervisor
 	extensions *moduleExtensionState
 	extOnce    sync.Once
+	hooksMu    sync.Mutex
+	hooks      map[string]func()
+	pending    map[string]clientchat.OperatorMessageConsumer
 }
 
 func (m *clientChatModule) Metadata() ModuleMetadata {
@@ -2892,11 +2907,124 @@ func (m *clientChatModule) extensionState() *moduleExtensionState {
 }
 
 func (m *clientChatModule) RegisterExtension(extension ModuleExtension) error {
-	return m.extensionState().register(extension)
+	source := strings.TrimSpace(extension.Source)
+	extension.Source = source
+	if err := m.extensionState().register(extension); err != nil {
+		return err
+	}
+	if extension.Hooks.ClientChatDelivery != nil {
+		if err := m.installDeliveryHook(source, extension.Hooks.ClientChatDelivery); err != nil {
+			_ = m.extensionState().unregister(source)
+			return err
+		}
+	}
+	return nil
 }
 
 func (m *clientChatModule) UnregisterExtension(source string) error {
-	return m.extensionState().unregister(source)
+	if err := m.extensionState().unregister(source); err != nil {
+		return err
+	}
+	m.removeDeliveryHook(source)
+	return nil
+}
+
+func (m *clientChatModule) installDeliveryHook(source string, consumer clientchat.OperatorMessageConsumer) error {
+	trimmed := strings.TrimSpace(source)
+	if trimmed == "" {
+		return errors.New("extension source required")
+	}
+	if consumer == nil {
+		return nil
+	}
+
+	m.hooksMu.Lock()
+	if m.supervisor == nil {
+		if m.pending == nil {
+			m.pending = make(map[string]clientchat.OperatorMessageConsumer)
+		}
+		m.pending[trimmed] = consumer
+		m.hooksMu.Unlock()
+		return nil
+	}
+	existing := m.hooks[trimmed]
+	m.hooksMu.Unlock()
+
+	if existing != nil {
+		existing()
+	}
+
+	cancel, err := m.supervisor.RegisterDeliveryConsumer(trimmed, consumer)
+	if err != nil {
+		return err
+	}
+
+	m.hooksMu.Lock()
+	if m.hooks == nil {
+		m.hooks = make(map[string]func())
+	}
+	m.hooks[trimmed] = cancel
+	if m.pending != nil {
+		delete(m.pending, trimmed)
+	}
+	m.hooksMu.Unlock()
+	return nil
+}
+
+func (m *clientChatModule) applyPendingHooks() error {
+	m.hooksMu.Lock()
+	if len(m.pending) == 0 {
+		m.hooksMu.Unlock()
+		return nil
+	}
+	pending := make(map[string]clientchat.OperatorMessageConsumer, len(m.pending))
+	for source, consumer := range m.pending {
+		pending[source] = consumer
+	}
+	m.pending = nil
+	m.hooksMu.Unlock()
+
+	for source, consumer := range pending {
+		if err := m.installDeliveryHook(source, consumer); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (m *clientChatModule) removeDeliveryHook(source string) {
+	trimmed := strings.TrimSpace(source)
+
+	m.hooksMu.Lock()
+	var cancels []func()
+	if trimmed == "" {
+		if len(m.hooks) > 0 {
+			cancels = make([]func(), 0, len(m.hooks))
+			for _, cancel := range m.hooks {
+				if cancel != nil {
+					cancels = append(cancels, cancel)
+				}
+			}
+			m.hooks = nil
+		}
+		m.pending = nil
+		m.hooksMu.Unlock()
+		for _, cancel := range cancels {
+			cancel()
+		}
+		return
+	}
+
+	delete(m.pending, trimmed)
+	if cancel := m.hooks[trimmed]; cancel != nil {
+		cancels = append(cancels, cancel)
+	}
+	delete(m.hooks, trimmed)
+	m.hooksMu.Unlock()
+
+	for _, cancel := range cancels {
+		cancel()
+	}
 }
 
 func (m *clientChatModule) configure(runtime Config) error {
@@ -2910,9 +3038,12 @@ func (m *clientChatModule) configure(runtime Config) error {
 	}
 	if m.supervisor == nil {
 		m.supervisor = clientchat.NewSupervisor(cfg)
-		return nil
+	} else {
+		m.supervisor.UpdateConfig(cfg)
 	}
-	m.supervisor.UpdateConfig(cfg)
+	if err := m.applyPendingHooks(); err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -2979,6 +3110,7 @@ func (m *clientChatModule) Shutdown(ctx context.Context) error {
 	if m.supervisor != nil {
 		m.supervisor.Shutdown(ctx)
 	}
+	m.removeDeliveryHook("")
 	return nil
 }
 
