@@ -1,60 +1,47 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
-	import { Button } from '$lib/components/ui/button/index.js';
-	import { Input } from '$lib/components/ui/input/index.js';
-	import { Label } from '$lib/components/ui/label/index.js';
-	import { Switch } from '$lib/components/ui/switch/index.js';
-	import {
-		Select,
-		SelectContent,
-		SelectItem,
-		SelectTrigger
-	} from '$lib/components/ui/select/index.js';
-	import { Textarea } from '$lib/components/ui/textarea/index.js';
-	import { Badge } from '$lib/components/ui/badge/index.js';
-	import {
-		Card,
-		CardContent,
-		CardDescription,
-		CardFooter,
-		CardHeader,
-		CardTitle
-	} from '$lib/components/ui/card/index.js';
-	import {
-		Table,
-		TableBody,
-		TableCell,
-		TableHead,
-		TableHeader,
-		TableRow
-	} from '$lib/components/ui/table/index.js';
-	import { getClientTool, type DialogToolId } from '$lib/data/client-tools';
-	import type { Client } from '$lib/data/clients';
-	import { appendWorkspaceLog, createWorkspaceLogEntry } from '$lib/workspace/utils';
-	import { notifyToolActivationCommand } from '$lib/utils/agent-commands.js';
-	import type { WorkspaceLogEntry } from '$lib/workspace/types';
-	import WorkspaceHeroHeader from '$lib/components/workspace/WorkspaceHeroHeader.svelte';
+        import { onMount } from 'svelte';
+        import { Button } from '$lib/components/ui/button/index.js';
+        import { Input } from '$lib/components/ui/input/index.js';
+        import { Label } from '$lib/components/ui/label/index.js';
+        import { Switch } from '$lib/components/ui/switch/index.js';
+        import {
+                Select,
+                SelectContent,
+                SelectItem,
+                SelectTrigger
+        } from '$lib/components/ui/select/index.js';
+        import { Textarea } from '$lib/components/ui/textarea/index.js';
+        import { Badge } from '$lib/components/ui/badge/index.js';
+        import {
+                Card,
+                CardContent,
+                CardDescription,
+                CardFooter,
+                CardHeader,
+                CardTitle
+        } from '$lib/components/ui/card/index.js';
+        import {
+                Table,
+                TableBody,
+                TableCell,
+                TableHead,
+                TableHeader,
+                TableRow
+        } from '$lib/components/ui/table/index.js';
+        import { getClientTool, type DialogToolId } from '$lib/data/client-tools';
+        import type { Client } from '$lib/data/clients';
+        import { appendWorkspaceLog, createWorkspaceLogEntry } from '$lib/workspace/utils';
+        import { notifyToolActivationCommand } from '$lib/utils/agent-commands.js';
+        import type { WorkspaceLogEntry } from '$lib/workspace/types';
+        import WorkspaceHeroHeader from '$lib/components/workspace/WorkspaceHeroHeader.svelte';
+        import type {
+                StartupEntry,
+                StartupImpact,
+                StartupInventoryResponse
+        } from '$lib/types/startup-manager';
 
-	type StartupImpact = 'low' | 'medium' | 'high' | 'not-measured';
-
-	type StartupEntry = {
-		id: string;
-		name: string;
-		path: string;
-		enabled: boolean;
-		scope: 'machine' | 'user';
-		impact: StartupImpact;
-		publisher: string;
-		description: string;
-		location: string;
-		arguments?: string;
-		startupTime: number;
-		lastEvaluatedAt: string;
-		lastRunAt?: string | null;
-	};
-
-	type SortKey = 'name' | 'impact' | 'status' | 'publisher' | 'startupTime';
-	type SortDirection = 'asc' | 'desc';
+        type SortKey = 'name' | 'impact' | 'status' | 'publisher' | 'startupTime';
+        type SortDirection = 'asc' | 'desc';
 
 	const {
 		client,
@@ -75,77 +62,24 @@
 		maximumFractionDigits: 1
 	});
 
-	let entries = $state<StartupEntry[]>([
-		{
-			id: 'svc-1',
-			name: 'TelemetryBridge',
-			path: 'C:/ProgramData/telemetry/bridge.exe',
-			enabled: true,
-			scope: 'machine',
-			impact: 'medium',
-			publisher: 'Apex Industrial Monitoring',
-			description: 'Collects power plant telemetry and relays payloads to the command fabric.',
-			location: 'HKLM:Software\\Microsoft\\Windows\\CurrentVersion\\Run',
-			arguments: '--mode=relay --qos=balanced',
-			startupTime: 2380,
-			lastEvaluatedAt: new Date().toISOString(),
-			lastRunAt: new Date(Date.now() - 1000 * 60 * 45).toISOString()
-		},
-		{
-			id: 'svc-2',
-			name: 'UpdateMonitor',
-			path: 'C:/Users/operator/AppData/Roaming/updatemonitor.exe',
-			enabled: false,
-			scope: 'user',
-			impact: 'low',
-			publisher: 'Red Sand Maintenance',
-			description: 'Checks for patched runtime modules and reports anomalies.',
-			location: '%APPDATA%\\Microsoft\\Windows\\Start Menu\\Programs\\Startup',
-			startupTime: 850,
-			lastEvaluatedAt: new Date().toISOString(),
-			lastRunAt: null
-		},
-		{
-			id: 'svc-3',
-			name: 'CredentialVault Sync',
-			path: 'C:/Program Files/CredentialVault/cv-sync.exe',
-			enabled: true,
-			scope: 'machine',
-			impact: 'high',
-			publisher: 'CredentialVault Systems',
-			description: 'Synchronises secure credential material with hardened key lockers.',
-			location: 'Scheduled Task: CredentialVaultSync',
-			arguments: '--schedule=boot --throttle=low',
-			startupTime: 4650,
-			lastEvaluatedAt: new Date(Date.now() - 1000 * 60 * 3).toISOString(),
-			lastRunAt: new Date(Date.now() - 1000 * 60 * 12).toISOString()
-		},
-		{
-			id: 'svc-4',
-			name: 'System Event Relay',
-			path: 'C:/Ops/event-relay.exe',
-			enabled: true,
-			scope: 'user',
-			impact: 'medium',
-			publisher: 'Internal Operations',
-			description: 'Captures and forwards operator session telemetry and audit logs.',
-			location: 'HKCU:Software\\Microsoft\\Windows\\CurrentVersion\\Run',
-			startupTime: 1820,
-			lastEvaluatedAt: new Date(Date.now() - 1000 * 60 * 20).toISOString(),
-			lastRunAt: new Date(Date.now() - 1000 * 60 * 20).toISOString()
-		}
-	]);
-	let newName = $state('');
-	let newPath = $state('');
-	let newPublisher = $state('');
-	let newDescription = $state('');
-	let newArguments = $state('');
+        let entries = $state<StartupEntry[]>([]);
+        let loading = $state(false);
+        let loadError = $state<string | null>(null);
+        let creating = $state(false);
+        let createError = $state<string | null>(null);
+        let toggling = $state(new Set<string>());
+        let removing = $state(new Set<string>());
+        let newName = $state('');
+        let newPath = $state('');
+        let newPublisher = $state('');
+        let newDescription = $state('');
+        let newArguments = $state('');
 	let newScope = $state<'machine' | 'user'>('machine');
 	let newImpact = $state<StartupImpact>('medium');
 	let newLocation = $state('HKLM:Software\\Microsoft\\Windows\\CurrentVersion\\Run');
 	let log = $state<WorkspaceLogEntry[]>([]);
 	let searchQuery = $state('');
-	let scopeFilter = $state<'all' | 'machine' | 'user'>('all');
+        let scopeFilter = $state<'all' | StartupEntry['scope']>('all');
 	let impactFilter = $state<'all' | StartupImpact>('all');
 	let statusFilter = $state<'all' | 'enabled' | 'disabled'>('all');
 	let sortKey = $state<SortKey>('impact');
@@ -168,29 +102,36 @@
 		}
 	}
 
-	function formatStartupDuration(ms: number): string {
-		if (!Number.isFinite(ms) || ms <= 0) {
-			return 'Not measured';
-		}
-		return `${durationFormatter.format(ms / 1000)} s`;
-	}
+        function formatStartupDuration(ms: number): string {
+                if (!Number.isFinite(ms) || ms <= 0) {
+                        return 'Not measured';
+                }
+                return `${durationFormatter.format(ms / 1000)} s`;
+        }
 
-	function determineImpact(duration: number): StartupImpact {
-		if (!Number.isFinite(duration) || duration <= 0) {
-			return 'not-measured';
-		}
-		if (duration >= 4000) {
-			return 'high';
-		}
-		if (duration >= 2000) {
-			return 'medium';
-		}
-		return 'low';
-	}
+        function formatScope(scope: StartupEntry['scope']): string {
+                switch (scope) {
+                        case 'machine':
+                                return 'Machine';
+                        case 'user':
+                                return 'User';
+                        case 'scheduled-task':
+                                return 'Scheduled task';
+                        default:
+                                return scope;
+                }
+        }
 
-	function impactBadgeVariant(
-		impact: StartupImpact
-	): 'default' | 'secondary' | 'destructive' | 'outline' {
+        function formatScopeFilter(scope: StartupEntry['scope'] | 'all'): string {
+                if (scope === 'all') {
+                        return 'All';
+                }
+                return formatScope(scope);
+        }
+
+        function impactBadgeVariant(
+                impact: StartupImpact
+        ): 'default' | 'secondary' | 'destructive' | 'outline' {
 		switch (impact) {
 			case 'high':
 				return 'destructive';
@@ -219,12 +160,12 @@
 		}
 	}
 
-	function recordLog(
-		action: string,
-		detail: string,
-		status: WorkspaceLogEntry['status'] = 'queued',
-		metadata?: Record<string, unknown>
-	) {
+        function recordLog(
+                action: string,
+                detail: string,
+                status: WorkspaceLogEntry['status'] = 'queued',
+                metadata?: Record<string, unknown>
+        ) {
 		log = appendWorkspaceLog(log, createWorkspaceLogEntry(action, detail, status));
 		notifyToolActivationCommand(client.id, toolId, {
 			action: `event:${action}`,
@@ -237,172 +178,329 @@
 		});
 	}
 
-	function syncSelectedEntry() {
-		if (!selectedEntry) {
-			return;
-		}
-		const updated = entries.find((entry) => entry.id === selectedEntry?.id) ?? null;
-		selectedEntry = updated;
-	}
+        function syncSelectedEntry() {
+                if (!selectedEntry) {
+                        return;
+                }
+                const updated = entries.find((entry) => entry.id === selectedEntry?.id) ?? null;
+                selectedEntry = updated;
+        }
 
-	function toggleEntry(entry: StartupEntry, enabled: boolean) {
-		entries = entries.map((item) =>
-			item.id === entry.id
-				? {
-						...item,
-						enabled,
-						lastEvaluatedAt: new Date().toISOString()
-					}
-				: item
-		);
-		syncSelectedEntry();
-		recordLog(
-			'Startup entry toggled',
-			`${entry.name} → ${enabled ? 'enabled' : 'disabled'}`,
-			'complete',
-			{
-				entryId: entry.id,
-				enabled,
-				name: entry.name,
-				scope: entry.scope
-			}
-		);
-	}
+        function requestSort(key: SortKey) {
+                if (sortKey === key) {
+                        sortDirection = sortDirection === 'asc' ? 'desc' : 'asc';
+                        return;
+                }
+                sortKey = key;
+                sortDirection = key === 'name' || key === 'publisher' ? 'asc' : 'desc';
+        }
 
-	function addEntry(status: WorkspaceLogEntry['status']) {
-		if (!newName.trim() || !newPath.trim()) {
-			return;
-		}
-		const now = new Date().toISOString();
-		const entry: StartupEntry = {
-			id: `${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-			name: newName.trim(),
-			path: newPath.trim(),
-			enabled: true,
-			scope: newScope,
-			impact: newImpact,
-			publisher: newPublisher.trim() || 'Unknown publisher',
-			description:
-				newDescription.trim() || 'Pending description – captured during next synchronisation.',
-			location: newLocation.trim() || 'Custom definition',
-			arguments: newArguments.trim() || undefined,
-			startupTime:
-				newImpact === 'not-measured'
-					? 0
-					: newImpact === 'high'
-						? 4200
-						: newImpact === 'medium'
-							? 2600
-							: 1200,
-			lastEvaluatedAt: now,
-			lastRunAt: now
-		};
-		entries = [entry, ...entries];
-		selectedEntry = entry;
-		newName = '';
-		newPath = '';
-		newPublisher = '';
-		newDescription = '';
-		newArguments = '';
-		newScope = 'machine';
-		newImpact = 'medium';
-		newLocation = 'HKLM:Software\\Microsoft\\Windows\\CurrentVersion\\Run';
-		recordLog('Startup entry drafted', `${entry.name} (${entry.scope})`, status, {
-			entryId: entry.id,
-			scope: entry.scope,
-			location: entry.location
-		});
-	}
+        function selectEntry(entry: StartupEntry) {
+                selectedEntry = entry;
+        }
 
-	function requestSort(key: SortKey) {
-		if (sortKey === key) {
-			sortDirection = sortDirection === 'asc' ? 'desc' : 'asc';
-			return;
-		}
-		sortKey = key;
-		sortDirection = key === 'name' || key === 'publisher' ? 'asc' : 'desc';
-	}
+        function updateTogglePending(entryId: string, pending: boolean) {
+                const next = new Set(toggling);
+                if (pending) {
+                        next.add(entryId);
+                } else {
+                        next.delete(entryId);
+                }
+                toggling = next;
+        }
 
-	function removeEntry(entry: StartupEntry) {
-		entries = entries.filter((item) => item.id !== entry.id);
-		if (selectedEntry?.id === entry.id) {
-			selectedEntry = null;
-		}
-		recordLog('Startup entry removed', `${entry.name} (${entry.scope})`, 'complete', {
-			entryId: entry.id,
-			scope: entry.scope
-		});
-	}
+        function updateRemoving(entryId: string, pending: boolean) {
+                const next = new Set(removing);
+                if (pending) {
+                        next.add(entryId);
+                } else {
+                        next.delete(entryId);
+                }
+                removing = next;
+        }
 
-	function selectEntry(entry: StartupEntry) {
-		selectedEntry = entry;
-	}
+        function resetForm() {
+                newName = '';
+                newPath = '';
+                newPublisher = '';
+                newDescription = '';
+                newArguments = '';
+                newScope = 'machine';
+                newImpact = 'medium';
+                newLocation = 'HKLM:Software\\Microsoft\\Windows\\CurrentVersion\\Run';
+        }
 
-	function refreshInventory(options: { silent?: boolean } = {}) {
-		const now = new Date();
-		entries = entries.map((entry) => {
-			const delta = Math.round((Math.random() - 0.5) * 400);
-			const updatedTime = Math.max(0, entry.startupTime + delta);
-			const impact = determineImpact(updatedTime);
-			return {
-				...entry,
-				startupTime: updatedTime,
-				impact,
-				lastEvaluatedAt: now.toISOString()
-			} satisfies StartupEntry;
-		});
-		lastRefreshed = now.toISOString();
-		syncSelectedEntry();
-		if (!options.silent) {
-			recordLog(
-				'Startup inventory synchronised',
-				`Evaluated ${entries.length} entries`,
-				'complete'
-			);
-		}
-	}
+        async function loadEntries(options: { silent?: boolean } = {}): Promise<boolean> {
+                if (!options.silent) {
+                        loading = true;
+                        loadError = null;
+                }
+                let success = false;
+                try {
+                        const response = await fetch(`/api/agents/${client.id}/startup`);
+                        if (!response.ok) {
+                                const detail = await response.text().catch(() => '');
+                                throw new Error(detail || `Request failed with status ${response.status}`);
+                        }
+                        const payload = (await response.json()) as StartupInventoryResponse;
+                        entries = payload.entries;
+                        lastRefreshed = payload.generatedAt;
+                        loadError = null;
+                        syncSelectedEntry();
+                        success = true;
+                } catch (err) {
+                        loadError = (err as Error).message || 'Failed to load startup inventory';
+                } finally {
+                        if (!options.silent) {
+                                loading = false;
+                        }
+                }
+                return success;
+        }
 
-	function ensureRefreshTimer(shouldRefresh: boolean, intervalSeconds: number) {
-		if (refreshTimer) {
-			clearInterval(refreshTimer);
-			refreshTimer = null;
-		}
-		if (!shouldRefresh) {
-			return;
-		}
-		const interval = Math.max(intervalSeconds, 5) * 1000;
-		refreshTimer = setInterval(() => {
-			refreshInventory({ silent: true });
-		}, interval);
-	}
+        async function refreshInventory(options: { silent?: boolean } = {}) {
+                const success = await loadEntries(options);
+                if (options.silent) {
+                        return;
+                }
+                if (success) {
+                        recordLog(
+                                'Startup inventory synchronised',
+                                `Evaluated ${entries.length} entries`,
+                                'complete',
+                                { total: entries.length }
+                        );
+                } else if (loadError) {
+                        recordLog('Startup inventory refresh failed', loadError, 'complete');
+                }
+        }
 
-	$effect(() => {
-		const shouldRefresh = autoRefresh;
-		const intervalSeconds = refreshInterval;
-		ensureRefreshTimer(shouldRefresh, intervalSeconds);
-		return () => {
-			if (refreshTimer) {
-				clearInterval(refreshTimer);
-				refreshTimer = null;
-			}
-		};
-	});
+        async function toggleEntry(entry: StartupEntry, enabled: boolean) {
+                if (toggling.has(entry.id)) {
+                        return;
+                }
+                const original = { ...entry };
+                updateTogglePending(entry.id, true);
+                entries = entries.map((item) =>
+                        item.id === entry.id
+                                ? { ...item, enabled, lastEvaluatedAt: new Date().toISOString() }
+                                : item
+                );
+                syncSelectedEntry();
+                recordLog(
+                        'Startup entry toggle requested',
+                        `${entry.name} → ${enabled ? 'enabled' : 'disabled'}`,
+                        'queued',
+                        {
+                                entryId: entry.id,
+                                enabled,
+                                name: entry.name,
+                                scope: entry.scope
+                        }
+                );
+                try {
+                        const response = await fetch(`/api/agents/${client.id}/startup/${encodeURIComponent(entry.id)}`, {
+                                method: 'PATCH',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ enabled })
+                        });
+                        if (!response.ok) {
+                                const detail = await response.text().catch(() => '');
+                                throw new Error(detail || `Request failed with status ${response.status}`);
+                        }
+                        const updated = (await response.json()) as StartupEntry;
+                        entries = entries.map((item) => (item.id === updated.id ? updated : item));
+                        syncSelectedEntry();
+                        recordLog(
+                                'Startup entry toggled',
+                                `${updated.name} → ${updated.enabled ? 'enabled' : 'disabled'}`,
+                                'complete',
+                                {
+                                        entryId: updated.id,
+                                        enabled: updated.enabled,
+                                        name: updated.name,
+                                        scope: updated.scope
+                                }
+                        );
+                } catch (err) {
+                        entries = entries.map((item) => (item.id === original.id ? original : item));
+                        syncSelectedEntry();
+                        recordLog(
+                                'Startup entry toggle failed',
+                                `${original.name}: ${(err as Error).message || 'unexpected error'}`,
+                                'complete',
+                                {
+                                        entryId: original.id,
+                                        enabled: original.enabled,
+                                        name: original.name,
+                                        scope: original.scope
+                                }
+                        );
+                } finally {
+                        updateTogglePending(entry.id, false);
+                }
+        }
 
-	onMount(() => {
-		refreshInventory({ silent: true });
-		return () => {
-			if (refreshTimer) {
-				clearInterval(refreshTimer);
-			}
-		};
-	});
+        async function addEntry(mode: 'draft' | 'queued') {
+                const trimmedName = newName.trim();
+                const trimmedPath = newPath.trim();
+                if (!trimmedName || !trimmedPath) {
+                        createError = 'Name and path are required';
+                        return;
+                }
+                createError = null;
+                creating = true;
+                const enabled = mode !== 'draft';
+                recordLog(
+                        'Startup entry creation requested',
+                        `${trimmedName} (${newScope})`,
+                        'queued',
+                        {
+                                name: trimmedName,
+                                path: trimmedPath,
+                                scope: newScope,
+                                location: newLocation,
+                                enabled
+                        }
+                );
+                try {
+                        const response = await fetch(`/api/agents/${client.id}/startup`, {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({
+                                        name: trimmedName,
+                                        path: trimmedPath,
+                                        scope: newScope,
+                                        source: 'registry',
+                                        location: newLocation.trim() || 'Custom definition',
+                                        publisher: newPublisher.trim() || undefined,
+                                        description: newDescription.trim() || undefined,
+                                        arguments: newArguments.trim() || undefined,
+                                        enabled,
+                                        impact: newImpact
+                                })
+                        });
+                        if (!response.ok) {
+                                const detail = await response.text().catch(() => '');
+                                throw new Error(detail || `Request failed with status ${response.status}`);
+                        }
+                        const created = (await response.json()) as StartupEntry;
+                        entries = [created, ...entries.filter((entry) => entry.id !== created.id)];
+                        selectedEntry = created;
+                        lastRefreshed = created.lastEvaluatedAt;
+                        recordLog(
+                                'Startup entry creation complete',
+                                `${created.name} (${created.scope})`,
+                                'complete',
+                                {
+                                        entryId: created.id,
+                                        scope: created.scope,
+                                        location: created.location
+                                }
+                        );
+                        resetForm();
+                } catch (err) {
+                        const message = (err as Error).message || 'Failed to create startup entry';
+                        createError = message;
+                        recordLog(
+                                'Startup entry creation failed',
+                                `${trimmedName}: ${message}`,
+                                'complete',
+                                {
+                                        name: trimmedName,
+                                        scope: newScope,
+                                        location: newLocation
+                                }
+                        );
+                } finally {
+                        creating = false;
+                }
+        }
 
-	function impactRank(value: StartupImpact): number {
-		switch (value) {
-			case 'high':
-				return 3;
-			case 'medium':
-				return 2;
+        async function removeEntry(entry: StartupEntry) {
+                if (removing.has(entry.id)) {
+                        return;
+                }
+                const previous = entries;
+                updateRemoving(entry.id, true);
+                entries = entries.filter((item) => item.id !== entry.id);
+                if (selectedEntry?.id === entry.id) {
+                        selectedEntry = null;
+                }
+                recordLog('Startup entry removal requested', `${entry.name} (${entry.scope})`, 'queued', {
+                        entryId: entry.id,
+                        scope: entry.scope
+                });
+                try {
+                        const response = await fetch(`/api/agents/${client.id}/startup/${encodeURIComponent(entry.id)}`, {
+                                method: 'DELETE'
+                        });
+                        if (!response.ok) {
+                                const detail = await response.text().catch(() => '');
+                                throw new Error(detail || `Request failed with status ${response.status}`);
+                        }
+                        recordLog('Startup entry removal complete', `${entry.name} (${entry.scope})`, 'complete', {
+                                entryId: entry.id,
+                                scope: entry.scope
+                        });
+                } catch (err) {
+                        entries = previous;
+                        syncSelectedEntry();
+                        recordLog(
+                                'Startup entry removal failed',
+                                `${entry.name}: ${(err as Error).message || 'unexpected error'}`,
+                                'complete',
+                                {
+                                        entryId: entry.id,
+                                        scope: entry.scope
+                                }
+                        );
+                } finally {
+                        updateRemoving(entry.id, false);
+                }
+        }
+
+        function ensureRefreshTimer(shouldRefresh: boolean, intervalSeconds: number) {
+                if (refreshTimer) {
+                        clearInterval(refreshTimer);
+                        refreshTimer = null;
+                }
+                if (!shouldRefresh) {
+                        return;
+                }
+                const interval = Math.max(intervalSeconds, 5) * 1000;
+                refreshTimer = setInterval(() => {
+                        void refreshInventory({ silent: true });
+                }, interval);
+        }
+
+        $effect(() => {
+                const shouldRefresh = autoRefresh;
+                const intervalSeconds = refreshInterval;
+                ensureRefreshTimer(shouldRefresh, intervalSeconds);
+                return () => {
+                        if (refreshTimer) {
+                                clearInterval(refreshTimer);
+                                refreshTimer = null;
+                        }
+                };
+        });
+
+        onMount(() => {
+                void refreshInventory();
+                return () => {
+                        if (refreshTimer) {
+                                clearInterval(refreshTimer);
+                        }
+                };
+        });
+
+        function impactRank(value: StartupImpact): number {
+                switch (value) {
+                        case 'high':
+                                return 3;
+                        case 'medium':
+                                return 2;
 			case 'low':
 				return 1;
 			default:
@@ -444,13 +542,13 @@
 					.toLowerCase();
 				return haystack.includes(term);
 			});
-			const direction = sortDirection === 'asc' ? 1 : -1;
-			return list.sort((a, b) => {
-				switch (sortKey) {
-					case 'name':
-						return a.name.localeCompare(b.name) * direction;
-					case 'publisher':
-						return a.publisher.localeCompare(b.publisher) * direction;
+                        const direction = sortDirection === 'asc' ? 1 : -1;
+                        return list.sort((a, b) => {
+                                switch (sortKey) {
+                                        case 'name':
+                                                return a.name.localeCompare(b.name) * direction;
+                                        case 'publisher':
+                                                return (a.publisher ?? '').localeCompare(b.publisher ?? '') * direction;
 					case 'impact':
 						return (impactRank(b.impact) - impactRank(a.impact)) * direction;
 					case 'status':
@@ -588,21 +686,33 @@
 					/>
 				</div>
 			</div>
-			<div class="grid gap-2">
-				<Label for="startup-description">Description</Label>
-				<Textarea
-					id="startup-description"
-					rows={3}
-					bind:value={newDescription}
-					placeholder="Describe the purpose of this persistence mechanism."
-				/>
-			</div>
-		</CardContent>
-		<CardFooter class="flex flex-wrap gap-3">
-			<Button type="button" variant="outline" onclick={() => addEntry('draft')}>Save draft</Button>
-			<Button type="button" onclick={() => addEntry('queued')}>Queue addition</Button>
-		</CardFooter>
-	</Card>
+                        <div class="grid gap-2">
+                                <Label for="startup-description">Description</Label>
+                                <Textarea
+                                        id="startup-description"
+                                        rows={3}
+                                        bind:value={newDescription}
+                                        placeholder="Describe the purpose of this persistence mechanism."
+                                />
+                        </div>
+                        {#if createError}
+                                <p class="text-sm text-destructive">{createError}</p>
+                        {/if}
+                </CardContent>
+                <CardFooter class="flex flex-wrap gap-3">
+                        <Button
+                                type="button"
+                                variant="outline"
+                                disabled={creating}
+                                onclick={() => addEntry('draft')}
+                        >
+                                Save draft
+                        </Button>
+                        <Button type="button" disabled={creating} onclick={() => addEntry('queued')}>
+                                {creating ? 'Submitting…' : 'Queue addition'}
+                        </Button>
+                </CardFooter>
+        </Card>
 
 	<Card class="border-dashed">
 		<CardHeader>
@@ -624,20 +734,21 @@
 				</div>
 				<div class="grid gap-2">
 					<Label for="startup-scope-filter">Scope</Label>
-					<Select
-						type="single"
-						value={scopeFilter}
-						onValueChange={(value) => (scopeFilter = value as typeof scopeFilter)}
-					>
-						<SelectTrigger id="startup-scope-filter" class="w-full">
-							<span class="truncate capitalize">{scopeFilter}</span>
-						</SelectTrigger>
-						<SelectContent>
-							<SelectItem value="all">All scopes</SelectItem>
-							<SelectItem value="machine">Machine</SelectItem>
-							<SelectItem value="user">User</SelectItem>
-						</SelectContent>
-					</Select>
+                                        <Select
+                                                type="single"
+                                                value={scopeFilter}
+                                                onValueChange={(value) => (scopeFilter = value as typeof scopeFilter)}
+                                        >
+                                                <SelectTrigger id="startup-scope-filter" class="w-full">
+                                                        <span class="truncate">{formatScopeFilter(scopeFilter)}</span>
+                                                </SelectTrigger>
+                                                <SelectContent>
+                                                        <SelectItem value="all">All scopes</SelectItem>
+                                                        <SelectItem value="machine">Machine</SelectItem>
+                                                        <SelectItem value="user">User</SelectItem>
+                                                        <SelectItem value="scheduled-task">Scheduled tasks</SelectItem>
+                                                </SelectContent>
+                                        </Select>
 				</div>
 				<div class="grid gap-2">
 					<Label for="startup-impact-filter">Impact</Label>
@@ -658,35 +769,43 @@
 						</SelectContent>
 					</Select>
 				</div>
-				<div class="grid gap-2">
-					<Label for="startup-status-filter">Status</Label>
-					<Select
-						type="single"
-						value={statusFilter}
-						onValueChange={(value) => (statusFilter = value as typeof statusFilter)}
-					>
-						<SelectTrigger id="startup-status-filter" class="w-full">
-							<span class="truncate capitalize">{statusFilter}</span>
-						</SelectTrigger>
-						<SelectContent>
-							<SelectItem value="all">All items</SelectItem>
-							<SelectItem value="enabled">Enabled</SelectItem>
-							<SelectItem value="disabled">Disabled</SelectItem>
-						</SelectContent>
-					</Select>
-				</div>
-			</div>
+                                <div class="grid gap-2">
+                                        <Label for="startup-status-filter">Status</Label>
+                                        <Select
+                                                type="single"
+                                                value={statusFilter}
+                                                onValueChange={(value) => (statusFilter = value as typeof statusFilter)}
+                                        >
+                                                <SelectTrigger id="startup-status-filter" class="w-full">
+                                                        <span class="truncate capitalize">{statusFilter}</span>
+                                                </SelectTrigger>
+                                                <SelectContent>
+                                                        <SelectItem value="all">All items</SelectItem>
+                                                        <SelectItem value="enabled">Enabled</SelectItem>
+                                                        <SelectItem value="disabled">Disabled</SelectItem>
+                                                </SelectContent>
+                                        </Select>
+                                </div>
+                        </div>
 
-			<div class="flex flex-wrap items-center gap-3">
-				<div
-					class="flex items-center gap-3 rounded-lg border border-border/60 bg-muted/30 px-4 py-2 text-sm"
-				>
-					<div class="flex items-center gap-2">
-						<Switch bind:checked={autoRefresh} id="startup-auto-refresh" />
-						<Label class="m-0 cursor-pointer text-sm" for="startup-auto-refresh">
-							Auto-refresh
-						</Label>
-					</div>
+                        {#if loadError}
+                                <p class="text-sm text-destructive">{loadError}</p>
+                        {/if}
+
+                        <div class="flex flex-wrap items-center gap-3">
+                                <div
+                                        class="flex items-center gap-3 rounded-lg border border-border/60 bg-muted/30 px-4 py-2 text-sm"
+                                >
+                                        <div class="flex items-center gap-2">
+                                                <Switch
+                                                        checked={autoRefresh}
+                                                        onCheckedChange={(value) => (autoRefresh = value)}
+                                                        id="startup-auto-refresh"
+                                                />
+                                                <Label class="m-0 cursor-pointer text-sm" for="startup-auto-refresh">
+                                                        Auto-refresh
+                                                </Label>
+                                        </div>
 					<div class="flex items-center gap-2">
 						<span class="text-xs text-muted-foreground">Interval</span>
 						<Select
@@ -724,11 +843,16 @@
 							{/each}
 						</SelectContent>
 					</Select>
-					<Button type="button" variant="outline" onclick={() => refreshInventory()}>
-						Refresh now
-					</Button>
-				</div>
-			</div>
+                                        <Button
+                                                type="button"
+                                                variant="outline"
+                                                disabled={loading}
+                                                onclick={() => refreshInventory()}
+                                        >
+                                                {loading ? 'Refreshing…' : 'Refresh now'}
+                                        </Button>
+                                </div>
+                        </div>
 
 			<div class="overflow-hidden rounded-lg border border-border/60 bg-muted/20">
 				<Table class="min-w-full">
@@ -756,7 +880,7 @@
 									<TableCell>
 										<div class="space-y-1">
 											<p class="font-medium text-foreground">{entry.name}</p>
-											<p class="text-xs text-muted-foreground capitalize">Scope · {entry.scope}</p>
+                                                                                        <p class="text-xs text-muted-foreground">Scope · {formatScope(entry.scope)}</p>
 										</div>
 									</TableCell>
 									<TableCell>
@@ -769,15 +893,16 @@
 									</TableCell>
 									<TableCell class="text-center">
 										<div class="flex items-center justify-center gap-2">
-											<Badge variant={entry.enabled ? 'secondary' : 'outline'}>
-												{entry.enabled ? 'Enabled' : 'Disabled'}
-											</Badge>
-											<Switch
-												checked={entry.enabled}
-												onCheckedChange={(value) => toggleEntry(entry, value)}
-												aria-label={`Toggle ${entry.name}`}
-											/>
-										</div>
+                                                                                        <Badge variant={entry.enabled ? 'secondary' : 'outline'}>
+                                                                                                {entry.enabled ? 'Enabled' : 'Disabled'}
+                                                                                        </Badge>
+                                                                                        <Switch
+                                                                                                checked={entry.enabled}
+                                                                                                disabled={toggling.has(entry.id)}
+                                                                                                onCheckedChange={(value) => toggleEntry(entry, value)}
+                                                                                                aria-label={`Toggle ${entry.name}`}
+                                                                                        />
+                                                                                </div>
 									</TableCell>
 									<TableCell class="text-center">
 										<Badge variant={impactBadgeVariant(entry.impact)}>
@@ -787,13 +912,15 @@
 									<TableCell class="text-center text-sm">
 										{formatStartupDuration(entry.startupTime)}
 									</TableCell>
-									<TableCell>
-										<p class="truncate text-sm" title={entry.publisher}>{entry.publisher}</p>
-										<p class="text-xs text-muted-foreground" title={entry.location}>
-											{entry.location}
-										</p>
-									</TableCell>
-									<TableCell>
+                                                                        <TableCell>
+                                                                                <p class="truncate text-sm" title={entry.publisher ?? 'Unknown publisher'}>
+                                                                                        {entry.publisher ?? 'Unknown publisher'}
+                                                                                </p>
+                                                                                <p class="text-xs text-muted-foreground" title={entry.location}>
+                                                                                        {entry.location}
+                                                                                </p>
+                                                                        </TableCell>
+                                                                        <TableCell>
 										<div class="flex items-center justify-center gap-2">
 											<Button
 												type="button"
@@ -803,15 +930,16 @@
 											>
 												Details
 											</Button>
-											<Button
-												type="button"
-												size="sm"
-												variant="ghost"
-												class="text-destructive hover:text-destructive"
-												onclick={() => removeEntry(entry)}
-											>
-												Remove
-											</Button>
+                                                                                        <Button
+                                                                                                type="button"
+                                                                                                size="sm"
+                                                                                                variant="ghost"
+                                                                                                class="text-destructive hover:text-destructive"
+                                                                                                disabled={removing.has(entry.id)}
+                                                                                                onclick={() => removeEntry(entry)}
+                                                                                        >
+                                                                                                {removing.has(entry.id) ? 'Removing…' : 'Remove'}
+                                                                                        </Button>
 										</div>
 									</TableCell>
 								</TableRow>
@@ -857,10 +985,10 @@
 							<dt class="text-xs text-muted-foreground uppercase">Executable</dt>
 							<dd class="font-medium wrap-break-word text-foreground">{selectedEntry.path}</dd>
 						</div>
-						<div class="space-y-1">
-							<dt class="text-xs text-muted-foreground uppercase">Publisher</dt>
-							<dd class="font-medium text-foreground">{selectedEntry.publisher}</dd>
-						</div>
+                                                <div class="space-y-1">
+                                                        <dt class="text-xs text-muted-foreground uppercase">Publisher</dt>
+                                                        <dd class="font-medium text-foreground">{selectedEntry.publisher ?? 'Unknown publisher'}</dd>
+                                                </div>
 						<div class="space-y-1">
 							<dt class="text-xs text-muted-foreground uppercase">Location</dt>
 							<dd class="font-medium wrap-break-word text-foreground">{selectedEntry.location}</dd>
