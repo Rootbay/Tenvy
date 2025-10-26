@@ -24,6 +24,7 @@ type fakeProvider struct {
 	deleteValueReq  *DeleteValueRequest
 	deleteValueResp RegistryMutationResult
 	err             error
+	caps            ProviderCapabilities
 }
 
 func (f *fakeProvider) List(ctx context.Context, req ListRequest) (RegistryListResult, error) {
@@ -59,6 +60,10 @@ func (f *fakeProvider) DeleteKey(ctx context.Context, req DeleteKeyRequest) (Reg
 func (f *fakeProvider) DeleteValue(ctx context.Context, req DeleteValueRequest) (RegistryMutationResult, error) {
 	f.deleteValueReq = &req
 	return f.deleteValueResp, f.err
+}
+
+func (f *fakeProvider) Capabilities() ProviderCapabilities {
+	return f.caps
 }
 
 func marshalPayload(t *testing.T, payload RegistryCommandPayload) []byte {

@@ -2270,23 +2270,32 @@ func newRegistryModule() Module {
 
 func (m *registryModule) Metadata() ModuleMetadata {
 	return ModuleMetadata{
-		ID:          "registry",
-		Title:       "Registry Manager",
-		Description: "Inspect and modify the Windows registry remotely.",
-		Commands:    []string{"registry"},
-		Capabilities: []ModuleCapability{
-			{
-				ID:          "registry.inspect",
-				Name:        "registry.inspect",
-				Description: "Enumerate registry hives, keys, and values.",
-			},
-			{
-				ID:          "registry.modify",
-				Name:        "registry.modify",
-				Description: "Create, edit, and delete registry keys and values.",
-			},
-		},
+		ID:           "registry",
+		Title:        "Registry Manager",
+		Description:  "Inspect and modify native configuration stores (registry, defaults, dconf).",
+		Commands:     []string{"registry"},
+		Capabilities: registryModuleCapabilities(),
 	}
+}
+
+func registryModuleCapabilities() []ModuleCapability {
+	profile := registrymgr.NativeCapabilities()
+	capabilities := make([]ModuleCapability, 0, 2)
+	if profile.Enumerate {
+		capabilities = append(capabilities, ModuleCapability{
+			ID:          "registry.inspect",
+			Name:        "registry.inspect",
+			Description: "Enumerate registry hives, keys, and values.",
+		})
+	}
+	if profile.Mutate {
+		capabilities = append(capabilities, ModuleCapability{
+			ID:          "registry.modify",
+			Name:        "registry.modify",
+			Description: "Create, edit, and delete registry keys and values.",
+		})
+	}
+	return capabilities
 }
 
 func (m *environmentModule) Metadata() ModuleMetadata {
@@ -2494,23 +2503,32 @@ func newStartupModule() Module {
 
 func (m *startupModule) Metadata() ModuleMetadata {
 	return ModuleMetadata{
-		ID:          "startup-manager",
-		Title:       "Startup Manager",
-		Description: "Enumerate and manage autorun persistence entries.",
-		Commands:    []string{"startup-manager"},
-		Capabilities: []ModuleCapability{
-			{
-				ID:          "startup.enumerate",
-				Name:        "startup.enumerate",
-				Description: "Enumerate autorun entries and associated telemetry.",
-			},
-			{
-				ID:          "startup.manage",
-				Name:        "startup.manage",
-				Description: "Create, toggle, and remove autorun entries across scopes.",
-			},
-		},
+		ID:           "startup-manager",
+		Title:        "Startup Manager",
+		Description:  "Enumerate and manage autorun persistence entries across supported schedulers.",
+		Commands:     []string{"startup-manager"},
+		Capabilities: startupModuleCapabilities(),
 	}
+}
+
+func startupModuleCapabilities() []ModuleCapability {
+	profile := startupmgr.NativeCapabilities()
+	capabilities := make([]ModuleCapability, 0, 2)
+	if profile.Enumerate {
+		capabilities = append(capabilities, ModuleCapability{
+			ID:          "startup.enumerate",
+			Name:        "startup.enumerate",
+			Description: "Enumerate autorun entries and associated telemetry.",
+		})
+	}
+	if profile.Manage {
+		capabilities = append(capabilities, ModuleCapability{
+			ID:          "startup.manage",
+			Name:        "startup.manage",
+			Description: "Create, toggle, and remove autorun entries across scopes.",
+		})
+	}
+	return capabilities
 }
 
 func (m *startupModule) ID() string {

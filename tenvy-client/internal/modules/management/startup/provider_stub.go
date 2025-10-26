@@ -1,4 +1,4 @@
-//go:build !windows
+//go:build !windows && !linux && !darwin
 
 package startup
 
@@ -24,4 +24,8 @@ func (p *nativeProvider) Create(ctx context.Context, req CreateRequest) (Entry, 
 
 func (p *nativeProvider) Remove(ctx context.Context, req RemoveRequest) (RemoveResult, error) {
 	return RemoveResult{}, ErrNotSupported
+}
+
+func (p *nativeProvider) Capabilities() ProviderCapabilities {
+	return ProviderCapabilities{}
 }
