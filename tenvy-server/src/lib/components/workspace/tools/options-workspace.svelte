@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { onDestroy } from 'svelte';
 	import { Tabs, TabsList, TabsTrigger, TabsContent } from '$lib/components/ui/tabs/index.js';
 	import { Switch } from '$lib/components/ui/switch/index.js';
 	import { Label } from '$lib/components/ui/label/index.js';
@@ -14,7 +15,11 @@
 	import { Info } from '@lucide/svelte';
 	import type { Client } from '$lib/data/clients';
 	import { queueToolActivationCommand } from '$lib/utils/agent-commands.js';
-	import type { CommandQueueResponse } from '../../../../../../shared/types/messages';
+	import type {
+		CommandQueueResponse,
+		CommandResult
+	} from '../../../../../../shared/types/messages';
+	import type { AgentDetailResponse } from '../../../../../../shared/types/agent';
 	import { toast } from 'svelte-sonner';
 
 	const { client } = $props<{ client: Client }>();
@@ -45,6 +50,11 @@
 	let lastCommittedSoundVolume = $state(60);
 	let lastCommittedScriptDelay = $state(0);
 
+	let activePollController: AbortController | null = null;
+
+	const resultPollIntervalMs = 750;
+	const resultTimeoutMs = 20_000;
+
 	const toastPosition = 'bottom-right';
 
 	function describeDelivery(response: CommandQueueResponse | null): string {
@@ -56,6 +66,62 @@
 			? `Action dispatched immediately to ${agentLabel}.`
 			: `Command queued for ${agentLabel}'s next check-in.`;
 	}
+
+	function cancelResultPoll() {
+		if (activePollController) {
+			activePollController.abort();
+			activePollController = null;
+		}
+	}
+
+	async function fetchAgentSnapshot(
+		signal?: AbortSignal
+	): Promise<AgentDetailResponse['agent'] | null> {
+		try {
+			const response = await fetch(`/api/agents/${client.id}`, { signal });
+			if (!response.ok) {
+				console.error(`Failed to refresh agent snapshot: ${response.status}`);
+				return null;
+			}
+			const payload = (await response.json()) as AgentDetailResponse;
+			return payload.agent;
+		} catch (error) {
+			if (error instanceof DOMException && error.name === 'AbortError') {
+				throw error;
+			}
+			console.error('Failed to refresh agent snapshot', error);
+			return null;
+		}
+	}
+
+	async function waitForCommandResult(commandId: string): Promise<CommandResult> {
+		cancelResultPoll();
+		const controller = new AbortController();
+		activePollController = controller;
+
+		const startedAt = Date.now();
+		try {
+			while (!controller.signal.aborted) {
+				const snapshot = await fetchAgentSnapshot(controller.signal);
+				const match = snapshot?.recentResults?.find((result) => result.commandId === commandId);
+				if (match) {
+					return match;
+				}
+
+				if (Date.now() - startedAt > resultTimeoutMs) {
+					throw new Error('Timed out waiting for agent response.');
+				}
+
+				await new Promise((resolve) => setTimeout(resolve, resultPollIntervalMs));
+			}
+		} finally {
+			cancelResultPoll();
+		}
+
+		throw new Error('Command result polling cancelled.');
+	}
+
+	onDestroy(cancelResultPoll);
 
 	interface OptionDispatchConfig {
 		action: string;
@@ -73,20 +139,35 @@
 				metadata: config.metadata
 			});
 
+			if (!response) {
+				throw new Error('Agent command queue unavailable.');
+			}
+
+			const commandId = response.command?.id?.trim();
+			if (!commandId) {
+				throw new Error('Command identifier missing from agent response.');
+			}
+
+			const result = await waitForCommandResult(commandId);
+			if (!result.success) {
+				const message = result.error?.trim() || 'Agent reported failure.';
+				throw new Error(message);
+			}
+
+			const successTitle = result.output?.trim() || config.successTitle;
 			const description = config.successDescription ?? describeDelivery(response);
 
-			toast.success(config.successTitle, {
+			toast.success(successTitle, {
 				description,
 				position: toastPosition
 			});
 
 			return true;
 		} catch (error) {
+			const fallback =
+				config.failureDescription ?? 'Unexpected error while communicating with the agent.';
 			const detail =
-				config.failureDescription ??
-				(error instanceof Error
-					? error.message
-					: 'Unexpected error while communicating with the agent.');
+				error instanceof Error && error.message.trim() !== '' ? error.message : fallback;
 
 			toast.error(config.failureTitle, {
 				description: detail,
