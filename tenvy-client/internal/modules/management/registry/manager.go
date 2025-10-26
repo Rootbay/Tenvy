@@ -23,12 +23,15 @@ type Logger interface {
 type Manager struct {
 	provider Provider
 	logger   Logger
+	caps     ProviderCapabilities
 }
 
 func NewManager(logger Logger) *Manager {
+	provider := newNativeProvider()
 	return &Manager{
-		provider: newNativeProvider(),
+		provider: provider,
 		logger:   logger,
+		caps:     provider.Capabilities(),
 	}
 }
 
@@ -39,9 +42,11 @@ func (m *Manager) UpdateLogger(logger Logger) {
 func (m *Manager) SetProvider(provider Provider) {
 	if provider == nil {
 		m.provider = newNativeProvider()
+		m.caps = m.provider.Capabilities()
 		return
 	}
 	m.provider = provider
+	m.caps = provider.Capabilities()
 }
 
 func (m *Manager) logf(format string, args ...interface{}) {
@@ -49,6 +54,21 @@ func (m *Manager) logf(format string, args ...interface{}) {
 		return
 	}
 	m.logger.Printf(format, args...)
+}
+
+func (m *Manager) Capabilities() ProviderCapabilities {
+	if m == nil {
+		return ProviderCapabilities{}
+	}
+	return m.caps
+}
+
+func NativeCapabilities() ProviderCapabilities {
+	provider := newNativeProvider()
+	if provider == nil {
+		return ProviderCapabilities{}
+	}
+	return provider.Capabilities()
 }
 
 func (m *Manager) HandleCommand(ctx context.Context, cmd Command) CommandResult {
@@ -290,9 +310,15 @@ type Provider interface {
 	UpdateValue(ctx context.Context, req UpdateValueRequest) (RegistryMutationResult, error)
 	DeleteKey(ctx context.Context, req DeleteKeyRequest) (RegistryMutationResult, error)
 	DeleteValue(ctx context.Context, req DeleteValueRequest) (RegistryMutationResult, error)
+	Capabilities() ProviderCapabilities
 }
 
 var ErrNotSupported = errors.New("registry operations not supported on this platform")
+
+type ProviderCapabilities struct {
+	Enumerate bool
+	Mutate    bool
+}
 
 // Request/response structures align with the shared contracts used by the server UI.
 type RegistryCommandPayload struct {

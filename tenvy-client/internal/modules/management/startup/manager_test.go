@@ -18,6 +18,7 @@ type fakeProvider struct {
 	removeReq  *RemoveRequest
 	removeResp RemoveResult
 	err        error
+	caps       ProviderCapabilities
 }
 
 const sampleLocation = "HKLM:Software\\Microsoft\\Windows\\CurrentVersion\\Run"
@@ -40,6 +41,10 @@ func (f *fakeProvider) Create(ctx context.Context, req CreateRequest) (Entry, er
 func (f *fakeProvider) Remove(ctx context.Context, req RemoveRequest) (RemoveResult, error) {
 	f.removeReq = &req
 	return f.removeResp, f.err
+}
+
+func (f *fakeProvider) Capabilities() ProviderCapabilities {
+	return f.caps
 }
 
 func marshalPayload(t *testing.T, payload CommandPayload) []byte {
@@ -65,11 +70,11 @@ func decodeResponse(t *testing.T, result CommandResult) CommandResponse {
 
 func TestManagerDispatchesList(t *testing.T) {
 	provider := &fakeProvider{
-                listResp: Inventory{
-                        Entries:     []Entry{{ID: "registry:machine:ZW50cnk=", Name: "Test", Path: "C:/app.exe", Enabled: true, Scope: ScopeMachine, Source: SourceRegistry, Impact: ImpactLow, Location: sampleLocation, LastEvaluatedAt: time.Now().UTC().Format(time.RFC3339Nano)}},
-                        GeneratedAt: time.Now().UTC().Format(time.RFC3339Nano),
-                },
-        }
+		listResp: Inventory{
+			Entries:     []Entry{{ID: "registry:machine:ZW50cnk=", Name: "Test", Path: "C:/app.exe", Enabled: true, Scope: ScopeMachine, Source: SourceRegistry, Impact: ImpactLow, Location: sampleLocation, LastEvaluatedAt: time.Now().UTC().Format(time.RFC3339Nano)}},
+			GeneratedAt: time.Now().UTC().Format(time.RFC3339Nano),
+		},
+	}
 	manager := NewManager(nil)
 	manager.SetProvider(provider)
 
@@ -86,8 +91,8 @@ func TestManagerDispatchesList(t *testing.T) {
 
 func TestManagerCreatesEntries(t *testing.T) {
 	provider := &fakeProvider{
-                createResp: Entry{ID: "registry:machine:dGVzdA==", Name: "test", Path: "C:/tool.exe", Enabled: true, Scope: ScopeMachine, Source: SourceRegistry, Impact: ImpactNotMeasured, Location: sampleLocation, LastEvaluatedAt: time.Now().UTC().Format(time.RFC3339Nano)},
-        }
+		createResp: Entry{ID: "registry:machine:dGVzdA==", Name: "test", Path: "C:/tool.exe", Enabled: true, Scope: ScopeMachine, Source: SourceRegistry, Impact: ImpactNotMeasured, Location: sampleLocation, LastEvaluatedAt: time.Now().UTC().Format(time.RFC3339Nano)},
+	}
 	manager := NewManager(nil)
 	manager.SetProvider(provider)
 
@@ -98,7 +103,7 @@ func TestManagerCreatesEntries(t *testing.T) {
 			Path:     "C:/tool.exe",
 			Scope:    ScopeMachine,
 			Source:   SourceRegistry,
-                        Location: sampleLocation,
+			Location: sampleLocation,
 			Enabled:  true,
 		},
 	}}

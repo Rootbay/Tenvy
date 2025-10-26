@@ -27,6 +27,10 @@ func newNativeProvider() Provider {
 	return &nativeProvider{}
 }
 
+func (p *nativeProvider) Capabilities() ProviderCapabilities {
+	return ProviderCapabilities{Enumerate: true, Manage: true}
+}
+
 func (p *nativeProvider) List(ctx context.Context, req ListRequest) (Inventory, error) {
 	entries := make([]Entry, 0, 32)
 

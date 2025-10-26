@@ -16,6 +16,7 @@ require (
 	github.com/tetratelabs/wazero v1.7.1
 	golang.org/x/image v0.18.0
 	golang.org/x/sys v0.26.0
+	howett.net/plist v1.0.0
 	nhooyr.io/websocket v1.8.10
 )
 

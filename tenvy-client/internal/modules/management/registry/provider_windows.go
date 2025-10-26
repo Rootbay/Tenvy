@@ -25,6 +25,10 @@ func newNativeProvider() Provider {
 	return &nativeProvider{}
 }
 
+func (p *nativeProvider) Capabilities() ProviderCapabilities {
+	return ProviderCapabilities{Enumerate: true, Mutate: true}
+}
+
 func (p *nativeProvider) List(ctx context.Context, req ListRequest) (RegistryListResult, error) {
 	hiveNames := []string{"HKEY_LOCAL_MACHINE", "HKEY_CURRENT_USER", "HKEY_USERS"}
 	if strings.TrimSpace(req.Hive) != "" {

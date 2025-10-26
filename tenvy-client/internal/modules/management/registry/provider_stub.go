@@ -1,4 +1,4 @@
-//go:build !windows
+//go:build !windows && !linux && !darwin
 
 package registry
 
@@ -36,4 +36,8 @@ func (p *nativeProvider) DeleteKey(ctx context.Context, req DeleteKeyRequest) (R
 
 func (p *nativeProvider) DeleteValue(ctx context.Context, req DeleteValueRequest) (RegistryMutationResult, error) {
 	return RegistryMutationResult{}, ErrNotSupported
+}
+
+func (p *nativeProvider) Capabilities() ProviderCapabilities {
+	return ProviderCapabilities{}
 }

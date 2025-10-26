@@ -23,6 +23,7 @@ type Logger interface {
 type Manager struct {
 	provider Provider
 	logger   Logger
+	caps     ProviderCapabilities
 }
 
 type StartupScope string
@@ -139,14 +140,30 @@ type Provider interface {
 	Toggle(ctx context.Context, req ToggleRequest) (Entry, error)
 	Create(ctx context.Context, req CreateRequest) (Entry, error)
 	Remove(ctx context.Context, req RemoveRequest) (RemoveResult, error)
+	Capabilities() ProviderCapabilities
 }
 
 var ErrNotSupported = errors.New("startup operations not supported on this platform")
 
+type ProviderCapabilities struct {
+	Enumerate bool
+	Manage    bool
+}
+
+func NativeCapabilities() ProviderCapabilities {
+	provider := newNativeProvider()
+	if provider == nil {
+		return ProviderCapabilities{}
+	}
+	return provider.Capabilities()
+}
+
 func NewManager(logger Logger) *Manager {
+	provider := newNativeProvider()
 	return &Manager{
-		provider: newNativeProvider(),
+		provider: provider,
 		logger:   logger,
+		caps:     provider.Capabilities(),
 	}
 }
 
@@ -157,9 +174,11 @@ func (m *Manager) UpdateLogger(logger Logger) {
 func (m *Manager) SetProvider(provider Provider) {
 	if provider == nil {
 		m.provider = newNativeProvider()
+		m.caps = m.provider.Capabilities()
 		return
 	}
 	m.provider = provider
+	m.caps = provider.Capabilities()
 }
 
 func (m *Manager) logf(format string, args ...interface{}) {
@@ -167,6 +186,13 @@ func (m *Manager) logf(format string, args ...interface{}) {
 		return
 	}
 	m.logger.Printf(format, args...)
+}
+
+func (m *Manager) Capabilities() ProviderCapabilities {
+	if m == nil {
+		return ProviderCapabilities{}
+	}
+	return m.caps
 }
 
 func (m *Manager) HandleCommand(ctx context.Context, cmd Command) CommandResult {
