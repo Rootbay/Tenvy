@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/rootbay/tenvy-client/internal/modules/misc/geolocation/providers"
 	"github.com/rootbay/tenvy-client/internal/protocol"
 )
 
@@ -32,6 +33,8 @@ type Manager struct {
 	providers       []string
 	defaultProvider string
 	last            *lookupResult
+	resolvers       map[string]providers.Resolver
+	providerConfig  map[string]providers.Config
 }
 
 type commandPayload struct {
@@ -72,12 +75,72 @@ type statusResult struct {
 	GeneratedAt     string        `json:"generatedAt"`
 }
 
-func NewManager() *Manager {
+func NewManager(cfg Config) *Manager {
+	providerList, defaultProvider, resolvers, providerConfigs := buildProviderState(cfg)
 	return &Manager{
 		clock:           systemClock{},
-		providers:       []string{"ipinfo", "maxmind", "db-ip"},
-		defaultProvider: "ipinfo",
+		providers:       providerList,
+		defaultProvider: defaultProvider,
+		resolvers:       resolvers,
+		providerConfig:  providerConfigs,
 	}
+}
+
+func (m *Manager) ApplyConfig(cfg Config) {
+	if m == nil {
+		return
+	}
+	providerList, defaultProvider, resolvers, providerConfigs := buildProviderState(cfg)
+	m.providers = providerList
+	m.defaultProvider = defaultProvider
+	m.resolvers = resolvers
+	m.providerConfig = providerConfigs
+}
+
+func buildProviderState(cfg Config) ([]string, string, map[string]providers.Resolver, map[string]providers.Config) {
+	normalized := cfg.withDefaults()
+
+	knownResolvers := map[string]providers.Resolver{
+		"ipinfo":  providers.IPInfo(),
+		"maxmind": providers.MaxMind(),
+		"db-ip":   providers.DBIP(),
+	}
+
+	activeResolvers := make(map[string]providers.Resolver)
+	providerConfigs := make(map[string]providers.Config)
+	providerList := make([]string, 0, len(normalized.Providers))
+
+	for _, name := range defaultProviderOrder {
+		if cfg, ok := normalized.Providers[name]; ok {
+			if resolver, ok := knownResolvers[name]; ok {
+				providerList = append(providerList, name)
+				providerConfigs[name] = cfg
+				activeResolvers[name] = resolver
+			}
+		}
+	}
+
+	for name, cfg := range normalized.Providers {
+		if _, seen := providerConfigs[name]; seen {
+			continue
+		}
+		if resolver, ok := knownResolvers[name]; ok {
+			providerList = append(providerList, name)
+			providerConfigs[name] = cfg
+			activeResolvers[name] = resolver
+		}
+	}
+
+	defaultProvider := normalized.DefaultProvider
+	if _, ok := activeResolvers[defaultProvider]; !ok {
+		if len(providerList) > 0 {
+			defaultProvider = providerList[0]
+		} else {
+			defaultProvider = ""
+		}
+	}
+
+	return providerList, defaultProvider, activeResolvers, providerConfigs
 }
 
 func (m *Manager) HandleCommand(ctx context.Context, cmd Command) CommandResult {
@@ -106,7 +169,7 @@ func (m *Manager) HandleCommand(ctx context.Context, cmd Command) CommandResult 
 			return result
 		}
 	case "lookup":
-		if err := m.performLookup(payload, &result); err != nil {
+		if err := m.performLookup(ctx, payload, &result); err != nil {
 			result.Success = false
 			result.Error = err.Error()
 			return result
@@ -141,7 +204,7 @@ func (m *Manager) writeStatus(result *CommandResult) error {
 	return nil
 }
 
-func (m *Manager) performLookup(payload commandPayload, result *CommandResult) error {
+func (m *Manager) performLookup(ctx context.Context, payload commandPayload, result *CommandResult) error {
 	ip := strings.TrimSpace(payload.IP)
 	if ip == "" {
 		return fmt.Errorf("ip address is required")
@@ -159,15 +222,46 @@ func (m *Manager) performLookup(payload commandPayload, result *CommandResult) e
 		return fmt.Errorf("unsupported provider: %s", payload.Provider)
 	}
 
-	location := synthesizeLocation(parsed)
-	location.Provider = provider
-	location.IP = ip
-	location.NetworkType = classifyNetwork(parsed)
-	if payload.IncludeTimezone {
-		if location.Timezone != nil {
-			location.Timezone = &timezone{ID: location.Timezone.ID, Offset: location.Timezone.Offset, Abbreviation: location.Timezone.Abbreviation}
+	resolver := m.resolvers[provider]
+	cfg := m.providerConfig[provider]
+
+	lookupCtx := ctx
+	var cancel context.CancelFunc
+	if cfg.Timeout > 0 {
+		lookupCtx, cancel = context.WithTimeout(ctx, cfg.Timeout)
+	}
+	if cancel != nil {
+		defer cancel()
+	}
+
+	providerResult, err := resolver.Lookup(lookupCtx, parsed, cfg)
+	if err != nil {
+		return fmt.Errorf("provider %s lookup failed: %w", provider, err)
+	}
+
+	location := lookupResult{
+		Provider:    provider,
+		IP:          ip,
+		City:        providerResult.City,
+		Region:      providerResult.Region,
+		Country:     providerResult.Country,
+		CountryCode: providerResult.CountryCode,
+		Latitude:    providerResult.Latitude,
+		Longitude:   providerResult.Longitude,
+		NetworkType: classifyNetwork(parsed),
+		ISP:         providerResult.ISP,
+		ASN:         providerResult.ASN,
+	}
+
+	if providerResult.Timezone != nil {
+		location.Timezone = &timezone{
+			ID:           providerResult.Timezone.ID,
+			Offset:       providerResult.Timezone.Offset,
+			Abbreviation: providerResult.Timezone.Abbreviation,
 		}
-	} else {
+	}
+
+	if !payload.IncludeTimezone {
 		location.Timezone = nil
 	}
 	if payload.IncludeMap {
@@ -190,12 +284,8 @@ func (m *Manager) performLookup(payload commandPayload, result *CommandResult) e
 }
 
 func (m *Manager) isProviderSupported(provider string) bool {
-	for _, candidate := range m.providers {
-		if provider == candidate {
-			return true
-		}
-	}
-	return false
+	_, ok := m.resolvers[provider]
+	return ok
 }
 
 func (m *Manager) storeLookup(result *lookupResult) {
@@ -228,23 +318,6 @@ func (m *Manager) setClock(c clock) {
 		return
 	}
 	m.clock = c
-}
-
-// synthesizeLocation returns deterministic location details for an IP.
-func synthesizeLocation(ip net.IP) lookupResult {
-	locations := []lookupResult{
-		{City: "Lisbon", Region: "Lisboa", Country: "Portugal", CountryCode: "PT", Latitude: 38.7223, Longitude: -9.1393, ISP: "IberNet", ASN: "AS64500", Timezone: &timezone{ID: "Europe/Lisbon", Offset: "+01:00", Abbreviation: "WET"}},
-		{City: "Berlin", Region: "Berlin", Country: "Germany", CountryCode: "DE", Latitude: 52.5200, Longitude: 13.4050, ISP: "TeutoCom", ASN: "AS64510", Timezone: &timezone{ID: "Europe/Berlin", Offset: "+01:00", Abbreviation: "CET"}},
-		{City: "Toronto", Region: "Ontario", Country: "Canada", CountryCode: "CA", Latitude: 43.6518, Longitude: -79.3832, ISP: "NorthFiber", ASN: "AS64520", Timezone: &timezone{ID: "America/Toronto", Offset: "-05:00", Abbreviation: "EST"}},
-		{City: "Singapore", Region: "Central", Country: "Singapore", CountryCode: "SG", Latitude: 1.3521, Longitude: 103.8198, ISP: "LionNet", ASN: "AS64530", Timezone: &timezone{ID: "Asia/Singapore", Offset: "+08:00", Abbreviation: "SGT"}},
-	}
-
-	sum := 0
-	for _, b := range ip {
-		sum += int(b)
-	}
-	index := sum % len(locations)
-	return locations[index]
 }
 
 func classifyNetwork(ip net.IP) string {

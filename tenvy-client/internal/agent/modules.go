@@ -53,6 +53,7 @@ type Config struct {
 	Extensions      ModuleExtensionRegistry
 	PluginManifests map[string]manifest.ManifestDescriptor
 	Notes           *notes.Manager
+	Geolocation     geolocationmgr.Config
 }
 
 func envBool(name string) bool {
@@ -1216,6 +1217,7 @@ func (a *Agent) moduleRuntime() Config {
 		Extensions:      a.modules,
 		PluginManifests: a.pluginManifestSnapshot(),
 		Notes:           a.notes,
+		Geolocation:     a.geolocationConfig,
 	}
 }
 
@@ -2435,10 +2437,12 @@ func (m *geoModule) UpdateConfig(cfg Config) error {
 	return m.configure(cfg)
 }
 
-func (m *geoModule) configure(Config) error {
+func (m *geoModule) configure(cfg Config) error {
 	if m.manager == nil {
-		m.manager = geolocationmgr.NewManager()
+		m.manager = geolocationmgr.NewManager(cfg.Geolocation)
+		return nil
 	}
+	m.manager.ApplyConfig(cfg.Geolocation)
 	return nil
 }
 
