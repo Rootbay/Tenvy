@@ -218,7 +218,7 @@
 		<div
 			class="pointer-events-none absolute inset-0 flex items-center justify-center text-sm text-muted-foreground"
 		>
-			No clients available for this selection.
+			No location telemetry is available for this selection.
 		</div>
 	{/if}
 

@@ -51,6 +51,14 @@
 	const latencyDelta = describeLatencyDelta(props.latency.deltaMs);
 	const connectedCaption = `${props.totals.connected}`;
 
+	const hasBandwidthTelemetry = props.bandwidth.series.length > 0 && props.bandwidth.totalMb > 0;
+	const hasLatencyTelemetry = props.latency.series.length > 0 && props.latency.averageMs > 0;
+
+	const hasNewClientTelemetry = derived(
+		newClientSnapshot,
+		($snapshot): boolean => $snapshot.series.length > 0
+	);
+
 	function describePercentDelta(delta: number | null): TrendDescriptor {
 		if (delta === null) {
 			return { text: 'No prior comparison', tone: 'neutral', icon: null };
@@ -138,23 +146,27 @@
 					<div class="text-3xl font-semibold tracking-tight">
 						{integerFormatter.format($newClientSnapshot.total)}
 					</div>
-					{#if $newClientDelta.text}
-						<div
-							class={cn(
-								'mt-1 flex items-center gap-1 text-xs',
-								$newClientDelta.tone === 'positive'
-									? 'text-emerald-500'
-									: $newClientDelta.tone === 'negative'
-										? 'text-rose-500'
-										: 'text-muted-foreground'
-							)}
-						>
-							{#if $newClientDelta.icon}
-								{@const Icon = $newClientDelta.icon}
-								<Icon class="h-3.5 w-3.5" />
-							{/if}
-							<span>{$newClientDelta.text}</span>
-						</div>
+					{#if $hasNewClientTelemetry}
+						{#if $newClientDelta.text}
+							<div
+								class={cn(
+									'mt-1 flex items-center gap-1 text-xs',
+									$newClientDelta.tone === 'positive'
+										? 'text-emerald-500'
+										: $newClientDelta.tone === 'negative'
+											? 'text-rose-500'
+											: 'text-muted-foreground'
+								)}
+							>
+								{#if $newClientDelta.icon}
+									{@const Icon = $newClientDelta.icon}
+									<Icon class="h-3.5 w-3.5" />
+								{/if}
+								<span>{$newClientDelta.text}</span>
+							</div>
+						{/if}
+					{:else}
+						<p class="mt-1 text-xs text-muted-foreground">No enrollment telemetry available.</p>
 					{/if}
 				</div>
 			</div>
@@ -179,22 +191,26 @@
 					{gbFormatter.format(props.bandwidth.totalGb)}
 					<span class="text-base font-normal text-muted-foreground">GB</span>
 				</div>
-				<div
-					class={cn(
-						'mt-1 flex items-center gap-1 text-xs',
-						bandwidthDelta.tone === 'positive'
-							? 'text-emerald-500'
-							: bandwidthDelta.tone === 'negative'
-								? 'text-rose-500'
-								: 'text-muted-foreground'
-					)}
-				>
-					{#if bandwidthDelta.icon}
-						{@const Icon = bandwidthDelta.icon}
-						<Icon class="h-3.5 w-3.5" />
-					{/if}
-					<span>{bandwidthDelta.text}</span>
-				</div>
+				{#if hasBandwidthTelemetry}
+					<div
+						class={cn(
+							'mt-1 flex items-center gap-1 text-xs',
+							bandwidthDelta.tone === 'positive'
+								? 'text-emerald-500'
+								: bandwidthDelta.tone === 'negative'
+									? 'text-rose-500'
+									: 'text-muted-foreground'
+						)}
+					>
+						{#if bandwidthDelta.icon}
+							{@const Icon = bandwidthDelta.icon}
+							<Icon class="h-3.5 w-3.5" />
+						{/if}
+						<span>{bandwidthDelta.text}</span>
+					</div>
+				{:else}
+					<p class="mt-1 text-xs text-muted-foreground">No bandwidth telemetry captured.</p>
+				{/if}
 			</div>
 		</CardContent>
 	</Card>
@@ -217,22 +233,26 @@
 					{latencyFormatter.format(props.latency.averageMs)}
 					<span class="text-base font-normal text-muted-foreground">ms</span>
 				</div>
-				<div
-					class={cn(
-						'mt-1 flex items-center gap-1 text-xs',
-						latencyDelta.tone === 'positive'
-							? 'text-emerald-500'
-							: latencyDelta.tone === 'negative'
-								? 'text-rose-500'
-								: 'text-muted-foreground'
-					)}
-				>
-					{#if latencyDelta.icon}
-						{@const Icon = latencyDelta.icon}
-						<Icon class="h-3.5 w-3.5" />
-					{/if}
-					<span>{latencyDelta.text}</span>
-				</div>
+				{#if hasLatencyTelemetry}
+					<div
+						class={cn(
+							'mt-1 flex items-center gap-1 text-xs',
+							latencyDelta.tone === 'positive'
+								? 'text-emerald-500'
+								: latencyDelta.tone === 'negative'
+									? 'text-rose-500'
+									: 'text-muted-foreground'
+						)}
+					>
+						{#if latencyDelta.icon}
+							{@const Icon = latencyDelta.icon}
+							<Icon class="h-3.5 w-3.5" />
+						{/if}
+						<span>{latencyDelta.text}</span>
+					</div>
+				{:else}
+					<p class="mt-1 text-xs text-muted-foreground">No latency telemetry recorded yet.</p>
+				{/if}
 			</div>
 		</CardContent>
 	</Card>
