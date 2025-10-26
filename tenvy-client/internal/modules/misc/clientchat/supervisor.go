@@ -54,6 +54,25 @@ type featureFlags struct {
 	allowFileTransfers bool
 }
 
+type OperatorMessageDelivery struct {
+	SessionID string
+	Message   protocol.ClientChatMessage
+	Ack       func()
+}
+
+type OperatorMessageConsumer interface {
+	DeliverOperatorMessage(context.Context, OperatorMessageDelivery)
+}
+
+type OperatorMessageConsumerFunc func(context.Context, OperatorMessageDelivery)
+
+func (f OperatorMessageConsumerFunc) DeliverOperatorMessage(ctx context.Context, delivery OperatorMessageDelivery) {
+	if f == nil {
+		return
+	}
+	f(ctx, delivery)
+}
+
 type chatSession struct {
 	id     string
 	once   sync.Once
@@ -81,12 +100,14 @@ type Supervisor struct {
 	clientAlias    string
 	features       featureFlags
 	messageCounter uint64
+	router         *messageRouter
 }
 
 func NewSupervisor(cfg Config) *Supervisor {
 	supervisor := &Supervisor{
 		operatorAlias: defaultOperatorAlias,
 		clientAlias:   defaultClientAlias,
+		router:        newMessageRouter(),
 	}
 	supervisor.updateConfig(cfg)
 	return supervisor
@@ -144,7 +165,9 @@ func (s *Supervisor) HandleCommand(ctx context.Context, cmd protocol.Command) pr
 			result.Error = "client chat message body is required"
 			return result
 		}
-		s.logf("client chat message for %s: %s", sessionID, payload.Message.Body)
+		envelope := s.buildOperatorEnvelope(sessionID, payload.Message)
+		s.ensureRouter().enqueue(envelope)
+		s.logf("client chat message for %s queued", sessionID)
 		result.Success = true
 		if trimmedID := strings.TrimSpace(payload.Message.ID); trimmedID != "" {
 			result.Output = fmt.Sprintf("delivered chat message %s", trimmedID)
@@ -171,6 +194,39 @@ func (s *Supervisor) Shutdown(context.Context) {
 		return
 	}
 	_ = s.stopSession("")
+}
+
+func (s *Supervisor) RegisterDeliveryConsumer(source string, consumer OperatorMessageConsumer) (func(), error) {
+	if s == nil {
+		return nil, errors.New("client chat supervisor not initialized")
+	}
+	return s.ensureRouter().register(source, consumer)
+}
+
+func (s *Supervisor) buildOperatorEnvelope(sessionID string, message *protocol.ClientChatCommandMessage) protocol.ClientChatMessageEnvelope {
+	body := strings.TrimSpace(message.Body)
+	timestamp := strings.TrimSpace(message.Timestamp)
+	if timestamp == "" {
+		timestamp = time.Now().UTC().Format(time.RFC3339Nano)
+	}
+	id := strings.TrimSpace(message.ID)
+	if id == "" {
+		id = s.nextMessageID()
+	}
+	alias := strings.TrimSpace(message.Alias)
+	if alias == "" {
+		alias = s.operatorAliasValue()
+	}
+	envelope := protocol.ClientChatMessageEnvelope{
+		SessionID: sessionID,
+		Message: protocol.ClientChatMessage{
+			ID:        id,
+			Body:      body,
+			Timestamp: timestamp,
+			Alias:     alias,
+		},
+	}
+	return envelope
 }
 
 func (s *Supervisor) SubmitClientMessage(ctx context.Context, body string) error {
@@ -385,6 +441,25 @@ func (s *Supervisor) clientAliasValue() string {
 	return s.clientAlias
 }
 
+func (s *Supervisor) ensureRouter() *messageRouter {
+	s.mu.Lock()
+	if s.router == nil {
+		s.router = newMessageRouter()
+	}
+	router := s.router
+	s.mu.Unlock()
+	return router
+}
+
+func (s *Supervisor) operatorAliasValue() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if strings.TrimSpace(s.operatorAlias) == "" {
+		return defaultOperatorAlias
+	}
+	return s.operatorAlias
+}
+
 func (s *Supervisor) nextMessageID() string {
 	s.mu.Lock()
 	s.messageCounter++
@@ -404,4 +479,174 @@ func randomIdentifier() string {
 		return hex.EncodeToString(buf)
 	}
 	return fmt.Sprintf("chat-%d", time.Now().UnixNano())
+}
+
+type messageRouter struct {
+	mu        sync.Mutex
+	pending   []*queuedMessage
+	byID      map[string]*queuedMessage
+	consumers map[string]OperatorMessageConsumer
+}
+
+type queuedMessage struct {
+	envelope protocol.ClientChatMessageEnvelope
+	once     sync.Once
+}
+
+func newMessageRouter() *messageRouter {
+	return &messageRouter{}
+}
+
+func (r *messageRouter) register(source string, consumer OperatorMessageConsumer) (func(), error) {
+	trimmed := strings.TrimSpace(source)
+	if trimmed == "" {
+		return nil, errors.New("delivery consumer source required")
+	}
+	if consumer == nil {
+		return nil, errors.New("delivery consumer cannot be nil")
+	}
+
+	r.mu.Lock()
+	if r.consumers == nil {
+		r.consumers = make(map[string]OperatorMessageConsumer)
+	}
+	r.consumers[trimmed] = consumer
+	pending := r.pendingSnapshotLocked()
+	r.mu.Unlock()
+
+	if len(pending) > 0 {
+		go r.dispatchToConsumer(consumer, pending)
+	}
+
+	return func() {
+		r.unregister(trimmed)
+	}, nil
+}
+
+func (r *messageRouter) unregister(source string) {
+	trimmed := strings.TrimSpace(source)
+	r.mu.Lock()
+	if len(r.consumers) == 0 {
+		r.mu.Unlock()
+		return
+	}
+	if trimmed == "" {
+		r.consumers = nil
+		r.mu.Unlock()
+		return
+	}
+	delete(r.consumers, trimmed)
+	if len(r.consumers) == 0 {
+		r.consumers = nil
+	}
+	r.mu.Unlock()
+}
+
+func (r *messageRouter) enqueue(envelope protocol.ClientChatMessageEnvelope) {
+	r.mu.Lock()
+	if r.byID == nil {
+		r.byID = make(map[string]*queuedMessage)
+	}
+	id := strings.TrimSpace(envelope.Message.ID)
+	var message *queuedMessage
+	if existing, ok := r.byID[id]; ok {
+		existing.envelope = envelope
+		message = existing
+	} else {
+		message = &queuedMessage{envelope: envelope}
+		r.byID[id] = message
+		r.pending = append(r.pending, message)
+	}
+	consumers := r.consumerSnapshotLocked()
+	r.mu.Unlock()
+
+	if len(consumers) == 0 {
+		return
+	}
+
+	go r.dispatch(consumers, []*queuedMessage{message})
+}
+
+func (r *messageRouter) dispatch(consumers map[string]OperatorMessageConsumer, messages []*queuedMessage) {
+	if len(consumers) == 0 || len(messages) == 0 {
+		return
+	}
+	for _, consumer := range consumers {
+		consumer := consumer
+		go r.dispatchToConsumer(consumer, messages)
+	}
+}
+
+func (r *messageRouter) dispatchToConsumer(consumer OperatorMessageConsumer, messages []*queuedMessage) {
+	if consumer == nil {
+		return
+	}
+	ctx := context.Background()
+	for _, message := range messages {
+		delivery := OperatorMessageDelivery{
+			SessionID: message.envelope.SessionID,
+			Message:   message.envelope.Message,
+			Ack:       message.ackFunc(r),
+		}
+		consumer.DeliverOperatorMessage(ctx, delivery)
+	}
+}
+
+func (q *queuedMessage) ackFunc(router *messageRouter) func() {
+	if q == nil {
+		return func() {}
+	}
+	return func() {
+		q.once.Do(func() {
+			router.acknowledge(q)
+		})
+	}
+}
+
+func (r *messageRouter) acknowledge(message *queuedMessage) {
+	if message == nil {
+		return
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	id := strings.TrimSpace(message.envelope.Message.ID)
+	if id == "" {
+		return
+	}
+	if existing, ok := r.byID[id]; !ok || existing != message {
+		return
+	}
+	delete(r.byID, id)
+	for i, candidate := range r.pending {
+		if candidate == message {
+			r.pending = append(r.pending[:i], r.pending[i+1:]...)
+			break
+		}
+	}
+}
+
+func (r *messageRouter) pendingSnapshotLocked() []*queuedMessage {
+	if len(r.pending) == 0 {
+		return nil
+	}
+	snapshot := make([]*queuedMessage, len(r.pending))
+	copy(snapshot, r.pending)
+	return snapshot
+}
+
+func (r *messageRouter) consumerSnapshotLocked() map[string]OperatorMessageConsumer {
+	if len(r.consumers) == 0 {
+		return nil
+	}
+	snapshot := make(map[string]OperatorMessageConsumer, len(r.consumers))
+	for key, consumer := range r.consumers {
+		snapshot[key] = consumer
+	}
+	return snapshot
+}
+
+func (r *messageRouter) pendingLen() int {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return len(r.pending)
 }
