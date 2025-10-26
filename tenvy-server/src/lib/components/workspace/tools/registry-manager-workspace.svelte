@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onDestroy, tick } from 'svelte';
+        import { onDestroy, onMount, tick } from 'svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import { Input } from '$lib/components/ui/input/index.js';
 	import { Label } from '$lib/components/ui/label/index.js';
@@ -40,15 +40,24 @@
 	} from '@lucide/svelte';
 	import { getClientTool } from '$lib/data/client-tools';
 	import type { Client } from '$lib/data/clients';
-	import { createInitialRegistry, normalizeHive } from '$lib/data/mock-registry';
-	import type {
-		RegistryHive,
-		RegistryHiveName,
-		RegistryKey,
-		RegistrySnapshot,
-		RegistryValue,
-		RegistryValueType
-	} from '$lib/types/registry';
+        import {
+                fetchRegistrySnapshot,
+                createRegistryKey,
+                createRegistryValue,
+                updateRegistryKey,
+                updateRegistryValue,
+                deleteRegistryKey,
+                deleteRegistryValue
+        } from '$lib/data/registry';
+        import type {
+                RegistryHive,
+                RegistryHiveName,
+                RegistryKey,
+                RegistryMutationResult,
+                RegistrySnapshot,
+                RegistryValue,
+                RegistryValueType
+        } from '$lib/types/registry';
 	import { appendWorkspaceLog, createWorkspaceLogEntry } from '$lib/workspace/utils';
 	import { notifyToolActivationCommand } from '$lib/utils/agent-commands.js';
 	import type { WorkspaceLogEntry } from '$lib/workspace/types';
@@ -71,18 +80,18 @@
 	});
 	const relativeTimeFormatter = new Intl.RelativeTimeFormat(undefined, { numeric: 'auto' });
 
-	const initialRegistry = createInitialRegistry();
+        const { client } = $props<{ client: Client }>();
 
-	const { client } = $props<{ client: Client }>();
+        const tool = getClientTool('registry-manager');
 
-	const tool = getClientTool('registry-manager');
+        const emptySnapshot = createEmptySnapshot();
 
-	let registry = $state<RegistrySnapshot>(initialRegistry);
-	let selectedHive = $state<RegistryHiveName>('HKEY_LOCAL_MACHINE');
-	let selectedKeyPath = $state('');
-	let selectedValueName = $state<string | null>(null);
-	let searchTerm = $state('');
-	let showOnlyPopulatedKeys = $state(false);
+        let registry = $state<RegistrySnapshot>(emptySnapshot);
+        let selectedHive = $state<RegistryHiveName>('HKEY_LOCAL_MACHINE');
+        let selectedKeyPath = $state('');
+        let selectedValueName = $state<string | null>(null);
+        let searchTerm = $state('');
+        let showOnlyPopulatedKeys = $state(false);
 	let sortColumn = $state<RegistrySortColumn>('name');
 	let sortDirection = $state<'asc' | 'desc'>('asc');
 	let valueTypeFilter = $state<'all' | RegistryValueType>('all');
@@ -97,9 +106,13 @@
 	let keyRenameName = $state('');
 	let keyRenameError = $state<string | null>(null);
 	let keyDeleteError = $state<string | null>(null);
-	let log = $state<WorkspaceLogEntry[]>([]);
-	let liveClock = $state(new Date());
-	let lastChangeAt = $state(findLatestChange(initialRegistry));
+        let log = $state<WorkspaceLogEntry[]>([]);
+        let liveClock = $state(new Date());
+        let lastChangeAt = $state<Date | null>(null);
+        let loading = $state(true);
+        let loadError = $state<string | null>(null);
+        let mutationError = $state<string | null>(null);
+        let mutationInFlight = $state(false);
 
 	const valueTypes: RegistryValueType[] = [
 		'REG_SZ',
@@ -182,142 +195,171 @@
 		}
 	});
 
-	function resetRegistry() {
-		const snapshot = createInitialRegistry();
-		registry = snapshot;
-		selectedKeyPath = '';
-		selectedValueName = null;
-		searchTerm = '';
-		valueFormName = '';
-		valueFormData = '';
-		valueFormType = 'REG_SZ';
-		valueFormOriginalName = null;
-		keyCreateName = '';
-		keyCreateParent = '';
-		keyRenameName = '';
-		keyCreateError = null;
-		keyRenameError = null;
-		keyDeleteError = null;
-		valueFormError = null;
-		lastChangeAt = findLatestChange(snapshot);
-		logOperation('Snapshot reset', 'Restored registry view to baseline dataset', 'complete');
-	}
+        onMount(() => {
+                const controller = new AbortController();
+                void refreshRegistry({ signal: controller.signal, record: false });
+                return () => controller.abort();
+        });
 
-	function startNewValue() {
-		selectedValueName = null;
-		valueFormName = '';
-		valueFormData = '';
-		valueFormType = 'REG_SZ';
-		valueFormOriginalName = null;
-		valueFormError = null;
-	}
+        async function refreshRegistry({
+                signal,
+                record = true
+        }: { signal?: AbortSignal; record?: boolean } = {}) {
+                loading = true;
+                loadError = null;
+                mutationError = null;
+                try {
+                        const result = await fetchRegistrySnapshot(client.id, { signal });
+                        applySnapshot(result.snapshot, result.generatedAt);
+                        if (record) {
+                                logOperation('Snapshot synchronized', 'Registry view updated from remote hive', 'complete', {
+                                        hive: selectedHive
+                                });
+                        }
+                } catch (err) {
+                        const message = getErrorMessage(err);
+                        loadError = message;
+                        registry = createEmptySnapshot();
+                        lastChangeAt = null;
+                } finally {
+                        loading = false;
+                }
+        }
 
-	function selectValue(value: RegistryValue) {
-		selectedValueName = value.name;
-		valueFormName = value.name;
-		valueFormType = value.type;
-		valueFormData = value.data;
-		valueFormOriginalName = value.name;
-		valueFormError = null;
-	}
+        async function reloadRegistry() {
+                const controller = new AbortController();
+                await refreshRegistry({ signal: controller.signal, record: true });
+        }
 
-	function applyHiveUpdate(next: RegistryHive): RegistryHive {
-		const normalized = normalizeHive(next);
-		registry = { ...registry, [selectedHive]: normalized };
-		lastChangeAt = findLatestChange(registry);
-		return normalized;
-	}
+        function applySnapshot(snapshot: RegistrySnapshot, generatedAt?: string) {
+                const normalized = normalizeSnapshot(snapshot);
+                registry = normalized;
+                const parsed = parseTimestamp(generatedAt);
+                lastChangeAt = parsed ?? findLatestChange(normalized);
+                const currentHive = normalized[selectedHive] ?? {};
+                if (!selectedKeyPath || !currentHive[selectedKeyPath]) {
+                        selectedKeyPath = firstKeyPath(currentHive) ?? '';
+                }
+        }
 
-	function upsertValue() {
-		valueFormError = null;
-		const key = selectedKey;
-		if (!key) {
-			valueFormError = 'Select a registry key before saving a value.';
-			return;
-		}
-		const trimmedName = valueFormName.trim();
-		if (!trimmedName) {
-			valueFormError = 'Value name is required.';
-			return;
-		}
-		if (trimmedName.includes('\\')) {
-			valueFormError = 'Value names cannot contain path separators.';
-			return;
-		}
-		const hive = registry[selectedHive] ?? {};
-		const workingKey = cloneKey(key);
-		const targetName = valueFormOriginalName ?? trimmedName;
-		const existingIndex = workingKey.values.findIndex((entry) => entry.name === targetName);
-		const duplicate = workingKey.values.find(
-			(entry, index) =>
-				entry.name.toLowerCase() === trimmedName.toLowerCase() && index !== existingIndex
-		);
-		if (duplicate) {
-			valueFormError = 'Another value already uses that name.';
-			return;
-		}
-		const now = new Date().toISOString();
-		const updatedValue: RegistryValue = {
-			name: trimmedName,
-			type: valueFormType,
-			data: valueFormData,
-			size: estimateSize(valueFormType, valueFormData),
-			lastModified: now,
-			description: workingKey.values[existingIndex]?.description
-		};
+        function applyMutationResult(result: RegistryMutationResult) {
+                const normalizedHive = normalizeHive(result.hive);
+                registry = { ...registry, [selectedHive]: normalizedHive };
+                lastChangeAt = parseTimestamp(result.mutatedAt) ?? findLatestChange(registry);
+                return normalizedHive;
+        }
 
-		if (existingIndex >= 0) {
-			workingKey.values.splice(existingIndex, 1, updatedValue);
-		} else {
-			workingKey.values.push(updatedValue);
-		}
-		workingKey.lastModified = now;
+        function startNewValue() {
+                selectedValueName = null;
+                valueFormName = '';
+                valueFormData = '';
+                valueFormType = 'REG_SZ';
+                valueFormOriginalName = null;
+                valueFormError = null;
+        }
 
-		const updatedHive: RegistryHive = { ...hive, [workingKey.path]: workingKey };
-		applyHiveUpdate(updatedHive);
+        function selectValue(value: RegistryValue) {
+                selectedValueName = value.name;
+                valueFormName = value.name;
+                valueFormType = value.type;
+                valueFormData = value.data;
+                valueFormOriginalName = value.name;
+                valueFormError = null;
+        }
 
-		selectedValueName = trimmedName;
-		valueFormOriginalName = trimmedName;
+        async function upsertValue() {
+                valueFormError = null;
+                mutationError = null;
+                const key = selectedKey;
+                if (!key) {
+                        valueFormError = 'Select a registry key before saving a value.';
+                        return;
+                }
+                const trimmedName = valueFormName.trim();
+                if (!trimmedName) {
+                        valueFormError = 'Value name is required.';
+                        return;
+                }
+                if (trimmedName.includes('\\')) {
+                        valueFormError = 'Value names cannot contain path separators.';
+                        return;
+                }
+                mutationInFlight = true;
+                const isCreate = valueFormOriginalName === null;
+                try {
+                        const payload = {
+                                hive: selectedHive,
+                                keyPath: key.path,
+                                value: {
+                                        name: trimmedName,
+                                        type: valueFormType,
+                                        data: valueFormData,
+                                        description: selectedValue?.description
+                                }
+                        } as const;
+                        const result = isCreate
+                                ? await createRegistryValue(client.id, payload)
+                                : await updateRegistryValue(client.id, {
+                                          ...payload,
+                                          originalName: valueFormOriginalName
+                                  });
+                        applyMutationResult(result);
+                        selectedValueName = trimmedName;
+                        valueFormOriginalName = trimmedName;
+                        logOperation(
+                                isCreate ? 'Value created' : 'Value updated',
+                                `${trimmedName} @ ${key.hive}\\${key.path}`,
+                                'complete'
+                        );
+                } catch (err) {
+                        const message = getErrorMessage(err);
+                        valueFormError = message;
+                        mutationError = message;
+                } finally {
+                        mutationInFlight = false;
+                }
+        }
 
-		logOperation(
-			existingIndex >= 0 ? 'Value updated' : 'Value created',
-			`${trimmedName} @ ${key.hive}\\${key.path}`,
-			'complete'
-		);
-	}
+        async function deleteSelectedValue() {
+                valueFormError = null;
+                mutationError = null;
+                const key = selectedKey;
+                const value = selectedValue;
+                if (!key || !value) {
+                        valueFormError = 'Choose a value to delete.';
+                        return;
+                }
+                mutationInFlight = true;
+                try {
+                        const result = await deleteRegistryValue(client.id, {
+                                hive: selectedHive,
+                                keyPath: key.path,
+                                name: value.name
+                        });
+                        applyMutationResult(result);
+                        startNewValue();
+                        logOperation(
+                                'Value deleted',
+                                `${value.name} removed from ${key.hive}\\${key.path}`,
+                                'complete'
+                        );
+                } catch (err) {
+                        const message = getErrorMessage(err);
+                        valueFormError = message;
+                        mutationError = message;
+                } finally {
+                        mutationInFlight = false;
+                }
+        }
 
-	function deleteSelectedValue() {
-		valueFormError = null;
-		const key = selectedKey;
-		const value = selectedValue;
-		if (!key || !value) {
-			valueFormError = 'Choose a value to delete.';
-			return;
-		}
-		const hive = registry[selectedHive] ?? {};
-		const workingKey = cloneKey(key);
-		workingKey.values = workingKey.values.filter((entry) => entry.name !== value.name);
-		workingKey.lastModified = new Date().toISOString();
+        async function createKeyFromForm() {
+                keyCreateError = null;
+                mutationError = null;
+                const hive = registry[selectedHive] ?? {};
+                const name = keyCreateName.trim();
+                const parentPath = keyCreateParent.trim();
 
-		const updatedHive: RegistryHive = { ...hive, [workingKey.path]: workingKey };
-		applyHiveUpdate(updatedHive);
-
-		logOperation(
-			'Value deleted',
-			`${value.name} removed from ${key.hive}\\${key.path}`,
-			'complete'
-		);
-
-		startNewValue();
-	}
-
-	function createKeyFromForm() {
-		keyCreateError = null;
-		const hive = registry[selectedHive] ?? {};
-		const name = keyCreateName.trim();
-		const parentPath = keyCreateParent.trim();
-
-		if (!name) {
+                if (!name) {
 			keyCreateError = 'Provide a new key name.';
 			return;
 		}
@@ -332,49 +374,38 @@
 			return;
 		}
 
-		const newPath = parent ? `${parent.path}\\${name}` : name;
-		if (Object.keys(hive).some((entry) => entry.toLowerCase() === newPath.toLowerCase())) {
-			keyCreateError = 'A key with that path already exists.';
-			return;
-		}
+                mutationInFlight = true;
+                try {
+                        const result = await createRegistryKey(client.id, {
+                                hive: selectedHive,
+                                parentPath: parentPath || undefined,
+                                name
+                        });
+                        const normalized = applyMutationResult(result);
+                        keyCreateName = '';
+                        keyCreateParent = parentPath;
+                        selectedKeyPath = result.keyPath;
+                        logOperation('Key created', `${selectedHive}\\${result.keyPath}`, 'complete');
+                        if (!normalized[result.keyPath]) {
+                                selectedKeyPath = firstKeyPath(normalized) ?? '';
+                        }
+                } catch (err) {
+                        const message = getErrorMessage(err);
+                        keyCreateError = message;
+                        mutationError = message;
+                } finally {
+                        mutationInFlight = false;
+                }
+        }
 
-		const now = new Date().toISOString();
-		const newKey: RegistryKey = {
-			hive: selectedHive,
-			name,
-			path: newPath,
-			parentPath: parent ? parent.path : null,
-			values: [],
-			subKeys: [],
-			lastModified: now,
-			wow64Mirrored: parent?.wow64Mirrored ?? false,
-			owner: parent?.owner ?? 'SYSTEM',
-			description: 'New registry key'
-		};
-
-		const updatedHive: RegistryHive = { ...hive, [newPath]: newKey };
-		if (parent) {
-			updatedHive[parent.path] = {
-				...cloneKey(parent),
-				lastModified: now
-			};
-		}
-
-		applyHiveUpdate(updatedHive);
-
-		keyCreateName = '';
-		selectedKeyPath = newPath;
-
-		logOperation('Key created', `${selectedHive}\\${newPath}`, 'complete');
-	}
-
-	function renameSelectedKey() {
-		keyRenameError = null;
-		const key = selectedKey;
-		if (!key) {
-			keyRenameError = 'Select a key to rename.';
-			return;
-		}
+        async function renameSelectedKey() {
+                keyRenameError = null;
+                mutationError = null;
+                const key = selectedKey;
+                if (!key) {
+                        keyRenameError = 'Select a key to rename.';
+                        return;
+                }
 		const trimmed = keyRenameName.trim();
 		if (!trimmed) {
 			keyRenameError = 'Provide the new key name.';
@@ -396,71 +427,62 @@
 			return;
 		}
 
-		const updatedHive: RegistryHive = {};
-		const now = new Date().toISOString();
+                mutationInFlight = true;
+                try {
+                        const result = await updateRegistryKey(client.id, {
+                                hive: selectedHive,
+                                path: key.path,
+                                name: trimmed
+                        });
+                        const normalized = applyMutationResult(result);
+                        selectedKeyPath = result.keyPath;
+                        keyRenameName = trimmed;
+                        logOperation(
+                                'Key renamed',
+                                `${selectedHive}\\${key.path} → ${selectedHive}\\${result.keyPath}`,
+                                'complete'
+                        );
+                        if (!normalized[result.keyPath]) {
+                                selectedKeyPath = firstKeyPath(normalized) ?? '';
+                        }
+                } catch (err) {
+                        const message = getErrorMessage(err);
+                        keyRenameError = message;
+                        mutationError = message;
+                } finally {
+                        mutationInFlight = false;
+                }
+        }
 
-		for (const [path, entry] of Object.entries(hive)) {
-			if (path === key.path || path.startsWith(`${key.path}\\`)) {
-				const suffix = path.slice(key.path.length);
-				const updatedPath = `${newPath}${suffix}`;
-				const parent = entry.parentPath;
-				const updatedParentPath =
-					parent === null
-						? null
-						: parent === key.path
-							? newPath
-							: parent.startsWith(`${key.path}\\`)
-								? `${newPath}${parent.slice(key.path.length)}`
-								: parent;
-				updatedHive[updatedPath] = {
-					...cloneKey(entry),
-					name: path === key.path ? trimmed : entry.name,
-					path: updatedPath,
-					parentPath: updatedParentPath,
-					lastModified: path === key.path ? now : entry.lastModified
-				};
-			} else {
-				updatedHive[path] = cloneKey(entry);
-			}
-		}
-
-		applyHiveUpdate(updatedHive);
-
-		selectedKeyPath = newPath;
-		keyRenameName = trimmed;
-
-		logOperation(
-			'Key renamed',
-			`${selectedHive}\\${key.path} → ${selectedHive}\\${newPath}`,
-			'complete'
-		);
-	}
-
-	function deleteSelectedKey() {
-		keyDeleteError = null;
-		const key = selectedKey;
-		if (!key) {
-			keyDeleteError = 'Select a key to delete.';
-			return;
-		}
-		const hive = registry[selectedHive] ?? {};
-		const updatedHive: RegistryHive = {};
-		for (const [path, entry] of Object.entries(hive)) {
-			if (path === key.path || path.startsWith(`${key.path}\\`)) {
-				continue;
-			}
-			updatedHive[path] = cloneKey(entry);
-		}
-
-		const normalizedHive = applyHiveUpdate(updatedHive);
-
-		logOperation('Key deleted', `${selectedHive}\\${key.path}`, 'complete');
-
-		selectedKeyPath =
-			key.parentPath && normalizedHive[key.parentPath]
-				? key.parentPath
-				: (firstKeyPath(normalizedHive) ?? '');
-	}
+        async function deleteSelectedKey() {
+                keyDeleteError = null;
+                mutationError = null;
+                const key = selectedKey;
+                if (!key) {
+                        keyDeleteError = 'Select a key to delete.';
+                        return;
+                }
+                mutationInFlight = true;
+                try {
+                        const result = await deleteRegistryKey(client.id, {
+                                hive: selectedHive,
+                                path: key.path
+                        });
+                        const normalized = applyMutationResult(result);
+                        logOperation('Key deleted', `${selectedHive}\\${key.path}`, 'complete');
+                        const fallback =
+                                result.keyPath && normalized[result.keyPath]
+                                        ? result.keyPath
+                                        : (firstKeyPath(normalized) ?? '');
+                        selectedKeyPath = fallback;
+                } catch (err) {
+                        const message = getErrorMessage(err);
+                        keyDeleteError = message;
+                        mutationError = message;
+                } finally {
+                        mutationInFlight = false;
+                }
+        }
 
 	function logOperation(
 		title: string,
@@ -620,44 +642,84 @@
 		return { keyCount, valueCount, lastModified: latest ? new Date(latest) : null };
 	}
 
-	function findLatestChange(snapshot: RegistrySnapshot): Date | null {
-		let latest = 0;
-		for (const hive of Object.values(snapshot)) {
-			const stats = computeHiveStats(hive);
-			if (stats.lastModified) {
-				latest = Math.max(latest, stats.lastModified.getTime());
-			}
-		}
-		return latest ? new Date(latest) : null;
-	}
+        function findLatestChange(snapshot: RegistrySnapshot): Date | null {
+                let latest = 0;
+                for (const hive of Object.values(snapshot)) {
+                        const stats = computeHiveStats(hive);
+                        if (stats.lastModified) {
+                                latest = Math.max(latest, stats.lastModified.getTime());
+                        }
+                }
+                return latest ? new Date(latest) : null;
+        }
 
-	function cloneKey(entry: RegistryKey): RegistryKey {
-		return {
-			...entry,
-			values: entry.values.map((item) => ({ ...item })),
-			subKeys: [...entry.subKeys]
-		};
-	}
+        function createEmptySnapshot(): RegistrySnapshot {
+                return {
+                        HKEY_LOCAL_MACHINE: {},
+                        HKEY_CURRENT_USER: {},
+                        HKEY_USERS: {}
+                } satisfies RegistrySnapshot;
+        }
 
-	function estimateSize(type: RegistryValueType, data: string): number {
-		switch (type) {
-			case 'REG_DWORD':
-				return 4;
-			case 'REG_QWORD':
-				return 8;
-			case 'REG_BINARY': {
-				const sanitized = data.replace(/[^0-9a-fA-F]/g, '');
-				return Math.ceil(sanitized.length / 2);
-			}
-			case 'REG_MULTI_SZ':
-				return Math.max(
-					2,
-					data.split(/\r?\n/).reduce((acc, line) => acc + (line.length + 1) * 2, 2)
-				);
-			default:
-				return data.length * 2;
-		}
-	}
+        function normalizeSnapshot(snapshot: RegistrySnapshot): RegistrySnapshot {
+                const normalized = createEmptySnapshot();
+                for (const [hiveName, hiveData] of Object.entries(snapshot) as [
+                        RegistryHiveName,
+                        RegistryHive
+                ][]) {
+                        normalized[hiveName] = normalizeHive(hiveData);
+                }
+                return normalized;
+        }
+
+        function normalizeHive(hive: RegistryHive): RegistryHive {
+                const normalized: RegistryHive = {};
+                for (const [path, entry] of Object.entries(hive)) {
+                        normalized[path] = {
+                                ...entry,
+                                values: entry.values.map((value) => ({ ...value })),
+                                subKeys: []
+                        } satisfies RegistryKey;
+                }
+                for (const entry of Object.values(normalized)) {
+                        if (entry.parentPath) {
+                                const parent = normalized[entry.parentPath];
+                                if (parent) {
+                                        parent.subKeys.push(entry.path);
+                                }
+                        }
+                }
+                for (const entry of Object.values(normalized)) {
+                        entry.subKeys = entry.subKeys
+                                .filter(
+                                        (child, index, array) =>
+                                                array.indexOf(child) === index && Boolean(normalized[child])
+                                )
+                                .sort((a, b) => normalized[a].name.localeCompare(normalized[b].name));
+                }
+                return normalized;
+        }
+
+        function parseTimestamp(value?: string | null): Date | null {
+                if (!value) {
+                        return null;
+                }
+                const parsed = Date.parse(value);
+                if (Number.isNaN(parsed)) {
+                        return null;
+                }
+                return new Date(parsed);
+        }
+
+        function getErrorMessage(error: unknown): string {
+                if (error instanceof Error && error.message) {
+                        return error.message;
+                }
+                if (typeof error === 'string') {
+                        return error;
+                }
+                return 'Unexpected registry operation failure';
+        }
 
 	function formatSize(bytes: number): string {
 		if (!Number.isFinite(bytes) || bytes <= 0) {
@@ -975,24 +1037,40 @@
 				{/each}
 			</div>
 		</div>
-	</header>
+        </header>
 
-	<div class="flex flex-wrap items-center gap-2 border-b border-border/60 bg-muted/20 px-5 py-3">
-		<Button
-			type="button"
-			variant="ghost"
-			size="sm"
-			class="gap-2 rounded-full border border-border/50 bg-background/80 px-4"
-			onclick={() => {
-				keyCreateParent = selectedKey?.path ?? '';
-				keyCreateName = '';
-				keyCreateError = null;
-			}}
-		>
-			<FolderPlus class="h-4 w-4" /> New key
-		</Button>
-		<Button
-			type="button"
+        {#if loadError}
+                <div class="mx-5 mt-4 rounded-xl border border-destructive/50 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+                        {loadError}
+                </div>
+        {:else if loading}
+                <div class="mx-5 mt-4 rounded-xl border border-primary/40 bg-primary/10 px-4 py-3 text-sm text-primary">
+                        Synchronizing registry snapshot…
+                </div>
+        {/if}
+        {#if mutationError}
+                <div class="mx-5 mt-4 rounded-xl border border-destructive/30 bg-destructive/5 px-4 py-2 text-sm text-destructive">
+                        {mutationError}
+                </div>
+        {/if}
+
+        <div class="flex flex-wrap items-center gap-2 border-b border-border/60 bg-muted/20 px-5 py-3">
+                <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        class="gap-2 rounded-full border border-border/50 bg-background/80 px-4"
+                        onclick={() => {
+                                keyCreateParent = selectedKey?.path ?? '';
+                                keyCreateName = '';
+                                keyCreateError = null;
+                        }}
+                        disabled={mutationInFlight || loading}
+                >
+                        <FolderPlus class="h-4 w-4" /> New key
+                </Button>
+                <Button
+                        type="button"
 			variant="ghost"
 			size="sm"
 			class="gap-2 rounded-full border border-border/50 bg-background/80 px-4"
@@ -1002,88 +1080,94 @@
 				}
 				startNewValue();
 			}}
-			disabled={!selectedKey}
-		>
-			<ListPlus class="h-4 w-4" /> New value
-		</Button>
-		<Button
-			type="button"
-			variant="ghost"
-			size="sm"
-			class="gap-2 rounded-full border border-border/50 bg-background/80 px-4"
-			onclick={upsertValue}
-			disabled={!selectedKey}
-		>
-			<Save class="h-4 w-4" /> Save value
-		</Button>
-		<Button
-			type="button"
+                        disabled={!selectedKey || mutationInFlight || loading}
+                >
+                        <ListPlus class="h-4 w-4" /> New value
+                </Button>
+                <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        class="gap-2 rounded-full border border-border/50 bg-background/80 px-4"
+                        onclick={upsertValue}
+                        disabled={!selectedKey || mutationInFlight || loading}
+                >
+                        <Save class="h-4 w-4" /> Save value
+                </Button>
+                <Button
+                        type="button"
 			variant="ghost"
 			size="sm"
 			class="gap-2 rounded-full border border-border/50 bg-background/80 px-4 text-destructive hover:text-destructive"
 			onclick={deleteSelectedValue}
-			disabled={!selectedValue}
-		>
-			<Trash2 class="h-4 w-4" /> Delete value
-		</Button>
-		<Button
-			type="button"
-			variant="ghost"
-			size="sm"
-			class="ml-auto gap-2 rounded-full border border-border/50 bg-background/80 px-4"
-			onclick={resetRegistry}
-		>
-			<RefreshCw class="h-4 w-4" /> Reset snapshot
-		</Button>
+                        disabled={!selectedValue || mutationInFlight || loading}
+                >
+                        <Trash2 class="h-4 w-4" /> Delete value
+                </Button>
+                <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        class="ml-auto gap-2 rounded-full border border-border/50 bg-background/80 px-4"
+                        onclick={reloadRegistry}
+                        disabled={loading || mutationInFlight}
+                >
+                        <RefreshCw class={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+                        <span>{loading ? 'Syncing…' : 'Refresh snapshot'}</span>
+                </Button>
 	</div>
 
 	<div class="flex min-h-0 flex-1">
 		<ContextMenu>
 			<ContextMenuTrigger child={TreePane} />
 			<ContextMenuContent class="w-56">
-				<ContextMenuItem
-					on:select={() => {
-						keyCreateParent = selectedKey?.path ?? '';
-						keyCreateName = '';
-						keyCreateError = null;
-					}}
-				>
-					<FolderPlus class="mr-2 h-4 w-4" /> New subkey here
-				</ContextMenuItem>
-				<ContextMenuItem
-					disabled={!selectedKey}
-					on:select={() => {
-						if (!selectedKey) {
-							return;
-						}
-						startNewValue();
-					}}
-				>
+                                <ContextMenuItem
+                                        disabled={mutationInFlight || loading}
+                                        on:select={() => {
+                                                if (mutationInFlight || loading) {
+                                                        return;
+                                                }
+                                                keyCreateParent = selectedKey?.path ?? '';
+                                                keyCreateName = '';
+                                                keyCreateError = null;
+                                        }}
+                                >
+                                        <FolderPlus class="mr-2 h-4 w-4" /> New subkey here
+                                </ContextMenuItem>
+                                <ContextMenuItem
+                                        disabled={!selectedKey || mutationInFlight || loading}
+                                        on:select={() => {
+                                                if (!selectedKey || mutationInFlight || loading) {
+                                                        return;
+                                                }
+                                                startNewValue();
+                                        }}
+                                >
 					<ListPlus class="mr-2 h-4 w-4" /> New value
 				</ContextMenuItem>
-				<ContextMenuSeparator />
-				<ContextMenuItem
-					disabled={!selectedKey}
-					on:select={() => {
-						if (!selectedKey) {
-							return;
-						}
-						keyRenameName = selectedKey.name;
-						keyRenameError = null;
-					}}
+                                <ContextMenuSeparator />
+                                <ContextMenuItem
+                                        disabled={!selectedKey || mutationInFlight || loading}
+                                        on:select={() => {
+                                                if (!selectedKey || mutationInFlight || loading) {
+                                                        return;
+                                                }
+                                                keyRenameName = selectedKey.name;
+                                                keyRenameError = null;
+                                        }}
 				>
 					<PencilLine class="mr-2 h-4 w-4" /> Prepare rename
 				</ContextMenuItem>
-				<ContextMenuItem
-					class="text-destructive focus:text-destructive"
-					disabled={!selectedKey}
-					on:select={async () => {
-						if (!selectedKey) {
-							return;
-						}
-						await tick();
-						deleteSelectedKey();
-					}}
+                                <ContextMenuItem
+                                        class="text-destructive focus:text-destructive"
+                                        disabled={!selectedKey || mutationInFlight || loading}
+                                        on:select={async () => {
+                                                if (!selectedKey || mutationInFlight || loading) {
+                                                        return;
+                                                }
+                                                await tick();
+                                                deleteSelectedKey();
+                                        }}
 				>
 					<Trash2 class="mr-2 h-4 w-4" /> Delete key
 				</ContextMenuItem>
@@ -1094,28 +1178,31 @@
 			<ContextMenu>
 				<ContextMenuTrigger child={ValuesPane} />
 				<ContextMenuContent class="w-52">
-					<ContextMenuItem
-						disabled={!selectedKey}
-						on:select={() => {
-							if (!selectedKey) {
-								return;
-							}
-							startNewValue();
-						}}
-					>
-						<ListPlus class="mr-2 h-4 w-4" /> New value
-					</ContextMenuItem>
-					<ContextMenuItem disabled={!selectedKey} on:select={upsertValue}>
-						<Save class="mr-2 h-4 w-4" /> Save value
-					</ContextMenuItem>
-					<ContextMenuSeparator />
-					<ContextMenuItem
-						class="text-destructive focus:text-destructive"
-						disabled={!selectedValue}
-						on:select={deleteSelectedValue}
-					>
-						<Trash2 class="mr-2 h-4 w-4" /> Delete value
-					</ContextMenuItem>
+                                        <ContextMenuItem
+                                                disabled={!selectedKey || mutationInFlight || loading}
+                                                on:select={() => {
+                                                        if (!selectedKey || mutationInFlight || loading) {
+                                                                return;
+                                                        }
+                                                        startNewValue();
+                                                }}
+                                        >
+                                                <ListPlus class="mr-2 h-4 w-4" /> New value
+                                        </ContextMenuItem>
+                                        <ContextMenuItem
+                                                disabled={!selectedKey || mutationInFlight || loading}
+                                                on:select={upsertValue}
+                                        >
+                                                <Save class="mr-2 h-4 w-4" /> Save value
+                                        </ContextMenuItem>
+                                        <ContextMenuSeparator />
+                                        <ContextMenuItem
+                                                class="text-destructive focus:text-destructive"
+                                                disabled={!selectedValue || mutationInFlight || loading}
+                                                on:select={deleteSelectedValue}
+                                        >
+                                                <Trash2 class="mr-2 h-4 w-4" /> Delete value
+                                        </ContextMenuItem>
 				</ContextMenuContent>
 			</ContextMenu>
 

