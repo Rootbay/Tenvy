@@ -118,9 +118,15 @@
 		}
 	];
 
+	const hasTimelineData = activityTimeline.some(
+		(point) => point.active > 0 || point.idle > 0 || point.suppressed > 0
+	);
+
 	type ModuleActivityEntry = PageData['moduleActivity'][number];
 
 	const moduleActivity: ModuleActivityEntry[] = data.moduleActivity;
+
+	const hasModuleTelemetry = moduleActivity.some((entry) => entry.executed > 0 || entry.queued > 0);
 
 	const moduleChartConfig = {
 		executed: {
@@ -168,6 +174,8 @@
 			timestamp: new Date(entry.timestamp)
 		})
 	);
+
+	const hasLatencySamples = latencyTrend.some((entry) => entry.p50 > 0 || entry.p95 > 0);
 
 	const latencyChartConfig = {
 		p50: {
@@ -226,29 +234,37 @@
 				</CardDescription>
 			</CardHeader>
 			<CardContent>
-				<ChartContainer config={activityChartConfig} class="w-full">
-					<AreaChart
-						data={activityTimeline}
-						x={(point) => point.timestamp}
-						series={activitySeries}
-						seriesLayout="stack"
-						props={{
-							xAxis: {
-								format: (value) => (value instanceof Date ? timeFormatter.format(value) : '')
-							},
-							yAxis: {
-								format: (value) => numberFormatter.format(Number(value ?? 0))
-							},
-							legend: {
-								placement: 'top-right'
-							}
-						}}
+				{#if hasTimelineData}
+					<ChartContainer config={activityChartConfig} class="w-full">
+						<AreaChart
+							data={activityTimeline}
+							x={(point) => point.timestamp}
+							series={activitySeries}
+							seriesLayout="stack"
+							props={{
+								xAxis: {
+									format: (value) => (value instanceof Date ? timeFormatter.format(value) : '')
+								},
+								yAxis: {
+									format: (value) => numberFormatter.format(Number(value ?? 0))
+								},
+								legend: {
+									placement: 'top-right'
+								}
+							}}
+						>
+							{#snippet tooltip()}
+								<ChartTooltip labelKey="label" indicator="line" />
+							{/snippet}
+						</AreaChart>
+					</ChartContainer>
+				{:else}
+					<div
+						class="rounded-lg border border-dashed border-border/60 p-6 text-center text-sm text-muted-foreground"
 					>
-						{#snippet tooltip()}
-							<ChartTooltip labelKey="label" indicator="line" />
-						{/snippet}
-					</AreaChart>
-				</ChartContainer>
+						No command activity has been recorded for this period.
+					</div>
+				{/if}
 			</CardContent>
 		</Card>
 
@@ -265,25 +281,33 @@
 				</Badge>
 			</CardHeader>
 			<CardContent>
-				<ChartContainer config={latencyChartConfig} class="w-full">
-					<LineChart
-						data={latencyTrend}
-						x={(entry) => entry.timestamp}
-						series={latencySeries}
-						props={{
-							xAxis: {
-								format: (value) => (value instanceof Date ? timeFormatter.format(value) : '')
-							},
-							yAxis: {
-								format: (value) => `${numberFormatter.format(Number(value ?? 0))} ms`
-							}
-						}}
+				{#if hasLatencySamples}
+					<ChartContainer config={latencyChartConfig} class="w-full">
+						<LineChart
+							data={latencyTrend}
+							x={(entry) => entry.timestamp}
+							series={latencySeries}
+							props={{
+								xAxis: {
+									format: (value) => (value instanceof Date ? timeFormatter.format(value) : '')
+								},
+								yAxis: {
+									format: (value) => `${numberFormatter.format(Number(value ?? 0))} ms`
+								}
+							}}
+						>
+							{#snippet tooltip()}
+								<ChartTooltip indicator="line" />
+							{/snippet}
+						</LineChart>
+					</ChartContainer>
+				{:else}
+					<div
+						class="rounded-lg border border-dashed border-border/60 p-6 text-center text-sm text-muted-foreground"
 					>
-						{#snippet tooltip()}
-							<ChartTooltip indicator="line" />
-						{/snippet}
-					</LineChart>
-				</ChartContainer>
+						No latency samples are available for this window yet.
+					</div>
+				{/if}
 			</CardContent>
 		</Card>
 	</div>
@@ -297,24 +321,32 @@
 				</CardDescription>
 			</CardHeader>
 			<CardContent>
-				<ChartContainer config={moduleChartConfig} class="w-full">
-					<BarChart
-						data={moduleActivity}
-						x={(entry) => entry.module}
-						series={moduleSeries}
-						seriesLayout="stack"
-						bandPadding={0.3}
-						props={{
-							yAxis: {
-								format: (value) => numberFormatter.format(Number(value ?? 0))
-							}
-						}}
+				{#if hasModuleTelemetry}
+					<ChartContainer config={moduleChartConfig} class="w-full">
+						<BarChart
+							data={moduleActivity}
+							x={(entry) => entry.module}
+							series={moduleSeries}
+							seriesLayout="stack"
+							bandPadding={0.3}
+							props={{
+								yAxis: {
+									format: (value) => numberFormatter.format(Number(value ?? 0))
+								}
+							}}
+						>
+							{#snippet tooltip()}
+								<ChartTooltip />
+							{/snippet}
+						</BarChart>
+					</ChartContainer>
+				{:else}
+					<div
+						class="rounded-lg border border-dashed border-border/60 p-6 text-center text-sm text-muted-foreground"
 					>
-						{#snippet tooltip()}
-							<ChartTooltip />
-						{/snippet}
-					</BarChart>
-				</ChartContainer>
+						No module execution telemetry is available yet.
+					</div>
+				{/if}
 			</CardContent>
 		</Card>
 
@@ -326,30 +358,38 @@
 				</CardDescription>
 			</CardHeader>
 			<CardContent class="space-y-4">
-				{#each flaggedSessions as session (session.client)}
-					<div class="rounded-lg border border-border/60 p-4">
-						<div class="flex items-start justify-between gap-4">
-							<div class="space-y-1">
-								<p class="text-sm font-medium tracking-[0.08em] text-muted-foreground uppercase">
-									{session.client}
-								</p>
-								<p class="text-sm text-foreground">{session.reason}</p>
-								<p class="text-xs text-muted-foreground">{session.region}</p>
-							</div>
-							<div class="flex flex-col items-end gap-2 text-right">
-								<Badge variant="outline" class="font-mono text-xs">
-									{numberFormatter.format(session.interactions)} ops
-								</Badge>
-								<Badge
-									variant="outline"
-									class={`text-[0.65rem] ${flaggedStatusMeta[session.status].badgeClass}`}
-								>
-									{flaggedStatusMeta[session.status].label}
-								</Badge>
+				{#if flaggedSessions.length === 0}
+					<div
+						class="rounded-lg border border-dashed border-border/60 p-6 text-center text-sm text-muted-foreground"
+					>
+						No sessions are currently flagged for review.
+					</div>
+				{:else}
+					{#each flaggedSessions as session (session.client)}
+						<div class="rounded-lg border border-border/60 p-4">
+							<div class="flex items-start justify-between gap-4">
+								<div class="space-y-1">
+									<p class="text-sm font-medium tracking-[0.08em] text-muted-foreground uppercase">
+										{session.client}
+									</p>
+									<p class="text-sm text-foreground">{session.reason}</p>
+									<p class="text-xs text-muted-foreground">{session.region}</p>
+								</div>
+								<div class="flex flex-col items-end gap-2 text-right">
+									<Badge variant="outline" class="font-mono text-xs">
+										{numberFormatter.format(session.interactions)} ops
+									</Badge>
+									<Badge
+										variant="outline"
+										class={`text-[0.65rem] ${flaggedStatusMeta[session.status].badgeClass}`}
+									>
+										{flaggedStatusMeta[session.status].label}
+									</Badge>
+								</div>
 							</div>
 						</div>
-					</div>
-				{/each}
+					{/each}
+				{/if}
 			</CardContent>
 		</Card>
 	</div>

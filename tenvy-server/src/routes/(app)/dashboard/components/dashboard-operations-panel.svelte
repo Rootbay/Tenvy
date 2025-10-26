@@ -121,7 +121,11 @@
 					<div
 						class="rounded-lg border border-dashed border-border/60 p-6 text-center text-sm text-muted-foreground"
 					>
-						No events matched this country filter.
+						{#if props.logs.length === 0}
+							No operations have been logged yet.
+						{:else}
+							No events matched this country filter.
+						{/if}
 					</div>
 				{/if}
 				{#each $filteredLogs as entry (entry.id)}
