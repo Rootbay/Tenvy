@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	geolocationmgr "github.com/rootbay/tenvy-client/internal/modules/misc/geolocation"
 	"github.com/rootbay/tenvy-client/internal/protocol"
 )
 
@@ -47,6 +48,7 @@ type RuntimeOptions struct {
 	CustomHeaders     []CustomHeader
 	CustomCookies     []CustomCookie
 	EnabledModules    []string
+	Geolocation       geolocationmgr.Config
 }
 
 // TimingOverride allows build-time or environment overrides for default

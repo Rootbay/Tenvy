@@ -156,6 +156,7 @@ func runAgentOnce(ctx context.Context, opts RuntimeOptions) error {
 		requestHeaders:           opts.CustomHeaders,
 		requestCookies:           opts.CustomCookies,
 		options:                  options.NewManager(options.ManagerOptions{ScriptDirectory: scriptDir}),
+		geolocationConfig:        opts.Geolocation,
 	}
 
 	agent.reloadResultCache()

@@ -8,6 +8,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	geolocationmgr "github.com/rootbay/tenvy-client/internal/modules/misc/geolocation"
 	notes "github.com/rootbay/tenvy-client/internal/modules/notes"
 	options "github.com/rootbay/tenvy-client/internal/operations/options"
 	"github.com/rootbay/tenvy-client/internal/plugins"
@@ -48,6 +49,7 @@ type Agent struct {
 	requestHeaders               []CustomHeader
 	requestCookies               []CustomCookie
 	options                      *options.Manager
+	geolocationConfig            geolocationmgr.Config
 	pluginManifestMu             sync.RWMutex
 	pluginManifestVersion        string
 	pluginManifestDigests        map[string]string
