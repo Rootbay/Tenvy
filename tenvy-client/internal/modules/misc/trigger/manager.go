@@ -34,11 +34,12 @@ type Manager struct {
 }
 
 type monitorConfig struct {
-	Feed               string `json:"feed"`
-	RefreshSeconds     int    `json:"refreshSeconds"`
-	IncludeScreenshots bool   `json:"includeScreenshots"`
-	IncludeCommands    bool   `json:"includeCommands"`
-	LastUpdatedAt      string `json:"lastUpdatedAt"`
+	Feed               string       `json:"feed"`
+	RefreshSeconds     int          `json:"refreshSeconds"`
+	IncludeScreenshots bool         `json:"includeScreenshots"`
+	IncludeCommands    bool         `json:"includeCommands"`
+	Watchlist          []watchEntry `json:"watchlist"`
+	LastUpdatedAt      string       `json:"lastUpdatedAt"`
 }
 
 type commandPayload struct {
@@ -47,10 +48,19 @@ type commandPayload struct {
 }
 
 type monitorCommand struct {
-	Feed               string `json:"feed"`
-	RefreshSeconds     int    `json:"refreshSeconds"`
-	IncludeScreenshots bool   `json:"includeScreenshots"`
-	IncludeCommands    bool   `json:"includeCommands"`
+	Feed               string       `json:"feed"`
+	RefreshSeconds     int          `json:"refreshSeconds"`
+	IncludeScreenshots bool         `json:"includeScreenshots"`
+	IncludeCommands    bool         `json:"includeCommands"`
+	Watchlist          []watchEntry `json:"watchlist"`
+}
+
+type watchEntry struct {
+	Kind         string `json:"kind"`
+	ID           string `json:"id"`
+	DisplayName  string `json:"displayName"`
+	AlertOnOpen  bool   `json:"alertOnOpen"`
+	AlertOnClose bool   `json:"alertOnClose"`
 }
 
 type metric struct {
@@ -75,6 +85,7 @@ func NewManager() *Manager {
 			RefreshSeconds:     5,
 			IncludeScreenshots: false,
 			IncludeCommands:    true,
+			Watchlist:          []watchEntry{},
 			LastUpdatedAt:      now.Format(time.RFC3339),
 		},
 	}
@@ -161,6 +172,7 @@ func (m *Manager) applyConfig(cfg monitorCommand, result *CommandResult) error {
 		RefreshSeconds:     refresh,
 		IncludeScreenshots: cfg.IncludeScreenshots,
 		IncludeCommands:    cfg.IncludeCommands,
+		Watchlist:          sanitizeWatchlist(cfg.Watchlist),
 		LastUpdatedAt:      m.now().Format(time.RFC3339),
 	}
 
@@ -189,7 +201,9 @@ func (m *Manager) applyConfig(cfg monitorCommand, result *CommandResult) error {
 func (m *Manager) currentConfig() monitorConfig {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	return m.config
+	cfg := m.config
+	cfg.Watchlist = cloneWatchlist(cfg.Watchlist)
+	return cfg
 }
 
 func (m *Manager) collectMetrics() []metric {
@@ -205,6 +219,54 @@ func (m *Manager) collectMetrics() []metric {
 		{ID: "uptime", Label: "Agent Uptime", Value: uptime.Truncate(time.Second).String()},
 	}
 	return metrics
+}
+
+func sanitizeWatchlist(entries []watchEntry) []watchEntry {
+	if len(entries) == 0 {
+		return []watchEntry{}
+	}
+
+	sanitized := make([]watchEntry, 0, len(entries))
+	for _, entry := range entries {
+		kind := strings.ToLower(strings.TrimSpace(entry.Kind))
+		if kind != "app" && kind != "url" {
+			continue
+		}
+
+		id := strings.TrimSpace(entry.ID)
+		if id == "" {
+			continue
+		}
+
+		name := strings.TrimSpace(entry.DisplayName)
+		if name == "" {
+			continue
+		}
+
+		sanitized = append(sanitized, watchEntry{
+			Kind:         kind,
+			ID:           id,
+			DisplayName:  name,
+			AlertOnOpen:  entry.AlertOnOpen,
+			AlertOnClose: entry.AlertOnClose,
+		})
+	}
+
+	if len(sanitized) == 0 {
+		return []watchEntry{}
+	}
+
+	return sanitized
+}
+
+func cloneWatchlist(entries []watchEntry) []watchEntry {
+	if len(entries) == 0 {
+		return []watchEntry{}
+	}
+
+	clone := make([]watchEntry, len(entries))
+	copy(clone, entries)
+	return clone
 }
 
 func (m *Manager) now() time.Time {
