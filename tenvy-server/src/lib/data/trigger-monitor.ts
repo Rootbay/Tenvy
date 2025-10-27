@@ -1,14 +1,19 @@
 import {
   triggerMonitorStatusSchema,
   triggerMonitorCommandRequestSchema,
+  triggerMonitorWatchlistInputSchema,
 } from '$lib/types/trigger-monitor';
-import type { TriggerMonitorConfigInput } from '$lib/types/trigger-monitor';
+import type {
+  TriggerMonitorConfigInput,
+  TriggerMonitorWatchlistInput,
+} from '$lib/types/trigger-monitor';
 
 interface FetchTriggerMonitorOptions {
   signal?: AbortSignal;
 }
 
-type UpdateTriggerMonitorInput = TriggerMonitorConfigInput & {
+type UpdateTriggerMonitorInput = Omit<TriggerMonitorConfigInput, 'watchlist'> & {
+  watchlist?: TriggerMonitorWatchlistInput;
   signal?: AbortSignal;
 };
 
@@ -38,10 +43,14 @@ export async function updateTriggerMonitorConfig(
   agentId: string,
   input: UpdateTriggerMonitorInput,
 ) {
-  const { signal, ...config } = input;
+  const { signal, watchlist, ...config } = input;
+  const normalizedWatchlist = triggerMonitorWatchlistInputSchema.parse(watchlist);
   const body = triggerMonitorCommandRequestSchema.parse({
     action: 'configure',
-    config,
+    config: {
+      ...config,
+      watchlist: normalizedWatchlist,
+    },
   });
 
   const response = await fetch(`/api/agents/${agentId}/misc/trigger-monitor`, {
@@ -56,6 +65,13 @@ export async function updateTriggerMonitorConfig(
   }
 
   const data = await response.json();
-  return triggerMonitorStatusSchema.parse(data);
+  const status = triggerMonitorStatusSchema.parse({
+    ...data,
+    config: {
+      ...data?.config,
+      watchlist: data?.config?.watchlist ?? normalizedWatchlist,
+    },
+  });
+  return status;
 }
 
