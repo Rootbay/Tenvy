@@ -1,12 +1,30 @@
 import { z } from 'zod';
 
+export const MAX_TRIGGER_MONITOR_WATCHLIST_ENTRIES = 64;
+export const MAX_TRIGGER_MONITOR_WATCHLIST_ID_LENGTH = 128;
+export const MAX_TRIGGER_MONITOR_WATCHLIST_DISPLAY_NAME_LENGTH = 128;
+
 export const triggerMonitorFeedSchema = z.enum(['live', 'batch']);
 export type TriggerMonitorFeed = z.infer<typeof triggerMonitorFeedSchema>;
 
 export const triggerMonitorWatchlistEntrySchema = z.object({
   kind: z.enum(['app', 'url']),
-  id: z.string().min(1),
-  displayName: z.string().min(1),
+  id: z
+    .string()
+    .trim()
+    .min(1, 'Watchlist entry id is required.')
+    .max(
+      MAX_TRIGGER_MONITOR_WATCHLIST_ID_LENGTH,
+      `Watchlist entry id must be ${MAX_TRIGGER_MONITOR_WATCHLIST_ID_LENGTH} characters or fewer.`,
+    ),
+  displayName: z
+    .string()
+    .trim()
+    .min(1, 'Watchlist entry display name is required.')
+    .max(
+      MAX_TRIGGER_MONITOR_WATCHLIST_DISPLAY_NAME_LENGTH,
+      `Watchlist entry display name must be ${MAX_TRIGGER_MONITOR_WATCHLIST_DISPLAY_NAME_LENGTH} characters or fewer.`,
+    ),
   alertOnOpen: z.boolean(),
   alertOnClose: z.boolean(),
 });
@@ -14,9 +32,12 @@ export type TriggerMonitorWatchlistEntry = z.infer<
   typeof triggerMonitorWatchlistEntrySchema
 >;
 
-export const triggerMonitorWatchlistSchema = z.array(
-  triggerMonitorWatchlistEntrySchema,
-);
+export const triggerMonitorWatchlistSchema = z
+  .array(triggerMonitorWatchlistEntrySchema)
+  .max(
+    MAX_TRIGGER_MONITOR_WATCHLIST_ENTRIES,
+    `Watchlist cannot exceed ${MAX_TRIGGER_MONITOR_WATCHLIST_ENTRIES} entries.`,
+  );
 export type TriggerMonitorWatchlist = z.infer<
   typeof triggerMonitorWatchlistSchema
 >;

@@ -25,6 +25,7 @@ vi.mock('../src/lib/server/rat/trigger-monitor.js', () => ({
 }));
 
 const modulePromise = import('../src/routes/api/agents/[id]/misc/trigger-monitor/+server.js');
+const typesPromise = import('../src/lib/types/trigger-monitor.js');
 
 type Handler = Awaited<typeof modulePromise> extends infer T
   ? T extends { GET?: infer G; POST?: infer P }
@@ -120,8 +121,165 @@ describe('trigger monitor API', () => {
     );
 
     expect(requireOperator).toHaveBeenCalledWith({ id: 'tester' });
-    expect(dispatchTriggerMonitorCommand).toHaveBeenCalledWith('agent-1', body, { operatorId: 'tester' });
+    expect(dispatchTriggerMonitorCommand).toHaveBeenCalledWith(
+      'agent-1',
+      {
+        action: 'configure',
+        config: {
+          ...body.config,
+          watchlist: [],
+        },
+      },
+      { operatorId: 'tester' },
+    );
     expect(await response.json()).toEqual(updated);
+  });
+
+  it('normalizes watchlist entries before dispatching configure command', async () => {
+    const { POST } = await modulePromise;
+    if (!POST) throw new Error('POST handler missing');
+
+    const updated = {
+      config: {
+        feed: 'live',
+        refreshSeconds: 15,
+        includeScreenshots: true,
+        includeCommands: true,
+        watchlist: [
+          {
+            kind: 'app',
+            id: 'com.example.App',
+            displayName: 'Example App',
+            alertOnOpen: true,
+            alertOnClose: false,
+          },
+        ],
+        lastUpdatedAt: '2024-06-01T12:10:00Z',
+      },
+      metrics: [],
+      generatedAt: '2024-06-01T12:10:00Z',
+    } satisfies Awaited<ReturnType<typeof dispatchTriggerMonitorCommand>>;
+
+    dispatchTriggerMonitorCommand.mockResolvedValueOnce(updated);
+
+    const payload = {
+      action: 'configure',
+      config: {
+        feed: 'live',
+        refreshSeconds: 15,
+        includeScreenshots: true,
+        includeCommands: true,
+        watchlist: [
+          {
+            kind: 'app',
+            id: '  com.example.App  ',
+            displayName: ' Example App  ',
+            alertOnOpen: true,
+            alertOnClose: false,
+          },
+        ],
+      },
+    } as const;
+
+    const response = await POST(
+      createEvent(POST, {
+        method: 'POST',
+        request: new Request('https://controller.test/api', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        }),
+      }),
+    );
+
+    expect(dispatchTriggerMonitorCommand).toHaveBeenCalledWith(
+      'agent-1',
+      {
+        action: 'configure',
+        config: {
+          feed: 'live',
+          refreshSeconds: 15,
+          includeScreenshots: true,
+          includeCommands: true,
+          watchlist: [
+            {
+              kind: 'app',
+              id: 'com.example.App',
+              displayName: 'Example App',
+              alertOnOpen: true,
+              alertOnClose: false,
+            },
+          ],
+        },
+      },
+      { operatorId: 'tester' },
+    );
+
+    expect(await response.json()).toEqual(updated);
+  });
+
+  it('enforces watchlist limits with descriptive errors', async () => {
+    const { POST } = await modulePromise;
+    if (!POST) throw new Error('POST handler missing');
+
+    const { MAX_TRIGGER_MONITOR_WATCHLIST_ID_LENGTH } = await typesPromise;
+
+    const watchlist = [
+      {
+        kind: 'app' as const,
+        id: 'a'.repeat(MAX_TRIGGER_MONITOR_WATCHLIST_ID_LENGTH + 1),
+        displayName: 'Example App',
+        alertOnOpen: true,
+        alertOnClose: false,
+      },
+    ];
+
+    await expect(
+      POST(
+        createEvent(POST, {
+          method: 'POST',
+          request: new Request('https://controller.test/api', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              action: 'configure',
+              config: {
+                feed: 'batch',
+                refreshSeconds: 30,
+                includeScreenshots: false,
+                includeCommands: true,
+                watchlist,
+              },
+            }),
+          }),
+        }),
+      ),
+    ).rejects.toMatchObject({
+      status: 400,
+      body: {
+        message: expect.stringContaining('Watchlist entry id must be'),
+      },
+    });
+  });
+
+  it('rejects requests that exceed the trigger monitor payload size limit', async () => {
+    const { POST, MAX_TRIGGER_MONITOR_REQUEST_BYTES } = await modulePromise;
+    if (!POST) throw new Error('POST handler missing');
+
+    const requestBody = 'x'.repeat(MAX_TRIGGER_MONITOR_REQUEST_BYTES + 1);
+
+    await expect(
+      POST(
+        createEvent(POST, {
+          method: 'POST',
+          request: new Request('https://controller.test/api', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: requestBody,
+          }),
+        }),
+      ),
+    ).rejects.toMatchObject({ status: 413 });
   });
 
   it('propagates trigger monitor errors', async () => {
