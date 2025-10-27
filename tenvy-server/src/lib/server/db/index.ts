@@ -232,6 +232,8 @@ CREATE TABLE IF NOT EXISTS audit_event (
         command_name TEXT NOT NULL,
         payload_hash TEXT NOT NULL,
         queued_at INTEGER NOT NULL,
+        acknowledged_at INTEGER,
+        acknowledgement TEXT,
         executed_at INTEGER,
         result TEXT,
         FOREIGN KEY (operator_id) REFERENCES user(id) ON DELETE SET NULL
@@ -265,5 +267,7 @@ ensureColumn('plugin', 'signature_signed_at', 'signature_signed_at INTEGER');
 ensureColumn('plugin', 'signature_error', 'signature_error TEXT');
 ensureColumn('plugin', 'signature_error_code', 'signature_error_code TEXT');
 ensureColumn('plugin', 'signature_chain', 'signature_chain TEXT');
+ensureColumn('audit_event', 'acknowledged_at', 'acknowledged_at INTEGER');
+ensureColumn('audit_event', 'acknowledgement', 'acknowledgement TEXT');
 
 export const db = drizzle(client, { schema });

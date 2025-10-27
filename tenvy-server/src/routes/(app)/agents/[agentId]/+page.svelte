@@ -41,12 +41,12 @@
 		return null;
 	}
 
-	function summarizeResult(event: AuditEventSummary): string {
-		if (!event.executedAt) {
-			return 'Awaiting execution';
-		}
-		if (!event.result) {
-			return 'Completed (no result payload)';
+        function summarizeResult(event: AuditEventSummary): string {
+                if (!event.executedAt) {
+                        return 'Awaiting execution';
+                }
+                if (!event.result) {
+                        return 'Completed (no result payload)';
 		}
 		const parsed = parseResult(event.result);
 		if (!parsed) {
@@ -69,10 +69,10 @@
 		return parsed.success ? 'success' : 'failure';
 	}
 
-	function formatTimestamp(value: string | null): string {
-		if (!value) {
-			return '—';
-		}
+        function formatTimestamp(value: string | null): string {
+                if (!value) {
+                        return '—';
+                }
 		const date = new Date(value);
 		if (Number.isNaN(date.getTime())) {
 			return '—';
@@ -80,9 +80,13 @@
 		return formatter.format(date);
 	}
 
-	function formatOperator(value: string | null): string {
-		return value ?? '—';
-	}
+        function formatOperator(value: string | null): string {
+                return value ?? '—';
+        }
+
+        function acknowledgementStatements(event: AuditEventSummary): string[] {
+                return event.acknowledgement?.statements?.map((statement) => statement.text) ?? [];
+        }
 </script>
 
 <div class="space-y-6">
@@ -124,12 +128,13 @@
 							<tr class="text-xs tracking-wide text-slate-500 uppercase dark:text-slate-400">
 								<th class="px-4 py-3 font-semibold">Command</th>
 								<th class="px-4 py-3 font-semibold">Operator</th>
-								<th class="px-4 py-3 font-semibold">Status</th>
-								<th class="px-4 py-3 font-semibold">Queued</th>
-								<th class="px-4 py-3 font-semibold">Executed</th>
-								<th class="px-4 py-3 font-semibold">Payload hash</th>
-								<th class="px-4 py-3 font-semibold">Result</th>
-							</tr>
+                                                                <th class="px-4 py-3 font-semibold">Status</th>
+                                                                <th class="px-4 py-3 font-semibold">Confirmation</th>
+                                                                <th class="px-4 py-3 font-semibold">Queued</th>
+                                                                <th class="px-4 py-3 font-semibold">Executed</th>
+                                                                <th class="px-4 py-3 font-semibold">Payload hash</th>
+                                                                <th class="px-4 py-3 font-semibold">Result</th>
+                                                        </tr>
 						</thead>
 						<tbody class="divide-y divide-slate-100 dark:divide-slate-900/60">
 							{#each events as event (event.id)}
@@ -143,18 +148,34 @@
 									<td class="px-4 py-3 text-xs text-slate-600 dark:text-slate-300">
 										{formatOperator(event.operatorId)}
 									</td>
-									<td class="px-4 py-3">
-										<Badge class={statusStyles[status]}
-											>{status === 'pending'
-												? 'Pending'
-												: status === 'success'
-													? 'Succeeded'
-													: 'Failed'}</Badge
-										>
-									</td>
-									<td class="px-4 py-3 text-xs text-slate-600 dark:text-slate-300">
-										{formatTimestamp(event.queuedAt)}
-									</td>
+                                                                        <td class="px-4 py-3">
+                                                                                <Badge class={statusStyles[status]}
+                                                                                        >{status === 'pending'
+                                                                                                ? 'Pending'
+                                                                                                : status === 'success'
+                                                                                                        ? 'Succeeded'
+                                                                                                        : 'Failed'}</Badge
+                                                                                >
+                                                                        </td>
+                                                                        <td class="px-4 py-3 text-xs text-slate-600 dark:text-slate-300">
+                                                                                {#if event.acknowledgement}
+                                                                                        <div class="space-y-1">
+                                                                                                <p class="font-medium text-slate-700 dark:text-slate-200">
+                                                                                                        {formatTimestamp(event.acknowledgedAt)}
+                                                                                                </p>
+                                                                                                <ul class="ml-4 list-disc space-y-1 text-slate-600 dark:text-slate-300">
+                                                                                                        {#each acknowledgementStatements(event) as statement (statement)}
+                                                                                                                <li>{statement}</li>
+                                                                                                        {/each}
+                                                                                                </ul>
+                                                                                        </div>
+                                                                                {:else}
+                                                                                        —
+                                                                                {/if}
+                                                                        </td>
+                                                                        <td class="px-4 py-3 text-xs text-slate-600 dark:text-slate-300">
+                                                                                {formatTimestamp(event.queuedAt)}
+                                                                        </td>
 									<td class="px-4 py-3 text-xs text-slate-600 dark:text-slate-300">
 										{formatTimestamp(event.executedAt)}
 									</td>
