@@ -33,14 +33,15 @@ import type {
 	AgentSyncResponse,
 	AgentCommandEnvelope,
 	AgentRemoteDesktopInputEnvelope,
-        AgentAppVncInputEnvelope,
-        Command,
-        CommandDeliveryMode,
-        CommandInput,
-        CommandAcknowledgementRecord,
-        CommandQueueAuditRecord,
-        CommandQueueResponse,
-        CommandResult
+	AgentAppVncInputEnvelope,
+	Command,
+	CommandDeliveryMode,
+	CommandInput,
+	CommandAcknowledgementRecord,
+	CommandQueueAuditRecord,
+	CommandQueueResponse,
+	CommandResult,
+	CommandOutputEvent
 } from '../../../../../shared/types/messages';
 import type { RemoteDesktopInputBurst } from '../../../../../shared/types/remote-desktop';
 import type { AppVncInputBurst } from '../../../../../shared/types/app-vnc';
@@ -56,6 +57,7 @@ export const MAX_PENDING_COMMANDS = 200;
 const PENDING_COMMAND_DROP_WARN_INTERVAL_MS = 30_000;
 const PERSIST_DEBOUNCE_MS = 2_000;
 const SESSION_TOKEN_TTL_MS = 60_000;
+const COMMAND_OUTPUT_RETENTION_MS = 5 * 60 * 1000;
 
 const SOCKET_OPEN_STATE = (() => {
 	const globalSocket = (globalThis as { WebSocket?: { OPEN?: number } }).WebSocket;
@@ -113,6 +115,19 @@ interface SharedNoteRecord {
 
 type AgentRegistrySubscriber = (event: AgentRegistryEvent) => void;
 
+interface CommandOutputStreamRecord {
+	events: CommandOutputEvent[];
+	listeners: Set<(event: CommandOutputEvent) => void>;
+	completed: boolean;
+	timeout?: ReturnType<typeof setTimeout>;
+}
+
+interface CommandOutputSubscription {
+	events: CommandOutputEvent[];
+	completed: boolean;
+	unsubscribe: () => void;
+}
+
 function ensureMetadata(metadata: AgentMetadata, remoteAddress?: string): AgentMetadata {
 	if (!remoteAddress) {
 		return metadata;
@@ -166,67 +181,69 @@ function hashSessionToken(rawToken: string): string {
 }
 
 function hashCommandPayload(payload: Command['payload']): string {
-        const hash = createHash('sha256');
-        try {
-                const serialized = JSON.stringify(payload ?? {});
-                hash.update(serialized, 'utf-8');
-        } catch {
-                hash.update('unserializable', 'utf-8');
-        }
-        return hash.digest('hex');
+	const hash = createHash('sha256');
+	try {
+		const serialized = JSON.stringify(payload ?? {});
+		hash.update(serialized, 'utf-8');
+	} catch {
+		hash.update('unserializable', 'utf-8');
+	}
+	return hash.digest('hex');
 }
 
 function sanitizeAcknowledgement(
-        input: CommandAcknowledgementRecord | null | undefined
+	input: CommandAcknowledgementRecord | null | undefined
 ): CommandAcknowledgementRecord | null {
-        if (!input || typeof input !== 'object') {
-                return null;
-        }
+	if (!input || typeof input !== 'object') {
+		return null;
+	}
 
-        const rawTimestamp = typeof input.confirmedAt === 'string' ? input.confirmedAt.trim() : '';
-        const statementsSource = Array.isArray(input.statements) ? input.statements : [];
+	const rawTimestamp = typeof input.confirmedAt === 'string' ? input.confirmedAt.trim() : '';
+	const statementsSource = Array.isArray(input.statements) ? input.statements : [];
 
-        const statements = statementsSource
-                .map((statement) => {
-                        if (!statement || typeof statement !== 'object') {
-                                return null;
-                        }
-                        const id = typeof (statement as { id?: unknown }).id === 'string'
-                                ? (statement as { id: string }).id.trim()
-                                : '';
-                        const text = typeof (statement as { text?: unknown }).text === 'string'
-                                ? (statement as { text: string }).text.trim()
-                                : '';
-                        if (!id || !text) {
-                                return null;
-                        }
-                        return { id, text };
-                })
-                .filter((entry): entry is { id: string; text: string } => Boolean(entry));
+	const statements = statementsSource
+		.map((statement) => {
+			if (!statement || typeof statement !== 'object') {
+				return null;
+			}
+			const id =
+				typeof (statement as { id?: unknown }).id === 'string'
+					? (statement as { id: string }).id.trim()
+					: '';
+			const text =
+				typeof (statement as { text?: unknown }).text === 'string'
+					? (statement as { text: string }).text.trim()
+					: '';
+			if (!id || !text) {
+				return null;
+			}
+			return { id, text };
+		})
+		.filter((entry): entry is { id: string; text: string } => Boolean(entry));
 
-        if (statements.length === 0) {
-                return null;
-        }
+	if (statements.length === 0) {
+		return null;
+	}
 
-        const parsedTimestamp = rawTimestamp ? new Date(rawTimestamp) : new Date();
-        const confirmedAt = Number.isNaN(parsedTimestamp.getTime())
-                ? new Date().toISOString()
-                : parsedTimestamp.toISOString();
+	const parsedTimestamp = rawTimestamp ? new Date(rawTimestamp) : new Date();
+	const confirmedAt = Number.isNaN(parsedTimestamp.getTime())
+		? new Date().toISOString()
+		: parsedTimestamp.toISOString();
 
-        return { confirmedAt, statements };
+	return { confirmedAt, statements };
 }
 
 function deserializeAcknowledgement(value: string | null): CommandAcknowledgementRecord | null {
-        if (!value) {
-                return null;
-        }
+	if (!value) {
+		return null;
+	}
 
-        try {
-                const parsed = JSON.parse(value) as CommandAcknowledgementRecord;
-                return sanitizeAcknowledgement(parsed);
-        } catch {
-                return null;
-        }
+	try {
+		const parsed = JSON.parse(value) as CommandAcknowledgementRecord;
+		return sanitizeAcknowledgement(parsed);
+	} catch {
+		return null;
+	}
 }
 
 function timingSafeEqualHex(expected: string, candidate: string): boolean {
@@ -368,6 +385,70 @@ function cloneMetrics(metrics: AgentMetrics | undefined): AgentMetrics | undefin
 	return metrics ? { ...metrics } : undefined;
 }
 
+function cloneCommandOutputEvent(event: CommandOutputEvent): CommandOutputEvent {
+	if (event.type === 'chunk') {
+		return { ...event };
+	}
+	return {
+		type: 'end',
+		commandId: event.commandId,
+		timestamp: event.timestamp,
+		result: { ...event.result }
+	} satisfies CommandOutputEvent;
+}
+
+function normalizeCommandOutputEvent(
+	commandId: string,
+	event: CommandOutputEvent
+): CommandOutputEvent {
+	const timestamp =
+		typeof event.timestamp === 'string' && event.timestamp.trim() !== ''
+			? event.timestamp
+			: new Date().toISOString();
+
+	if (event.type === 'chunk') {
+		const sequence = Number.isFinite(event.sequence) ? Number(event.sequence) : 0;
+		return {
+			type: 'chunk',
+			commandId,
+			sequence,
+			data: typeof event.data === 'string' ? event.data : '',
+			timestamp
+		} satisfies CommandOutputEvent;
+	}
+
+	const baseResult = event.result ?? {
+		commandId,
+		success: false,
+		output: undefined,
+		error: 'Command result unavailable',
+		completedAt: timestamp
+	};
+
+	const completedAt =
+		typeof baseResult.completedAt === 'string' && baseResult.completedAt.trim() !== ''
+			? baseResult.completedAt
+			: timestamp;
+
+	const normalizedCommandId =
+		typeof baseResult.commandId === 'string' && baseResult.commandId.trim() !== ''
+			? baseResult.commandId
+			: commandId;
+
+	return {
+		type: 'end',
+		commandId,
+		timestamp,
+		result: {
+			commandId: normalizedCommandId,
+			success: Boolean(baseResult.success),
+			output: baseResult.output ?? undefined,
+			error: baseResult.error ?? undefined,
+			completedAt
+		}
+	} satisfies CommandOutputEvent;
+}
+
 function parseCompletedAt(result: CommandResult | undefined): number {
 	if (!result) {
 		return 0;
@@ -426,6 +507,7 @@ export class AgentRegistry {
 	private readonly fingerprints = new Map<string, string>();
 	private readonly sessionTokens = new Map<string, SessionTokenRecord>();
 	private readonly subscribers = new Set<AgentRegistrySubscriber>();
+	private readonly commandOutputStreams = new Map<string, Map<string, CommandOutputStreamRecord>>();
 	private persistTimer: ReturnType<typeof setTimeout> | null = null;
 	private persistPromise: Promise<void> | null = null;
 	private needsPersist = false;
@@ -476,6 +558,58 @@ export class AgentRegistry {
 		this.broadcast({ type: 'notes', agentId: record.id, notes: this.serializeSharedNotes(record) });
 	}
 
+	private getCommandOutputStream(
+		agentId: string,
+		commandId: string,
+		create: boolean
+	): CommandOutputStreamRecord | null {
+		let streams = this.commandOutputStreams.get(agentId);
+		if (!streams) {
+			if (!create) {
+				return null;
+			}
+			streams = new Map();
+			this.commandOutputStreams.set(agentId, streams);
+		}
+
+		let stream = streams.get(commandId);
+		if (!stream && create) {
+			stream = { events: [], listeners: new Set(), completed: false };
+			streams.set(commandId, stream);
+		}
+
+		return stream ?? null;
+	}
+
+	private clearCommandOutputCleanup(stream: CommandOutputStreamRecord): void {
+		if (stream.timeout) {
+			clearTimeout(stream.timeout);
+			stream.timeout = undefined;
+		}
+	}
+
+	private scheduleCommandOutputCleanup(
+		agentId: string,
+		commandId: string,
+		stream: CommandOutputStreamRecord
+	): void {
+		this.clearCommandOutputCleanup(stream);
+		stream.timeout = setTimeout(() => {
+			const streams = this.commandOutputStreams.get(agentId);
+			if (!streams) {
+				return;
+			}
+			const target = streams.get(commandId);
+			if (!target || target.listeners.size > 0) {
+				return;
+			}
+			streams.delete(commandId);
+			if (streams.size === 0) {
+				this.commandOutputStreams.delete(agentId);
+			}
+		}, COMMAND_OUTPUT_RETENTION_MS);
+	}
+
 	private notifyCommand(
 		record: AgentRecord,
 		command: Command,
@@ -489,77 +623,75 @@ export class AgentRegistry {
 		});
 	}
 
-        private logCommandQueued(
-                record: AgentRecord,
-                command: Command,
-                operatorId?: string,
-                acknowledgement?: CommandAcknowledgementRecord | null
-        ): CommandQueueAuditRecord | null {
-                const payloadHash = hashCommandPayload(command.payload);
-                const sanitizedAck = sanitizeAcknowledgement(acknowledgement);
-                const acknowledgedAt = sanitizedAck ? new Date(sanitizedAck.confirmedAt) : null;
-                const acknowledgementJson = sanitizedAck ? JSON.stringify(sanitizedAck) : null;
+	private logCommandQueued(
+		record: AgentRecord,
+		command: Command,
+		operatorId?: string,
+		acknowledgement?: CommandAcknowledgementRecord | null
+	): CommandQueueAuditRecord | null {
+		const payloadHash = hashCommandPayload(command.payload);
+		const sanitizedAck = sanitizeAcknowledgement(acknowledgement);
+		const acknowledgedAt = sanitizedAck ? new Date(sanitizedAck.confirmedAt) : null;
+		const acknowledgementJson = sanitizedAck ? JSON.stringify(sanitizedAck) : null;
 
-                try {
-                        db.insert(auditEventTable)
-                                .values({
-                                        commandId: command.id,
-                                        agentId: record.id,
-                                        operatorId: operatorId ?? null,
-                                        commandName: command.name,
-                                        payloadHash,
-                                        queuedAt: new Date(command.createdAt),
-                                        acknowledgedAt,
-                                        acknowledgement: acknowledgementJson
-                                })
-                                .onConflictDoUpdate({
-                                        target: auditEventTable.commandId,
-                                        set: {
-                                                agentId: record.id,
-                                                operatorId: operatorId ?? null,
-                                                commandName: command.name,
-                                                payloadHash,
-                                                queuedAt: new Date(command.createdAt),
-                                                acknowledgedAt,
-                                                acknowledgement: acknowledgementJson
-                                        }
-                                })
-                                .run();
+		try {
+			db.insert(auditEventTable)
+				.values({
+					commandId: command.id,
+					agentId: record.id,
+					operatorId: operatorId ?? null,
+					commandName: command.name,
+					payloadHash,
+					queuedAt: new Date(command.createdAt),
+					acknowledgedAt,
+					acknowledgement: acknowledgementJson
+				})
+				.onConflictDoUpdate({
+					target: auditEventTable.commandId,
+					set: {
+						agentId: record.id,
+						operatorId: operatorId ?? null,
+						commandName: command.name,
+						payloadHash,
+						queuedAt: new Date(command.createdAt),
+						acknowledgedAt,
+						acknowledgement: acknowledgementJson
+					}
+				})
+				.run();
 
-                        const row = db
-                                .select({
-                                        id: auditEventTable.id,
-                                        acknowledgedAt: auditEventTable.acknowledgedAt,
-                                        acknowledgement: auditEventTable.acknowledgement
-                                })
-                                .from(auditEventTable)
-                                .where(eq(auditEventTable.commandId, command.id))
-                                .get();
+			const row = db
+				.select({
+					id: auditEventTable.id,
+					acknowledgedAt: auditEventTable.acknowledgedAt,
+					acknowledgement: auditEventTable.acknowledgement
+				})
+				.from(auditEventTable)
+				.where(eq(auditEventTable.commandId, command.id))
+				.get();
 
-                        if (row) {
-                                return {
-                                        eventId: typeof row.id === 'number' ? row.id : null,
-                                        acknowledgedAt:
-                                                row.acknowledgedAt instanceof Date
-                                                        ? row.acknowledgedAt.toISOString()
-                                                        : null,
-                                        acknowledgement: deserializeAcknowledgement(row.acknowledgement)
-                                } satisfies CommandQueueAuditRecord;
-                        }
-                } catch (error) {
-                        console.error('Failed to record command audit event', error);
-                }
+			if (row) {
+				return {
+					eventId: typeof row.id === 'number' ? row.id : null,
+					acknowledgedAt:
+						row.acknowledgedAt instanceof Date ? row.acknowledgedAt.toISOString() : null,
+					acknowledgement: deserializeAcknowledgement(row.acknowledgement)
+				} satisfies CommandQueueAuditRecord;
+			}
+		} catch (error) {
+			console.error('Failed to record command audit event', error);
+		}
 
-                if (sanitizedAck) {
-                        return {
-                                eventId: null,
-                                acknowledgedAt: acknowledgedAt ? acknowledgedAt.toISOString() : null,
-                                acknowledgement: sanitizedAck
-                        } satisfies CommandQueueAuditRecord;
-                }
+		if (sanitizedAck) {
+			return {
+				eventId: null,
+				acknowledgedAt: acknowledgedAt ? acknowledgedAt.toISOString() : null,
+				acknowledgement: sanitizedAck
+			} satisfies CommandQueueAuditRecord;
+		}
 
-                return null;
-        }
+		return null;
+	}
 
 	private logCommandExecuted(agentId: string, result: CommandResult): void {
 		try {
@@ -1256,35 +1388,114 @@ export class AgentRegistry {
 		const commands = record.pendingCommands.map((command) => ({ ...command }));
 		record.pendingCommands = [];
 
-                if (payload.plugins?.installations?.length) {
-                        await this.pluginTelemetry.syncAgent(
-                                record.id,
-                                record.metadata,
-                                payload.plugins.installations
-                        );
-                }
+		if (payload.plugins?.installations?.length) {
+			await this.pluginTelemetry.syncAgent(
+				record.id,
+				record.metadata,
+				payload.plugins.installations
+			);
+		}
 
-                const manifestDelta = await this.pluginTelemetry.getAgentManifestDelta(
-                        record.id,
-                        payload.plugins?.manifests
-                );
+		const manifestDelta = await this.pluginTelemetry.getAgentManifestDelta(
+			record.id,
+			payload.plugins?.manifests
+		);
 
-                this.schedulePersist();
+		this.schedulePersist();
 
-                return {
-                        agentId: id,
-                        commands,
-                        config: { ...record.config },
-                        serverTime: new Date().toISOString(),
-                        pluginManifests: manifestDelta
-                };
-        }
+		return {
+			agentId: id,
+			commands,
+			config: { ...record.config },
+			serverTime: new Date().toISOString(),
+			pluginManifests: manifestDelta
+		};
+	}
 
-        queueCommand(
-                id: string,
-                input: CommandInput,
-                options: { operatorId?: string; acknowledgement?: CommandAcknowledgementRecord | null } = {}
-        ): CommandQueueResponse {
+	async recordCommandOutput(
+		id: string,
+		commandId: string,
+		key: string,
+		event: CommandOutputEvent,
+		options: { remoteAddress?: string } = {}
+	): Promise<void> {
+		const record = this.agents.get(id);
+		if (!record) {
+			throw new RegistryError('Agent not found', 404);
+		}
+
+		if (!this.verifyAgentKey(record, key)) {
+			throw new RegistryError('Invalid agent key', 401);
+		}
+
+		record.lastSeen = new Date();
+		if (options.remoteAddress) {
+			record.metadata = ensureMetadata(record.metadata, options.remoteAddress);
+		}
+
+		const stream = this.getCommandOutputStream(id, commandId, true);
+		if (!stream) {
+			throw new RegistryError('Failed to create command output stream', 500);
+		}
+
+		this.clearCommandOutputCleanup(stream);
+
+		const normalized = normalizeCommandOutputEvent(commandId, event);
+		stream.events.push(normalized);
+
+		for (const listener of stream.listeners) {
+			try {
+				listener(cloneCommandOutputEvent(normalized));
+			} catch (err) {
+				console.error('Command output listener failed', err);
+			}
+		}
+
+		if (normalized.type === 'end') {
+			stream.completed = true;
+			this.scheduleCommandOutputCleanup(id, commandId, stream);
+		}
+
+		this.schedulePersist();
+	}
+
+	subscribeCommandOutput(
+		id: string,
+		commandId: string,
+		listener: (event: CommandOutputEvent) => void
+	): CommandOutputSubscription {
+		const record = this.agents.get(id);
+		if (!record) {
+			throw new RegistryError('Agent not found', 404);
+		}
+
+		const stream = this.getCommandOutputStream(id, commandId, true);
+		if (!stream) {
+			throw new RegistryError('Failed to create command output stream', 500);
+		}
+
+		this.clearCommandOutputCleanup(stream);
+		stream.listeners.add(listener);
+
+		const unsubscribe = () => {
+			stream.listeners.delete(listener);
+			if (stream.completed && stream.listeners.size === 0) {
+				this.scheduleCommandOutputCleanup(id, commandId, stream);
+			}
+		};
+
+		return {
+			events: stream.events.map(cloneCommandOutputEvent),
+			completed: stream.completed,
+			unsubscribe
+		} satisfies CommandOutputSubscription;
+	}
+
+	queueCommand(
+		id: string,
+		input: CommandInput,
+		options: { operatorId?: string; acknowledgement?: CommandAcknowledgementRecord | null } = {}
+	): CommandQueueResponse {
 		const record = this.agents.get(id);
 		if (!record) {
 			throw new RegistryError('Agent not found', 404);
@@ -1297,7 +1508,12 @@ export class AgentRegistry {
 			createdAt: new Date().toISOString()
 		};
 
-                const audit = this.logCommandQueued(record, command, options.operatorId, options.acknowledgement);
+		const audit = this.logCommandQueued(
+			record,
+			command,
+			options.operatorId,
+			options.acknowledgement
+		);
 
 		const delivered = this.deliverViaSession(record, command);
 		if (!delivered) {
@@ -1310,8 +1526,8 @@ export class AgentRegistry {
 		const delivery: CommandDeliveryMode = delivered ? 'session' : 'queued';
 		this.notifyCommand(record, command, delivery);
 		this.notifyAgentUpdate(record);
-                return { command, delivery, audit: audit ?? null };
-        }
+		return { command, delivery, audit: audit ?? null };
+	}
 
 	async requireAgentPluginVersion(
 		agentId: string,

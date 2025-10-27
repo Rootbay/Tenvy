@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -86,14 +87,29 @@ func shellCommandHandler(ctx context.Context, agent *Agent, cmd protocol.Command
 	commandCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
+	streamer := newCommandOutputStreamer(agent, cmd.ID)
+	var streamWriter io.Writer
+	if streamer != nil {
+		streamWriter = streamer
+	}
+
 	output, err := runShell(commandCtx, payload.Command, shellExecutionOptions{
 		workingDirectory: workingDirectory,
 		environment:      payload.Environment,
-	})
+	}, streamWriter)
+
+	var result protocol.CommandResult
 	if err != nil {
-		return newDetailedResult(cmd.ID, false, string(output), err.Error())
+		result = newDetailedResult(cmd.ID, false, string(output), err.Error())
+	} else {
+		result = newDetailedResult(cmd.ID, true, string(output), "")
 	}
-	return newDetailedResult(cmd.ID, true, string(output), "")
+
+	if streamer != nil {
+		streamer.Complete(result)
+	}
+
+	return result
 }
 
 var (
@@ -364,7 +380,7 @@ func normalizeWorkingDirectory(raw string) (string, error) {
 	return resolved, nil
 }
 
-func runShell(ctx context.Context, command string, options shellExecutionOptions) ([]byte, error) {
+func runShell(ctx context.Context, command string, options shellExecutionOptions, stream io.Writer) ([]byte, error) {
 	var execCmd *exec.Cmd
 	if runtime.GOOS == "windows" {
 		execCmd = exec.CommandContext(ctx, "cmd", "/C", command)
@@ -384,7 +400,19 @@ func runShell(ctx context.Context, command string, options shellExecutionOptions
 		execCmd.Env = mergeEnvironments(os.Environ(), options.environment)
 	}
 
-	return execCmd.CombinedOutput()
+	var buffer bytes.Buffer
+	writer := io.Writer(&buffer)
+	if stream != nil {
+		writer = io.MultiWriter(&buffer, stream)
+	}
+
+	execCmd.Stdout = writer
+	execCmd.Stderr = writer
+
+	if err := execCmd.Run(); err != nil {
+		return buffer.Bytes(), err
+	}
+	return buffer.Bytes(), nil
 }
 
 func mergeEnvironments(base []string, overrides map[string]string) []string {
