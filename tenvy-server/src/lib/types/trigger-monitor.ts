@@ -9,6 +9,9 @@ export {
   triggerMonitorWatchlistEntrySchema,
   triggerMonitorWatchlistSchema,
   triggerMonitorWatchlistInputSchema,
+  MAX_TRIGGER_MONITOR_WATCHLIST_ENTRIES,
+  MAX_TRIGGER_MONITOR_WATCHLIST_ID_LENGTH,
+  MAX_TRIGGER_MONITOR_WATCHLIST_DISPLAY_NAME_LENGTH,
 } from '../../../../shared/types/trigger-monitor';
 
 export type {
