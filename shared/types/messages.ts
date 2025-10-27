@@ -57,6 +57,16 @@ export interface OpenUrlCommandPayload {
   note?: string;
 }
 
+export interface CommandAcknowledgementStatement {
+  id: string;
+  text: string;
+}
+
+export interface CommandAcknowledgementRecord {
+  confirmedAt: string;
+  statements: CommandAcknowledgementStatement[];
+}
+
 export type AgentControlAction =
   | "disconnect"
   | "reconnect"
@@ -127,9 +137,16 @@ export interface AgentSyncResponse {
 
 export type CommandDeliveryMode = "session" | "queued";
 
+export interface CommandQueueAuditRecord {
+  eventId: number | null;
+  acknowledgedAt?: string | null;
+  acknowledgement?: CommandAcknowledgementRecord | null;
+}
+
 export interface CommandQueueResponse {
   command: Command;
   delivery: CommandDeliveryMode;
+  audit?: CommandQueueAuditRecord | null;
 }
 
 export interface CommandQueueSnapshot {

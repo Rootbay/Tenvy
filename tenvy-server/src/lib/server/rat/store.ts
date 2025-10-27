@@ -33,12 +33,14 @@ import type {
 	AgentSyncResponse,
 	AgentCommandEnvelope,
 	AgentRemoteDesktopInputEnvelope,
-	AgentAppVncInputEnvelope,
-	Command,
-	CommandDeliveryMode,
-	CommandInput,
-	CommandQueueResponse,
-	CommandResult
+        AgentAppVncInputEnvelope,
+        Command,
+        CommandDeliveryMode,
+        CommandInput,
+        CommandAcknowledgementRecord,
+        CommandQueueAuditRecord,
+        CommandQueueResponse,
+        CommandResult
 } from '../../../../../shared/types/messages';
 import type { RemoteDesktopInputBurst } from '../../../../../shared/types/remote-desktop';
 import type { AppVncInputBurst } from '../../../../../shared/types/app-vnc';
@@ -164,14 +166,67 @@ function hashSessionToken(rawToken: string): string {
 }
 
 function hashCommandPayload(payload: Command['payload']): string {
-	const hash = createHash('sha256');
-	try {
-		const serialized = JSON.stringify(payload ?? {});
-		hash.update(serialized, 'utf-8');
-	} catch {
-		hash.update('unserializable', 'utf-8');
-	}
-	return hash.digest('hex');
+        const hash = createHash('sha256');
+        try {
+                const serialized = JSON.stringify(payload ?? {});
+                hash.update(serialized, 'utf-8');
+        } catch {
+                hash.update('unserializable', 'utf-8');
+        }
+        return hash.digest('hex');
+}
+
+function sanitizeAcknowledgement(
+        input: CommandAcknowledgementRecord | null | undefined
+): CommandAcknowledgementRecord | null {
+        if (!input || typeof input !== 'object') {
+                return null;
+        }
+
+        const rawTimestamp = typeof input.confirmedAt === 'string' ? input.confirmedAt.trim() : '';
+        const statementsSource = Array.isArray(input.statements) ? input.statements : [];
+
+        const statements = statementsSource
+                .map((statement) => {
+                        if (!statement || typeof statement !== 'object') {
+                                return null;
+                        }
+                        const id = typeof (statement as { id?: unknown }).id === 'string'
+                                ? (statement as { id: string }).id.trim()
+                                : '';
+                        const text = typeof (statement as { text?: unknown }).text === 'string'
+                                ? (statement as { text: string }).text.trim()
+                                : '';
+                        if (!id || !text) {
+                                return null;
+                        }
+                        return { id, text };
+                })
+                .filter((entry): entry is { id: string; text: string } => Boolean(entry));
+
+        if (statements.length === 0) {
+                return null;
+        }
+
+        const parsedTimestamp = rawTimestamp ? new Date(rawTimestamp) : new Date();
+        const confirmedAt = Number.isNaN(parsedTimestamp.getTime())
+                ? new Date().toISOString()
+                : parsedTimestamp.toISOString();
+
+        return { confirmedAt, statements };
+}
+
+function deserializeAcknowledgement(value: string | null): CommandAcknowledgementRecord | null {
+        if (!value) {
+                return null;
+        }
+
+        try {
+                const parsed = JSON.parse(value) as CommandAcknowledgementRecord;
+                return sanitizeAcknowledgement(parsed);
+        } catch {
+                return null;
+        }
 }
 
 function timingSafeEqualHex(expected: string, candidate: string): boolean {
@@ -434,33 +489,77 @@ export class AgentRegistry {
 		});
 	}
 
-	private logCommandQueued(record: AgentRecord, command: Command, operatorId?: string): void {
-		const payloadHash = hashCommandPayload(command.payload);
-		try {
-			db.insert(auditEventTable)
-				.values({
-					commandId: command.id,
-					agentId: record.id,
-					operatorId: operatorId ?? null,
-					commandName: command.name,
-					payloadHash,
-					queuedAt: new Date(command.createdAt)
-				})
-				.onConflictDoUpdate({
-					target: auditEventTable.commandId,
-					set: {
-						agentId: record.id,
-						operatorId: operatorId ?? null,
-						commandName: command.name,
-						payloadHash,
-						queuedAt: new Date(command.createdAt)
-					}
-				})
-				.run();
-		} catch (error) {
-			console.error('Failed to record command audit event', error);
-		}
-	}
+        private logCommandQueued(
+                record: AgentRecord,
+                command: Command,
+                operatorId?: string,
+                acknowledgement?: CommandAcknowledgementRecord | null
+        ): CommandQueueAuditRecord | null {
+                const payloadHash = hashCommandPayload(command.payload);
+                const sanitizedAck = sanitizeAcknowledgement(acknowledgement);
+                const acknowledgedAt = sanitizedAck ? new Date(sanitizedAck.confirmedAt) : null;
+                const acknowledgementJson = sanitizedAck ? JSON.stringify(sanitizedAck) : null;
+
+                try {
+                        db.insert(auditEventTable)
+                                .values({
+                                        commandId: command.id,
+                                        agentId: record.id,
+                                        operatorId: operatorId ?? null,
+                                        commandName: command.name,
+                                        payloadHash,
+                                        queuedAt: new Date(command.createdAt),
+                                        acknowledgedAt,
+                                        acknowledgement: acknowledgementJson
+                                })
+                                .onConflictDoUpdate({
+                                        target: auditEventTable.commandId,
+                                        set: {
+                                                agentId: record.id,
+                                                operatorId: operatorId ?? null,
+                                                commandName: command.name,
+                                                payloadHash,
+                                                queuedAt: new Date(command.createdAt),
+                                                acknowledgedAt,
+                                                acknowledgement: acknowledgementJson
+                                        }
+                                })
+                                .run();
+
+                        const row = db
+                                .select({
+                                        id: auditEventTable.id,
+                                        acknowledgedAt: auditEventTable.acknowledgedAt,
+                                        acknowledgement: auditEventTable.acknowledgement
+                                })
+                                .from(auditEventTable)
+                                .where(eq(auditEventTable.commandId, command.id))
+                                .get();
+
+                        if (row) {
+                                return {
+                                        eventId: typeof row.id === 'number' ? row.id : null,
+                                        acknowledgedAt:
+                                                row.acknowledgedAt instanceof Date
+                                                        ? row.acknowledgedAt.toISOString()
+                                                        : null,
+                                        acknowledgement: deserializeAcknowledgement(row.acknowledgement)
+                                } satisfies CommandQueueAuditRecord;
+                        }
+                } catch (error) {
+                        console.error('Failed to record command audit event', error);
+                }
+
+                if (sanitizedAck) {
+                        return {
+                                eventId: null,
+                                acknowledgedAt: acknowledgedAt ? acknowledgedAt.toISOString() : null,
+                                acknowledgement: sanitizedAck
+                        } satisfies CommandQueueAuditRecord;
+                }
+
+                return null;
+        }
 
 	private logCommandExecuted(agentId: string, result: CommandResult): void {
 		try {
@@ -1181,11 +1280,11 @@ export class AgentRegistry {
                 };
         }
 
-	queueCommand(
-		id: string,
-		input: CommandInput,
-		options: { operatorId?: string } = {}
-	): CommandQueueResponse {
+        queueCommand(
+                id: string,
+                input: CommandInput,
+                options: { operatorId?: string; acknowledgement?: CommandAcknowledgementRecord | null } = {}
+        ): CommandQueueResponse {
 		const record = this.agents.get(id);
 		if (!record) {
 			throw new RegistryError('Agent not found', 404);
@@ -1198,7 +1297,7 @@ export class AgentRegistry {
 			createdAt: new Date().toISOString()
 		};
 
-		this.logCommandQueued(record, command, options.operatorId);
+                const audit = this.logCommandQueued(record, command, options.operatorId, options.acknowledgement);
 
 		const delivered = this.deliverViaSession(record, command);
 		if (!delivered) {
@@ -1211,8 +1310,8 @@ export class AgentRegistry {
 		const delivery: CommandDeliveryMode = delivered ? 'session' : 'queued';
 		this.notifyCommand(record, command, delivery);
 		this.notifyAgentUpdate(record);
-		return { command, delivery };
-	}
+                return { command, delivery, audit: audit ?? null };
+        }
 
 	async requireAgentPluginVersion(
 		agentId: string,
