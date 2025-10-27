@@ -230,6 +230,23 @@ func toolActivationCommandHandler(ctx context.Context, agent *Agent, cmd protoco
 		if operation == "" {
 			return newFailureResult(cmd.ID, "missing options operation")
 		}
+
+		lowerOp := strings.ToLower(operation)
+		switch lowerOp {
+		case "script-status":
+			return newSuccessResult(cmd.ID, agent.scriptAutomationSummary())
+		case "script-stop":
+			if agent.scriptRunner == nil {
+				return newFailureResult(cmd.ID, "script automation unavailable")
+			}
+			agent.scriptRunner.Stop()
+			summary := agent.scriptAutomationSummary()
+			if strings.TrimSpace(summary) == "" {
+				summary = "Script automation stopped"
+			}
+			return newSuccessResult(cmd.ID, summary)
+		}
+
 		if agent.options == nil {
 			return newFailureResult(cmd.ID, "options manager unavailable")
 		}
