@@ -2,18 +2,15 @@ import {
   triggerMonitorStatusSchema,
   triggerMonitorCommandRequestSchema,
 } from '$lib/types/trigger-monitor';
+import type { TriggerMonitorConfigInput } from '$lib/types/trigger-monitor';
 
 interface FetchTriggerMonitorOptions {
   signal?: AbortSignal;
 }
 
-interface UpdateTriggerMonitorInput {
-  feed: 'live' | 'batch';
-  refreshSeconds: number;
-  includeScreenshots: boolean;
-  includeCommands: boolean;
+type UpdateTriggerMonitorInput = TriggerMonitorConfigInput & {
   signal?: AbortSignal;
-}
+};
 
 async function parseError(response: Response) {
   let message = response.statusText || 'Request failed';
@@ -37,20 +34,19 @@ export async function fetchTriggerMonitorStatus(agentId: string, options: FetchT
   return triggerMonitorStatusSchema.parse(data);
 }
 
-export async function updateTriggerMonitorConfig(agentId: string, input: UpdateTriggerMonitorInput) {
+export async function updateTriggerMonitorConfig(
+  agentId: string,
+  input: UpdateTriggerMonitorInput,
+) {
+  const { signal, ...config } = input;
   const body = triggerMonitorCommandRequestSchema.parse({
     action: 'configure',
-    config: {
-      feed: input.feed,
-      refreshSeconds: input.refreshSeconds,
-      includeScreenshots: input.includeScreenshots,
-      includeCommands: input.includeCommands,
-    },
+    config,
   });
 
   const response = await fetch(`/api/agents/${agentId}/misc/trigger-monitor`, {
     method: 'POST',
-    signal: input.signal,
+    signal,
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   });

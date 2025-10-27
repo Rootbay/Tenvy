@@ -24,7 +24,10 @@
                 fetchTriggerMonitorStatus,
                 updateTriggerMonitorConfig
         } from '$lib/data/trigger-monitor';
-        import type { TriggerMonitorMetric } from '$lib/types/trigger-monitor';
+        import type {
+                TriggerMonitorMetric,
+                TriggerMonitorWatchlist
+        } from '$lib/types/trigger-monitor';
         import { appendWorkspaceLog, createWorkspaceLogEntry } from '$lib/workspace/utils';
         import type { WorkspaceLogEntry } from '$lib/workspace/types';
 
@@ -37,6 +40,7 @@
         let refreshSeconds = $state(5);
         let includeScreenshots = $state(false);
         let includeCommands = $state(true);
+        let watchlist = $state<TriggerMonitorWatchlist>([]);
         let metrics = $state<TriggerMonitorMetric[]>([]);
         let generatedAt = $state<string | null>(null);
         let log = $state<WorkspaceLogEntry[]>([]);
@@ -59,6 +63,7 @@
                         refreshSeconds = status.config.refreshSeconds;
                         includeScreenshots = status.config.includeScreenshots;
                         includeCommands = status.config.includeCommands;
+                        watchlist = status.config.watchlist;
                         metrics = status.metrics;
                         generatedAt = status.generatedAt;
                 } catch (err) {
@@ -85,12 +90,14 @@
                                 feed,
                                 refreshSeconds,
                                 includeScreenshots,
-                                includeCommands
+                                includeCommands,
+                                watchlist
                         });
                         feed = updated.config.feed;
                         refreshSeconds = updated.config.refreshSeconds;
                         includeScreenshots = updated.config.includeScreenshots;
                         includeCommands = updated.config.includeCommands;
+                        watchlist = updated.config.watchlist;
                         metrics = updated.metrics;
                         generatedAt = updated.generatedAt;
                         log = appendWorkspaceLog(

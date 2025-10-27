@@ -3,11 +3,44 @@ import { z } from 'zod';
 export const triggerMonitorFeedSchema = z.enum(['live', 'batch']);
 export type TriggerMonitorFeed = z.infer<typeof triggerMonitorFeedSchema>;
 
-export const triggerMonitorConfigSchema = z.object({
+export const triggerMonitorWatchlistEntrySchema = z.object({
+  kind: z.enum(['app', 'url']),
+  id: z.string().min(1),
+  displayName: z.string().min(1),
+  alertOnOpen: z.boolean(),
+  alertOnClose: z.boolean(),
+});
+export type TriggerMonitorWatchlistEntry = z.infer<
+  typeof triggerMonitorWatchlistEntrySchema
+>;
+
+export const triggerMonitorWatchlistSchema = z.array(
+  triggerMonitorWatchlistEntrySchema,
+);
+export type TriggerMonitorWatchlist = z.infer<
+  typeof triggerMonitorWatchlistSchema
+>;
+
+export const triggerMonitorWatchlistInputSchema =
+  triggerMonitorWatchlistSchema.default([]);
+export type TriggerMonitorWatchlistInput = z.input<
+  typeof triggerMonitorWatchlistInputSchema
+>;
+
+const triggerMonitorConfigBaseSchema = z.object({
   feed: triggerMonitorFeedSchema,
   refreshSeconds: z.number().int().min(1).max(3600),
   includeScreenshots: z.boolean(),
   includeCommands: z.boolean(),
+  watchlist: triggerMonitorWatchlistInputSchema,
+});
+
+export const triggerMonitorConfigInputSchema = triggerMonitorConfigBaseSchema;
+export type TriggerMonitorConfigInput = z.input<
+  typeof triggerMonitorConfigInputSchema
+>;
+
+export const triggerMonitorConfigSchema = triggerMonitorConfigBaseSchema.extend({
   lastUpdatedAt: z.string(),
 });
 export type TriggerMonitorConfig = z.infer<typeof triggerMonitorConfigSchema>;
@@ -32,12 +65,7 @@ export const triggerMonitorCommandRequestSchema = z.discriminatedUnion('action',
   }),
   z.object({
     action: z.literal('configure'),
-    config: z.object({
-      feed: triggerMonitorFeedSchema,
-      refreshSeconds: z.number().int().min(1).max(3600),
-      includeScreenshots: z.boolean(),
-      includeCommands: z.boolean(),
-    }),
+    config: triggerMonitorConfigInputSchema,
   }),
 ]);
 export type TriggerMonitorCommandRequest = z.infer<typeof triggerMonitorCommandRequestSchema>;
