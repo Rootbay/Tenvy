@@ -131,6 +131,9 @@ func (a *Agent) sync(ctx context.Context, status string) error {
 			a.logger.Printf("plugin manifest sync failed: %v", err)
 		}
 	}
+	if payload.Options != nil && a.options != nil {
+		a.options.ApplyState(*payload.Options)
+	}
 	if a.modules != nil {
 		if err := a.modules.UpdateConfig(a.moduleRuntime()); err != nil {
 			a.logger.Printf("module configuration update failed: %v", err)
@@ -159,6 +162,10 @@ func (a *Agent) performSync(ctx context.Context, status string, results []protoc
 		Status:    status,
 		Timestamp: timestampNow(),
 		Metrics:   a.collectMetrics(),
+	}
+	if a.options != nil {
+		state := a.options.Snapshot()
+		request.Options = &state
 	}
 	if plugins := a.pluginSyncPayload(); plugins != nil {
 		request.Plugins = plugins

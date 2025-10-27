@@ -84,13 +84,13 @@ export const recoveryCode = sqliteTable('recovery_code', {
 });
 
 export const plugin = sqliteTable('plugin', {
-        id: text('id').primaryKey(),
-        status: text('status').notNull().default('active'),
-        enabled: integer('enabled', { mode: 'boolean' }).notNull().default(true),
-        autoUpdate: integer('auto_update', { mode: 'boolean' }).notNull().default(false),
-        runtimeType: text('runtime_type').notNull().default('native'),
-        sandboxed: integer('sandboxed', { mode: 'boolean' }).notNull().default(false),
-        installations: integer('installations').notNull().default(0),
+	id: text('id').primaryKey(),
+	status: text('status').notNull().default('active'),
+	enabled: integer('enabled', { mode: 'boolean' }).notNull().default(true),
+	autoUpdate: integer('auto_update', { mode: 'boolean' }).notNull().default(false),
+	runtimeType: text('runtime_type').notNull().default('native'),
+	sandboxed: integer('sandboxed', { mode: 'boolean' }).notNull().default(false),
+	installations: integer('installations').notNull().default(0),
 	manualTargets: integer('manual_targets').notNull().default(0),
 	autoTargets: integer('auto_targets').notNull().default(0),
 	defaultDeliveryMode: text('default_delivery_mode').notNull().default('manual'),
@@ -243,6 +243,7 @@ export const agent = sqliteTable(
 		lastSeen: timestamp('last_seen', { defaultNow: true }),
 		metrics: text('metrics'),
 		config: text('config').notNull(),
+		optionsState: text('options_state'),
 		fingerprint: text('fingerprint').notNull(),
 		createdAt: timestamp('created_at', { defaultNow: true }),
 		updatedAt: timestamp('updated_at', { defaultNow: true })
@@ -286,15 +287,15 @@ export const auditEvent = sqliteTable(
 		agentId: text('agent_id')
 			.notNull()
 			.references(() => agent.id, { onDelete: 'cascade' }),
-                operatorId: text('operator_id').references(() => user.id, { onDelete: 'set null' }),
-                commandName: text('command_name').notNull(),
-                payloadHash: text('payload_hash').notNull(),
-                queuedAt: timestamp('queued_at', { defaultNow: true }),
-                acknowledgedAt: timestamp('acknowledged_at', { optional: true }),
-                acknowledgement: text('acknowledgement'),
-                executedAt: timestamp('executed_at', { optional: true }),
-                result: text('result')
-        },
+		operatorId: text('operator_id').references(() => user.id, { onDelete: 'set null' }),
+		commandName: text('command_name').notNull(),
+		payloadHash: text('payload_hash').notNull(),
+		queuedAt: timestamp('queued_at', { defaultNow: true }),
+		acknowledgedAt: timestamp('acknowledged_at', { optional: true }),
+		acknowledgement: text('acknowledgement'),
+		executedAt: timestamp('executed_at', { optional: true }),
+		result: text('result')
+	},
 	(table) => ({
 		commandUnique: uniqueIndex('audit_event_command_idx').on(table.commandId),
 		agentIdx: index('audit_event_agent_idx').on(table.agentId)

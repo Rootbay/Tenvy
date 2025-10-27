@@ -43,6 +43,12 @@ import type {
 	CommandResult,
 	CommandOutputEvent
 } from '../../../../../shared/types/messages';
+import type {
+	OptionsState,
+	OptionsScriptConfig,
+	OptionsScriptFile,
+	OptionsScriptRuntimeState
+} from '../../../../../shared/types/options';
 import type { RemoteDesktopInputBurst } from '../../../../../shared/types/remote-desktop';
 import type { AppVncInputBurst } from '../../../../../shared/types/app-vnc';
 import { PluginTelemetryStore } from '../plugins/telemetry-store.js';
@@ -102,6 +108,7 @@ interface AgentRecord {
 	fingerprint: string;
 	session?: AgentSessionRecord;
 	lastQueueDropWarning?: number;
+	optionsState?: OptionsState | null;
 }
 
 interface SharedNoteRecord {
@@ -244,6 +251,57 @@ function deserializeAcknowledgement(value: string | null): CommandAcknowledgemen
 	} catch {
 		return null;
 	}
+}
+
+function cloneOptionsFile(
+	file: OptionsScriptFile | null | undefined
+): OptionsScriptFile | null | undefined {
+	if (file === null || file === undefined) {
+		return file ?? undefined;
+	}
+	return { ...file } satisfies OptionsScriptFile;
+}
+
+function cloneOptionsConfig(
+	config: OptionsScriptConfig | null | undefined
+): OptionsScriptConfig | null | undefined {
+	if (config === null || config === undefined) {
+		return config ?? undefined;
+	}
+	const clone: OptionsScriptConfig = { ...config };
+	if (config.file === null) {
+		clone.file = null;
+	} else if (config.file !== undefined) {
+		clone.file = cloneOptionsFile(config.file) ?? undefined;
+	}
+	return clone;
+}
+
+function cloneOptionsRuntime(
+	runtime: OptionsScriptRuntimeState | null | undefined
+): OptionsScriptRuntimeState | null | undefined {
+	if (runtime === null || runtime === undefined) {
+		return runtime ?? undefined;
+	}
+	return { ...runtime } satisfies OptionsScriptRuntimeState;
+}
+
+function cloneOptionsState(state: OptionsState | null | undefined): OptionsState | null {
+	if (state === null || state === undefined) {
+		return state ?? null;
+	}
+	const clone: OptionsState = { ...state };
+	if (state.script === null) {
+		clone.script = null;
+	} else if (state.script !== undefined) {
+		clone.script = cloneOptionsConfig(state.script) ?? undefined;
+	}
+	if (state.scriptRuntime === null) {
+		clone.scriptRuntime = null;
+	} else if (state.scriptRuntime !== undefined) {
+		clone.scriptRuntime = cloneOptionsRuntime(state.scriptRuntime) ?? undefined;
+	}
+	return clone;
 }
 
 function timingSafeEqualHex(expected: string, candidate: string): boolean {
@@ -842,6 +900,7 @@ export class AgentRegistry {
 			let metadata: AgentMetadata | null = null;
 			let config: AgentConfig | null = null;
 			let metrics: AgentMetrics | undefined;
+			let optionsState: OptionsState | null = null;
 
 			try {
 				metadata = JSON.parse(row.metadata) as AgentMetadata;
@@ -864,6 +923,15 @@ export class AgentRegistry {
 					metrics = JSON.parse(row.metrics) as AgentMetrics;
 				} catch {
 					metrics = undefined;
+				}
+			}
+
+			if (row.optionsState) {
+				try {
+					const parsed = JSON.parse(row.optionsState) as OptionsState;
+					optionsState = cloneOptionsState(parsed);
+				} catch {
+					optionsState = null;
 				}
 			}
 
@@ -896,7 +964,8 @@ export class AgentRegistry {
 				pendingCommands,
 				recentResults,
 				sharedNotes,
-				fingerprint: row.fingerprint
+				fingerprint: row.fingerprint,
+				optionsState: optionsState ? cloneOptionsState(optionsState) : null
 			};
 
 			this.agents.set(record.id, record);
@@ -964,6 +1033,7 @@ export class AgentRegistry {
 					lastSeen: record.lastSeen,
 					metrics: record.metrics ? JSON.stringify(record.metrics) : null,
 					config: JSON.stringify(record.config),
+					optionsState: record.optionsState ? JSON.stringify(record.optionsState) : null,
 					fingerprint: record.fingerprint,
 					createdAt: record.connectedAt,
 					updatedAt: now
@@ -979,6 +1049,7 @@ export class AgentRegistry {
 							lastSeen: payload.lastSeen,
 							metrics: payload.metrics,
 							config: payload.config,
+							optionsState: payload.optionsState,
 							fingerprint: payload.fingerprint,
 							updatedAt: payload.updatedAt
 						})
@@ -1244,7 +1315,8 @@ export class AgentRegistry {
 			pendingCommands: [],
 			recentResults: [],
 			sharedNotes: new Map(),
-			fingerprint
+			fingerprint,
+			optionsState: null
 		};
 
 		this.agents.set(id, record);
@@ -1385,6 +1457,10 @@ export class AgentRegistry {
 			}
 		}
 
+		if (payload.options !== undefined) {
+			record.optionsState = cloneOptionsState(payload.options);
+		}
+
 		const commands = record.pendingCommands.map((command) => ({ ...command }));
 		record.pendingCommands = [];
 
@@ -1403,12 +1479,15 @@ export class AgentRegistry {
 
 		this.schedulePersist();
 
+		const optionsPayload = cloneOptionsState(record.optionsState ?? null);
+
 		return {
 			agentId: id,
 			commands,
 			config: { ...record.config },
 			serverTime: new Date().toISOString(),
-			pluginManifests: manifestDelta
+			pluginManifests: manifestDelta,
+			options: optionsPayload
 		};
 	}
 
@@ -1768,6 +1847,25 @@ export class AgentRegistry {
 			throw new RegistryError('Agent not found', 404);
 		}
 		return this.toSnapshot(record);
+	}
+
+	getAgentOptionsState(id: string): OptionsState | null {
+		const record = this.agents.get(id);
+		if (!record) {
+			throw new RegistryError('Agent not found', 404);
+		}
+		return cloneOptionsState(record.optionsState ?? null);
+	}
+
+	updateAgentOptionsState(id: string, state: OptionsState | null | undefined): OptionsState | null {
+		const record = this.agents.get(id);
+		if (!record) {
+			throw new RegistryError('Agent not found', 404);
+		}
+
+		record.optionsState = cloneOptionsState(state ?? null);
+		this.schedulePersist();
+		return cloneOptionsState(record.optionsState ?? null);
 	}
 
 	authorizeAgent(id: string, key: string | undefined): void {
