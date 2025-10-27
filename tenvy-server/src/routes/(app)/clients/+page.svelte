@@ -33,13 +33,14 @@
 	import DeployAgentDialog from './components/deploy-agent-dialog.svelte';
 	import { sectionToolMap, type SectionKey } from '$lib/client-sections';
 	import { createClientsTableStore } from '$lib/stores/clients-table';
-	import {
-		buildClientToolUrl,
-		getClientTool,
-		isDialogTool,
-		type ClientToolId,
-		type DialogToolId
-	} from '$lib/data/client-tools';
+        import {
+                buildClientToolUrl,
+                getClientTool,
+                isDialogTool,
+                type ClientToolId,
+                type DialogToolId
+        } from '$lib/data/client-tools';
+        import { isWorkspaceTool } from '$lib/data/client-tool-workspaces';
 	import { buildLocationDisplay } from '$lib/utils/location';
 	import { isLikelyPrivateIp } from '$lib/utils/ip';
 	import { formatAgentLatency } from '$lib/utils/agent-latency';
@@ -719,17 +720,26 @@
 			return;
 		}
 
-		const tool = getClientTool(toolId);
-		const target = tool.target ?? '_blank';
+                const tool = getClientTool(toolId);
+                const target = tool.target ?? '_blank';
 
-		toolDialog = null;
+                toolDialog = null;
 
-		if (target === 'dialog' && isDialogTool(toolId)) {
-			toolDialog = { agentId: agent.id, toolId };
-			return;
-		}
+                if (isWorkspaceTool(toolId)) {
+                        if (!browser) {
+                                return;
+                        }
+                        const url = buildClientToolUrl(agent.id, tool);
+                        goto(url as any);
+                        return;
+                }
 
-		const url = buildClientToolUrl(agent.id, tool);
+                if (target === 'dialog' && isDialogTool(toolId)) {
+                        toolDialog = { agentId: agent.id, toolId };
+                        return;
+                }
+
+                const url = buildClientToolUrl(agent.id, tool);
 
 		if (!browser) {
 			return;

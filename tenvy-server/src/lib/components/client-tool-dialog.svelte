@@ -1,7 +1,6 @@
 <script lang="ts">
-	import { browser } from '$app/environment';
-	import { createEventDispatcher, onMount } from 'svelte';
-	import type { Component } from 'svelte';
+        import { browser } from '$app/environment';
+        import { createEventDispatcher, onMount } from 'svelte';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import MovableWindow from '$lib/components/ui/movablewindow/MovableWindow.svelte';
         import { Alert, AlertDescription, AlertTitle } from '$lib/components/ui/alert/index.js';
@@ -24,24 +23,15 @@
 		CardTitle
 	} from '$lib/components/ui/card/index.js';
 	import type { Client } from '$lib/data/clients';
-	import { getClientTool, type DialogToolId } from '$lib/data/client-tools';
-	import { notifyToolActivationCommand } from '$lib/utils/agent-commands.js';
-	import AppVncWorkspace from '$lib/components/workspace/tools/app-vnc-workspace.svelte';
-	import WebcamControlWorkspace from '$lib/components/workspace/tools/webcam-control-workspace.svelte';
-	import AudioControlWorkspace from '$lib/components/workspace/tools/audio-control-workspace.svelte';
-	import KeyloggerWorkspace from '$lib/components/workspace/tools/keylogger-workspace.svelte';
-	import CmdWorkspace from '$lib/components/workspace/tools/cmd-workspace.svelte';
-	import FileManagerWorkspace from '$lib/components/workspace/tools/file-manager-workspace.svelte';
-	import SystemMonitorWorkspace from '$lib/components/workspace/tools/system-monitor-workspace.svelte';
-	import RegistryManagerWorkspace from '$lib/components/workspace/tools/registry-manager-workspace.svelte';
-	import ClipboardManagerWorkspace from '$lib/components/workspace/tools/clipboard-manager-workspace.svelte';
-	import RecoveryWorkspace from '$lib/components/workspace/tools/recovery-workspace.svelte';
-	import RemoteDesktopWorkspace from '$lib/components/workspace/tools/remote-desktop-workspace.svelte';
-	import OptionsWorkspace from '$lib/components/workspace/tools/options-workspace.svelte';
-	import ClientChatWorkspace from '$lib/components/workspace/tools/client-chat-workspace.svelte';
-	import TriggerMonitorWorkspace from '$lib/components/workspace/tools/trigger-monitor-workspace.svelte';
-	import IpGeolocationWorkspace from '$lib/components/workspace/tools/ip-geolocation-workspace.svelte';
-	import EnvironmentVariablesWorkspace from '$lib/components/workspace/tools/environment-variables-workspace.svelte';
+        import { getClientTool, type DialogToolId } from '$lib/data/client-tools';
+        import {
+                getKeyloggerMode,
+                getWorkspaceComponent,
+                isWorkspaceTool,
+                workspaceRequiresAgent
+        } from '$lib/data/client-tool-workspaces';
+        import { notifyToolActivationCommand } from '$lib/utils/agent-commands.js';
+        import KeyloggerWorkspace from '$lib/components/workspace/tools/keylogger-workspace.svelte';
         import SystemInformationDialog from '$lib/components/system-information-dialog.svelte';
         import { ShieldCheck, TriangleAlert } from '@lucide/svelte';
         import type { CommandQueueAuditRecord, CommandQueueResponse } from '../../../../shared/types/messages';
@@ -152,60 +142,33 @@
 		}
 	}
 
-	const tool = getClientTool(toolId);
+        const tool = getClientTool(toolId);
 
-	const workspaceComponentMap = {
-		'app-vnc': AppVncWorkspace,
-		'remote-desktop': RemoteDesktopWorkspace,
-		'webcam-control': WebcamControlWorkspace,
-		'audio-control': AudioControlWorkspace,
-		cmd: CmdWorkspace,
-		'file-manager': FileManagerWorkspace,
-		'system-monitor': SystemMonitorWorkspace,
-		'registry-manager': RegistryManagerWorkspace,
-		'clipboard-manager': ClipboardManagerWorkspace,
-		recovery: RecoveryWorkspace,
-		options: OptionsWorkspace,
-		'client-chat': ClientChatWorkspace,
-		'trigger-monitor': TriggerMonitorWorkspace,
-		'ip-geolocation': IpGeolocationWorkspace,
-		'environment-variables': EnvironmentVariablesWorkspace
-	} satisfies Partial<Record<DialogToolId, Component<any>>>;
+        const activeWorkspace = $derived(() => getWorkspaceComponent(toolId));
+        const keyloggerMode = $derived(() => getKeyloggerMode(toolId));
+        const isWorkspaceDialog = $derived(isWorkspaceTool(toolId));
+        const missingAgent = $derived(workspaceRequiresAgent.has(toolId) && !agent);
+        const workspaceProps = $derived(() => {
+                if (!activeWorkspace) {
+                        return null;
+                }
 
-	const keyloggerModes = {
-		'keylogger-standard': 'standard',
-		'keylogger-offline': 'offline'
-	} as const;
+                if (toolId === 'cmd' && !agent) {
+                        return null;
+                }
 
-	const workspaceToolIds = new Set<DialogToolId>([
-		'app-vnc',
-		'remote-desktop',
-		'webcam-control',
-		'audio-control',
-		'keylogger-standard',
-		'keylogger-offline',
-		'cmd',
-		'file-manager',
-		'system-monitor',
-		'registry-manager',
-		'clipboard-manager',
-		'recovery',
-		'options',
-		'client-chat',
-		'trigger-monitor',
-		'ip-geolocation',
-		'environment-variables'
-	]);
+                const base: Record<string, unknown> = { client };
 
-	const workspaceRequiresAgent = new Set<DialogToolId>(['cmd']);
+                if (toolId === 'cmd' && agent) {
+                        base.agent = agent;
+                }
 
-	const activeWorkspace = $derived(() => {
-		const key = toolId as keyof typeof workspaceComponentMap;
-		return workspaceComponentMap[key] ?? null;
-	});
-	const keyloggerMode = $derived(keyloggerModes[toolId as keyof typeof keyloggerModes]);
-	const isWorkspaceDialog = $derived(workspaceToolIds.has(toolId));
-	const missingAgent = $derived(workspaceRequiresAgent.has(toolId) && !agent);
+                if (toolId === 'remote-desktop') {
+                        base.initialSession = null;
+                }
+
+                return base;
+        });
 
 	const windowWidth = $derived(!isWorkspaceDialog ? 640 : toolId === 'system-monitor' ? 1180 : 980);
 	const windowHeight = $derived(
@@ -435,43 +398,31 @@
 						<div class="flex-1 overflow-auto px-6 py-5">
 							{#if keyloggerMode}
 								<KeyloggerWorkspace {client} mode={keyloggerMode} />
-							{:else if toolId === 'remote-desktop'}
-								<RemoteDesktopWorkspace {client} initialSession={null} />
-							{:else if activeWorkspace}
-								{@const Workspace = activeWorkspace}
-								{#if toolId === 'cmd'}
-									{#if missingAgent}
-										<Card class="border-dashed">
-											<CardHeader>
-												<CardTitle>Agent snapshot required</CardTitle>
-												<CardDescription>
-													Re-open this tool from the clients table to access the latest agent
-													metadata.
-												</CardDescription>
-											</CardHeader>
-										</Card>
-									{:else}
-										<Workspace {client} agent={agent!} />
-									{/if}
-								{:else}
-									<Workspace {client} />
-								{/if}
+							{:else if missingAgent}
+								<Card class="border-dashed">
+									<CardHeader>
+										<CardTitle>Agent snapshot required</CardTitle>
+										<CardDescription>
+											Re-open this tool from the clients table to access the latest agent metadata.
+										</CardDescription>
+									</CardHeader>
+								</Card>
+							{:else if activeWorkspace && workspaceProps}
+								<svelte:component this={activeWorkspace} {...workspaceProps} />
 							{:else}
 								<Card class="border-dashed">
 									<CardHeader>
 										<CardTitle>{tool.title}</CardTitle>
-										<CardDescription>
-											Define the implementation contract here before wiring it to the Go agent.
-										</CardDescription>
+										<CardDescription>{tool.description}</CardDescription>
 									</CardHeader>
 									<CardContent class="space-y-4 text-sm text-muted-foreground">
 										<p>
-											modules / {tool.segments.join(' / ')} is currently using the default planning workspace.
+											The workspace for this tool hasn&rsquo;t been implemented yet. Document the contract
+											here before wiring it to the Go agent.
 										</p>
 										<p>
-											Add a dedicated workspace component for <span class="font-medium"
-												>{tool.title}</span
-											> to elevate the operator experience when you are ready.
+											Add a dedicated workspace component for <span class="font-medium">{tool.title}</span>
+											to elevate the operator experience when you are ready.
 										</p>
 									</CardContent>
 								</Card>
@@ -692,4 +643,6 @@
 			</MovableWindow>
 		</div>
 	</Dialog.Content>
-</Dialog.Root>
+</Dialog.Root>                                        {#if isWorkspaceDialog}
+NEWBLOCK
+
