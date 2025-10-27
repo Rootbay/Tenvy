@@ -5,6 +5,7 @@ import (
 	"errors"
 	"strings"
 
+	options "github.com/rootbay/tenvy-client/internal/operations/options"
 	manifest "github.com/rootbay/tenvy-client/shared/pluginmanifest"
 )
 
@@ -429,6 +430,7 @@ type AgentSyncRequest struct {
 	Metrics   *AgentMetrics         `json:"metrics,omitempty"`
 	Results   []CommandResult       `json:"results,omitempty"`
 	Plugins   *manifest.SyncPayload `json:"plugins,omitempty"`
+	Options   *options.State        `json:"options,omitempty"`
 }
 
 type AgentSyncResponse struct {
@@ -437,6 +439,7 @@ type AgentSyncResponse struct {
 	Config          AgentConfig             `json:"config"`
 	ServerTime      string                  `json:"serverTime"`
 	PluginManifests *manifest.ManifestDelta `json:"pluginManifests,omitempty"`
+	Options         *options.State          `json:"options,omitempty"`
 }
 
 type PingCommandPayload struct {

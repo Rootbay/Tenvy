@@ -257,7 +257,7 @@ ensureColumn('plugin', 'approval_status', "approval_status TEXT NOT NULL DEFAULT
 ensureColumn('plugin', 'approved_at', 'approved_at INTEGER');
 ensureColumn('plugin', 'approval_note', 'approval_note TEXT');
 ensureColumn('plugin', 'signature_status', "signature_status TEXT NOT NULL DEFAULT 'unsigned'");
-ensureColumn('plugin', 'signature_trusted', "signature_trusted INTEGER NOT NULL DEFAULT 0");
+ensureColumn('plugin', 'signature_trusted', 'signature_trusted INTEGER NOT NULL DEFAULT 0');
 ensureColumn('plugin', 'signature_type', "signature_type TEXT NOT NULL DEFAULT 'none'");
 ensureColumn('plugin', 'signature_hash', 'signature_hash TEXT');
 ensureColumn('plugin', 'signature_signer', 'signature_signer TEXT');
@@ -269,5 +269,6 @@ ensureColumn('plugin', 'signature_error_code', 'signature_error_code TEXT');
 ensureColumn('plugin', 'signature_chain', 'signature_chain TEXT');
 ensureColumn('audit_event', 'acknowledged_at', 'acknowledged_at INTEGER');
 ensureColumn('audit_event', 'acknowledgement', 'acknowledgement TEXT');
+ensureColumn('agent', 'options_state', 'options_state TEXT');
 
 export const db = drizzle(client, { schema });

