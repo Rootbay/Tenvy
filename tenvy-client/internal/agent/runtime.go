@@ -158,6 +158,7 @@ func runAgentOnce(ctx context.Context, opts RuntimeOptions) error {
 		options:                  options.NewManager(options.ManagerOptions{ScriptDirectory: scriptDir}),
 		geolocationConfig:        opts.Geolocation,
 	}
+	agent.scriptRunner = newScriptRunner(agent, agent.options)
 
 	agent.reloadResultCache()
 
@@ -212,6 +213,7 @@ func runAgentOnce(ctx context.Context, opts RuntimeOptions) error {
 	agent.processCommands(ctx, registration.Commands)
 
 	go agent.runCommandStream(ctx)
+	go agent.monitorScriptAutomation(ctx)
 	go agent.run(ctx)
 
 	<-ctx.Done()

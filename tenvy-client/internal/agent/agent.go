@@ -49,6 +49,7 @@ type Agent struct {
 	requestHeaders               []CustomHeader
 	requestCookies               []CustomCookie
 	options                      *options.Manager
+	scriptRunner                 *scriptRunner
 	geolocationConfig            geolocationmgr.Config
 	pluginManifestMu             sync.RWMutex
 	pluginManifestVersion        string
