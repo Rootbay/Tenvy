@@ -79,7 +79,7 @@ When running the server locally a development voucher is created automatically s
 
 ## 🧩 Plugin System
 
-Tenvy supports a unified plugin structure for both **server** and **client** sides.  
+Tenvy supports a unified plugin structure for both **server** and **client** sides.
 Plugins are dynamically loadable and communicate via defined message schemas.
 
 | Plugin Type | Description |
@@ -87,6 +87,16 @@ Plugins are dynamically loadable and communicate via defined message schemas.
 | **Server Plugin** | Extends controller UI or backend logic |
 | **Client Plugin** | Adds new system modules or command handlers |
 | **Shared Plugin** | Implements both UI and agent-side logic |
+
+### 🔁 Reproducible plugin builds
+
+Client-side plugins that live in this repository now share a reproducible build target. The workflow compiles each manifest-backed plugin, stages its files into a deterministic ZIP archive, and refreshes the published metadata so the server can serve the exact bits that were produced locally or in CI.
+
+1. Ensure a Go toolchain and the `zip` CLI are available. Pass `--goos`/`--goarch` if you need to cross-compile (defaults to the host platform).
+2. Run `bun scripts/build-plugins.ts` to build every manifest with a registered recipe (currently `remote-desktop-engine`).
+3. The script outputs archives under `tenvy-server/resources/plugin-artifacts/`, recomputes SHA256 hashes and sizes, and rewrites the matching entries in `tenvy-server/resources/plugin-manifests/*.json`.
+
+Commit the refreshed ZIPs and manifest updates so that the server distribution and metadata always stay in sync.
 
 ---
 
