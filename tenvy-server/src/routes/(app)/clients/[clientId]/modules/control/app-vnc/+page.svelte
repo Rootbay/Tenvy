@@ -1,6 +1,6 @@
 <script lang="ts">
-	import { browser } from '$app/environment';
 	import { onDestroy } from 'svelte';
+	import { get } from 'svelte/store';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import {
 		Card,
@@ -22,16 +22,11 @@
 	import type {
 		AppVncApplicationDescriptor,
 		AppVncPlatform,
+		AppVncInputEvent,
 		AppVncSessionSettings,
 		AppVncSessionState
 	} from '$lib/types/app-vnc';
-
-	type RawAppVncInputEvent = Record<string, unknown>;
-
-	const IMAGE_PREFIX: Record<'png' | 'jpeg', string> = {
-		png: 'data:image/png;base64,',
-		jpeg: 'data:image/jpeg;base64,'
-	};
+	import { createAppVncSessionController } from '$lib/stores/app-vnc-session';
 
 	const qualityOptions: { value: AppVncSessionSettings['quality']; label: string }[] = [
 		{ value: 'lossless', label: 'Lossless' },
@@ -49,31 +44,39 @@
 
 	const client = $derived(data.client);
 	const applications = $derived(data.applications);
-	let session = $state<AppVncSessionState | null>(data.session ?? null);
-	let quality = $state<AppVncSessionSettings['quality']>(session?.settings.quality ?? 'balanced');
-	let monitor = $state(session?.settings.monitor ?? 'Primary');
-	let captureCursor = $state(session?.settings.captureCursor ?? true);
-	let clipboardSync = $state(session?.settings.clipboardSync ?? false);
-	let blockLocalInput = $state(session?.settings.blockLocalInput ?? false);
-	let heartbeatInterval = $state<number | string>(session?.settings.heartbeatInterval ?? 30);
-	let appId = $state(session?.settings.appId ?? '');
-	let windowTitle = $state(session?.settings.windowTitle ?? '');
-	let frameUrl = $state<string | null>(null);
-	let frameWidth = $state<number | null>(null);
-	let frameHeight = $state<number | null>(null);
-	let lastHeartbeat = $state<string | null>(null);
-	let isStarting = $state(false);
-	let isStopping = $state(false);
-	let isUpdating = $state(false);
-	let errorMessage = $state<string | null>(null);
-	let infoMessage = $state<string | null>(null);
-	let eventSource: EventSource | null = null;
-	let streamSessionId: string | null = null;
+	const {
+		session: sessionStore,
+		frameUrl,
+		frameWidth,
+		frameHeight,
+		lastHeartbeat,
+		isStarting,
+		isStopping,
+		isUpdating,
+		errorMessage,
+		infoMessage,
+		startSession: startSessionInternal,
+		updateSession: updateSessionInternal,
+		stopSession: stopSessionInternal,
+		enqueueEvent,
+		dispose
+	} = createAppVncSessionController({
+		clientId: client.id,
+		initialSession: data.session ?? null
+	});
+	let quality = $state<AppVncSessionSettings['quality']>(
+		data.session?.settings.quality ?? 'balanced'
+	);
+	let monitor = $state(data.session?.settings.monitor ?? 'Primary');
+	let captureCursor = $state(data.session?.settings.captureCursor ?? true);
+	let clipboardSync = $state(data.session?.settings.clipboardSync ?? false);
+	let blockLocalInput = $state(data.session?.settings.blockLocalInput ?? false);
+	let heartbeatInterval = $state<number | string>(data.session?.settings.heartbeatInterval ?? 30);
+	let appId = $state(data.session?.settings.appId ?? '');
+	let windowTitle = $state(data.session?.settings.windowTitle ?? '');
 	let viewportEl: HTMLDivElement | null = null;
 	let pointerActive = false;
 	let activePointerId: number | null = null;
-	let flushHandle: number | null = null;
-	const pendingEvents: RawAppVncInputEvent[] = [];
 	const platformLabels: Record<AppVncPlatform, string> = {
 		windows: 'Windows',
 		linux: 'Linux',
@@ -114,255 +117,33 @@
 		return 30;
 	}
 
-	function resetStatusMessages() {
-		errorMessage = null;
-		infoMessage = null;
+	function buildSessionSettings(): AppVncSessionSettings {
+		const heartbeat = resolveHeartbeatInterval();
+		heartbeatInterval = heartbeat;
+		const trimmedAppId = normalizedAppId;
+		const trimmedWindowTitle = windowTitle.trim();
+		return {
+			monitor,
+			quality,
+			captureCursor,
+			clipboardSync,
+			blockLocalInput,
+			heartbeatInterval: heartbeat,
+			appId: trimmedAppId || undefined,
+			windowTitle: trimmedWindowTitle || undefined
+		} satisfies AppVncSessionSettings;
 	}
 
-	function enqueueEvent(event: RawAppVncInputEvent) {
-		pendingEvents.push(event);
-		if (!browser) {
-			return;
-		}
-		if (flushHandle !== null) {
-			return;
-		}
-		flushHandle = requestAnimationFrame(() => {
-			flushHandle = null;
-			void flushEvents();
-		});
+	async function handleStartSession() {
+		await startSessionInternal(buildSessionSettings());
 	}
 
-	async function flushEvents() {
-		if (!browser) {
-			pendingEvents.length = 0;
-			return;
-		}
-		if (!client || !session || !session.active || pendingEvents.length === 0) {
-			pendingEvents.length = 0;
-			return;
-		}
-		const events = pendingEvents.splice(0, pendingEvents.length);
-		try {
-			await fetch(`/api/agents/${client.id}/app-vnc/input`, {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ sessionId: session.sessionId, events }),
-				keepalive: true
-			});
-		} catch (err) {
-			console.warn('Failed to deliver app VNC input events', err);
-		}
+	async function handleUpdateSessionSettings() {
+		await updateSessionInternal(buildSessionSettings());
 	}
 
-	function disconnectStream() {
-		if (eventSource) {
-			eventSource.close();
-			eventSource = null;
-		}
-		streamSessionId = null;
-		pendingEvents.length = 0;
-	}
-
-	function connectStream(id?: string | null) {
-		if (!browser || !client) {
-			return;
-		}
-		const targetId = id ?? null;
-		if (eventSource && streamSessionId === targetId) {
-			return;
-		}
-		if (eventSource) {
-			eventSource.close();
-			eventSource = null;
-		}
-		const base = new URL(`/api/agents/${client.id}/app-vnc/stream`, window.location.origin);
-		if (targetId) {
-			base.searchParams.set('sessionId', targetId);
-		}
-
-		const source = new EventSource(base.toString());
-		streamSessionId = targetId;
-		eventSource = source;
-
-		source.addEventListener('session', (evt) => {
-			try {
-				const payload = JSON.parse((evt as MessageEvent).data ?? '{}') as {
-					session?: AppVncSessionState | null;
-				};
-				session = payload.session ?? null;
-				if (!session?.active) {
-					frameUrl = null;
-					frameWidth = null;
-					frameHeight = null;
-				}
-			} catch (err) {
-				console.warn('Failed to parse app VNC session payload', err);
-			}
-		});
-
-		source.addEventListener('frame', (evt) => {
-			try {
-				const payload = JSON.parse((evt as MessageEvent).data ?? '{}') as {
-					frame?: {
-						image?: string;
-						encoding?: 'png' | 'jpeg';
-						width?: number;
-						height?: number;
-					};
-				};
-				const frame = payload.frame;
-				if (frame && frame.image && frame.encoding && IMAGE_PREFIX[frame.encoding]) {
-					frameUrl = `${IMAGE_PREFIX[frame.encoding]}${frame.image}`;
-					frameWidth = frame.width ?? null;
-					frameHeight = frame.height ?? null;
-				}
-			} catch (err) {
-				console.warn('Failed to parse app VNC frame payload', err);
-			}
-		});
-
-		source.addEventListener('heartbeat', (evt) => {
-			try {
-				const payload = JSON.parse((evt as MessageEvent).data ?? '{}') as {
-					timestamp?: string;
-				};
-				lastHeartbeat = payload.timestamp ?? new Date().toISOString();
-			} catch {
-				lastHeartbeat = new Date().toISOString();
-			}
-		});
-
-		source.addEventListener('end', () => {
-			infoMessage = 'Session closed';
-			frameUrl = null;
-			frameWidth = null;
-			frameHeight = null;
-		});
-
-		source.onerror = (err) => {
-			console.warn('App VNC event source error', err);
-		};
-	}
-
-	async function startSession() {
-		if (!client || isStarting) {
-			return;
-		}
-		resetStatusMessages();
-		isStarting = true;
-		try {
-			const heartbeat = resolveHeartbeatInterval();
-			heartbeatInterval = heartbeat;
-			const trimmedAppId = normalizedAppId;
-			const trimmedWindowTitle = windowTitle.trim();
-			const response = await fetch(`/api/agents/${client.id}/app-vnc/session`, {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({
-					monitor,
-					quality,
-					captureCursor,
-					clipboardSync,
-					blockLocalInput,
-					heartbeatInterval: heartbeat,
-					appId: trimmedAppId,
-					windowTitle: trimmedWindowTitle
-				})
-			});
-			if (!response.ok) {
-				const message = await response.text();
-				errorMessage = message || 'Failed to start session';
-				return;
-			}
-			const payload = (await response.json()) as { session?: AppVncSessionState | null };
-			session = payload.session ?? null;
-			if (session?.active) {
-				infoMessage = 'Session started';
-				connectStream(session.sessionId);
-			}
-		} catch (err) {
-			console.error('Failed to start app VNC session', err);
-			errorMessage = 'Failed to start session';
-		} finally {
-			isStarting = false;
-		}
-	}
-
-	async function updateSessionSettings() {
-		if (!client || !session || !session.active || isUpdating) {
-			return;
-		}
-		resetStatusMessages();
-		isUpdating = true;
-		try {
-			const heartbeat = resolveHeartbeatInterval();
-			heartbeatInterval = heartbeat;
-			const trimmedAppId = normalizedAppId;
-			const trimmedWindowTitle = windowTitle.trim();
-			const response = await fetch(`/api/agents/${client.id}/app-vnc/session`, {
-				method: 'PATCH',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({
-					sessionId: session.sessionId,
-					monitor,
-					quality,
-					captureCursor,
-					clipboardSync,
-					blockLocalInput,
-					heartbeatInterval: heartbeat,
-					appId: trimmedAppId,
-					windowTitle: trimmedWindowTitle
-				})
-			});
-			if (!response.ok) {
-				const message = await response.text();
-				errorMessage = message || 'Failed to update session';
-				return;
-			}
-			const payload = (await response.json()) as { session?: AppVncSessionState | null };
-			session = payload.session ?? null;
-			if (session?.active) {
-				infoMessage = 'Session updated';
-			}
-		} catch (err) {
-			console.error('Failed to update app VNC session', err);
-			errorMessage = 'Failed to update session';
-		} finally {
-			isUpdating = false;
-		}
-	}
-
-	async function stopSession() {
-		if (!client || !session || !session.active || isStopping) {
-			return;
-		}
-		resetStatusMessages();
-		isStopping = true;
-		try {
-			const response = await fetch(`/api/agents/${client.id}/app-vnc/session`, {
-				method: 'DELETE',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ sessionId: session.sessionId })
-			});
-			if (!response.ok) {
-				const message = await response.text();
-				errorMessage = message || 'Failed to stop session';
-				return;
-			}
-			const payload = (await response.json()) as { session?: AppVncSessionState | null };
-			session = payload.session ?? null;
-			frameUrl = null;
-			frameWidth = null;
-			frameHeight = null;
-			pendingEvents.length = 0;
-			infoMessage = 'Session stopped';
-		} catch (err) {
-			console.error('Failed to stop app VNC session', err);
-			errorMessage = 'Failed to stop session';
-		} finally {
-			isStopping = false;
-		}
+	async function handleStopSession() {
+		await stopSessionInternal();
 	}
 
 	function pointerPosition(event: PointerEvent) {
@@ -383,7 +164,8 @@
 	}
 
 	function handlePointerMove(event: PointerEvent) {
-		if (!session?.active || !pointerActive) {
+		const current = get(sessionStore);
+		if (!current?.active || !pointerActive) {
 			return;
 		}
 		const position = pointerPosition(event);
@@ -396,11 +178,12 @@
 			x: position.x,
 			y: position.y,
 			normalized: true
-		});
+		} satisfies AppVncInputEvent);
 	}
 
 	function handlePointerDown(event: PointerEvent) {
-		if (!session?.active) {
+		const current = get(sessionStore);
+		if (!current?.active) {
 			return;
 		}
 		viewportEl?.focus();
@@ -419,14 +202,14 @@
 				x: position.x,
 				y: position.y,
 				normalized: true
-			});
+			} satisfies AppVncInputEvent);
 		}
 		enqueueEvent({
 			type: 'pointer-button',
 			capturedAt: Date.now(),
 			button: event.button === 2 ? 'right' : event.button === 1 ? 'middle' : 'left',
 			pressed: true
-		});
+		} satisfies AppVncInputEvent);
 	}
 
 	function handlePointerUp(event: PointerEvent) {
@@ -436,7 +219,7 @@
 				capturedAt: Date.now(),
 				button: event.button === 2 ? 'right' : event.button === 1 ? 'middle' : 'left',
 				pressed: false
-			});
+			} satisfies AppVncInputEvent);
 			pointerActive = false;
 			activePointerId = null;
 			try {
@@ -461,7 +244,8 @@
 	}
 
 	function handleWheel(event: WheelEvent) {
-		if (!session?.active) {
+		const current = get(sessionStore);
+		if (!current?.active) {
 			return;
 		}
 		event.preventDefault();
@@ -471,11 +255,12 @@
 			deltaX: event.deltaX,
 			deltaY: event.deltaY,
 			deltaMode: event.deltaMode
-		});
+		} satisfies AppVncInputEvent);
 	}
 
 	function handleKey(event: KeyboardEvent, pressed: boolean) {
-		if (!session?.active) {
+		const current = get(sessionStore);
+		if (!current?.active) {
 			return;
 		}
 		event.preventDefault();
@@ -491,11 +276,11 @@
 			ctrlKey: event.ctrlKey,
 			shiftKey: event.shiftKey,
 			metaKey: event.metaKey
-		});
+		} satisfies AppVncInputEvent);
 	}
 
 	$effect(() => {
-		const current = session;
+		const current = $sessionStore;
 		if (current && current.active) {
 			quality = current.settings.quality;
 			monitor = current.settings.monitor;
@@ -508,25 +293,8 @@
 		}
 	});
 
-	$effect(() => {
-		if (!browser) {
-			return;
-		}
-		const current = session;
-		if (current && current.active) {
-			connectStream(current.sessionId);
-		} else {
-			disconnectStream();
-		}
-	});
-
 	onDestroy(() => {
-		disconnectStream();
-		if (flushHandle !== null) {
-			cancelAnimationFrame(flushHandle);
-			flushHandle = null;
-		}
-		pendingEvents.length = 0;
+		dispose();
 	});
 </script>
 
@@ -689,25 +457,25 @@
 			</div>
 
 			<div class="flex flex-wrap gap-3">
-				{#if session?.active}
-					<Button type="button" onclick={updateSessionSettings} disabled={isUpdating}
-						>{isUpdating ? 'Updating…' : 'Update session'}</Button
+				{#if $sessionStore?.active}
+					<Button type="button" onclick={handleUpdateSessionSettings} disabled={$isUpdating}
+						>{$isUpdating ? 'Updating…' : 'Update session'}</Button
 					>
-					<Button type="button" variant="outline" onclick={stopSession} disabled={isStopping}
-						>{isStopping ? 'Stopping…' : 'Stop session'}</Button
+					<Button type="button" variant="outline" onclick={handleStopSession} disabled={$isStopping}
+						>{$isStopping ? 'Stopping…' : 'Stop session'}</Button
 					>
 				{:else}
-					<Button type="button" onclick={startSession} disabled={isStarting}
-						>{isStarting ? 'Starting…' : 'Start session'}</Button
+					<Button type="button" onclick={handleStartSession} disabled={$isStarting}
+						>{$isStarting ? 'Starting…' : 'Start session'}</Button
 					>
 				{/if}
 			</div>
 
-			{#if errorMessage}
-				<p class="text-sm text-destructive">{errorMessage}</p>
+			{#if $errorMessage}
+				<p class="text-sm text-destructive">{$errorMessage}</p>
 			{/if}
-			{#if infoMessage}
-				<p class="text-sm text-emerald-500">{infoMessage}</p>
+			{#if $infoMessage}
+				<p class="text-sm text-emerald-500">{$infoMessage}</p>
 			{/if}
 		</CardContent>
 	</Card>
@@ -724,6 +492,7 @@
 				class="relative flex h-[420px] w-full items-center justify-center overflow-hidden rounded-lg border bg-black"
 				tabindex="0"
 				bind:this={viewportEl}
+				data-testid="app-vnc-viewport"
 				on:pointerdown={handlePointerDown}
 				on:pointermove={handlePointerMove}
 				on:pointerup={handlePointerUp}
@@ -732,9 +501,9 @@
 				on:keydown={(event) => handleKey(event, true)}
 				on:keyup={(event) => handleKey(event, false)}
 			>
-				{#if frameUrl}
+				{#if $frameUrl}
 					<img
-						src={frameUrl}
+						src={$frameUrl}
 						alt="App VNC frame"
 						class="max-h-full max-w-full select-none"
 						draggable={false}
@@ -746,13 +515,13 @@
 			<div class="grid gap-2 text-xs text-muted-foreground sm:grid-cols-2">
 				<div>
 					<span class="font-medium text-foreground">Session</span>
-					<span class="ml-2">{session?.active ? 'Active' : 'Idle'}</span>
+					<span class="ml-2">{$sessionStore?.active ? 'Active' : 'Idle'}</span>
 				</div>
 				<div>
 					<span class="font-medium text-foreground">Frame size</span>
 					<span class="ml-2">
-						{#if frameWidth && frameHeight}
-							{frameWidth}×{frameHeight}
+						{#if $frameWidth && $frameHeight}
+							{$frameWidth}×{$frameHeight}
 						{:else}
 							—
 						{/if}
@@ -760,11 +529,11 @@
 				</div>
 				<div>
 					<span class="font-medium text-foreground">Last heartbeat</span>
-					<span class="ml-2">{lastHeartbeat ?? '—'}</span>
+					<span class="ml-2">{$lastHeartbeat ?? '—'}</span>
 				</div>
 				<div>
 					<span class="font-medium text-foreground">Session ID</span>
-					<span class="ml-2 truncate">{session?.sessionId ?? '—'}</span>
+					<span class="ml-2 truncate">{$sessionStore?.sessionId ?? '—'}</span>
 				</div>
 			</div>
 		</CardContent>
