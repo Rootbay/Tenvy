@@ -33,6 +33,27 @@ func (s *linuxPlatformService) Execute(ctx context.Context, operation string, me
 	case "wallpaper-mode":
 		mode, _ := metadata["mode"].(string)
 		return s.configureWallpaper(ctx, strings.TrimSpace(mode))
+	case "visual-distortion":
+		mode, _ := metadata["mode"].(string)
+		trimmed := strings.TrimSpace(mode)
+		if trimmed == "" {
+			trimmed = "unspecified"
+		}
+		return fmt.Sprintf("Visual distortion %s unsupported on Linux", trimmed), nil
+	case "cursor-behavior":
+		behavior, _ := metadata["behavior"].(string)
+		trimmed := strings.TrimSpace(behavior)
+		if trimmed == "" {
+			trimmed = "unspecified"
+		}
+		return fmt.Sprintf("Cursor behavior %s unsupported on Linux", trimmed), nil
+	case "fake-event-mode":
+		mode, _ := metadata["mode"].(string)
+		trimmed := strings.TrimSpace(mode)
+		if trimmed == "" || strings.EqualFold(trimmed, "none") {
+			return "Fake event mode cleared (no native integration on Linux)", nil
+		}
+		return fmt.Sprintf("Fake event mode %s unsupported on Linux", trimmed), nil
 	case "sound-playback":
 		enabled := state.SoundPlayback
 		if v, ok := metadata["enabled"].(bool); ok {
