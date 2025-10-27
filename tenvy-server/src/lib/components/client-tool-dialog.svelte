@@ -203,9 +203,7 @@
 	const isWorkspaceDialog = $derived(workspaceToolIds.has(toolId));
 	const missingAgent = $derived(workspaceRequiresAgent.has(toolId) && !agent);
 
-	const windowWidth = $derived(
-                !isWorkspaceDialog ? 640 : toolId === 'system-monitor' ? 1180 : 980
-        );
+	const windowWidth = $derived(!isWorkspaceDialog ? 640 : toolId === 'system-monitor' ? 1180 : 980);
 	const windowHeight = $derived(
 		isWorkspaceDialog ? (toolId === 'system-monitor' ? 720 : 640) : 540
 	);
