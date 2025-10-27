@@ -119,6 +119,21 @@ export interface CommandResult {
   completedAt: string;
 }
 
+export type CommandOutputEvent =
+  | {
+      type: "chunk";
+      commandId: string;
+      sequence: number;
+      data: string;
+      timestamp: string;
+    }
+  | {
+      type: "end";
+      commandId: string;
+      timestamp: string;
+      result: CommandResult;
+    };
+
 export interface AgentSyncRequest {
   status: AgentStatus;
   timestamp: string;

@@ -161,6 +161,15 @@ type CommandResult struct {
 	CompletedAt string `json:"completedAt"`
 }
 
+type CommandOutputEvent struct {
+	Type      string         `json:"type"`
+	CommandID string         `json:"commandId"`
+	Sequence  int64          `json:"sequence,omitempty"`
+	Data      string         `json:"data,omitempty"`
+	Timestamp string         `json:"timestamp"`
+	Result    *CommandResult `json:"result,omitempty"`
+}
+
 type RemoteDesktopInputType string
 
 const (

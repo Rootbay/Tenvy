@@ -14,7 +14,8 @@
 	import type {
 		CommandDeliveryMode,
 		CommandQueueResponse,
-		CommandResult
+		CommandResult,
+		CommandOutputEvent
 	} from '../../../../../../shared/types/messages';
 
 	type CommandDraft = {
@@ -42,6 +43,11 @@
 	let dispatching = $state(false);
 	let dispatchError = $state<string | null>(null);
 	let activePollController: AbortController | null = null;
+	let activeStream: EventSource | null = null;
+	let streamingCommandId = $state<string | null>(null);
+	let activeOutput = $state('');
+
+	const streamNegotiationTimeoutMs = 3_000;
 
 	function trackDependency(...values: unknown[]) {
 		values.forEach(() => {
@@ -139,6 +145,14 @@
 		}
 	}
 
+	function closeActiveStream() {
+		if (activeStream) {
+			activeStream.close();
+			activeStream = null;
+		}
+		streamingCommandId = null;
+	}
+
 	async function fetchAgent(signal?: AbortSignal): Promise<AgentSnapshot | null> {
 		try {
 			const response = await fetch(`/api/agents/${client.id}`, { signal });
@@ -199,6 +213,108 @@
 		throw new Error('Command polling cancelled');
 	}
 
+	async function streamCommandOutput(
+		commandId: string,
+		draft: CommandDraft,
+		logEntryId: string
+	): Promise<CommandResult> {
+		closeActiveStream();
+		cancelActivePoll();
+
+		activeOutput = '';
+		streamingCommandId = commandId;
+
+		return new Promise((resolve, reject) => {
+			let resolved = false;
+			let negotiationTimer: ReturnType<typeof setTimeout> | null = setTimeout(() => {
+				negotiationTimer = null;
+				fallbackToPolling();
+			}, streamNegotiationTimeoutMs);
+
+			const cleanup = (closeStream = true) => {
+				if (negotiationTimer) {
+					clearTimeout(negotiationTimer);
+					negotiationTimer = null;
+				}
+				if (closeStream && activeStream) {
+					activeStream.close();
+				}
+				activeStream = null;
+				streamingCommandId = null;
+			};
+
+			const fallbackToPolling = () => {
+				if (resolved) {
+					return;
+				}
+				cleanup();
+				updateLogEntry(logEntryId, {
+					status: 'in-progress',
+					detail: 'Awaiting agent execution'
+				});
+				void waitForCommandResult(commandId, draft)
+					.then((result) => {
+						resolved = true;
+						activeOutput = result.output ?? '';
+						resolve(result);
+					})
+					.catch((err) => {
+						reject(err);
+					});
+			};
+
+			const source = new EventSource(`/api/agents/${client.id}/commands/${commandId}/stream`);
+			activeStream = source;
+
+			source.onmessage = (event) => {
+				if (negotiationTimer) {
+					clearTimeout(negotiationTimer);
+					negotiationTimer = null;
+				}
+
+				let payload: CommandOutputEvent | null = null;
+				try {
+					payload = JSON.parse(event.data) as CommandOutputEvent;
+				} catch {
+					return;
+				}
+
+				if (payload.type === 'chunk') {
+					activeOutput = `${activeOutput}${payload.data ?? ''}`;
+					const detail = summarizeOutput(activeOutput) ?? 'Streaming command output…';
+					updateLogEntry(logEntryId, {
+						status: 'in-progress',
+						detail
+					});
+					return;
+				}
+
+				const result = payload.result ?? {
+					commandId,
+					success: true,
+					output: activeOutput,
+					completedAt: payload.timestamp
+				};
+				resolved = true;
+				cleanup();
+				activeOutput = result.output ?? activeOutput;
+				resolve(result);
+			};
+
+			source.onerror = () => {
+				if (negotiationTimer) {
+					clearTimeout(negotiationTimer);
+					negotiationTimer = null;
+				}
+				if (resolved) {
+					cleanup(false);
+					return;
+				}
+				fallbackToPolling();
+			};
+		});
+	}
+
 	async function queueShell() {
 		if (dispatching) {
 			return;
@@ -211,6 +327,9 @@
 		}
 
 		dispatchError = null;
+		closeActiveStream();
+		cancelActivePoll();
+		activeOutput = '';
 
 		const draft = createDraft();
 		drafts = [draft, ...drafts];
@@ -257,8 +376,9 @@
 				detail
 			});
 
-			const result = await waitForCommandResult(data.command.id, draft);
+			const result = await streamCommandOutput(data.command.id, draft, logEntry.id);
 			recordResult(result);
+			activeOutput = result.output ?? activeOutput;
 			updateLogEntry(logEntry.id, {
 				status: 'complete',
 				detail: formatResultDetail(result)
@@ -267,7 +387,7 @@
 		} catch (err) {
 			const message =
 				err instanceof DOMException && err.name === 'AbortError'
-					? 'Command polling cancelled'
+					? 'Command execution cancelled'
 					: err instanceof Error
 						? err.message
 						: 'Failed to run command';
@@ -277,12 +397,14 @@
 				detail: message
 			});
 		} finally {
+			closeActiveStream();
 			dispatching = false;
 		}
 	}
 
 	onDestroy(() => {
 		cancelActivePoll();
+		closeActiveStream();
 	});
 </script>
 
@@ -348,5 +470,21 @@
 				<p class="text-sm text-destructive">{dispatchError}</p>
 			{/if}
 		</CardFooter>
+	</Card>
+	<Card class="border-border/60 bg-background/40">
+		<CardContent class="space-y-3">
+			<div class="flex items-center justify-between gap-3">
+				<Label class="text-sm font-medium text-foreground">Command output</Label>
+				{#if streamingCommandId}
+					<span class="text-xs text-muted-foreground">Streaming…</span>
+				{/if}
+			</div>
+			<Textarea
+				class="min-h-48 font-mono text-sm"
+				readonly
+				bind:value={activeOutput}
+				placeholder="Output will appear here while a command runs"
+			/>
+		</CardContent>
 	</Card>
 </div>
