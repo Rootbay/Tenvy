@@ -329,6 +329,31 @@ type AppVncSessionSettingsPatch struct {
 	WindowTitle       *string        `json:"windowTitle,omitempty"`
 }
 
+type AppVncSessionMetadata struct {
+	AppID          string `json:"appId,omitempty"`
+	WindowTitle    string `json:"windowTitle,omitempty"`
+	ProcessID      int    `json:"processId,omitempty"`
+	VirtualDisplay bool   `json:"virtualDisplay,omitempty"`
+}
+
+type AppVncCursorState struct {
+	X       float64 `json:"x"`
+	Y       float64 `json:"y"`
+	Visible bool    `json:"visible"`
+}
+
+type AppVncFramePacket struct {
+	SessionID string                 `json:"sessionId"`
+	Sequence  int64                  `json:"sequence"`
+	Timestamp string                 `json:"timestamp"`
+	Width     int                    `json:"width"`
+	Height    int                    `json:"height"`
+	Encoding  string                 `json:"encoding"`
+	Image     string                 `json:"image"`
+	Cursor    *AppVncCursorState     `json:"cursor,omitempty"`
+	Metadata  *AppVncSessionMetadata `json:"metadata,omitempty"`
+}
+
 type AppVncVirtualizationHints struct {
 	ProfileSeeds map[AppVncPlatform]string            `json:"profileSeeds,omitempty"`
 	DataRoots    map[AppVncPlatform]string            `json:"dataRoots,omitempty"`

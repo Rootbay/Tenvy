@@ -1160,6 +1160,11 @@ func (m *appVncModule) configure(cfg Config) error {
 	controller.Update(appvnc.Config{
 		Logger:        cfg.Logger,
 		WorkspaceRoot: root,
+		AgentID:       cfg.AgentID,
+		BaseURL:       cfg.BaseURL,
+		AuthKey:       cfg.AuthKey,
+		Client:        cfg.HTTPClient,
+		UserAgent:     cfg.UserAgent,
 	})
 	return nil
 }
