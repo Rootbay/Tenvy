@@ -69,6 +69,7 @@ describe('trigger monitor API', () => {
         lastUpdatedAt: '2024-06-01T12:00:00Z',
       },
       metrics: [],
+      events: [],
       generatedAt: '2024-06-01T12:00:00Z',
     } satisfies Awaited<ReturnType<typeof dispatchTriggerMonitorCommand>>;
 
@@ -94,6 +95,7 @@ describe('trigger monitor API', () => {
         lastUpdatedAt: '2024-06-01T12:05:00Z',
       },
       metrics: [],
+      events: [],
       generatedAt: '2024-06-01T12:05:00Z',
     } satisfies Awaited<ReturnType<typeof dispatchTriggerMonitorCommand>>;
 
@@ -157,6 +159,7 @@ describe('trigger monitor API', () => {
         lastUpdatedAt: '2024-06-01T12:10:00Z',
       },
       metrics: [],
+      events: [],
       generatedAt: '2024-06-01T12:10:00Z',
     } satisfies Awaited<ReturnType<typeof dispatchTriggerMonitorCommand>>;
 
