@@ -1,20 +1,26 @@
 package appvnc
 
 import (
+	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"io/fs"
+	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
+	"github.com/rootbay/tenvy-client/internal/modules/control/screen"
 	"github.com/rootbay/tenvy-client/internal/protocol"
 )
 
@@ -25,6 +31,32 @@ type (
 
 var errSessionReplaced = errors.New("app-vnc session replaced")
 
+// HTTPDoer matches net/http.Client and supports request injection for tests.
+type HTTPDoer interface {
+	Do(req *http.Request) (*http.Response, error)
+}
+
+type surfaceFrame struct {
+	image  *surfaceImage
+	cursor *protocol.AppVncCursorState
+}
+
+type surfaceImage struct {
+	width  int
+	height int
+	stride int
+	data   []byte
+}
+
+type surfaceCapturer interface {
+	Capture(ctx context.Context) (*surfaceFrame, error)
+	Close() error
+}
+
+type surfaceCaptureFactory func(*sessionState) (surfaceCapturer, error)
+
+type frameIntervalFunc func(protocol.AppVncQuality) time.Duration
+
 // Logger matches the agent logging contract and is satisfied by *log.Logger.
 type Logger interface {
 	Printf(format string, args ...interface{})
@@ -32,34 +64,59 @@ type Logger interface {
 
 // Config controls the runtime behaviour of the App VNC controller.
 type Config struct {
-	Logger        Logger
-	WorkspaceRoot string
+	Logger         Logger
+	WorkspaceRoot  string
+	AgentID        string
+	BaseURL        string
+	AuthKey        string
+	Client         HTTPDoer
+	UserAgent      string
+	RequestTimeout time.Duration
 }
 
 // Controller processes app-vnc commands sent by the controller.
 type Controller struct {
-	mu            sync.Mutex
-	logger        Logger
-	workspaceRoot string
-	session       *sessionState
+	mu             sync.Mutex
+	logger         Logger
+	workspaceRoot  string
+	agentID        string
+	baseURL        string
+	authKey        string
+	client         HTTPDoer
+	userAgent      string
+	captureFactory surfaceCaptureFactory
+	frameInterval  frameIntervalFunc
+	requestTimeout time.Duration
+	now            func() time.Time
+	session        *sessionState
 }
 
 type sessionState struct {
-	id           string
-	workspace    string
-	process      *exec.Cmd
-	application  *protocol.AppVncApplicationDescriptor
-	plan         *protocol.AppVncVirtualizationPlan
-	settings     protocol.AppVncSessionSettings
-	startedAt    time.Time
-	lastBeat     time.Time
-	lastSequence int64
-	inputQueue   []protocol.AppVncInputBurst
+	id            string
+	workspace     string
+	process       *exec.Cmd
+	application   *protocol.AppVncApplicationDescriptor
+	plan          *protocol.AppVncVirtualizationPlan
+	settings      protocol.AppVncSessionSettings
+	startedAt     time.Time
+	lastBeat      time.Time
+	lastSequence  int64
+	inputQueue    []protocol.AppVncInputBurst
+	capture       surfaceCapturer
+	captureCancel context.CancelFunc
+	captureDone   chan struct{}
+	frameSequence int64
+	processID     int
 }
 
 // NewController constructs a controller with default configuration.
 func NewController() *Controller {
-	return &Controller{}
+	return &Controller{
+		captureFactory: defaultSurfaceCaptureFactory,
+		frameInterval:  defaultFrameInterval,
+		requestTimeout: 10 * time.Second,
+		now:            time.Now,
+	}
 }
 
 // Update applies runtime configuration such as logger routing or workspace roots.
@@ -72,6 +129,14 @@ func (c *Controller) Update(cfg Config) {
 	}
 	if root := strings.TrimSpace(cfg.WorkspaceRoot); root != "" {
 		c.workspaceRoot = root
+	}
+	c.agentID = strings.TrimSpace(cfg.AgentID)
+	c.baseURL = strings.TrimRight(strings.TrimSpace(cfg.BaseURL), "/")
+	c.authKey = strings.TrimSpace(cfg.AuthKey)
+	c.client = cfg.Client
+	c.userAgent = strings.TrimSpace(cfg.UserAgent)
+	if cfg.RequestTimeout > 0 {
+		c.requestTimeout = cfg.RequestTimeout
 	}
 }
 
@@ -212,6 +277,11 @@ func (c *Controller) start(ctx context.Context, payload protocol.AppVncCommandPa
 		return fmt.Errorf("launch %s: %w", expandedExecutable, err)
 	}
 
+	pid := 0
+	if cmd.Process != nil {
+		pid = cmd.Process.Pid
+	}
+	started := c.currentTime()
 	state := &sessionState{
 		id:          sessionID,
 		workspace:   workspace,
@@ -219,13 +289,28 @@ func (c *Controller) start(ctx context.Context, payload protocol.AppVncCommandPa
 		application: payload.Application,
 		plan:        plan,
 		settings:    settings,
-		startedAt:   time.Now(),
-		lastBeat:    time.Now(),
+		startedAt:   started,
+		lastBeat:    started,
+		processID:   pid,
 	}
 	c.session = state
 	c.logf("app-vnc: session %s started (%s)", sessionID, expandedExecutable)
+	c.startCaptureLocked(state)
 	go c.awaitProcess(cmd, workspace)
 	return nil
+}
+
+func (c *Controller) startCaptureLocked(session *sessionState) {
+	if session == nil || session.captureDone != nil {
+		return
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	session.captureCancel = cancel
+	session.captureDone = make(chan struct{})
+	go func() {
+		defer close(session.captureDone)
+		c.captureLoop(ctx, session)
+	}()
 }
 
 func expandExecutablePath(path string) string {
@@ -263,6 +348,321 @@ func expandExecutablePath(path string) string {
 		i = end + 1
 	}
 	return builder.String()
+}
+
+func defaultFrameInterval(quality protocol.AppVncQuality) time.Duration {
+	switch quality {
+	case protocol.AppVncQualityLossless:
+		return 100 * time.Millisecond
+	case protocol.AppVncQualityBandwidth:
+		return 500 * time.Millisecond
+	default:
+		return 200 * time.Millisecond
+	}
+}
+
+func (c *Controller) captureLoop(ctx context.Context, session *sessionState) {
+	if session == nil {
+		return
+	}
+	const retryDelay = 500 * time.Millisecond
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		default:
+		}
+
+		settings, ok := c.sessionSettings(session)
+		if !ok {
+			return
+		}
+
+		capturer, err := c.ensureSurfaceCapturer(session)
+		if err != nil {
+			c.logf("app-vnc: capture backend unavailable: %v", err)
+			if !c.waitForInterval(ctx, retryDelay) {
+				return
+			}
+			continue
+		}
+		if capturer == nil {
+			if !c.waitForInterval(ctx, retryDelay) {
+				return
+			}
+			continue
+		}
+
+		frame, err := capturer.Capture(ctx)
+		if err != nil {
+			if ctx.Err() != nil {
+				return
+			}
+			if !errors.Is(err, context.Canceled) {
+				c.logf("app-vnc: capture failed: %v", err)
+			}
+			if !c.waitForInterval(ctx, retryDelay) {
+				return
+			}
+			continue
+		}
+		if frame == nil || frame.image == nil || frame.image.width <= 0 || frame.image.height <= 0 || len(frame.image.data) == 0 {
+			if !c.waitForInterval(ctx, retryDelay) {
+				return
+			}
+			continue
+		}
+
+		encoding, payload, err := encodeSurfaceImage(frame.image, settings.Quality)
+		if err != nil {
+			c.logf("app-vnc: encode failed: %v", err)
+			if !c.waitForInterval(ctx, retryDelay) {
+				return
+			}
+			continue
+		}
+
+		packet := protocol.AppVncFramePacket{
+			SessionID: session.id,
+			Sequence:  atomic.AddInt64(&session.frameSequence, 1),
+			Timestamp: c.currentTime().UTC().Format(time.RFC3339Nano),
+			Width:     frame.image.width,
+			Height:    frame.image.height,
+			Encoding:  encoding,
+			Image:     base64.StdEncoding.EncodeToString(payload),
+		}
+
+		if settings.CaptureCursor && frame.cursor != nil {
+			packet.Cursor = frame.cursor
+		}
+		if meta := c.buildMetadata(settings, session); meta != nil {
+			packet.Metadata = meta
+		}
+
+		if err := c.sendFramePacket(ctx, packet); err != nil {
+			if ctx.Err() != nil {
+				return
+			}
+			c.logf("app-vnc: frame delivery failed: %v", err)
+		}
+
+		interval := c.frameIntervalForQuality(settings.Quality)
+		if !c.waitForInterval(ctx, interval) {
+			return
+		}
+	}
+}
+
+func (c *Controller) sessionSettings(session *sessionState) (protocol.AppVncSessionSettings, bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.session != session || session == nil {
+		return protocol.AppVncSessionSettings{}, false
+	}
+	return session.settings, true
+}
+
+func (c *Controller) ensureSurfaceCapturer(session *sessionState) (surfaceCapturer, error) {
+	c.mu.Lock()
+	existing := surfaceCapturer(nil)
+	if session != nil {
+		existing = session.capture
+	}
+	factory := c.captureFactory
+	c.mu.Unlock()
+
+	if existing != nil {
+		return existing, nil
+	}
+
+	if factory == nil {
+		factory = defaultSurfaceCaptureFactory
+	}
+	if factory == nil {
+		return nil, errors.New("no capture factory configured")
+	}
+	capturer, err := factory(session)
+	if err != nil {
+		return nil, err
+	}
+	if capturer == nil {
+		return nil, nil
+	}
+
+	c.mu.Lock()
+	if session.capture == nil {
+		session.capture = capturer
+		c.mu.Unlock()
+		return capturer, nil
+	}
+	retained := session.capture
+	c.mu.Unlock()
+
+	if err := capturer.Close(); err != nil {
+		c.logf("app-vnc: capture factory close error: %v", err)
+	}
+	return retained, nil
+}
+
+func (c *Controller) waitForInterval(ctx context.Context, interval time.Duration) bool {
+	if interval <= 0 {
+		interval = 200 * time.Millisecond
+	}
+	timer := time.NewTimer(interval)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return false
+	case <-timer.C:
+		return true
+	}
+}
+
+func (c *Controller) frameIntervalForQuality(quality protocol.AppVncQuality) time.Duration {
+	if c != nil && c.frameInterval != nil {
+		if interval := c.frameInterval(quality); interval > 0 {
+			return interval
+		}
+	}
+	return defaultFrameInterval(quality)
+}
+
+func encodeSurfaceImage(img *surfaceImage, quality protocol.AppVncQuality) (string, []byte, error) {
+	if img == nil || img.width <= 0 || img.height <= 0 || len(img.data) == 0 {
+		return "", nil, errors.New("invalid surface image")
+	}
+
+	raw := img.data
+	expectedStride := img.width * 4
+	if img.stride > 0 && img.stride != expectedStride {
+		raw = make([]byte, img.width*img.height*4)
+		for y := 0; y < img.height; y++ {
+			srcStart := y * img.stride
+			srcEnd := srcStart + expectedStride
+			dstStart := y * expectedStride
+			copy(raw[dstStart:dstStart+expectedStride], img.data[srcStart:srcEnd])
+		}
+	}
+
+	switch quality {
+	case protocol.AppVncQualityLossless:
+		data, err := screen.EncodeRGBAAsPNG(img.width, img.height, raw)
+		if err != nil {
+			return "", nil, err
+		}
+		return "png", data, nil
+	case protocol.AppVncQualityBandwidth:
+		data, err := screen.EncodeRGBAAsJPEG(img.width, img.height, 60, raw)
+		if err != nil {
+			return "", nil, err
+		}
+		return "jpeg", data, nil
+	default:
+		data, err := screen.EncodeRGBAAsJPEG(img.width, img.height, 80, raw)
+		if err != nil {
+			return "", nil, err
+		}
+		return "jpeg", data, nil
+	}
+}
+
+func (c *Controller) buildMetadata(settings protocol.AppVncSessionSettings, session *sessionState) *protocol.AppVncSessionMetadata {
+	meta := protocol.AppVncSessionMetadata{}
+	if trimmed := strings.TrimSpace(settings.AppID); trimmed != "" {
+		meta.AppID = trimmed
+	}
+	if trimmed := strings.TrimSpace(settings.WindowTitle); trimmed != "" {
+		meta.WindowTitle = trimmed
+	}
+	if pid := c.sessionProcessID(session); pid > 0 {
+		meta.ProcessID = pid
+	}
+	if meta == (protocol.AppVncSessionMetadata{}) {
+		return nil
+	}
+	return &meta
+}
+
+func (c *Controller) sessionProcessID(session *sessionState) int {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.session != session || session == nil {
+		return 0
+	}
+	if session.process != nil && session.process.Process != nil {
+		session.processID = session.process.Process.Pid
+	}
+	return session.processID
+}
+
+func (c *Controller) sendFramePacket(ctx context.Context, packet protocol.AppVncFramePacket) error {
+	c.mu.Lock()
+	baseURL := c.baseURL
+	agentID := c.agentID
+	authKey := c.authKey
+	client := c.client
+	userAgent := c.userAgent
+	timeout := c.requestTimeout
+	c.mu.Unlock()
+
+	trimmedBase := strings.TrimSpace(baseURL)
+	if trimmedBase == "" {
+		return errors.New("app-vnc: missing base URL")
+	}
+	trimmedAgent := strings.TrimSpace(agentID)
+	if trimmedAgent == "" {
+		return errors.New("app-vnc: missing agent identifier")
+	}
+	if client == nil {
+		return errors.New("app-vnc: missing http client")
+	}
+
+	endpoint := fmt.Sprintf("%s/api/agents/%s/app-vnc/frames", strings.TrimRight(trimmedBase, "/"), url.PathEscape(trimmedAgent))
+	data, err := json.Marshal(packet)
+	if err != nil {
+		return err
+	}
+
+	if timeout <= 0 {
+		timeout = 10 * time.Second
+	}
+	reqCtx := ctx
+	if reqCtx == nil {
+		reqCtx = context.Background()
+	}
+	reqCtx, cancel := context.WithTimeout(reqCtx, timeout)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(reqCtx, http.MethodPost, endpoint, bytes.NewReader(data))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json")
+	if ua := strings.TrimSpace(userAgent); ua != "" {
+		req.Header.Set("User-Agent", ua)
+	}
+	if key := strings.TrimSpace(authKey); key != "" {
+		req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", key))
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 300 {
+		return fmt.Errorf("frame ingest failed: status %d", resp.StatusCode)
+	}
+	return nil
+}
+
+func (c *Controller) currentTime() time.Time {
+	if c != nil && c.now != nil {
+		return c.now()
+	}
+	return time.Now()
 }
 
 func (c *Controller) stop(sessionID string) error {
@@ -314,7 +714,7 @@ func (c *Controller) heartbeat(payload protocol.AppVncCommandPayload) error {
 	if id := strings.TrimSpace(payload.SessionID); id != "" && id != c.session.id {
 		return errors.New("session identifier mismatch")
 	}
-	c.session.lastBeat = time.Now()
+	c.session.lastBeat = c.currentTime()
 	return nil
 }
 
@@ -403,6 +803,21 @@ func (c *Controller) awaitProcess(cmd *exec.Cmd, workspace string) {
 func (c *Controller) terminateSession(ctx context.Context, session *sessionState, reason error) {
 	if session == nil {
 		return
+	}
+	if session.captureCancel != nil {
+		session.captureCancel()
+	}
+	if session.captureDone != nil {
+		select {
+		case <-session.captureDone:
+		case <-time.After(2 * time.Second):
+		}
+	}
+	if session.capture != nil {
+		if err := session.capture.Close(); err != nil {
+			c.logf("app-vnc: capture shutdown failed: %v", err)
+		}
+		session.capture = nil
 	}
 	if session.process != nil && session.process.Process != nil {
 		_ = session.process.Process.Signal(os.Interrupt)
