@@ -73,9 +73,21 @@ export const triggerMonitorMetricSchema = z.object({
 });
 export type TriggerMonitorMetric = z.infer<typeof triggerMonitorMetricSchema>;
 
+export const triggerMonitorEventSchema = z.object({
+  id: z.string().min(1),
+  entryId: z.string().min(1),
+  entryKind: z.enum(['app', 'url']),
+  displayName: z.string().min(1),
+  event: z.enum(['open', 'close']),
+  observedAt: z.string(),
+  detail: z.string().optional(),
+});
+export type TriggerMonitorEvent = z.infer<typeof triggerMonitorEventSchema>;
+
 export const triggerMonitorStatusSchema = z.object({
   config: triggerMonitorConfigSchema,
   metrics: z.array(triggerMonitorMetricSchema),
+  events: z.array(triggerMonitorEventSchema),
   generatedAt: z.string(),
 });
 export type TriggerMonitorStatus = z.infer<typeof triggerMonitorStatusSchema>;
