@@ -230,6 +230,9 @@ func (a *Agent) refreshApprovedPlugins(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	if a.plugins != nil {
+		a.plugins.UpdateRegistry(snapshot)
+	}
 	a.setPluginManifestList(snapshot)
 	return a.stagePluginsFromList(requestCtx, snapshot)
 }
@@ -265,6 +268,9 @@ func (a *Agent) applyPluginManifestDelta(ctx context.Context, delta *manifest.Ma
 	snapshot, err := a.fetchApprovedPluginList(requestCtx)
 	if err != nil {
 		return combineErrors(removalErr, err)
+	}
+	if a.plugins != nil {
+		a.plugins.UpdateRegistry(snapshot)
 	}
 	a.setPluginManifestList(snapshot)
 	stageErr := a.stagePluginsFromList(requestCtx, snapshot)

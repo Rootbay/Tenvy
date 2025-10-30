@@ -118,6 +118,38 @@ export const plugin = sqliteTable('plugin', {
 	updatedAt: timestamp('updated_at', { defaultNow: true })
 });
 
+export const pluginRegistryEntry = sqliteTable(
+	'plugin_registry_entry',
+	{
+		id: text('id').primaryKey(),
+		pluginId: text('plugin_id').notNull(),
+		version: text('version').notNull(),
+		manifest: text('manifest').notNull(),
+		manifestDigest: text('manifest_digest').notNull(),
+		artifactHash: text('artifact_hash'),
+		artifactSizeBytes: integer('artifact_size_bytes'),
+		metadata: text('metadata'),
+		approvalStatus: text('approval_status').notNull().default('pending'),
+		publishedBy: text('published_by').references(() => user.id, { onDelete: 'set null' }),
+		publishedAt: timestamp('published_at', { defaultNow: true }),
+		approvedBy: text('approved_by').references(() => user.id, { onDelete: 'set null' }),
+		approvedAt: timestamp('approved_at', { optional: true }),
+		approvalNote: text('approval_note'),
+		revokedBy: text('revoked_by').references(() => user.id, { onDelete: 'set null' }),
+		revokedAt: timestamp('revoked_at', { optional: true }),
+		revocationReason: text('revocation_reason'),
+		createdAt: timestamp('created_at', { defaultNow: true }),
+		updatedAt: timestamp('updated_at', { defaultNow: true })
+	},
+	(table) => ({
+		pluginVersionIdx: uniqueIndex('plugin_registry_entry_plugin_version_idx').on(
+			table.pluginId,
+			table.version
+		),
+		statusIdx: index('plugin_registry_entry_status_idx').on(table.approvalStatus)
+	})
+);
+
 export const pluginInstallation = sqliteTable(
 	'plugin_installation',
 	{
@@ -208,10 +240,10 @@ export const pluginMarketplaceEntitlement = sqliteTable(
 );
 
 export const pluginMarketplaceTransaction = sqliteTable(
-        'plugin_marketplace_transaction',
-        {
-                id: text('id').primaryKey(),
-                listingId: text('listing_id')
+	'plugin_marketplace_transaction',
+	{
+		id: text('id').primaryKey(),
+		listingId: text('listing_id')
 			.notNull()
 			.references(() => pluginMarketplaceListing.id, { onDelete: 'cascade' }),
 		tenantId: text('tenant_id')
@@ -228,35 +260,35 @@ export const pluginMarketplaceTransaction = sqliteTable(
 		metadata: text('metadata')
 	},
 	(table) => ({
-                entitlementIdx: index('plugin_marketplace_transaction_entitlement_idx').on(table.entitlementId)
-        })
+		entitlementIdx: index('plugin_marketplace_transaction_entitlement_idx').on(table.entitlementId)
+	})
 );
 
 export const registrySubscription = sqliteTable(
-        'registry_subscription',
-        {
-                id: text('id').primaryKey(),
-                adminId: text('admin_id').notNull(),
-                channel: text('channel').notNull(),
-                cursor: integer('cursor').notNull().default(0),
-                snapshot: text('snapshot').notNull(),
-                createdAt: timestamp('created_at', { defaultNow: true }),
-                lastSeenAt: timestamp('last_seen_at', { defaultNow: true }),
-                updatedAt: timestamp('updated_at', { defaultNow: true })
-        },
-        (table) => ({
-                adminChannelIdx: uniqueIndex('registry_subscription_admin_channel_idx').on(
-                        table.adminId,
-                        table.channel
-                )
-        })
+	'registry_subscription',
+	{
+		id: text('id').primaryKey(),
+		adminId: text('admin_id').notNull(),
+		channel: text('channel').notNull(),
+		cursor: integer('cursor').notNull().default(0),
+		snapshot: text('snapshot').notNull(),
+		createdAt: timestamp('created_at', { defaultNow: true }),
+		lastSeenAt: timestamp('last_seen_at', { defaultNow: true }),
+		updatedAt: timestamp('updated_at', { defaultNow: true })
+	},
+	(table) => ({
+		adminChannelIdx: uniqueIndex('registry_subscription_admin_channel_idx').on(
+			table.adminId,
+			table.channel
+		)
+	})
 );
 
 export const agent = sqliteTable(
-        'agent',
-        {
-                id: text('id').primaryKey(),
-                keyHash: text('key_hash').notNull(),
+	'agent',
+	{
+		id: text('id').primaryKey(),
+		keyHash: text('key_hash').notNull(),
 		metadata: text('metadata').notNull(),
 		status: text('status').notNull().default('offline'),
 		connectedAt: timestamp('connected_at', { defaultNow: true }),
