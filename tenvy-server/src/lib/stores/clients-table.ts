@@ -1,6 +1,6 @@
 import { derived, get, writable } from 'svelte/store';
 import type { AgentSnapshot } from '../../../../shared/types/agent';
-import type { AgentRegistryEvent } from '../../../../shared/types/registry-events';
+import { registryEventBus, type RegistryEventMessage } from './registry-events';
 
 export type StatusFilter = 'all' | AgentSnapshot['status'];
 export type TagFilter = 'all' | string;
@@ -234,109 +234,87 @@ export function createClientsTableStore(initialAgents: AgentSnapshot[]): {
 		}
 	);
 
-	let subscribers = 0;
-	let source: EventSource | null = null;
-	let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+        let subscribers = 0;
+        let busUnsubscribe: (() => void) | null = null;
+        const optimisticAgents = new Map<string, AgentSnapshot>();
 
-	const applyRegistryEvent = (event: AgentRegistryEvent) => {
-		if (!event || typeof event !== 'object') {
-			return;
-		}
+        const applyRegistryEvent = (event: RegistryEventMessage) => {
+                if (!event || typeof event !== 'object') {
+                        return;
+                }
 
-		if (event.type === 'agents') {
-			agents.set(dedupeAgents(event.agents ?? []));
-			return;
-		}
+                if (event.type === 'agents') {
+                        optimisticAgents.clear();
+                        agents.set(dedupeAgents(event.agents ?? []));
+                        return;
+                }
 
-		if (event.type === 'agent') {
-			agents.update((current) => dedupeAgents(upsertAgent(current, event.agent)));
-		}
-	};
+                if (event.type === 'agent') {
+                        if (event.optimistic) {
+                                optimisticAgents.set(event.agent.id, event.agent);
+                        } else {
+                                optimisticAgents.delete(event.agent.id);
+                        }
+                        agents.update((current) => dedupeAgents(upsertAgent(current, event.agent)));
+                }
+        };
 
-	const stopStream = () => {
-		if (reconnectTimer) {
-			clearTimeout(reconnectTimer);
-			reconnectTimer = null;
-		}
-		if (source) {
-			source.onmessage = null;
-			source.onerror = null;
-			source.close();
-			source = null;
-		}
-	};
+        const startBus = () => {
+                if (busUnsubscribe) {
+                        return;
+                }
+                busUnsubscribe = registryEventBus.subscribe((event) => {
+                        applyRegistryEvent(event);
+                });
+        };
 
-	const scheduleReconnect = () => {
-		if (reconnectTimer || subscribers === 0) {
-			return;
-		}
-		reconnectTimer = setTimeout(() => {
-			reconnectTimer = null;
-			startStream();
-		}, 5_000);
-	};
+        const stopBus = () => {
+                busUnsubscribe?.();
+                busUnsubscribe = null;
+                optimisticAgents.clear();
+        };
 
-	const startStream = () => {
-		if (typeof window === 'undefined' || source) {
-			return;
-		}
-
-		stopStream();
-
-		try {
-			source = new EventSource('/api/agents/stream');
-		} catch (error) {
-			console.error('Failed to open agent registry stream', error);
-			scheduleReconnect();
-			return;
-		}
-
-		source.onmessage = (event) => {
-			if (!event.data) {
-				return;
-			}
-			try {
-				const parsed = JSON.parse(event.data) as AgentRegistryEvent;
-				applyRegistryEvent(parsed);
-			} catch (error) {
-				console.error('Failed to parse agent registry event', error);
-			}
-		};
-
-		source.onerror = () => {
-			stopStream();
-			scheduleReconnect();
-		};
-	};
-
-	return {
-		subscribe: (run, invalidate) => {
-			const unsubscribe = state.subscribe(run, invalidate);
-			subscribers += 1;
-			if (subscribers === 1) {
-				startStream();
-			}
-			return () => {
-				unsubscribe();
-				subscribers = Math.max(0, subscribers - 1);
-				if (subscribers === 0) {
-					stopStream();
-				}
-			};
-		},
-		setAgents: (nextAgents) => agents.set(dedupeAgents(nextAgents ?? [])),
-		setSearchQuery: (value) => searchQuery.set(value),
-		setStatusFilter: (value) => statusFilter.set(value),
-		setTagFilter: (value) => tagFilter.set(value),
-		setPerPage: (value) => perPage.set(Math.max(1, value)),
-		goToPage: (page) => currentPage.set(Math.max(1, Math.trunc(page))),
-		nextPage: () => {
-			const { currentPage: page, totalPages } = get(state);
-			currentPage.set(Math.min(totalPages, page + 1));
-		},
-		previousPage: () => {
-			const { currentPage: page } = get(state);
-			currentPage.set(Math.max(1, page - 1));
-		}
-	};
+        return {
+                subscribe: (run, invalidate) => {
+                        const unsubscribe = state.subscribe(run, invalidate);
+                        subscribers += 1;
+                        if (subscribers === 1) {
+                                startBus();
+                        }
+                        return () => {
+                                unsubscribe();
+                                subscribers = Math.max(0, subscribers - 1);
+                                if (subscribers === 0) {
+                                        stopBus();
+                                }
+                        };
+                },
+                setAgents: (nextAgents) => {
+                        optimisticAgents.clear();
+                        agents.set(dedupeAgents(nextAgents ?? []));
+                },
+                setSearchQuery: (value) => searchQuery.set(value),
+                setStatusFilter: (value) => statusFilter.set(value),
+                setTagFilter: (value) => tagFilter.set(value),
+                setPerPage: (value) => perPage.set(Math.max(1, value)),
+                goToPage: (page) => currentPage.set(Math.max(1, Math.trunc(page))),
+                nextPage: () => {
+                        const { currentPage: page, totalPages } = get(state);
+                        currentPage.set(Math.min(totalPages, page + 1));
+                },
+                previousPage: () => {
+                        const { currentPage: page } = get(state);
+                        currentPage.set(Math.max(1, page - 1));
+                },
+                optimisticUpdateAgent: (agent: AgentSnapshot) => {
+                        registryEventBus.emitOptimistic({
+                                type: 'agent',
+                                agent
+                        } as RegistryEventMessage);
+                },
+                isOptimistic: (agentId: string) => optimisticAgents.has(agentId),
+                clearOptimisticAgent: (agentId: string) => {
+                        optimisticAgents.delete(agentId);
+                }
+        };
 }

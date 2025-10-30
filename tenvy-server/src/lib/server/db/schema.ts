@@ -208,10 +208,10 @@ export const pluginMarketplaceEntitlement = sqliteTable(
 );
 
 export const pluginMarketplaceTransaction = sqliteTable(
-	'plugin_marketplace_transaction',
-	{
-		id: text('id').primaryKey(),
-		listingId: text('listing_id')
+        'plugin_marketplace_transaction',
+        {
+                id: text('id').primaryKey(),
+                listingId: text('listing_id')
 			.notNull()
 			.references(() => pluginMarketplaceListing.id, { onDelete: 'cascade' }),
 		tenantId: text('tenant_id')
@@ -228,15 +228,35 @@ export const pluginMarketplaceTransaction = sqliteTable(
 		metadata: text('metadata')
 	},
 	(table) => ({
-		entitlementIdx: index('plugin_marketplace_transaction_entitlement_idx').on(table.entitlementId)
-	})
+                entitlementIdx: index('plugin_marketplace_transaction_entitlement_idx').on(table.entitlementId)
+        })
+);
+
+export const registrySubscription = sqliteTable(
+        'registry_subscription',
+        {
+                id: text('id').primaryKey(),
+                adminId: text('admin_id').notNull(),
+                channel: text('channel').notNull(),
+                cursor: integer('cursor').notNull().default(0),
+                snapshot: text('snapshot').notNull(),
+                createdAt: timestamp('created_at', { defaultNow: true }),
+                lastSeenAt: timestamp('last_seen_at', { defaultNow: true }),
+                updatedAt: timestamp('updated_at', { defaultNow: true })
+        },
+        (table) => ({
+                adminChannelIdx: uniqueIndex('registry_subscription_admin_channel_idx').on(
+                        table.adminId,
+                        table.channel
+                )
+        })
 );
 
 export const agent = sqliteTable(
-	'agent',
-	{
-		id: text('id').primaryKey(),
-		keyHash: text('key_hash').notNull(),
+        'agent',
+        {
+                id: text('id').primaryKey(),
+                keyHash: text('key_hash').notNull(),
 		metadata: text('metadata').notNull(),
 		status: text('status').notNull().default('offline'),
 		connectedAt: timestamp('connected_at', { defaultNow: true }),

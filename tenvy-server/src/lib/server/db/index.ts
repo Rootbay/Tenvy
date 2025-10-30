@@ -176,6 +176,18 @@ CREATE TABLE IF NOT EXISTS plugin_marketplace_transaction (
 );
 CREATE INDEX IF NOT EXISTS plugin_marketplace_transaction_entitlement_idx ON plugin_marketplace_transaction (entitlement_id);
 
+CREATE TABLE IF NOT EXISTS registry_subscription (
+        id TEXT PRIMARY KEY NOT NULL,
+        admin_id TEXT NOT NULL,
+        channel TEXT NOT NULL,
+        cursor INTEGER NOT NULL DEFAULT 0,
+        snapshot TEXT NOT NULL,
+        created_at INTEGER NOT NULL,
+        last_seen_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL
+);
+CREATE UNIQUE INDEX IF NOT EXISTS registry_subscription_admin_channel_idx ON registry_subscription (admin_id, channel);
+
 CREATE TABLE IF NOT EXISTS agent (
         id TEXT PRIMARY KEY NOT NULL,
         key_hash TEXT NOT NULL,
