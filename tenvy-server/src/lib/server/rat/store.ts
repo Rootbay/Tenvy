@@ -2,12 +2,12 @@ import { createHash, randomBytes, randomUUID, timingSafeEqual } from 'crypto';
 import { and, eq, inArray } from 'drizzle-orm';
 import { db } from '$lib/server/db';
 import {
-        agent as agentTable,
-        agentNote as agentNoteTable,
-        agentCommand as agentCommandTable,
-        agentResult as agentResultTable,
-        auditEvent as auditEventTable,
-        registrySubscription as registrySubscriptionTable
+	agent as agentTable,
+	agentNote as agentNoteTable,
+	agentCommand as agentCommandTable,
+	agentResult as agentResultTable,
+	auditEvent as auditEventTable,
+	registrySubscription as registrySubscriptionTable
 } from '$lib/server/db/schema';
 import {
 	defaultAgentConfig,
@@ -113,32 +113,32 @@ interface AgentRecord {
 }
 
 interface SharedNoteRecord {
-        id: string;
-        ciphertext: string;
-        nonce: string;
-        digest: string;
-        version: number;
-        updatedAt: Date;
+	id: string;
+	ciphertext: string;
+	nonce: string;
+	digest: string;
+	version: number;
+	updatedAt: Date;
 }
 
 type AgentRegistrySubscriber = (event: AgentRegistryEvent) => void;
 
 interface AdminSubscriptionRecord {
-        id: string;
-        adminId: string;
-        channel: string;
-        listener: AgentRegistrySubscriber;
-        cursor: number;
+	id: string;
+	adminId: string;
+	channel: string;
+	listener: AgentRegistrySubscriber;
+	cursor: number;
 }
 
 interface PersistedAdminSubscription {
-        id: string;
-        adminId: string;
-        channel: string;
-        cursor: number;
-        snapshot: AgentSnapshot[];
-        lastSeenAt: Date;
-        updatedAt: Date;
+	id: string;
+	adminId: string;
+	channel: string;
+	cursor: number;
+	snapshot: AgentSnapshot[];
+	lastSeenAt: Date;
+	updatedAt: Date;
 }
 
 interface CommandOutputStreamRecord {
@@ -149,196 +149,188 @@ interface CommandOutputStreamRecord {
 }
 
 interface CommandOutputSubscription {
-        events: CommandOutputEvent[];
-        completed: boolean;
-        unsubscribe: () => void;
+	events: CommandOutputEvent[];
+	completed: boolean;
+	unsubscribe: () => void;
 }
 
 function normalizeSubscriptionSegment(value: string): string {
-        return value.trim().toLowerCase();
+	return value.trim().toLowerCase();
 }
 
 function computeSubscriptionId(adminId: string, channel: string): string {
-        const hash = createHash('sha256');
-        hash.update(normalizeSubscriptionSegment(adminId));
-        hash.update(':');
-        hash.update(normalizeSubscriptionSegment(channel));
-        return hash.digest('hex');
+	const hash = createHash('sha256');
+	hash.update(normalizeSubscriptionSegment(adminId));
+	hash.update(':');
+	hash.update(normalizeSubscriptionSegment(channel));
+	return hash.digest('hex');
 }
 
 function parseSubscriptionSnapshot(payload: string | null): AgentSnapshot[] {
-        if (!payload) {
-                return [];
-        }
-        try {
-                const parsed = JSON.parse(payload) as AgentSnapshot[];
-                return Array.isArray(parsed) ? parsed : [];
-        } catch {
-                return [];
-        }
+	if (!payload) {
+		return [];
+	}
+	try {
+		const parsed = JSON.parse(payload) as AgentSnapshot[];
+		return Array.isArray(parsed) ? parsed : [];
+	} catch {
+		return [];
+	}
 }
 
 class RegistrySubscriptionStore {
-        load(adminId: string, channel: string): PersistedAdminSubscription | null {
-                try {
-                        const row = db
-                                .select({
-                                        id: registrySubscriptionTable.id,
-                                        adminId: registrySubscriptionTable.adminId,
-                                        channel: registrySubscriptionTable.channel,
-                                        cursor: registrySubscriptionTable.cursor,
-                                        snapshot: registrySubscriptionTable.snapshot,
-                                        lastSeenAt: registrySubscriptionTable.lastSeenAt,
-                                        updatedAt: registrySubscriptionTable.updatedAt
-                                })
-                                .from(registrySubscriptionTable)
-                                .where(
-                                        and(
-                                                eq(
-                                                        registrySubscriptionTable.adminId,
-                                                        normalizeSubscriptionSegment(adminId)
-                                                ),
-                                                eq(
-                                                        registrySubscriptionTable.channel,
-                                                        normalizeSubscriptionSegment(channel)
-                                                )
-                                        )
-                                )
-                                .get();
+	load(adminId: string, channel: string): PersistedAdminSubscription | null {
+		try {
+			const row = db
+				.select({
+					id: registrySubscriptionTable.id,
+					adminId: registrySubscriptionTable.adminId,
+					channel: registrySubscriptionTable.channel,
+					cursor: registrySubscriptionTable.cursor,
+					snapshot: registrySubscriptionTable.snapshot,
+					lastSeenAt: registrySubscriptionTable.lastSeenAt,
+					updatedAt: registrySubscriptionTable.updatedAt
+				})
+				.from(registrySubscriptionTable)
+				.where(
+					and(
+						eq(registrySubscriptionTable.adminId, normalizeSubscriptionSegment(adminId)),
+						eq(registrySubscriptionTable.channel, normalizeSubscriptionSegment(channel))
+					)
+				)
+				.get();
 
-                        if (!row) {
-                                return null;
-                        }
+			if (!row) {
+				return null;
+			}
 
-                        const lastSeen =
-                                row.lastSeenAt instanceof Date
-                                        ? row.lastSeenAt
-                                        : new Date(row.lastSeenAt ?? Date.now());
-                        const updated =
-                                row.updatedAt instanceof Date
-                                        ? row.updatedAt
-                                        : new Date(row.updatedAt ?? Date.now());
+			const lastSeen =
+				row.lastSeenAt instanceof Date ? row.lastSeenAt : new Date(row.lastSeenAt ?? Date.now());
+			const updated =
+				row.updatedAt instanceof Date ? row.updatedAt : new Date(row.updatedAt ?? Date.now());
 
-                        return {
-                                id: row.id,
-                                adminId: row.adminId,
-                                channel: row.channel,
-                                cursor: typeof row.cursor === 'number' ? row.cursor : 0,
-                                snapshot: parseSubscriptionSnapshot(row.snapshot ?? null),
-                                lastSeenAt: lastSeen,
-                                updatedAt: updated
-                        } satisfies PersistedAdminSubscription;
-                } catch (error) {
-                        console.error('Failed to load registry subscription', error);
-                        return null;
-                }
-        }
+			return {
+				id: row.id,
+				adminId: row.adminId,
+				channel: row.channel,
+				cursor: typeof row.cursor === 'number' ? row.cursor : 0,
+				snapshot: parseSubscriptionSnapshot(row.snapshot ?? null),
+				lastSeenAt: lastSeen,
+				updatedAt: updated
+			} satisfies PersistedAdminSubscription;
+		} catch (error) {
+			console.error('Failed to load registry subscription', error);
+			return null;
+		}
+	}
 
-        upsert(
-                adminId: string,
-                channel: string,
-                snapshot: AgentSnapshot[],
-                cursor: number
-        ): PersistedAdminSubscription | null {
-                const normalizedAdmin = normalizeSubscriptionSegment(adminId);
-                const normalizedChannel = normalizeSubscriptionSegment(channel);
-                const id = computeSubscriptionId(normalizedAdmin, normalizedChannel);
-                const now = new Date();
+	upsert(
+		adminId: string,
+		channel: string,
+		snapshot: AgentSnapshot[],
+		cursor: number
+	): PersistedAdminSubscription | null {
+		const normalizedAdmin = normalizeSubscriptionSegment(adminId);
+		const normalizedChannel = normalizeSubscriptionSegment(channel);
+		const id = computeSubscriptionId(normalizedAdmin, normalizedChannel);
+		const now = new Date();
 
-                try {
-                        db.insert(registrySubscriptionTable)
-                                .values({
-                                        id,
-                                        adminId: normalizedAdmin,
-                                        channel: normalizedChannel,
-                                        cursor,
-                                        snapshot: JSON.stringify(snapshot ?? []),
-                                        createdAt: now,
-                                        lastSeenAt: now,
-                                        updatedAt: now
-                                })
-                                .onConflictDoUpdate({
-                                        target: [
-                                                registrySubscriptionTable.adminId,
-                                                registrySubscriptionTable.channel
-                                        ],
-                                        set: {
-                                                cursor,
-                                                snapshot: JSON.stringify(snapshot ?? []),
-                                                lastSeenAt: now,
-                                                updatedAt: now
-                                        }
-                                })
-                                .run();
-                } catch (error) {
-                        console.error('Failed to persist registry subscription', error);
-                        return null;
-                }
+		try {
+			db.insert(registrySubscriptionTable)
+				.values({
+					id,
+					adminId: normalizedAdmin,
+					channel: normalizedChannel,
+					cursor,
+					snapshot: JSON.stringify(snapshot ?? []),
+					createdAt: now,
+					lastSeenAt: now,
+					updatedAt: now
+				})
+				.onConflictDoUpdate({
+					target: [registrySubscriptionTable.adminId, registrySubscriptionTable.channel],
+					set: {
+						cursor,
+						snapshot: JSON.stringify(snapshot ?? []),
+						lastSeenAt: now,
+						updatedAt: now
+					}
+				})
+				.run();
+		} catch (error) {
+			console.error('Failed to persist registry subscription', error);
+			return null;
+		}
 
-                return this.load(normalizedAdmin, normalizedChannel);
-        }
+		return this.load(normalizedAdmin, normalizedChannel);
+	}
 
-        updateCursor(adminId: string, channel: string, cursor: number): void {
-                const normalizedAdmin = normalizeSubscriptionSegment(adminId);
-                const normalizedChannel = normalizeSubscriptionSegment(channel);
-                try {
-                        db.update(registrySubscriptionTable)
-                                .set({
-                                        cursor,
-                                        lastSeenAt: new Date()
-                                })
-                                .where(
-                                        and(
-                                                eq(registrySubscriptionTable.adminId, normalizedAdmin),
-                                                eq(registrySubscriptionTable.channel, normalizedChannel)
-                                        )
-                                )
-                                .run();
-                } catch (error) {
-                        console.error('Failed to update registry subscription cursor', error);
-                }
-        }
+	updateCursor(adminId: string, channel: string, cursor: number): void {
+		const normalizedAdmin = normalizeSubscriptionSegment(adminId);
+		const normalizedChannel = normalizeSubscriptionSegment(channel);
+		try {
+			db.update(registrySubscriptionTable)
+				.set({
+					cursor,
+					lastSeenAt: new Date()
+				})
+				.where(
+					and(
+						eq(registrySubscriptionTable.adminId, normalizedAdmin),
+						eq(registrySubscriptionTable.channel, normalizedChannel)
+					)
+				)
+				.run();
+		} catch (error) {
+			console.error('Failed to update registry subscription cursor', error);
+		}
+	}
 
-        updateSnapshot(adminId: string, channel: string, snapshot: AgentSnapshot[], cursor: number): void {
-                const normalizedAdmin = normalizeSubscriptionSegment(adminId);
-                const normalizedChannel = normalizeSubscriptionSegment(channel);
-                try {
-                        db.update(registrySubscriptionTable)
-                                .set({
-                                        cursor,
-                                        snapshot: JSON.stringify(snapshot ?? []),
-                                        updatedAt: new Date(),
-                                        lastSeenAt: new Date()
-                                })
-                                .where(
-                                        and(
-                                                eq(registrySubscriptionTable.adminId, normalizedAdmin),
-                                                eq(registrySubscriptionTable.channel, normalizedChannel)
-                                        )
-                                )
-                                .run();
-                } catch (error) {
-                        console.error('Failed to update registry subscription snapshot', error);
-                }
-        }
+	updateSnapshot(
+		adminId: string,
+		channel: string,
+		snapshot: AgentSnapshot[],
+		cursor: number
+	): void {
+		const normalizedAdmin = normalizeSubscriptionSegment(adminId);
+		const normalizedChannel = normalizeSubscriptionSegment(channel);
+		try {
+			db.update(registrySubscriptionTable)
+				.set({
+					cursor,
+					snapshot: JSON.stringify(snapshot ?? []),
+					updatedAt: new Date(),
+					lastSeenAt: new Date()
+				})
+				.where(
+					and(
+						eq(registrySubscriptionTable.adminId, normalizedAdmin),
+						eq(registrySubscriptionTable.channel, normalizedChannel)
+					)
+				)
+				.run();
+		} catch (error) {
+			console.error('Failed to update registry subscription snapshot', error);
+		}
+	}
 
-        touch(adminId: string, channel: string): void {
-                const normalizedAdmin = normalizeSubscriptionSegment(adminId);
-                const normalizedChannel = normalizeSubscriptionSegment(channel);
-                try {
-                        db.update(registrySubscriptionTable)
-                                .set({ lastSeenAt: new Date() })
-                                .where(
-                                        and(
-                                                eq(registrySubscriptionTable.adminId, normalizedAdmin),
-                                                eq(registrySubscriptionTable.channel, normalizedChannel)
-                                        )
-                                )
-                                .run();
-                } catch (error) {
-                        console.error('Failed to update registry subscription activity timestamp', error);
-                }
-        }
+	touch(adminId: string, channel: string): void {
+		const normalizedAdmin = normalizeSubscriptionSegment(adminId);
+		const normalizedChannel = normalizeSubscriptionSegment(channel);
+		try {
+			db.update(registrySubscriptionTable)
+				.set({ lastSeenAt: new Date() })
+				.where(
+					and(
+						eq(registrySubscriptionTable.adminId, normalizedAdmin),
+						eq(registrySubscriptionTable.channel, normalizedChannel)
+					)
+				)
+				.run();
+		} catch (error) {
+			console.error('Failed to update registry subscription activity timestamp', error);
+		}
+	}
 }
 
 function ensureMetadata(metadata: AgentMetadata, remoteAddress?: string): AgentMetadata {
@@ -767,121 +759,125 @@ function mergeRecentResults(existing: CommandResult[], incoming: CommandResult[]
 }
 
 export class AgentRegistry {
-        private readonly agents = new Map<string, AgentRecord>();
-        private readonly fingerprints = new Map<string, string>();
-        private readonly sessionTokens = new Map<string, SessionTokenRecord>();
-        private readonly subscribers = new Map<string, AgentRegistrySubscriber>();
-        private readonly adminSubscriptions = new Map<string, AdminSubscriptionRecord>();
-        private readonly commandOutputStreams = new Map<string, Map<string, CommandOutputStreamRecord>>();
-        private persistTimer: ReturnType<typeof setTimeout> | null = null;
-        private persistPromise: Promise<void> | null = null;
-        private needsPersist = false;
-        private broadcastSequence = 0;
-        private readonly pluginTelemetry: PluginTelemetryStore;
-        private readonly subscriptionStore = new RegistrySubscriptionStore();
+	private readonly agents = new Map<string, AgentRecord>();
+	private readonly fingerprints = new Map<string, string>();
+	private readonly sessionTokens = new Map<string, SessionTokenRecord>();
+	private readonly subscribers = new Map<string, AgentRegistrySubscriber>();
+	private readonly adminSubscriptions = new Map<string, AdminSubscriptionRecord>();
+	private readonly commandOutputStreams = new Map<string, Map<string, CommandOutputStreamRecord>>();
+	private persistTimer: ReturnType<typeof setTimeout> | null = null;
+	private persistPromise: Promise<void> | null = null;
+	private needsPersist = false;
+	private broadcastSequence = 0;
+	private readonly pluginTelemetry: PluginTelemetryStore;
+	private readonly subscriptionStore = new RegistrySubscriptionStore();
 
-        constructor() {
-                this.loadFromDatabase();
-                this.pluginTelemetry = new PluginTelemetryStore();
-        }
+	constructor() {
+		this.loadFromDatabase();
+		this.pluginTelemetry = new PluginTelemetryStore();
+	}
 
-        subscribe(listener: AgentRegistrySubscriber): () => void {
-                const id = randomUUID();
-                this.subscribers.set(id, listener);
-                return () => {
-                        this.subscribers.delete(id);
-                };
-        }
+	subscribe(listener: AgentRegistrySubscriber): () => void {
+		const id = randomUUID();
+		this.subscribers.set(id, listener);
+		return () => {
+			this.subscribers.delete(id);
+		};
+	}
 
-        subscribeForAdmin(
-                adminId: string,
-                listener: AgentRegistrySubscriber,
-                options: { channel?: string } = {}
-        ): { unsubscribe: () => void; snapshot: AgentSnapshot[]; cursor: number } {
-                const normalizedAdmin = normalizeSubscriptionSegment(adminId);
-                const channel = normalizeSubscriptionSegment(options.channel ?? 'sse');
-                const connectionId = `${computeSubscriptionId(normalizedAdmin, channel)}:${randomUUID()}`;
+	subscribeForAdmin(
+		adminId: string,
+		listener: AgentRegistrySubscriber,
+		options: { channel?: string } = {}
+	): { unsubscribe: () => void; snapshot: AgentSnapshot[]; cursor: number } {
+		const normalizedAdmin = normalizeSubscriptionSegment(adminId);
+		const channel = normalizeSubscriptionSegment(options.channel ?? 'sse');
+		const connectionId = `${computeSubscriptionId(normalizedAdmin, channel)}:${randomUUID()}`;
 
-                const record: AdminSubscriptionRecord = {
-                        id: connectionId,
-                        adminId: normalizedAdmin,
-                        channel,
-                        listener,
-                        cursor: this.broadcastSequence
-                };
+		const record: AdminSubscriptionRecord = {
+			id: connectionId,
+			adminId: normalizedAdmin,
+			channel,
+			listener,
+			cursor: this.broadcastSequence
+		};
 
-                this.adminSubscriptions.set(connectionId, record);
+		this.adminSubscriptions.set(connectionId, record);
 
-                const currentSnapshot = this.listAgents();
-                const persisted =
-                        this.subscriptionStore.upsert(normalizedAdmin, channel, currentSnapshot, record.cursor) ?? {
-                                id: computeSubscriptionId(normalizedAdmin, channel),
-                                adminId: normalizedAdmin,
-                                channel,
-                                cursor: record.cursor,
-                                snapshot: currentSnapshot,
-                                lastSeenAt: new Date(),
-                                updatedAt: new Date()
-                        };
+		const currentSnapshot = this.listAgents();
+		const persisted = this.subscriptionStore.upsert(
+			normalizedAdmin,
+			channel,
+			currentSnapshot,
+			record.cursor
+		) ?? {
+			id: computeSubscriptionId(normalizedAdmin, channel),
+			adminId: normalizedAdmin,
+			channel,
+			cursor: record.cursor,
+			snapshot: currentSnapshot,
+			lastSeenAt: new Date(),
+			updatedAt: new Date()
+		};
 
-                record.cursor = persisted.cursor;
+		record.cursor = persisted.cursor;
 
-                return {
-                        cursor: record.cursor,
-                        snapshot: persisted.snapshot.length > 0 ? persisted.snapshot : currentSnapshot,
-                        unsubscribe: () => {
-                                this.adminSubscriptions.delete(connectionId);
-                                this.subscriptionStore.touch(normalizedAdmin, channel);
-                        }
-                };
-        }
+		return {
+			cursor: record.cursor,
+			snapshot: persisted.snapshot.length > 0 ? persisted.snapshot : currentSnapshot,
+			unsubscribe: () => {
+				this.adminSubscriptions.delete(connectionId);
+				this.subscriptionStore.touch(normalizedAdmin, channel);
+			}
+		};
+	}
 
-        getPersistedSubscriptionSnapshot(
-                adminId: string,
-                options: { channel?: string } = {}
-        ): AgentSnapshot[] {
-                const normalizedAdmin = normalizeSubscriptionSegment(adminId);
-                const channel = normalizeSubscriptionSegment(options.channel ?? 'sse');
-                const persisted = this.subscriptionStore.load(normalizedAdmin, channel);
-                if (persisted?.snapshot?.length) {
-                        return persisted.snapshot;
-                }
-                return this.listAgents();
-        }
+	getPersistedSubscriptionSnapshot(
+		adminId: string,
+		options: { channel?: string } = {}
+	): AgentSnapshot[] {
+		const normalizedAdmin = normalizeSubscriptionSegment(adminId);
+		const channel = normalizeSubscriptionSegment(options.channel ?? 'sse');
+		const persisted = this.subscriptionStore.load(normalizedAdmin, channel);
+		if (persisted?.snapshot?.length) {
+			return persisted.snapshot;
+		}
+		return this.listAgents();
+	}
 
-        private broadcast(event: AgentRegistryEvent): void {
-                this.broadcastSequence += 1;
-                const sequence = this.broadcastSequence;
-                const shouldPersistSnapshot = event.type === 'agents' || event.type === 'agent';
-                const snapshot = shouldPersistSnapshot
-                        ? event.type === 'agents'
-                                ? (event.agents ?? [])
-                                : this.listAgents()
-                        : null;
+	private broadcast(event: AgentRegistryEvent): void {
+		this.broadcastSequence += 1;
+		const sequence = this.broadcastSequence;
+		const shouldPersistSnapshot = event.type === 'agents' || event.type === 'agent';
+		const snapshot = shouldPersistSnapshot
+			? event.type === 'agents'
+				? (event.agents ?? [])
+				: this.listAgents()
+			: null;
 
-                for (const listener of this.subscribers.values()) {
-                        try {
-                                listener(event);
-                        } catch (error) {
-                                console.error('Agent registry subscriber failed', error);
-                        }
-                }
+		for (const listener of this.subscribers.values()) {
+			try {
+				listener(event);
+			} catch (error) {
+				console.error('Agent registry subscriber failed', error);
+			}
+		}
 
-                for (const record of this.adminSubscriptions.values()) {
-                        try {
-                                record.listener(event);
-                        } catch (error) {
-                                console.error('Agent registry subscriber failed', error);
-                        }
+		for (const record of this.adminSubscriptions.values()) {
+			try {
+				record.listener(event);
+			} catch (error) {
+				console.error('Agent registry subscriber failed', error);
+			}
 
-                        record.cursor = sequence;
-                        if (shouldPersistSnapshot && snapshot) {
-                                this.subscriptionStore.updateSnapshot(record.adminId, record.channel, snapshot, sequence);
-                        } else {
-                                this.subscriptionStore.updateCursor(record.adminId, record.channel, sequence);
-                        }
-                }
-        }
+			record.cursor = sequence;
+			if (shouldPersistSnapshot && snapshot) {
+				this.subscriptionStore.updateSnapshot(record.adminId, record.channel, snapshot, sequence);
+			} else {
+				this.subscriptionStore.updateCursor(record.adminId, record.channel, sequence);
+			}
+		}
+	}
 
 	private notifyAgentUpdate(record: AgentRecord): void {
 		this.broadcast({ type: 'agent', agent: this.toSnapshot(record) });
@@ -1767,16 +1763,16 @@ export class AgentRegistry {
 			payload.plugins?.manifests
 		);
 
-                this.schedulePersist();
+		this.schedulePersist();
 
-                const optionsPayload = cloneOptionsState(record.optionsState ?? null);
+		const optionsPayload = cloneOptionsState(record.optionsState ?? null);
 
-                this.notifyAgentUpdate(record);
+		this.notifyAgentUpdate(record);
 
-                return {
-                        agentId: id,
-                        commands,
-                        config: { ...record.config },
+		return {
+			agentId: id,
+			commands,
+			config: { ...record.config },
 			serverTime: new Date().toISOString(),
 			pluginManifests: manifestDelta,
 			options: optionsPayload

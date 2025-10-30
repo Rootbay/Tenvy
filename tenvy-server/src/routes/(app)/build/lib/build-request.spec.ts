@@ -37,37 +37,35 @@ function createInput(overrides: Partial<BuildRequestInput> = {}): BuildRequestIn
 		audioStreamingTouched: false,
 		audioStreamingEnabled: false,
 		fileIconName: null,
-                fileIconData: null,
-                fileInformation: {
-                        fileDescription: '',
-                        productName: '',
-                        companyName: '',
-                        productVersion: '',
-                        fileVersion: '',
-                        originalFilename: '',
-                        internalName: '',
-                        legalCopyright: ''
-                },
-                isWindowsTarget: true,
-                modules: agentModules.map((module) => module.id)
-        };
+		fileIconData: null,
+		fileInformation: {
+			fileDescription: '',
+			productName: '',
+			companyName: '',
+			productVersion: '',
+			fileVersion: '',
+			originalFilename: '',
+			internalName: '',
+			legalCopyright: ''
+		},
+		isWindowsTarget: true,
+		modules: agentModules.map((module) => module.id)
+	};
 
-        return {
-                ...base,
-                ...overrides,
-                customHeaders: overrides.customHeaders
-                        ? overrides.customHeaders.map((header) => ({ ...header }))
-                        : [],
-                customCookies: overrides.customCookies
-                        ? overrides.customCookies.map((cookie) => ({ ...cookie }))
-                        : [],
-                fileInformation: overrides.fileInformation
-                        ? { ...overrides.fileInformation }
-                        : { ...base.fileInformation },
-                modules: overrides.modules
-                        ? [...overrides.modules]
-                        : [...base.modules]
-        };
+	return {
+		...base,
+		...overrides,
+		customHeaders: overrides.customHeaders
+			? overrides.customHeaders.map((header) => ({ ...header }))
+			: [],
+		customCookies: overrides.customCookies
+			? overrides.customCookies.map((cookie) => ({ ...cookie }))
+			: [],
+		fileInformation: overrides.fileInformation
+			? { ...overrides.fileInformation }
+			: { ...base.fileInformation },
+		modules: overrides.modules ? [...overrides.modules] : [...base.modules]
+	};
 }
 
 describe('prepareBuildRequest', () => {
@@ -177,27 +175,29 @@ describe('prepareBuildRequest', () => {
 			startTime: '2024-01-01T00:00:00.000Z',
 			endTime: '2024-01-02T00:00:00.000Z'
 		});
-                expect(payload.customHeaders).toEqual([{ key: 'X-Test', value: 'value' }]);
-                expect(payload.customCookies).toEqual([{ name: 'session', value: 'token' }]);
-                expect(payload.audio).toEqual({ streaming: true });
-                expect(payload.fileIcon).toEqual({ name: 'icon.ico', data: 'base64' });
-                expect(payload.fileInformation).toEqual({
-                        fileDescription: 'Agent',
-                        productName: 'Tenvy'
-                });
-                expect(payload.modules).toEqual(agentModules.map((module) => module.id));
-        });
+		expect(payload.customHeaders).toEqual([{ key: 'X-Test', value: 'value' }]);
+		expect(payload.customCookies).toEqual([{ name: 'session', value: 'token' }]);
+		expect(payload.audio).toEqual({ streaming: true });
+		expect(payload.fileIcon).toEqual({ name: 'icon.ico', data: 'base64' });
+		expect(payload.fileInformation).toEqual({
+			fileDescription: 'Agent',
+			productName: 'Tenvy'
+		});
+		expect(payload.modules).toEqual(agentModules.map((module) => module.id));
+	});
 
-        it('deduplicates and filters module selections', () => {
-                const catalog = agentModules.map((module) => module.id);
-                const extra = 'non-existent';
-                const input = createInput({ modules: [catalog[0] ?? 'remote-desktop', extra, catalog[0] ?? 'remote-desktop'] });
+	it('deduplicates and filters module selections', () => {
+		const catalog = agentModules.map((module) => module.id);
+		const extra = 'non-existent';
+		const input = createInput({
+			modules: [catalog[0] ?? 'remote-desktop', extra, catalog[0] ?? 'remote-desktop']
+		});
 
-                const result = prepareBuildRequest(input);
-                expect(result.ok).toBe(true);
-                if (!result.ok) {
-                        return;
-                }
-                expect(result.payload.modules).toEqual([catalog[0] ?? 'remote-desktop']);
-        });
+		const result = prepareBuildRequest(input);
+		expect(result.ok).toBe(true);
+		if (!result.ok) {
+			return;
+		}
+		expect(result.payload.modules).toEqual([catalog[0] ?? 'remote-desktop']);
+	});
 });

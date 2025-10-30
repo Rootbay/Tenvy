@@ -3,16 +3,16 @@ import type { PageLoad } from './$types';
 import type { CommandAcknowledgementRecord } from '../../../../../../shared/types/messages';
 
 export type AuditEventSummary = {
-        id: number;
-        commandId: string;
-        commandName: string;
-        operatorId: string | null;
-        payloadHash: string;
-        queuedAt: string | null;
-        executedAt: string | null;
-        result: string | null;
-        acknowledgedAt: string | null;
-        acknowledgement: CommandAcknowledgementRecord | null;
+	id: number;
+	commandId: string;
+	commandName: string;
+	operatorId: string | null;
+	payloadHash: string;
+	queuedAt: string | null;
+	executedAt: string | null;
+	result: string | null;
+	acknowledgedAt: string | null;
+	acknowledgement: CommandAcknowledgementRecord | null;
 };
 
 export const load = (async ({ params, fetch, parent }) => {

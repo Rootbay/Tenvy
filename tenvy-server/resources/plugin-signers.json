@@ -1,6 +1,6 @@
 {
-  "sha256AllowList": [],
-  "ed25519PublicKeys": {
-    "release": "ea9ceca1c7c7176859b235e095cbca9b5755746b741865cab5458d6f0e754cc2"
-  }
+	"sha256AllowList": [],
+	"ed25519PublicKeys": {
+		"release": "ea9ceca1c7c7176859b235e095cbca9b5755746b741865cab5458d6f0e754cc2"
+	}
 }

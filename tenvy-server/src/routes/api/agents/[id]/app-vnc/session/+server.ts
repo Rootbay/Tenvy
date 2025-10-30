@@ -83,7 +83,7 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 		const session = appVncManager.createSession(id, settings);
 
 		try {
-			const { application, virtualization } = resolveAppVncStartContext(id, session.settings);
+			const { application, virtualization } = await resolveAppVncStartContext(id, session.settings);
 			const payload: AppVncCommandPayload = {
 				action: 'start',
 				sessionId: session.sessionId,

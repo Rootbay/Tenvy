@@ -23,12 +23,12 @@
 	import { getClientTool } from '$lib/data/client-tools';
 	import type { Client } from '$lib/data/clients';
 	import { fetchTriggerMonitorStatus, updateTriggerMonitorConfig } from '$lib/data/trigger-monitor';
-        import type {
-                TriggerMonitorEvent,
-                TriggerMonitorMetric,
-                TriggerMonitorWatchlist,
-                TriggerMonitorWatchlistEntry
-        } from '$lib/types/trigger-monitor';
+	import type {
+		TriggerMonitorEvent,
+		TriggerMonitorMetric,
+		TriggerMonitorWatchlist,
+		TriggerMonitorWatchlistEntry
+	} from '$lib/types/trigger-monitor';
 	import { MAX_TRIGGER_MONITOR_WATCHLIST_ENTRIES } from '$lib/types/trigger-monitor';
 	import type { ProcessListResponse } from '$lib/types/task-manager';
 	import { Plus, Trash2 } from '@lucide/svelte';
@@ -45,9 +45,9 @@
 	let includeScreenshots = $state(false);
 	let includeCommands = $state(true);
 	let watchlist = $state<TriggerMonitorWatchlist>([]);
-        let metrics = $state<TriggerMonitorMetric[]>([]);
-        let events = $state<TriggerMonitorEvent[]>([]);
-        let generatedAt = $state<string | null>(null);
+	let metrics = $state<TriggerMonitorMetric[]>([]);
+	let events = $state<TriggerMonitorEvent[]>([]);
+	let generatedAt = $state<string | null>(null);
 	let log = $state<WorkspaceLogEntry[]>([]);
 	let loading = $state(true);
 	let loadError = $state<string | null>(null);
@@ -73,47 +73,43 @@
 		source: WatchlistSuggestionSource;
 	};
 
-        const filteredSuggestions = $derived(() => {
-                if (!watchlistFilter.trim()) {
-                        return watchlistSuggestions;
-                }
-                const query = watchlistFilter.trim().toLowerCase();
-                return watchlistSuggestions.filter((item) => {
-                        return (
-                                item.displayName.toLowerCase().includes(query) ||
-                                item.id.toLowerCase().includes(query) ||
-                                (item.detail ? item.detail.toLowerCase().includes(query) : false)
-                        );
-                });
-        });
+	const filteredSuggestions = $derived(() => {
+		if (!watchlistFilter.trim()) {
+			return watchlistSuggestions;
+		}
+		const query = watchlistFilter.trim().toLowerCase();
+		return watchlistSuggestions.filter((item) => {
+			return (
+				item.displayName.toLowerCase().includes(query) ||
+				item.id.toLowerCase().includes(query) ||
+				(item.detail ? item.detail.toLowerCase().includes(query) : false)
+			);
+		});
+	});
 
-        const recentEvents = $derived(() => events.slice(0, 12));
+	const recentEvents = $derived(() => events.slice(0, 12));
 
-        const seenEventIds = new Set<string>();
+	const seenEventIds = new Set<string>();
 
-        function applyEventFeed(incoming: TriggerMonitorEvent[]) {
-                const snapshots = incoming.map((entry) => ({ ...entry }));
-                events = snapshots;
-                for (const entry of incoming) {
-                        if (seenEventIds.has(entry.id)) {
-                                continue;
-                        }
-                        seenEventIds.add(entry.id);
-                        const action = entry.event === 'open' ? 'opened' : 'closed';
-                        const origin = entry.entryKind === 'app' ? 'Application' : 'URL';
-                        const details = [entry.detail?.trim(), `${origin} ${action} · observed ${entry.observedAt}`]
-                                .filter((value): value is string => Boolean(value && value.length > 0))
-                                .join(' · ');
-                        log = appendWorkspaceLog(
-                                log,
-                                createWorkspaceLogEntry(
-                                        `${entry.displayName} ${action}`,
-                                        details || undefined,
-                                        'complete'
-                                )
-                        );
-                }
-        }
+	function applyEventFeed(incoming: TriggerMonitorEvent[]) {
+		const snapshots = incoming.map((entry) => ({ ...entry }));
+		events = snapshots;
+		for (const entry of incoming) {
+			if (seenEventIds.has(entry.id)) {
+				continue;
+			}
+			seenEventIds.add(entry.id);
+			const action = entry.event === 'open' ? 'opened' : 'closed';
+			const origin = entry.entryKind === 'app' ? 'Application' : 'URL';
+			const details = [entry.detail?.trim(), `${origin} ${action} · observed ${entry.observedAt}`]
+				.filter((value): value is string => Boolean(value && value.length > 0))
+				.join(' · ');
+			log = appendWorkspaceLog(
+				log,
+				createWorkspaceLogEntry(`${entry.displayName} ${action}`, details || undefined, 'complete')
+			);
+		}
+	}
 
 	function describePlan(): string {
 		return `${feed} feed · refresh ${refreshSeconds}s · screenshots ${includeScreenshots ? 'on' : 'off'} · commands${
@@ -132,19 +128,19 @@
 	async function refreshStatus(signal?: AbortSignal) {
 		loadError = null;
 		loading = true;
-                try {
-                        const status = await fetchTriggerMonitorStatus(client.id, { signal });
-                        feed = status.config.feed;
-                        refreshSeconds = status.config.refreshSeconds;
-                        includeScreenshots = status.config.includeScreenshots;
-                        includeCommands = status.config.includeCommands;
-                        watchlist = status.config.watchlist;
-                        metrics = status.metrics;
-                        applyEventFeed(status.events ?? []);
-                        generatedAt = status.generatedAt;
-                        if (!watchlistDialogOpen) {
-                                watchlistDraft = cloneWatchlist(watchlist);
-                        }
+		try {
+			const status = await fetchTriggerMonitorStatus(client.id, { signal });
+			feed = status.config.feed;
+			refreshSeconds = status.config.refreshSeconds;
+			includeScreenshots = status.config.includeScreenshots;
+			includeCommands = status.config.includeCommands;
+			watchlist = status.config.watchlist;
+			metrics = status.metrics;
+			applyEventFeed(status.events ?? []);
+			generatedAt = status.generatedAt;
+			if (!watchlistDialogOpen) {
+				watchlistDraft = cloneWatchlist(watchlist);
+			}
 		} catch (err) {
 			loadError = (err as Error).message ?? 'Failed to load trigger monitor status';
 		} finally {
@@ -444,9 +440,9 @@
 			includeScreenshots = updated.config.includeScreenshots;
 			includeCommands = updated.config.includeCommands;
 			watchlist = updated.config.watchlist;
-                        metrics = updated.metrics;
-                        applyEventFeed(updated.events ?? []);
-                        generatedAt = updated.generatedAt;
+			metrics = updated.metrics;
+			applyEventFeed(updated.events ?? []);
+			generatedAt = updated.generatedAt;
 			log = appendWorkspaceLog(
 				log,
 				createWorkspaceLogEntry('Trigger monitor updated', detail, 'complete')
@@ -642,73 +638,73 @@
 		</CardContent>
 	</Card>
 
-        <Card class="border-dashed">
-                <CardHeader>
-                        <CardTitle class="text-base">Telemetry metrics</CardTitle>
-                        <CardDescription>
-                                Latest metrics reported by the agent.
-                                {#if generatedAt}
-                                        <span class="ml-2 text-xs text-muted-foreground">Generated {generatedAt}</span>
-                                {/if}
-                        </CardDescription>
-                </CardHeader>
-                <CardContent class="grid gap-4 md:grid-cols-3">
-                        {#if loading}
-                                <p
-                                        class="col-span-full rounded-lg border border-border/40 bg-muted/30 p-3 text-muted-foreground"
-                                >
-                                        Loading telemetry…
-                                </p>
-                        {:else if metrics.length === 0}
-                                <p
-                                        class="col-span-full rounded-lg border border-border/60 bg-muted/30 p-3 text-muted-foreground"
-                                >
-                                        No telemetry has been reported yet.
-                                </p>
-                        {:else}
-                                {#each metrics as metric (metric.id)}
-                                        <div class="rounded-lg border border-border/60 bg-muted/30 p-4">
-                                                <p class="text-xs font-medium tracking-wide text-muted-foreground uppercase">
-                                                        {metric.label}
-                                                </p>
-                                                <p class="mt-2 text-lg font-semibold text-foreground">{metric.value}</p>
-                                        </div>
-                                {/each}
-                        {/if}
-                </CardContent>
-        </Card>
+	<Card class="border-dashed">
+		<CardHeader>
+			<CardTitle class="text-base">Telemetry metrics</CardTitle>
+			<CardDescription>
+				Latest metrics reported by the agent.
+				{#if generatedAt}
+					<span class="ml-2 text-xs text-muted-foreground">Generated {generatedAt}</span>
+				{/if}
+			</CardDescription>
+		</CardHeader>
+		<CardContent class="grid gap-4 md:grid-cols-3">
+			{#if loading}
+				<p
+					class="col-span-full rounded-lg border border-border/40 bg-muted/30 p-3 text-muted-foreground"
+				>
+					Loading telemetry…
+				</p>
+			{:else if metrics.length === 0}
+				<p
+					class="col-span-full rounded-lg border border-border/60 bg-muted/30 p-3 text-muted-foreground"
+				>
+					No telemetry has been reported yet.
+				</p>
+			{:else}
+				{#each metrics as metric (metric.id)}
+					<div class="rounded-lg border border-border/60 bg-muted/30 p-4">
+						<p class="text-xs font-medium tracking-wide text-muted-foreground uppercase">
+							{metric.label}
+						</p>
+						<p class="mt-2 text-lg font-semibold text-foreground">{metric.value}</p>
+					</div>
+				{/each}
+			{/if}
+		</CardContent>
+	</Card>
 
-        {#if recentEvents.length > 0}
-                <Card>
-                        <CardHeader>
-                                <CardTitle class="text-base">Recent alerts</CardTitle>
-                                <CardDescription>Latest watchlist activity reported by the agent.</CardDescription>
-                        </CardHeader>
-                        <CardContent>
-                                <ul class="space-y-3">
-                                        {#each recentEvents as event (event.id)}
-                                                <li class="rounded-lg border border-border/60 bg-muted/20 p-3 text-sm">
-                                                        <div class="flex items-center justify-between gap-3">
-                                                                <p class="font-medium text-foreground">{event.displayName}</p>
-                                                                <Badge variant={event.event === 'open' ? 'secondary' : 'outline'} class="uppercase">
-                                                                        {event.event}
-                                                                </Badge>
-                                                        </div>
-                                                        <p class="mt-1 text-xs text-muted-foreground">
-                                                                {event.entryKind === 'app' ? 'Application' : 'URL'} · Observed {event.observedAt}
-                                                        </p>
-                                                        {#if event.detail}
-                                                                <p class="text-xs text-muted-foreground">{event.detail}</p>
-                                                        {/if}
-                                                </li>
-                                        {/each}
-                                </ul>
-                        </CardContent>
-                </Card>
-        {/if}
+	{#if recentEvents.length > 0}
+		<Card>
+			<CardHeader>
+				<CardTitle class="text-base">Recent alerts</CardTitle>
+				<CardDescription>Latest watchlist activity reported by the agent.</CardDescription>
+			</CardHeader>
+			<CardContent>
+				<ul class="space-y-3">
+					{#each recentEvents as event (event.id)}
+						<li class="rounded-lg border border-border/60 bg-muted/20 p-3 text-sm">
+							<div class="flex items-center justify-between gap-3">
+								<p class="font-medium text-foreground">{event.displayName}</p>
+								<Badge variant={event.event === 'open' ? 'secondary' : 'outline'} class="uppercase">
+									{event.event}
+								</Badge>
+							</div>
+							<p class="mt-1 text-xs text-muted-foreground">
+								{event.entryKind === 'app' ? 'Application' : 'URL'} · Observed {event.observedAt}
+							</p>
+							{#if event.detail}
+								<p class="text-xs text-muted-foreground">{event.detail}</p>
+							{/if}
+						</li>
+					{/each}
+				</ul>
+			</CardContent>
+		</Card>
+	{/if}
 
-        {#if log.length > 0}
-                <Card>
+	{#if log.length > 0}
+		<Card>
 			<CardHeader>
 				<CardTitle class="text-base">Activity</CardTitle>
 				<CardDescription>Recent trigger monitor actions.</CardDescription>

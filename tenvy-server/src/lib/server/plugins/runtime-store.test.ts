@@ -7,8 +7,8 @@ import { tmpdir } from 'node:os';
 import { createPluginRuntimeStore } from './runtime-store.js';
 import { plugin as pluginTable } from '$lib/server/db/schema.js';
 import type {
-        PluginManifest,
-        PluginSignatureVerificationSummary
+	PluginManifest,
+	PluginSignatureVerificationSummary
 } from '../../../../../shared/types/plugin-manifest.js';
 import type { LoadedPluginManifest } from '$lib/data/plugin-manifests.js';
 
@@ -50,51 +50,51 @@ CREATE TABLE IF NOT EXISTS plugin (
 `;
 
 const baseManifest: PluginManifest = {
-        id: 'runtime-test',
-        name: 'Runtime Test',
-        version: '1.0.0',
-        description: 'Fixture plugin manifest used for runtime store tests.',
-        entry: 'runtime-test.dll',
-        author: 'Tenvy',
-        repositoryUrl: 'https://github.com/rootbay/runtime-test',
-        license: { spdxId: 'MIT', name: 'MIT License', url: 'https://opensource.org/license/mit' },
-        capabilities: ['clipboard.capture'],
-        requirements: {
-                platforms: ['windows'],
-                architectures: ['x86_64'],
-                requiredModules: ['clipboard']
-        },
-        distribution: {
-                defaultMode: 'automatic',
-                autoUpdate: true,
-                signature: 'sha256'
-        },
-        package: {
-                artifact: 'runtime-test.dll',
-                sizeBytes: 1024,
-                hash: '00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff'
-        }
+	id: 'runtime-test',
+	name: 'Runtime Test',
+	version: '1.0.0',
+	description: 'Fixture plugin manifest used for runtime store tests.',
+	entry: 'runtime-test.dll',
+	author: 'Tenvy',
+	repositoryUrl: 'https://github.com/rootbay/runtime-test',
+	license: { spdxId: 'MIT', name: 'MIT License', url: 'https://opensource.org/license/mit' },
+	capabilities: ['clipboard.capture'],
+	requirements: {
+		platforms: ['windows'],
+		architectures: ['x86_64'],
+		requiredModules: ['clipboard']
+	},
+	distribution: {
+		defaultMode: 'automatic',
+		autoUpdate: true,
+		signature: 'sha256'
+	},
+	package: {
+		artifact: 'runtime-test.dll',
+		sizeBytes: 1024,
+		hash: '00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff'
+	}
 };
 
 const baseVerification: PluginSignatureVerificationSummary = {
-        trusted: false,
-        signatureType: 'sha256',
-        status: 'untrusted',
-        hash: baseManifest.package.hash,
-        signer: null,
-        publicKey: null,
-        certificateChain: undefined,
-        checkedAt: new Date(),
-        signedAt: null,
-        error: undefined,
-        errorCode: undefined
+	trusted: false,
+	signatureType: 'sha256',
+	status: 'untrusted',
+	hash: baseManifest.package.hash,
+	signer: null,
+	publicKey: null,
+	certificateChain: undefined,
+	checkedAt: new Date(),
+	signedAt: null,
+	error: undefined,
+	errorCode: undefined
 };
 
 const createLoadedManifest = (): LoadedPluginManifest => ({
-        source: 'memory',
-        raw: JSON.stringify(baseManifest),
-        manifest: structuredClone(baseManifest),
-        verification: { ...baseVerification, checkedAt: new Date() }
+	source: 'memory',
+	raw: JSON.stringify(baseManifest),
+	manifest: structuredClone(baseManifest),
+	verification: { ...baseVerification, checkedAt: new Date() }
 });
 
 let tempDir: string;
@@ -120,19 +120,19 @@ describe('PluginRuntimeStore', () => {
 	it('creates runtime rows with manifest defaults', async () => {
 		const { store, sqlite } = openRuntimeStore();
 
-                try {
-                        const row = await store.ensure(createLoadedManifest());
-                        expect(row.id).toBe(baseManifest.id);
-                        expect(row.autoUpdate).toBe(true);
-                        expect(row.defaultDeliveryMode).toBe('automatic');
-                        expect(row.allowAutoSync).toBe(true);
-                        expect(row.runtimeType).toBe('native');
-                        expect(row.sandboxed).toBe(false);
-                        expect(row.approvalStatus).toBe('pending');
-                        expect(row.approvedAt).toBeNull();
-                } finally {
-                        sqlite.close();
-                }
+		try {
+			const row = await store.ensure(createLoadedManifest());
+			expect(row.id).toBe(baseManifest.id);
+			expect(row.autoUpdate).toBe(true);
+			expect(row.defaultDeliveryMode).toBe('automatic');
+			expect(row.allowAutoSync).toBe(true);
+			expect(row.runtimeType).toBe('native');
+			expect(row.sandboxed).toBe(false);
+			expect(row.approvalStatus).toBe('pending');
+			expect(row.approvedAt).toBeNull();
+		} finally {
+			sqlite.close();
+		}
 	});
 
 	it('persists runtime updates across store instances', async () => {
@@ -140,15 +140,15 @@ describe('PluginRuntimeStore', () => {
 		const timestamp = new Date('2024-05-19T15:45:00.000Z');
 
 		try {
-                        await first.store.ensure(createLoadedManifest());
-                        await first.store.update(baseManifest.id, {
-                                status: 'disabled',
-                                enabled: false,
-                                autoUpdate: false,
-                                runtimeType: 'wasm',
-                                sandboxed: true,
-                                manualTargets: 5,
-                                autoTargets: 2,
+			await first.store.ensure(createLoadedManifest());
+			await first.store.update(baseManifest.id, {
+				status: 'disabled',
+				enabled: false,
+				autoUpdate: false,
+				runtimeType: 'wasm',
+				sandboxed: true,
+				manualTargets: 5,
+				autoTargets: 2,
 				defaultDeliveryMode: 'manual',
 				allowManualPush: false,
 				allowAutoSync: false,
@@ -167,12 +167,12 @@ describe('PluginRuntimeStore', () => {
 		const second = openRuntimeStore();
 
 		try {
-                        const row = await second.store.ensure(createLoadedManifest());
+			const row = await second.store.ensure(createLoadedManifest());
 			expect(row.status).toBe('disabled');
-                        expect(row.enabled).toBe(false);
-                        expect(row.autoUpdate).toBe(false);
-                        expect(row.runtimeType).toBe('wasm');
-                        expect(row.sandboxed).toBe(true);
+			expect(row.enabled).toBe(false);
+			expect(row.autoUpdate).toBe(false);
+			expect(row.runtimeType).toBe('wasm');
+			expect(row.sandboxed).toBe(true);
 			expect(row.manualTargets).toBe(5);
 			expect(row.autoTargets).toBe(2);
 			expect(row.defaultDeliveryMode).toBe('manual');

@@ -1,13 +1,20 @@
 package appvnc
 
 import (
-	"context"
-	"encoding/base64"
-	"encoding/json"
-	"net/http"
-	"net/http/httptest"
-	"testing"
-	"time"
+        "archive/zip"
+        "bytes"
+        "context"
+        "encoding/base64"
+        "encoding/json"
+        "io"
+        "net/http"
+        "net/http/httptest"
+        "os"
+        "os/exec"
+        "path/filepath"
+        "strings"
+        "testing"
+        "time"
 
 	"github.com/rootbay/tenvy-client/internal/protocol"
 )
@@ -229,6 +236,124 @@ func TestCaptureLoopPostsFrames(t *testing.T) {
 	if err := controller.stop("session-1"); err != nil {
 		t.Fatalf("stop session: %v", err)
 	}
+}
+
+func TestStartDownloadsSeedBundles(t *testing.T) {
+        profileBundle := createSeedArchive(t, map[string]string{
+                "prefs.js": "{}",
+        })
+        dataBundle := createSeedArchive(t, map[string]string{
+                "cache.db": "cache",
+        })
+
+	requestCounts := map[string]int{}
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requestCounts[r.URL.Path]++
+		if got := r.Header.Get("Authorization"); got != "Bearer secret" {
+			t.Errorf("unexpected authorization header: %s", got)
+		}
+		if got := r.Header.Get("X-Tenvy-Agent-ID"); got != "agent-zip" {
+			t.Errorf("unexpected agent header: %s", got)
+		}
+		if r.Method != http.MethodGet {
+			t.Fatalf("unexpected method: %s", r.Method)
+		}
+		switch {
+		case strings.HasPrefix(r.URL.Path, "/api/app-vnc/seeds/profile/download"):
+			if r.URL.Query().Get("agent") != "agent-zip" {
+				t.Fatalf("unexpected agent query: %s", r.URL.RawQuery)
+			}
+			w.Header().Set("Content-Type", "application/zip")
+			_, _ = w.Write(profileBundle)
+		case strings.HasPrefix(r.URL.Path, "/api/app-vnc/seeds/data/download"):
+			if r.URL.Query().Get("agent") != "agent-zip" {
+				t.Fatalf("unexpected agent query: %s", r.URL.RawQuery)
+			}
+			w.Header().Set("Content-Type", "application/zip")
+			_, _ = w.Write(dataBundle)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	t.Cleanup(server.Close)
+
+        controller := NewController()
+        controller.processWaiter = func(_ *Controller, cmd *exec.Cmd, _ string) {
+                if cmd != nil {
+                        _ = cmd.Wait()
+                }
+        }
+        controller.Update(Config{
+                WorkspaceRoot: t.TempDir(),
+                AgentID:       "agent-zip",
+		BaseURL:       server.URL,
+		AuthKey:       "secret",
+		Client:        server.Client(),
+		UserAgent:     "TestAgent",
+	})
+
+	payload := protocol.AppVncCommandPayload{
+		SessionID: "seed-session",
+		Application: &protocol.AppVncApplicationDescriptor{
+			Platforms: []protocol.AppVncPlatform{protocol.AppVncPlatformLinux},
+			Executable: map[protocol.AppVncPlatform]string{
+				protocol.AppVncPlatformLinux: "/bin/true",
+			},
+		},
+		Virtualization: &protocol.AppVncVirtualizationPlan{
+			ProfileSeed: "/api/app-vnc/seeds/profile/download?agent=agent-zip",
+			DataRoot:    "/api/app-vnc/seeds/data/download?agent=agent-zip",
+		},
+	}
+
+	if err := controller.start(context.Background(), payload); err != nil {
+		t.Fatalf("start session: %v", err)
+	}
+	t.Cleanup(func() { controller.Shutdown(context.Background()) })
+
+	controller.mu.Lock()
+	workspace := ""
+	if controller.session != nil {
+		workspace = controller.session.workspace
+	}
+	controller.mu.Unlock()
+	if workspace == "" {
+		t.Fatal("workspace not initialized")
+	}
+
+	if _, err := os.Stat(filepath.Join(workspace, "profile", "prefs.js")); err != nil {
+		t.Fatalf("profile seed not extracted: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(workspace, "data", "cache.db")); err != nil {
+		t.Fatalf("data seed not extracted: %v", err)
+	}
+
+	if count := requestCounts["/api/app-vnc/seeds/profile/download"]; count == 0 {
+		t.Fatalf("profile bundle not requested")
+	}
+	if count := requestCounts["/api/app-vnc/seeds/data/download"]; count == 0 {
+		t.Fatalf("data bundle not requested")
+	}
+}
+
+func createSeedArchive(t *testing.T, files map[string]string) []byte {
+	t.Helper()
+	buf := &bytes.Buffer{}
+	zw := zip.NewWriter(buf)
+	for name, content := range files {
+		fw, err := zw.Create(name)
+		if err != nil {
+			t.Fatalf("create zip entry: %v", err)
+		}
+		if _, err := io.WriteString(fw, content); err != nil {
+			t.Fatalf("write zip entry: %v", err)
+		}
+	}
+	if err := zw.Close(); err != nil {
+		t.Fatalf("close zip writer: %v", err)
+	}
+	return buf.Bytes()
 }
 
 type fakeSurfaceCapturer struct {

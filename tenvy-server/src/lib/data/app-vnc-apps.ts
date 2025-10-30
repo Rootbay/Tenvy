@@ -6,20 +6,23 @@ const applications: readonly AppVncApplicationDescriptor[] = [
 		name: 'Chromium',
 		summary: 'Open-source Chromium browser profile optimised for covert web operations.',
 		category: 'Browser',
-		platforms: ['windows', 'linux'],
+		platforms: ['windows', 'linux', 'macos'],
 		windowTitleHint: 'Chromium',
 		executable: {
 			windows: 'C:\\Program Files\\Chromium\\Application\\chrome.exe',
-			linux: '/usr/bin/chromium-browser'
+			linux: '/usr/bin/chromium-browser',
+			macos: '/Applications/Chromium.app/Contents/MacOS/Chromium'
 		},
 		virtualization: {
 			profileSeeds: {
 				windows: 'C:\\ProgramData\\Tenvy\\appvnc\\chromium-profile',
-				linux: '/opt/tenvy/appvnc/chromium-profile'
+				linux: '/opt/tenvy/appvnc/chromium-profile',
+				macos: '/Library/Application Support/Tenvy/appvnc/chromium-profile'
 			},
 			dataRoots: {
 				windows: 'C:\\ProgramData\\Tenvy\\appvnc\\chromium-data',
-				linux: '/opt/tenvy/appvnc/chromium-data'
+				linux: '/opt/tenvy/appvnc/chromium-data',
+				macos: '/Library/Application Support/Tenvy/appvnc/chromium-data'
 			}
 		}
 	},
@@ -28,20 +31,23 @@ const applications: readonly AppVncApplicationDescriptor[] = [
 		name: 'Firefox',
 		summary: 'Mozilla Firefox profile with isolated session storage for investigative browsing.',
 		category: 'Browser',
-		platforms: ['windows', 'linux'],
+		platforms: ['windows', 'linux', 'macos'],
 		windowTitleHint: 'Mozilla Firefox',
 		executable: {
 			windows: 'C:\\Program Files\\Mozilla Firefox\\firefox.exe',
-			linux: '/usr/bin/firefox'
+			linux: '/usr/bin/firefox',
+			macos: '/Applications/Firefox.app/Contents/MacOS/firefox'
 		},
 		virtualization: {
 			profileSeeds: {
 				windows: 'C:\\ProgramData\\Tenvy\\appvnc\\firefox-profile',
-				linux: '/opt/tenvy/appvnc/firefox-profile'
+				linux: '/opt/tenvy/appvnc/firefox-profile',
+				macos: '/Library/Application Support/Tenvy/appvnc/firefox-profile'
 			},
 			dataRoots: {
 				windows: 'C:\\ProgramData\\Tenvy\\appvnc\\firefox-data',
-				linux: '/opt/tenvy/appvnc/firefox-data'
+				linux: '/opt/tenvy/appvnc/firefox-data',
+				macos: '/Library/Application Support/Tenvy/appvnc/firefox-data'
 			}
 		}
 	},
@@ -50,17 +56,20 @@ const applications: readonly AppVncApplicationDescriptor[] = [
 		name: 'Discord',
 		summary: 'Discord desktop client wrapped for controlled communications.',
 		category: 'Communication',
-		platforms: ['windows'],
+		platforms: ['windows', 'macos'],
 		windowTitleHint: 'Discord',
 		executable: {
-			windows: 'C:\\Users\\%USERNAME%\\AppData\\Local\\Discord\\Update.exe'
+			windows: 'C:\\Users\\%USERNAME%\\AppData\\Local\\Discord\\Update.exe',
+			macos: '/Applications/Discord.app/Contents/MacOS/Discord'
 		},
 		virtualization: {
 			profileSeeds: {
-				windows: 'C:\\ProgramData\\Tenvy\\appvnc\\discord-profile'
+				windows: 'C:\\ProgramData\\Tenvy\\appvnc\\discord-profile',
+				macos: '/Library/Application Support/Tenvy/appvnc/discord-profile'
 			},
 			dataRoots: {
-				windows: 'C:\\ProgramData\\Tenvy\\appvnc\\discord-data'
+				windows: 'C:\\ProgramData\\Tenvy\\appvnc\\discord-data',
+				macos: '/Library/Application Support/Tenvy/appvnc/discord-data'
 			},
 			environment: {
 				windows: {
@@ -75,20 +84,23 @@ const applications: readonly AppVncApplicationDescriptor[] = [
 		name: 'Telegram',
 		summary: 'Telegram Desktop for rapid operator messaging.',
 		category: 'Communication',
-		platforms: ['windows', 'linux'],
+		platforms: ['windows', 'linux', 'macos'],
 		windowTitleHint: 'Telegram',
 		executable: {
 			windows: 'C:\\Users\\%USERNAME%\\AppData\\Roaming\\Telegram Desktop\\Telegram.exe',
-			linux: '/usr/bin/telegram-desktop'
+			linux: '/usr/bin/telegram-desktop',
+			macos: '/Applications/Telegram.app/Contents/MacOS/Telegram'
 		},
 		virtualization: {
 			profileSeeds: {
 				windows: 'C:\\ProgramData\\Tenvy\\appvnc\\telegram-profile',
-				linux: '/opt/tenvy/appvnc/telegram-profile'
+				linux: '/opt/tenvy/appvnc/telegram-profile',
+				macos: '/Library/Application Support/Tenvy/appvnc/telegram-profile'
 			},
 			dataRoots: {
 				windows: 'C:\\ProgramData\\Tenvy\\appvnc\\telegram-data',
-				linux: '/opt/tenvy/appvnc/telegram-data'
+				linux: '/opt/tenvy/appvnc/telegram-data',
+				macos: '/Library/Application Support/Tenvy/appvnc/telegram-data'
 			}
 		}
 	}

@@ -14,6 +14,7 @@ import {
 	type AppVncVirtualizationPlan
 } from '$lib/types/app-vnc';
 import { findAppVncApplication } from '$lib/data/app-vnc-apps';
+import { resolveSeedPlan } from './app-vnc-seeds';
 import { registry, RegistryError } from './store';
 
 const encoder = new TextEncoder();
@@ -480,21 +481,26 @@ function inferPlatform(os: string | undefined): AppVncVirtualizationPlan['platfo
 	return undefined;
 }
 
-function resolveVirtualizationPlan(
+async function resolveVirtualizationPlan(
+	agentId: string,
+	appId: string,
 	platform: AppVncVirtualizationPlan['platform'],
 	hints: AppVncVirtualizationHints | undefined
-): AppVncVirtualizationPlan | undefined {
-	if (!platform || !hints) {
+): Promise<AppVncVirtualizationPlan | undefined> {
+	if (!platform) {
 		return undefined;
 	}
 	const plan: AppVncVirtualizationPlan = { platform };
-	if (hints.profileSeeds?.[platform]) {
-		plan.profileSeed = hints.profileSeeds[platform];
+	const seeds = appId ? await resolveSeedPlan(agentId, appId, platform) : {};
+	const profileSeed = seeds.profileSeed ?? hints?.profileSeeds?.[platform];
+	if (profileSeed) {
+		plan.profileSeed = profileSeed;
 	}
-	if (hints.dataRoots?.[platform]) {
-		plan.dataRoot = hints.dataRoots[platform];
+	const dataRoot = seeds.dataRoot ?? hints?.dataRoots?.[platform];
+	if (dataRoot) {
+		plan.dataRoot = dataRoot;
 	}
-	if (hints.environment?.[platform]) {
+	if (hints?.environment?.[platform]) {
 		plan.environment = { ...hints.environment[platform] };
 	}
 	if (plan.profileSeed || plan.dataRoot || plan.environment) {
@@ -503,13 +509,13 @@ function resolveVirtualizationPlan(
 	return undefined;
 }
 
-export function resolveAppVncStartContext(
+export async function resolveAppVncStartContext(
 	agentId: string,
 	settings: AppVncSessionSettings
-): {
+): Promise<{
 	application?: AppVncApplicationDescriptor;
 	virtualization?: AppVncVirtualizationPlan;
-} {
+}> {
 	const trimmedAppId = typeof settings.appId === 'string' ? settings.appId.trim() : '';
 	if (!trimmedAppId) {
 		return {};
@@ -532,7 +538,12 @@ export function resolveAppVncStartContext(
 		}
 	}
 
-	const virtualization = resolveVirtualizationPlan(platform, descriptor.virtualization);
+	const virtualization = await resolveVirtualizationPlan(
+		agentId,
+		descriptor.id,
+		platform,
+		descriptor.virtualization
+	);
 
 	return {
 		application: descriptor,
