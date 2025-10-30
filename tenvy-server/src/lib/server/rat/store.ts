@@ -800,22 +800,22 @@ export class AgentRegistry {
         ): { unsubscribe: () => void; snapshot: AgentSnapshot[]; cursor: number } {
                 const normalizedAdmin = normalizeSubscriptionSegment(adminId);
                 const channel = normalizeSubscriptionSegment(options.channel ?? 'sse');
-                const id = computeSubscriptionId(normalizedAdmin, channel);
+                const connectionId = `${computeSubscriptionId(normalizedAdmin, channel)}:${randomUUID()}`;
 
                 const record: AdminSubscriptionRecord = {
-                        id,
+                        id: connectionId,
                         adminId: normalizedAdmin,
                         channel,
                         listener,
                         cursor: this.broadcastSequence
                 };
 
-                this.adminSubscriptions.set(id, record);
+                this.adminSubscriptions.set(connectionId, record);
 
                 const currentSnapshot = this.listAgents();
                 const persisted =
                         this.subscriptionStore.upsert(normalizedAdmin, channel, currentSnapshot, record.cursor) ?? {
-                                id,
+                                id: computeSubscriptionId(normalizedAdmin, channel),
                                 adminId: normalizedAdmin,
                                 channel,
                                 cursor: record.cursor,
@@ -830,7 +830,7 @@ export class AgentRegistry {
                         cursor: record.cursor,
                         snapshot: persisted.snapshot.length > 0 ? persisted.snapshot : currentSnapshot,
                         unsubscribe: () => {
-                                this.adminSubscriptions.delete(id);
+                                this.adminSubscriptions.delete(connectionId);
                                 this.subscriptionStore.touch(normalizedAdmin, channel);
                         }
                 };
