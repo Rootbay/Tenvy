@@ -1,5 +1,5 @@
 <script lang="ts">
-        import { onDestroy, onMount, tick } from 'svelte';
+	import { onDestroy, onMount, tick } from 'svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import { Input } from '$lib/components/ui/input/index.js';
 	import { Label } from '$lib/components/ui/label/index.js';
@@ -40,24 +40,24 @@
 	} from '@lucide/svelte';
 	import { getClientTool } from '$lib/data/client-tools';
 	import type { Client } from '$lib/data/clients';
-        import {
-                fetchRegistrySnapshot,
-                createRegistryKey,
-                createRegistryValue,
-                updateRegistryKey,
-                updateRegistryValue,
-                deleteRegistryKey,
-                deleteRegistryValue
-        } from '$lib/data/registry';
-        import type {
-                RegistryHive,
-                RegistryHiveName,
-                RegistryKey,
-                RegistryMutationResult,
-                RegistrySnapshot,
-                RegistryValue,
-                RegistryValueType
-        } from '$lib/types/registry';
+	import {
+		fetchRegistrySnapshot,
+		createRegistryKey,
+		createRegistryValue,
+		updateRegistryKey,
+		updateRegistryValue,
+		deleteRegistryKey,
+		deleteRegistryValue
+	} from '$lib/data/registry';
+	import type {
+		RegistryHive,
+		RegistryHiveName,
+		RegistryKey,
+		RegistryMutationResult,
+		RegistrySnapshot,
+		RegistryValue,
+		RegistryValueType
+	} from '$lib/types/registry';
 	import { appendWorkspaceLog, createWorkspaceLogEntry } from '$lib/workspace/utils';
 	import { notifyToolActivationCommand } from '$lib/utils/agent-commands.js';
 	import type { WorkspaceLogEntry } from '$lib/workspace/types';
@@ -80,18 +80,18 @@
 	});
 	const relativeTimeFormatter = new Intl.RelativeTimeFormat(undefined, { numeric: 'auto' });
 
-        const { client } = $props<{ client: Client }>();
+	const { client } = $props<{ client: Client }>();
 
-        const tool = getClientTool('registry-manager');
+	const tool = getClientTool('registry-manager');
 
-        const emptySnapshot = createEmptySnapshot();
+	const emptySnapshot = createEmptySnapshot();
 
-        let registry = $state<RegistrySnapshot>(emptySnapshot);
-        let selectedHive = $state<RegistryHiveName>('HKEY_LOCAL_MACHINE');
-        let selectedKeyPath = $state('');
-        let selectedValueName = $state<string | null>(null);
-        let searchTerm = $state('');
-        let showOnlyPopulatedKeys = $state(false);
+	let registry = $state<RegistrySnapshot>(emptySnapshot);
+	let selectedHive = $state<RegistryHiveName>('HKEY_LOCAL_MACHINE');
+	let selectedKeyPath = $state('');
+	let selectedValueName = $state<string | null>(null);
+	let searchTerm = $state('');
+	let showOnlyPopulatedKeys = $state(false);
 	let sortColumn = $state<RegistrySortColumn>('name');
 	let sortDirection = $state<'asc' | 'desc'>('asc');
 	let valueTypeFilter = $state<'all' | RegistryValueType>('all');
@@ -106,13 +106,13 @@
 	let keyRenameName = $state('');
 	let keyRenameError = $state<string | null>(null);
 	let keyDeleteError = $state<string | null>(null);
-        let log = $state<WorkspaceLogEntry[]>([]);
-        let liveClock = $state(new Date());
-        let lastChangeAt = $state<Date | null>(null);
-        let loading = $state(true);
-        let loadError = $state<string | null>(null);
-        let mutationError = $state<string | null>(null);
-        let mutationInFlight = $state(false);
+	let log = $state<WorkspaceLogEntry[]>([]);
+	let liveClock = $state(new Date());
+	let lastChangeAt = $state<Date | null>(null);
+	let loading = $state(true);
+	let loadError = $state<string | null>(null);
+	let mutationError = $state<string | null>(null);
+	let mutationInFlight = $state(false);
 
 	const valueTypes: RegistryValueType[] = [
 		'REG_SZ',
@@ -195,171 +195,176 @@
 		}
 	});
 
-        onMount(() => {
-                const controller = new AbortController();
-                void refreshRegistry({ signal: controller.signal, record: false });
-                return () => controller.abort();
-        });
+	onMount(() => {
+		const controller = new AbortController();
+		void refreshRegistry({ signal: controller.signal, record: false });
+		return () => controller.abort();
+	});
 
-        async function refreshRegistry({
-                signal,
-                record = true
-        }: { signal?: AbortSignal; record?: boolean } = {}) {
-                loading = true;
-                loadError = null;
-                mutationError = null;
-                try {
-                        const result = await fetchRegistrySnapshot(client.id, { signal });
-                        applySnapshot(result.snapshot, result.generatedAt);
-                        if (record) {
-                                logOperation('Snapshot synchronized', 'Registry view updated from remote hive', 'complete', {
-                                        hive: selectedHive
-                                });
-                        }
-                } catch (err) {
-                        const message = getErrorMessage(err);
-                        loadError = message;
-                        registry = createEmptySnapshot();
-                        lastChangeAt = null;
-                } finally {
-                        loading = false;
-                }
-        }
+	async function refreshRegistry({
+		signal,
+		record = true
+	}: { signal?: AbortSignal; record?: boolean } = {}) {
+		loading = true;
+		loadError = null;
+		mutationError = null;
+		try {
+			const result = await fetchRegistrySnapshot(client.id, { signal });
+			applySnapshot(result.snapshot, result.generatedAt);
+			if (record) {
+				logOperation(
+					'Snapshot synchronized',
+					'Registry view updated from remote hive',
+					'complete',
+					{
+						hive: selectedHive
+					}
+				);
+			}
+		} catch (err) {
+			const message = getErrorMessage(err);
+			loadError = message;
+			registry = createEmptySnapshot();
+			lastChangeAt = null;
+		} finally {
+			loading = false;
+		}
+	}
 
-        async function reloadRegistry() {
-                const controller = new AbortController();
-                await refreshRegistry({ signal: controller.signal, record: true });
-        }
+	async function reloadRegistry() {
+		const controller = new AbortController();
+		await refreshRegistry({ signal: controller.signal, record: true });
+	}
 
-        function applySnapshot(snapshot: RegistrySnapshot, generatedAt?: string) {
-                const normalized = normalizeSnapshot(snapshot);
-                registry = normalized;
-                const parsed = parseTimestamp(generatedAt);
-                lastChangeAt = parsed ?? findLatestChange(normalized);
-                const currentHive = normalized[selectedHive] ?? {};
-                if (!selectedKeyPath || !currentHive[selectedKeyPath]) {
-                        selectedKeyPath = firstKeyPath(currentHive) ?? '';
-                }
-        }
+	function applySnapshot(snapshot: RegistrySnapshot, generatedAt?: string) {
+		const normalized = normalizeSnapshot(snapshot);
+		registry = normalized;
+		const parsed = parseTimestamp(generatedAt);
+		lastChangeAt = parsed ?? findLatestChange(normalized);
+		const currentHive = normalized[selectedHive] ?? {};
+		if (!selectedKeyPath || !currentHive[selectedKeyPath]) {
+			selectedKeyPath = firstKeyPath(currentHive) ?? '';
+		}
+	}
 
-        function applyMutationResult(result: RegistryMutationResult) {
-                const normalizedHive = normalizeHive(result.hive);
-                registry = { ...registry, [selectedHive]: normalizedHive };
-                lastChangeAt = parseTimestamp(result.mutatedAt) ?? findLatestChange(registry);
-                return normalizedHive;
-        }
+	function applyMutationResult(result: RegistryMutationResult) {
+		const normalizedHive = normalizeHive(result.hive);
+		registry = { ...registry, [selectedHive]: normalizedHive };
+		lastChangeAt = parseTimestamp(result.mutatedAt) ?? findLatestChange(registry);
+		return normalizedHive;
+	}
 
-        function startNewValue() {
-                selectedValueName = null;
-                valueFormName = '';
-                valueFormData = '';
-                valueFormType = 'REG_SZ';
-                valueFormOriginalName = null;
-                valueFormError = null;
-        }
+	function startNewValue() {
+		selectedValueName = null;
+		valueFormName = '';
+		valueFormData = '';
+		valueFormType = 'REG_SZ';
+		valueFormOriginalName = null;
+		valueFormError = null;
+	}
 
-        function selectValue(value: RegistryValue) {
-                selectedValueName = value.name;
-                valueFormName = value.name;
-                valueFormType = value.type;
-                valueFormData = value.data;
-                valueFormOriginalName = value.name;
-                valueFormError = null;
-        }
+	function selectValue(value: RegistryValue) {
+		selectedValueName = value.name;
+		valueFormName = value.name;
+		valueFormType = value.type;
+		valueFormData = value.data;
+		valueFormOriginalName = value.name;
+		valueFormError = null;
+	}
 
-        async function upsertValue() {
-                valueFormError = null;
-                mutationError = null;
-                const key = selectedKey;
-                if (!key) {
-                        valueFormError = 'Select a registry key before saving a value.';
-                        return;
-                }
-                const trimmedName = valueFormName.trim();
-                if (!trimmedName) {
-                        valueFormError = 'Value name is required.';
-                        return;
-                }
-                if (trimmedName.includes('\\')) {
-                        valueFormError = 'Value names cannot contain path separators.';
-                        return;
-                }
-                mutationInFlight = true;
-                const isCreate = valueFormOriginalName === null;
-                try {
-                        const payload = {
-                                hive: selectedHive,
-                                keyPath: key.path,
-                                value: {
-                                        name: trimmedName,
-                                        type: valueFormType,
-                                        data: valueFormData,
-                                        description: selectedValue?.description
-                                }
-                        } as const;
-                        const result = isCreate
-                                ? await createRegistryValue(client.id, payload)
-                                : await updateRegistryValue(client.id, {
-                                          ...payload,
-                                          originalName: valueFormOriginalName
-                                  });
-                        applyMutationResult(result);
-                        selectedValueName = trimmedName;
-                        valueFormOriginalName = trimmedName;
-                        logOperation(
-                                isCreate ? 'Value created' : 'Value updated',
-                                `${trimmedName} @ ${key.hive}\\${key.path}`,
-                                'complete'
-                        );
-                } catch (err) {
-                        const message = getErrorMessage(err);
-                        valueFormError = message;
-                        mutationError = message;
-                } finally {
-                        mutationInFlight = false;
-                }
-        }
+	async function upsertValue() {
+		valueFormError = null;
+		mutationError = null;
+		const key = selectedKey;
+		if (!key) {
+			valueFormError = 'Select a registry key before saving a value.';
+			return;
+		}
+		const trimmedName = valueFormName.trim();
+		if (!trimmedName) {
+			valueFormError = 'Value name is required.';
+			return;
+		}
+		if (trimmedName.includes('\\')) {
+			valueFormError = 'Value names cannot contain path separators.';
+			return;
+		}
+		mutationInFlight = true;
+		const isCreate = valueFormOriginalName === null;
+		try {
+			const payload = {
+				hive: selectedHive,
+				keyPath: key.path,
+				value: {
+					name: trimmedName,
+					type: valueFormType,
+					data: valueFormData,
+					description: selectedValue?.description
+				}
+			} as const;
+			const result = isCreate
+				? await createRegistryValue(client.id, payload)
+				: await updateRegistryValue(client.id, {
+						...payload,
+						originalName: valueFormOriginalName
+					});
+			applyMutationResult(result);
+			selectedValueName = trimmedName;
+			valueFormOriginalName = trimmedName;
+			logOperation(
+				isCreate ? 'Value created' : 'Value updated',
+				`${trimmedName} @ ${key.hive}\\${key.path}`,
+				'complete'
+			);
+		} catch (err) {
+			const message = getErrorMessage(err);
+			valueFormError = message;
+			mutationError = message;
+		} finally {
+			mutationInFlight = false;
+		}
+	}
 
-        async function deleteSelectedValue() {
-                valueFormError = null;
-                mutationError = null;
-                const key = selectedKey;
-                const value = selectedValue;
-                if (!key || !value) {
-                        valueFormError = 'Choose a value to delete.';
-                        return;
-                }
-                mutationInFlight = true;
-                try {
-                        const result = await deleteRegistryValue(client.id, {
-                                hive: selectedHive,
-                                keyPath: key.path,
-                                name: value.name
-                        });
-                        applyMutationResult(result);
-                        startNewValue();
-                        logOperation(
-                                'Value deleted',
-                                `${value.name} removed from ${key.hive}\\${key.path}`,
-                                'complete'
-                        );
-                } catch (err) {
-                        const message = getErrorMessage(err);
-                        valueFormError = message;
-                        mutationError = message;
-                } finally {
-                        mutationInFlight = false;
-                }
-        }
+	async function deleteSelectedValue() {
+		valueFormError = null;
+		mutationError = null;
+		const key = selectedKey;
+		const value = selectedValue;
+		if (!key || !value) {
+			valueFormError = 'Choose a value to delete.';
+			return;
+		}
+		mutationInFlight = true;
+		try {
+			const result = await deleteRegistryValue(client.id, {
+				hive: selectedHive,
+				keyPath: key.path,
+				name: value.name
+			});
+			applyMutationResult(result);
+			startNewValue();
+			logOperation(
+				'Value deleted',
+				`${value.name} removed from ${key.hive}\\${key.path}`,
+				'complete'
+			);
+		} catch (err) {
+			const message = getErrorMessage(err);
+			valueFormError = message;
+			mutationError = message;
+		} finally {
+			mutationInFlight = false;
+		}
+	}
 
-        async function createKeyFromForm() {
-                keyCreateError = null;
-                mutationError = null;
-                const hive = registry[selectedHive] ?? {};
-                const name = keyCreateName.trim();
-                const parentPath = keyCreateParent.trim();
+	async function createKeyFromForm() {
+		keyCreateError = null;
+		mutationError = null;
+		const hive = registry[selectedHive] ?? {};
+		const name = keyCreateName.trim();
+		const parentPath = keyCreateParent.trim();
 
-                if (!name) {
+		if (!name) {
 			keyCreateError = 'Provide a new key name.';
 			return;
 		}
@@ -374,38 +379,38 @@
 			return;
 		}
 
-                mutationInFlight = true;
-                try {
-                        const result = await createRegistryKey(client.id, {
-                                hive: selectedHive,
-                                parentPath: parentPath || undefined,
-                                name
-                        });
-                        const normalized = applyMutationResult(result);
-                        keyCreateName = '';
-                        keyCreateParent = parentPath;
-                        selectedKeyPath = result.keyPath;
-                        logOperation('Key created', `${selectedHive}\\${result.keyPath}`, 'complete');
-                        if (!normalized[result.keyPath]) {
-                                selectedKeyPath = firstKeyPath(normalized) ?? '';
-                        }
-                } catch (err) {
-                        const message = getErrorMessage(err);
-                        keyCreateError = message;
-                        mutationError = message;
-                } finally {
-                        mutationInFlight = false;
-                }
-        }
+		mutationInFlight = true;
+		try {
+			const result = await createRegistryKey(client.id, {
+				hive: selectedHive,
+				parentPath: parentPath || undefined,
+				name
+			});
+			const normalized = applyMutationResult(result);
+			keyCreateName = '';
+			keyCreateParent = parentPath;
+			selectedKeyPath = result.keyPath;
+			logOperation('Key created', `${selectedHive}\\${result.keyPath}`, 'complete');
+			if (!normalized[result.keyPath]) {
+				selectedKeyPath = firstKeyPath(normalized) ?? '';
+			}
+		} catch (err) {
+			const message = getErrorMessage(err);
+			keyCreateError = message;
+			mutationError = message;
+		} finally {
+			mutationInFlight = false;
+		}
+	}
 
-        async function renameSelectedKey() {
-                keyRenameError = null;
-                mutationError = null;
-                const key = selectedKey;
-                if (!key) {
-                        keyRenameError = 'Select a key to rename.';
-                        return;
-                }
+	async function renameSelectedKey() {
+		keyRenameError = null;
+		mutationError = null;
+		const key = selectedKey;
+		if (!key) {
+			keyRenameError = 'Select a key to rename.';
+			return;
+		}
 		const trimmed = keyRenameName.trim();
 		if (!trimmed) {
 			keyRenameError = 'Provide the new key name.';
@@ -427,62 +432,62 @@
 			return;
 		}
 
-                mutationInFlight = true;
-                try {
-                        const result = await updateRegistryKey(client.id, {
-                                hive: selectedHive,
-                                path: key.path,
-                                name: trimmed
-                        });
-                        const normalized = applyMutationResult(result);
-                        selectedKeyPath = result.keyPath;
-                        keyRenameName = trimmed;
-                        logOperation(
-                                'Key renamed',
-                                `${selectedHive}\\${key.path} → ${selectedHive}\\${result.keyPath}`,
-                                'complete'
-                        );
-                        if (!normalized[result.keyPath]) {
-                                selectedKeyPath = firstKeyPath(normalized) ?? '';
-                        }
-                } catch (err) {
-                        const message = getErrorMessage(err);
-                        keyRenameError = message;
-                        mutationError = message;
-                } finally {
-                        mutationInFlight = false;
-                }
-        }
+		mutationInFlight = true;
+		try {
+			const result = await updateRegistryKey(client.id, {
+				hive: selectedHive,
+				path: key.path,
+				name: trimmed
+			});
+			const normalized = applyMutationResult(result);
+			selectedKeyPath = result.keyPath;
+			keyRenameName = trimmed;
+			logOperation(
+				'Key renamed',
+				`${selectedHive}\\${key.path} → ${selectedHive}\\${result.keyPath}`,
+				'complete'
+			);
+			if (!normalized[result.keyPath]) {
+				selectedKeyPath = firstKeyPath(normalized) ?? '';
+			}
+		} catch (err) {
+			const message = getErrorMessage(err);
+			keyRenameError = message;
+			mutationError = message;
+		} finally {
+			mutationInFlight = false;
+		}
+	}
 
-        async function deleteSelectedKey() {
-                keyDeleteError = null;
-                mutationError = null;
-                const key = selectedKey;
-                if (!key) {
-                        keyDeleteError = 'Select a key to delete.';
-                        return;
-                }
-                mutationInFlight = true;
-                try {
-                        const result = await deleteRegistryKey(client.id, {
-                                hive: selectedHive,
-                                path: key.path
-                        });
-                        const normalized = applyMutationResult(result);
-                        logOperation('Key deleted', `${selectedHive}\\${key.path}`, 'complete');
-                        const fallback =
-                                result.keyPath && normalized[result.keyPath]
-                                        ? result.keyPath
-                                        : (firstKeyPath(normalized) ?? '');
-                        selectedKeyPath = fallback;
-                } catch (err) {
-                        const message = getErrorMessage(err);
-                        keyDeleteError = message;
-                        mutationError = message;
-                } finally {
-                        mutationInFlight = false;
-                }
-        }
+	async function deleteSelectedKey() {
+		keyDeleteError = null;
+		mutationError = null;
+		const key = selectedKey;
+		if (!key) {
+			keyDeleteError = 'Select a key to delete.';
+			return;
+		}
+		mutationInFlight = true;
+		try {
+			const result = await deleteRegistryKey(client.id, {
+				hive: selectedHive,
+				path: key.path
+			});
+			const normalized = applyMutationResult(result);
+			logOperation('Key deleted', `${selectedHive}\\${key.path}`, 'complete');
+			const fallback =
+				result.keyPath && normalized[result.keyPath]
+					? result.keyPath
+					: (firstKeyPath(normalized) ?? '');
+			selectedKeyPath = fallback;
+		} catch (err) {
+			const message = getErrorMessage(err);
+			keyDeleteError = message;
+			mutationError = message;
+		} finally {
+			mutationInFlight = false;
+		}
+	}
 
 	function logOperation(
 		title: string,
@@ -642,84 +647,83 @@
 		return { keyCount, valueCount, lastModified: latest ? new Date(latest) : null };
 	}
 
-        function findLatestChange(snapshot: RegistrySnapshot): Date | null {
-                let latest = 0;
-                for (const hive of Object.values(snapshot)) {
-                        const stats = computeHiveStats(hive);
-                        if (stats.lastModified) {
-                                latest = Math.max(latest, stats.lastModified.getTime());
-                        }
-                }
-                return latest ? new Date(latest) : null;
-        }
+	function findLatestChange(snapshot: RegistrySnapshot): Date | null {
+		let latest = 0;
+		for (const hive of Object.values(snapshot)) {
+			const stats = computeHiveStats(hive);
+			if (stats.lastModified) {
+				latest = Math.max(latest, stats.lastModified.getTime());
+			}
+		}
+		return latest ? new Date(latest) : null;
+	}
 
-        function createEmptySnapshot(): RegistrySnapshot {
-                return {
-                        HKEY_LOCAL_MACHINE: {},
-                        HKEY_CURRENT_USER: {},
-                        HKEY_USERS: {}
-                } satisfies RegistrySnapshot;
-        }
+	function createEmptySnapshot(): RegistrySnapshot {
+		return {
+			HKEY_LOCAL_MACHINE: {},
+			HKEY_CURRENT_USER: {},
+			HKEY_USERS: {}
+		} satisfies RegistrySnapshot;
+	}
 
-        function normalizeSnapshot(snapshot: RegistrySnapshot): RegistrySnapshot {
-                const normalized = createEmptySnapshot();
-                for (const [hiveName, hiveData] of Object.entries(snapshot) as [
-                        RegistryHiveName,
-                        RegistryHive
-                ][]) {
-                        normalized[hiveName] = normalizeHive(hiveData);
-                }
-                return normalized;
-        }
+	function normalizeSnapshot(snapshot: RegistrySnapshot): RegistrySnapshot {
+		const normalized = createEmptySnapshot();
+		for (const [hiveName, hiveData] of Object.entries(snapshot) as [
+			RegistryHiveName,
+			RegistryHive
+		][]) {
+			normalized[hiveName] = normalizeHive(hiveData);
+		}
+		return normalized;
+	}
 
-        function normalizeHive(hive: RegistryHive): RegistryHive {
-                const normalized: RegistryHive = {};
-                for (const [path, entry] of Object.entries(hive)) {
-                        normalized[path] = {
-                                ...entry,
-                                values: entry.values.map((value) => ({ ...value })),
-                                subKeys: []
-                        } satisfies RegistryKey;
-                }
-                for (const entry of Object.values(normalized)) {
-                        if (entry.parentPath) {
-                                const parent = normalized[entry.parentPath];
-                                if (parent) {
-                                        parent.subKeys.push(entry.path);
-                                }
-                        }
-                }
-                for (const entry of Object.values(normalized)) {
-                        entry.subKeys = entry.subKeys
-                                .filter(
-                                        (child, index, array) =>
-                                                array.indexOf(child) === index && Boolean(normalized[child])
-                                )
-                                .sort((a, b) => normalized[a].name.localeCompare(normalized[b].name));
-                }
-                return normalized;
-        }
+	function normalizeHive(hive: RegistryHive): RegistryHive {
+		const normalized: RegistryHive = {};
+		for (const [path, entry] of Object.entries(hive)) {
+			normalized[path] = {
+				...entry,
+				values: entry.values.map((value) => ({ ...value })),
+				subKeys: []
+			} satisfies RegistryKey;
+		}
+		for (const entry of Object.values(normalized)) {
+			if (entry.parentPath) {
+				const parent = normalized[entry.parentPath];
+				if (parent) {
+					parent.subKeys.push(entry.path);
+				}
+			}
+		}
+		for (const entry of Object.values(normalized)) {
+			entry.subKeys = entry.subKeys
+				.filter(
+					(child, index, array) => array.indexOf(child) === index && Boolean(normalized[child])
+				)
+				.sort((a, b) => normalized[a].name.localeCompare(normalized[b].name));
+		}
+		return normalized;
+	}
 
-        function parseTimestamp(value?: string | null): Date | null {
-                if (!value) {
-                        return null;
-                }
-                const parsed = Date.parse(value);
-                if (Number.isNaN(parsed)) {
-                        return null;
-                }
-                return new Date(parsed);
-        }
+	function parseTimestamp(value?: string | null): Date | null {
+		if (!value) {
+			return null;
+		}
+		const parsed = Date.parse(value);
+		if (Number.isNaN(parsed)) {
+			return null;
+		}
+		return new Date(parsed);
+	}
 
-        function getErrorMessage(error: unknown): string {
-                if (error instanceof Error && error.message) {
-                        return error.message;
-                }
-                if (typeof error === 'string') {
-                        return error;
-                }
-                return 'Unexpected registry operation failure';
-        }
+	function getErrorMessage(error: unknown): string {
+		if (error instanceof Error && error.message) {
+			return error.message;
+		}
+		if (typeof error === 'string') {
+			return error;
+		}
+		return 'Unexpected registry operation failure';
+	}
 
 	function formatSize(bytes: number): string {
 		if (!Number.isFinite(bytes) || bytes <= 0) {
@@ -1037,40 +1041,46 @@
 				{/each}
 			</div>
 		</div>
-        </header>
+	</header>
 
-        {#if loadError}
-                <div class="mx-5 mt-4 rounded-xl border border-destructive/50 bg-destructive/10 px-4 py-3 text-sm text-destructive">
-                        {loadError}
-                </div>
-        {:else if loading}
-                <div class="mx-5 mt-4 rounded-xl border border-primary/40 bg-primary/10 px-4 py-3 text-sm text-primary">
-                        Synchronizing registry snapshot…
-                </div>
-        {/if}
-        {#if mutationError}
-                <div class="mx-5 mt-4 rounded-xl border border-destructive/30 bg-destructive/5 px-4 py-2 text-sm text-destructive">
-                        {mutationError}
-                </div>
-        {/if}
+	{#if loadError}
+		<div
+			class="mx-5 mt-4 rounded-xl border border-destructive/50 bg-destructive/10 px-4 py-3 text-sm text-destructive"
+		>
+			{loadError}
+		</div>
+	{:else if loading}
+		<div
+			class="mx-5 mt-4 rounded-xl border border-primary/40 bg-primary/10 px-4 py-3 text-sm text-primary"
+		>
+			Synchronizing registry snapshot…
+		</div>
+	{/if}
+	{#if mutationError}
+		<div
+			class="mx-5 mt-4 rounded-xl border border-destructive/30 bg-destructive/5 px-4 py-2 text-sm text-destructive"
+		>
+			{mutationError}
+		</div>
+	{/if}
 
-        <div class="flex flex-wrap items-center gap-2 border-b border-border/60 bg-muted/20 px-5 py-3">
-                <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        class="gap-2 rounded-full border border-border/50 bg-background/80 px-4"
-                        onclick={() => {
-                                keyCreateParent = selectedKey?.path ?? '';
-                                keyCreateName = '';
-                                keyCreateError = null;
-                        }}
-                        disabled={mutationInFlight || loading}
-                >
-                        <FolderPlus class="h-4 w-4" /> New key
-                </Button>
-                <Button
-                        type="button"
+	<div class="flex flex-wrap items-center gap-2 border-b border-border/60 bg-muted/20 px-5 py-3">
+		<Button
+			type="button"
+			variant="ghost"
+			size="sm"
+			class="gap-2 rounded-full border border-border/50 bg-background/80 px-4"
+			onclick={() => {
+				keyCreateParent = selectedKey?.path ?? '';
+				keyCreateName = '';
+				keyCreateError = null;
+			}}
+			disabled={mutationInFlight || loading}
+		>
+			<FolderPlus class="h-4 w-4" /> New key
+		</Button>
+		<Button
+			type="button"
 			variant="ghost"
 			size="sm"
 			class="gap-2 rounded-full border border-border/50 bg-background/80 px-4"
@@ -1080,94 +1090,94 @@
 				}
 				startNewValue();
 			}}
-                        disabled={!selectedKey || mutationInFlight || loading}
-                >
-                        <ListPlus class="h-4 w-4" /> New value
-                </Button>
-                <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        class="gap-2 rounded-full border border-border/50 bg-background/80 px-4"
-                        onclick={upsertValue}
-                        disabled={!selectedKey || mutationInFlight || loading}
-                >
-                        <Save class="h-4 w-4" /> Save value
-                </Button>
-                <Button
-                        type="button"
+			disabled={!selectedKey || mutationInFlight || loading}
+		>
+			<ListPlus class="h-4 w-4" /> New value
+		</Button>
+		<Button
+			type="button"
+			variant="ghost"
+			size="sm"
+			class="gap-2 rounded-full border border-border/50 bg-background/80 px-4"
+			onclick={upsertValue}
+			disabled={!selectedKey || mutationInFlight || loading}
+		>
+			<Save class="h-4 w-4" /> Save value
+		</Button>
+		<Button
+			type="button"
 			variant="ghost"
 			size="sm"
 			class="gap-2 rounded-full border border-border/50 bg-background/80 px-4 text-destructive hover:text-destructive"
 			onclick={deleteSelectedValue}
-                        disabled={!selectedValue || mutationInFlight || loading}
-                >
-                        <Trash2 class="h-4 w-4" /> Delete value
-                </Button>
-                <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        class="ml-auto gap-2 rounded-full border border-border/50 bg-background/80 px-4"
-                        onclick={reloadRegistry}
-                        disabled={loading || mutationInFlight}
-                >
-                        <RefreshCw class={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
-                        <span>{loading ? 'Syncing…' : 'Refresh snapshot'}</span>
-                </Button>
+			disabled={!selectedValue || mutationInFlight || loading}
+		>
+			<Trash2 class="h-4 w-4" /> Delete value
+		</Button>
+		<Button
+			type="button"
+			variant="ghost"
+			size="sm"
+			class="ml-auto gap-2 rounded-full border border-border/50 bg-background/80 px-4"
+			onclick={reloadRegistry}
+			disabled={loading || mutationInFlight}
+		>
+			<RefreshCw class={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+			<span>{loading ? 'Syncing…' : 'Refresh snapshot'}</span>
+		</Button>
 	</div>
 
 	<div class="flex min-h-0 flex-1">
 		<ContextMenu>
 			<ContextMenuTrigger child={TreePane} />
 			<ContextMenuContent class="w-56">
-                                <ContextMenuItem
-                                        disabled={mutationInFlight || loading}
-                                        on:select={() => {
-                                                if (mutationInFlight || loading) {
-                                                        return;
-                                                }
-                                                keyCreateParent = selectedKey?.path ?? '';
-                                                keyCreateName = '';
-                                                keyCreateError = null;
-                                        }}
-                                >
-                                        <FolderPlus class="mr-2 h-4 w-4" /> New subkey here
-                                </ContextMenuItem>
-                                <ContextMenuItem
-                                        disabled={!selectedKey || mutationInFlight || loading}
-                                        on:select={() => {
-                                                if (!selectedKey || mutationInFlight || loading) {
-                                                        return;
-                                                }
-                                                startNewValue();
-                                        }}
-                                >
+				<ContextMenuItem
+					disabled={mutationInFlight || loading}
+					on:select={() => {
+						if (mutationInFlight || loading) {
+							return;
+						}
+						keyCreateParent = selectedKey?.path ?? '';
+						keyCreateName = '';
+						keyCreateError = null;
+					}}
+				>
+					<FolderPlus class="mr-2 h-4 w-4" /> New subkey here
+				</ContextMenuItem>
+				<ContextMenuItem
+					disabled={!selectedKey || mutationInFlight || loading}
+					on:select={() => {
+						if (!selectedKey || mutationInFlight || loading) {
+							return;
+						}
+						startNewValue();
+					}}
+				>
 					<ListPlus class="mr-2 h-4 w-4" /> New value
 				</ContextMenuItem>
-                                <ContextMenuSeparator />
-                                <ContextMenuItem
-                                        disabled={!selectedKey || mutationInFlight || loading}
-                                        on:select={() => {
-                                                if (!selectedKey || mutationInFlight || loading) {
-                                                        return;
-                                                }
-                                                keyRenameName = selectedKey.name;
-                                                keyRenameError = null;
-                                        }}
+				<ContextMenuSeparator />
+				<ContextMenuItem
+					disabled={!selectedKey || mutationInFlight || loading}
+					on:select={() => {
+						if (!selectedKey || mutationInFlight || loading) {
+							return;
+						}
+						keyRenameName = selectedKey.name;
+						keyRenameError = null;
+					}}
 				>
 					<PencilLine class="mr-2 h-4 w-4" /> Prepare rename
 				</ContextMenuItem>
-                                <ContextMenuItem
-                                        class="text-destructive focus:text-destructive"
-                                        disabled={!selectedKey || mutationInFlight || loading}
-                                        on:select={async () => {
-                                                if (!selectedKey || mutationInFlight || loading) {
-                                                        return;
-                                                }
-                                                await tick();
-                                                deleteSelectedKey();
-                                        }}
+				<ContextMenuItem
+					class="text-destructive focus:text-destructive"
+					disabled={!selectedKey || mutationInFlight || loading}
+					on:select={async () => {
+						if (!selectedKey || mutationInFlight || loading) {
+							return;
+						}
+						await tick();
+						deleteSelectedKey();
+					}}
 				>
 					<Trash2 class="mr-2 h-4 w-4" /> Delete key
 				</ContextMenuItem>
@@ -1178,31 +1188,31 @@
 			<ContextMenu>
 				<ContextMenuTrigger child={ValuesPane} />
 				<ContextMenuContent class="w-52">
-                                        <ContextMenuItem
-                                                disabled={!selectedKey || mutationInFlight || loading}
-                                                on:select={() => {
-                                                        if (!selectedKey || mutationInFlight || loading) {
-                                                                return;
-                                                        }
-                                                        startNewValue();
-                                                }}
-                                        >
-                                                <ListPlus class="mr-2 h-4 w-4" /> New value
-                                        </ContextMenuItem>
-                                        <ContextMenuItem
-                                                disabled={!selectedKey || mutationInFlight || loading}
-                                                on:select={upsertValue}
-                                        >
-                                                <Save class="mr-2 h-4 w-4" /> Save value
-                                        </ContextMenuItem>
-                                        <ContextMenuSeparator />
-                                        <ContextMenuItem
-                                                class="text-destructive focus:text-destructive"
-                                                disabled={!selectedValue || mutationInFlight || loading}
-                                                on:select={deleteSelectedValue}
-                                        >
-                                                <Trash2 class="mr-2 h-4 w-4" /> Delete value
-                                        </ContextMenuItem>
+					<ContextMenuItem
+						disabled={!selectedKey || mutationInFlight || loading}
+						on:select={() => {
+							if (!selectedKey || mutationInFlight || loading) {
+								return;
+							}
+							startNewValue();
+						}}
+					>
+						<ListPlus class="mr-2 h-4 w-4" /> New value
+					</ContextMenuItem>
+					<ContextMenuItem
+						disabled={!selectedKey || mutationInFlight || loading}
+						on:select={upsertValue}
+					>
+						<Save class="mr-2 h-4 w-4" /> Save value
+					</ContextMenuItem>
+					<ContextMenuSeparator />
+					<ContextMenuItem
+						class="text-destructive focus:text-destructive"
+						disabled={!selectedValue || mutationInFlight || loading}
+						on:select={deleteSelectedValue}
+					>
+						<Trash2 class="mr-2 h-4 w-4" /> Delete value
+					</ContextMenuItem>
 				</ContextMenuContent>
 			</ContextMenu>
 

@@ -89,12 +89,12 @@
 		"otplib": "^12.0.1",
 		"ps-list": "^9.0.0",
 		"rate-limiter-flexible": "^8.1.0",
-                "shell-quote": "^1.8.3",
-                "systeminformation": "^5.27.11",
-                "tar-stream": "^3.1.7",
-                "topojson-client": "^3.1.0",
-                "tweetnacl": "^1.0.3",
-                "world-atlas": "^2.0.2",
-                "zod": "^4.1.12"
-        }
+		"shell-quote": "^1.8.3",
+		"systeminformation": "^5.27.11",
+		"tar-stream": "^3.1.7",
+		"topojson-client": "^3.1.0",
+		"tweetnacl": "^1.0.3",
+		"world-atlas": "^2.0.2",
+		"zod": "^4.1.12"
+	}
 }

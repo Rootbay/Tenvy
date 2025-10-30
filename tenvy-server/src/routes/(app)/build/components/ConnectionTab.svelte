@@ -1,10 +1,10 @@
 <script lang="ts">
 	import { Badge } from '$lib/components/ui/badge/index.js';
 	import { Button } from '$lib/components/ui/button/index.js';
-        import { Input } from '$lib/components/ui/input/index.js';
-        import { Label } from '$lib/components/ui/label/index.js';
-        import { Checkbox } from '$lib/components/ui/checkbox/index.js';
-        import { Switch } from '$lib/components/ui/switch/index.js';
+	import { Input } from '$lib/components/ui/input/index.js';
+	import { Label } from '$lib/components/ui/label/index.js';
+	import { Checkbox } from '$lib/components/ui/checkbox/index.js';
+	import { Switch } from '$lib/components/ui/switch/index.js';
 	import {
 		TARGET_OS_OPTIONS,
 		ARCHITECTURE_OPTIONS_BY_OS,
@@ -17,12 +17,12 @@
 		type TargetArch,
 		type TargetOS
 	} from '../lib/constants.js';
-        import { inputValueFromEvent } from '../lib/utils.js';
-        import { Plus, Trash2 } from '@lucide/svelte';
-        import {
-                agentModules,
-                type AgentModuleDefinition
-        } from '../../../../../../shared/modules/index.js';
+	import { inputValueFromEvent } from '../lib/utils.js';
+	import { Plus, Trash2 } from '@lucide/svelte';
+	import {
+		agentModules,
+		type AgentModuleDefinition
+	} from '../../../../../../shared/modules/index.js';
 
 	interface Props {
 		host: string;
@@ -40,26 +40,26 @@
 		maxBackoffMs: string;
 		shellTimeoutSeconds: string;
 		customHeaders: HeaderKV[];
-                customCookies: CookieKV[];
-                audioStreamingEnabled: boolean;
-                audioStreamingTouched: boolean;
-                markAudioStreamingTouched: () => void;
-                availableModules?: AgentModuleDefinition[];
-                selectedModules: string[];
+		customCookies: CookieKV[];
+		audioStreamingEnabled: boolean;
+		audioStreamingTouched: boolean;
+		markAudioStreamingTouched: () => void;
+		availableModules?: AgentModuleDefinition[];
+		selectedModules: string[];
 
-                addCustomHeader: () => void;
-                updateCustomHeader: (index: number, key: keyof HeaderKV, value: string) => void;
-                removeCustomHeader: (index: number) => void;
-                addCustomCookie: () => void;
+		addCustomHeader: () => void;
+		updateCustomHeader: (index: number, key: keyof HeaderKV, value: string) => void;
+		removeCustomHeader: (index: number) => void;
+		addCustomCookie: () => void;
 		updateCustomCookie: (index: number, key: keyof CookieKV, value: string) => void;
 		removeCustomCookie: (index: number) => void;
 	}
 
-        let {
-                host = $bindable(),
-                port = $bindable(),
-                outputFilename = $bindable(),
-                effectiveOutputFilename,
+	let {
+		host = $bindable(),
+		port = $bindable(),
+		outputFilename = $bindable(),
+		effectiveOutputFilename,
 		targetOS = $bindable(),
 		targetArch = $bindable(),
 		outputExtension = $bindable(),
@@ -71,41 +71,41 @@
 		maxBackoffMs = $bindable(),
 		shellTimeoutSeconds = $bindable(),
 		customHeaders,
-                customCookies,
-                audioStreamingEnabled = $bindable(),
-                audioStreamingTouched,
-                markAudioStreamingTouched,
-                availableModules = agentModules,
-                selectedModules = $bindable(),
-                addCustomHeader,
-                updateCustomHeader,
-                removeCustomHeader,
-                addCustomCookie,
-                updateCustomCookie,
-                removeCustomCookie
-        }: Props = $props();
+		customCookies,
+		audioStreamingEnabled = $bindable(),
+		audioStreamingTouched,
+		markAudioStreamingTouched,
+		availableModules = agentModules,
+		selectedModules = $bindable(),
+		addCustomHeader,
+		updateCustomHeader,
+		removeCustomHeader,
+		addCustomCookie,
+		updateCustomCookie,
+		removeCustomCookie
+	}: Props = $props();
 
-        const selectedModuleSet = $derived(() => new Set(selectedModules));
-        const hasModuleSelection = $derived(selectedModules.length > 0);
+	const selectedModuleSet = $derived(() => new Set(selectedModules));
+	const hasModuleSelection = $derived(selectedModules.length > 0);
 
-        function toggleModuleSelection(moduleId: string) {
-                const trimmed = moduleId.trim();
-                if (!trimmed) {
-                        return;
-                }
-                if (selectedModuleSet.has(trimmed)) {
-                        selectedModules = selectedModules.filter((id) => id !== trimmed);
-                        return;
-                }
-                const baseOrder = new Map(availableModules.map((module, index) => [module.id, index]));
-                const next = [...selectedModules, trimmed];
-                next.sort((left, right) => {
-                        const leftIndex = baseOrder.get(left) ?? Number.MAX_SAFE_INTEGER;
-                        const rightIndex = baseOrder.get(right) ?? Number.MAX_SAFE_INTEGER;
-                        return leftIndex - rightIndex;
-                });
-                selectedModules = next;
-        }
+	function toggleModuleSelection(moduleId: string) {
+		const trimmed = moduleId.trim();
+		if (!trimmed) {
+			return;
+		}
+		if (selectedModuleSet.has(trimmed)) {
+			selectedModules = selectedModules.filter((id) => id !== trimmed);
+			return;
+		}
+		const baseOrder = new Map(availableModules.map((module, index) => [module.id, index]));
+		const next = [...selectedModules, trimmed];
+		next.sort((left, right) => {
+			const leftIndex = baseOrder.get(left) ?? Number.MAX_SAFE_INTEGER;
+			const rightIndex = baseOrder.get(right) ?? Number.MAX_SAFE_INTEGER;
+			return leftIndex - rightIndex;
+		});
+		selectedModules = next;
+	}
 </script>
 
 <section class="space-y-6 rounded-lg border border-border/70 bg-background/60 p-6 shadow-sm">
@@ -404,11 +404,11 @@
 			Enable features that require platform-specific toolchains during compilation.
 		</p>
 	</div>
-        <div
-                class="flex flex-wrap items-start justify-between gap-4 rounded-lg border border-dashed border-border/70 bg-background/40 p-4"
-        >
-                <div class="space-y-2 text-xs text-muted-foreground">
-                        <p class="text-sm font-semibold text-foreground">Audio streaming support</p>
+	<div
+		class="flex flex-wrap items-start justify-between gap-4 rounded-lg border border-dashed border-border/70 bg-background/40 p-4"
+	>
+		<div class="space-y-2 text-xs text-muted-foreground">
+			<p class="text-sm font-semibold text-foreground">Audio streaming support</p>
 			<p>
 				Bundle the CGO-based audio bridge so agents can enumerate devices and stream live microphone
 				audio.
@@ -425,72 +425,75 @@
 				<p>Leave disabled to keep binaries smaller and avoid CGO cross-compilers.</p>
 			{/if}
 		</div>
-                <div class="flex items-center gap-2 text-xs text-muted-foreground">
-                        <Switch
-                                bind:checked={audioStreamingEnabled}
-                                onchange={markAudioStreamingTouched}
-                                aria-label="Toggle audio streaming support"
-                        />
-                        <span>{audioStreamingEnabled ? 'Enabled' : 'Disabled'}</span>
-                </div>
-        </div>
-        <div class="space-y-4">
-                <div class="flex flex-wrap items-center justify-between gap-3">
-                        <div class="space-y-1">
-                                <p class="text-sm font-semibold">Agent modules</p>
-                                <p class="text-xs text-muted-foreground">
-                                        Select which modules are compiled into the binary. Unselected modules remain disabled at runtime.
-                                </p>
-                        </div>
-                        {#if availableModules.length > 0}
-                                <span class="rounded-full border border-border/70 bg-background/60 px-2.5 py-1 text-[0.65rem] font-semibold uppercase tracking-wide text-muted-foreground">
-                                        {selectedModules.length}/{availableModules.length} selected
-                                </span>
-                        {/if}
-                </div>
-                {#if !hasModuleSelection}
-                        <p class="text-xs font-medium text-amber-500">
-                                No modules selected. Generated agents will expose only stub command handlers.
-                        </p>
-                {/if}
-                <div class="grid gap-3 md:grid-cols-2">
-                        {#each availableModules as module (module.id)}
-                                {@const moduleInputId = `module-${module.id}`} 
-                                {@const isSelected = selectedModuleSet.has(module.id)}
-                                <label
-                                        for={moduleInputId}
-                                        class={`flex cursor-pointer flex-col gap-3 rounded-lg border p-4 transition-colors ${
-                                                isSelected
-                                                        ? 'border-primary/60 bg-primary/10'
-                                                        : 'border-border/70 bg-background/40 hover:border-primary/40'
-                                        }`}
-                                >
-                                        <div class="flex items-start justify-between gap-3">
-                                                <div class="space-y-1">
-                                                        <p class="text-sm font-semibold text-foreground">{module.title}</p>
-                                                        <p class="text-xs leading-snug text-muted-foreground">{module.description}</p>
-                                                </div>
-                                                <Checkbox
-                                                        id={moduleInputId}
-                                                        checked={isSelected}
-                                                        onchange={() => toggleModuleSelection(module.id)}
-                                                        aria-label={`Toggle ${module.title}`}
-                                                />
-                                        </div>
-                                        {#if module.commands.length > 0}
-                                                <div class="flex flex-wrap gap-1">
-                                                        {#each module.commands as command (command)}
-                                                                <Badge
-                                                                        variant="outline"
-                                                                        class="border-border/60 bg-background/60 text-[0.65rem] font-semibold uppercase tracking-wide text-muted-foreground"
-                                                                >
-                                                                        {command}
-                                                                </Badge>
-                                                        {/each}
-                                                </div>
-                                        {/if}
-                                </label>
-                        {/each}
-                </div>
-        </div>
+		<div class="flex items-center gap-2 text-xs text-muted-foreground">
+			<Switch
+				bind:checked={audioStreamingEnabled}
+				onchange={markAudioStreamingTouched}
+				aria-label="Toggle audio streaming support"
+			/>
+			<span>{audioStreamingEnabled ? 'Enabled' : 'Disabled'}</span>
+		</div>
+	</div>
+	<div class="space-y-4">
+		<div class="flex flex-wrap items-center justify-between gap-3">
+			<div class="space-y-1">
+				<p class="text-sm font-semibold">Agent modules</p>
+				<p class="text-xs text-muted-foreground">
+					Select which modules are compiled into the binary. Unselected modules remain disabled at
+					runtime.
+				</p>
+			</div>
+			{#if availableModules.length > 0}
+				<span
+					class="rounded-full border border-border/70 bg-background/60 px-2.5 py-1 text-[0.65rem] font-semibold tracking-wide text-muted-foreground uppercase"
+				>
+					{selectedModules.length}/{availableModules.length} selected
+				</span>
+			{/if}
+		</div>
+		{#if !hasModuleSelection}
+			<p class="text-xs font-medium text-amber-500">
+				No modules selected. Generated agents will expose only stub command handlers.
+			</p>
+		{/if}
+		<div class="grid gap-3 md:grid-cols-2">
+			{#each availableModules as module (module.id)}
+				{@const moduleInputId = `module-${module.id}`}
+				{@const isSelected = selectedModuleSet.has(module.id)}
+				<label
+					for={moduleInputId}
+					class={`flex cursor-pointer flex-col gap-3 rounded-lg border p-4 transition-colors ${
+						isSelected
+							? 'border-primary/60 bg-primary/10'
+							: 'border-border/70 bg-background/40 hover:border-primary/40'
+					}`}
+				>
+					<div class="flex items-start justify-between gap-3">
+						<div class="space-y-1">
+							<p class="text-sm font-semibold text-foreground">{module.title}</p>
+							<p class="text-xs leading-snug text-muted-foreground">{module.description}</p>
+						</div>
+						<Checkbox
+							id={moduleInputId}
+							checked={isSelected}
+							onchange={() => toggleModuleSelection(module.id)}
+							aria-label={`Toggle ${module.title}`}
+						/>
+					</div>
+					{#if module.commands.length > 0}
+						<div class="flex flex-wrap gap-1">
+							{#each module.commands as command (command)}
+								<Badge
+									variant="outline"
+									class="border-border/60 bg-background/60 text-[0.65rem] font-semibold tracking-wide text-muted-foreground uppercase"
+								>
+									{command}
+								</Badge>
+							{/each}
+						</div>
+					{/if}
+				</label>
+			{/each}
+		</div>
+	</div>
 </section>

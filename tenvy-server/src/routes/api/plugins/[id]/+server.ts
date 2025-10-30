@@ -1,13 +1,13 @@
 import { error, json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import {
-        createPluginRepository,
-        type PluginRepositoryUpdate,
-        type Plugin
+	createPluginRepository,
+	type PluginRepositoryUpdate,
+	type Plugin
 } from '$lib/data/plugins.js';
 import {
-        pluginUpdateSchema,
-        type PluginUpdatePayloadInput
+	pluginUpdateSchema,
+	type PluginUpdatePayloadInput
 } from '$lib/validation/plugin-update-schema.js';
 import { requireAdmin } from '$lib/server/authorization.js';
 
@@ -99,10 +99,10 @@ export const GET: RequestHandler = async ({ params }) => {
 };
 
 export const PATCH: RequestHandler = async ({ locals, params, request }) => {
-        requireAdmin(locals.user);
+	requireAdmin(locals.user);
 
-        const { id } = params;
-        const rawBody = await request.text();
+	const { id } = params;
+	const rawBody = await request.text();
 	let parsedBody: unknown;
 
 	if (rawBody.trim().length === 0) {

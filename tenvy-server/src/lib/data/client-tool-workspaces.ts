@@ -17,46 +17,46 @@ import IpGeolocationWorkspace from '$lib/components/workspace/tools/ip-geolocati
 import EnvironmentVariablesWorkspace from '$lib/components/workspace/tools/environment-variables-workspace.svelte';
 
 export const workspaceComponentMap = {
-        'app-vnc': AppVncWorkspace,
-        'remote-desktop': RemoteDesktopWorkspace,
-        'webcam-control': WebcamControlWorkspace,
-        'audio-control': AudioControlWorkspace,
-        cmd: CmdWorkspace,
-        'file-manager': FileManagerWorkspace,
-        'system-monitor': SystemMonitorWorkspace,
-        'registry-manager': RegistryManagerWorkspace,
-        'clipboard-manager': ClipboardManagerWorkspace,
-        recovery: RecoveryWorkspace,
-        options: OptionsWorkspace,
-        'client-chat': ClientChatWorkspace,
-        'trigger-monitor': TriggerMonitorWorkspace,
-        'ip-geolocation': IpGeolocationWorkspace,
-        'environment-variables': EnvironmentVariablesWorkspace
+	'app-vnc': AppVncWorkspace,
+	'remote-desktop': RemoteDesktopWorkspace,
+	'webcam-control': WebcamControlWorkspace,
+	'audio-control': AudioControlWorkspace,
+	cmd: CmdWorkspace,
+	'file-manager': FileManagerWorkspace,
+	'system-monitor': SystemMonitorWorkspace,
+	'registry-manager': RegistryManagerWorkspace,
+	'clipboard-manager': ClipboardManagerWorkspace,
+	recovery: RecoveryWorkspace,
+	options: OptionsWorkspace,
+	'client-chat': ClientChatWorkspace,
+	'trigger-monitor': TriggerMonitorWorkspace,
+	'ip-geolocation': IpGeolocationWorkspace,
+	'environment-variables': EnvironmentVariablesWorkspace
 } satisfies Partial<Record<DialogToolId, Component<any>>>;
 
 const keyloggerModesMap = {
-        'keylogger-standard': 'standard',
-        'keylogger-offline': 'offline'
+	'keylogger-standard': 'standard',
+	'keylogger-offline': 'offline'
 } as const satisfies Partial<Record<DialogToolId, 'standard' | 'offline'>>;
 
 export const workspaceToolIds = [
-        'app-vnc',
-        'remote-desktop',
-        'webcam-control',
-        'audio-control',
-        'keylogger-standard',
-        'keylogger-offline',
-        'cmd',
-        'file-manager',
-        'system-monitor',
-        'registry-manager',
-        'clipboard-manager',
-        'recovery',
-        'options',
-        'client-chat',
-        'trigger-monitor',
-        'ip-geolocation',
-        'environment-variables'
+	'app-vnc',
+	'remote-desktop',
+	'webcam-control',
+	'audio-control',
+	'keylogger-standard',
+	'keylogger-offline',
+	'cmd',
+	'file-manager',
+	'system-monitor',
+	'registry-manager',
+	'clipboard-manager',
+	'recovery',
+	'options',
+	'client-chat',
+	'trigger-monitor',
+	'ip-geolocation',
+	'environment-variables'
 ] as const satisfies readonly DialogToolId[];
 
 export const workspaceRequiresAgent = new Set<DialogToolId>(['cmd']);
@@ -64,13 +64,13 @@ export const workspaceRequiresAgent = new Set<DialogToolId>(['cmd']);
 const workspaceToolSet = new Set<DialogToolId>(workspaceToolIds);
 
 export function isWorkspaceTool(id: ClientToolId): id is DialogToolId {
-        return workspaceToolSet.has(id as DialogToolId);
+	return workspaceToolSet.has(id as DialogToolId);
 }
 
 export function getWorkspaceComponent(id: DialogToolId) {
-        return workspaceComponentMap[id] ?? null;
+	return workspaceComponentMap[id] ?? null;
 }
 
 export function getKeyloggerMode(id: DialogToolId) {
-        return keyloggerModesMap[id] ?? null;
+	return keyloggerModesMap[id] ?? null;
 }

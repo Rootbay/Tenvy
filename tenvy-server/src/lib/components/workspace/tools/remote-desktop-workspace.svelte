@@ -14,25 +14,25 @@
 	import { Label } from '$lib/components/ui/label/index.js';
 	import { Input } from '$lib/components/ui/input/index.js';
 	import type { Client } from '$lib/data/clients';
-        import type {
-                RemoteDesktopFramePacket,
-                RemoteDesktopMediaSample,
-                RemoteDesktopInputEvent,
-                RemoteDesktopMonitor,
-                RemoteDesktopMouseButton,
-                RemoteDesktopSessionState,
-                RemoteDesktopSettings,
-                RemoteDesktopSettingsPatch,
-                RemoteDesktopStreamMediaMessage,
-                RemoteDesktopTransport,
-                RemoteDesktopHardwarePreference,
-                RemoteDesktopTransportDiagnostics,
-                RemoteDesktopTransportCapability,
-                RemoteDesktopSessionNegotiationRequest,
-                RemoteDesktopSessionNegotiationResponse,
-                RemoteDesktopWebRTCICEServer,
-                RemoteDesktopEncoder
-        } from '$lib/types/remote-desktop';
+	import type {
+		RemoteDesktopFramePacket,
+		RemoteDesktopMediaSample,
+		RemoteDesktopInputEvent,
+		RemoteDesktopMonitor,
+		RemoteDesktopMouseButton,
+		RemoteDesktopSessionState,
+		RemoteDesktopSettings,
+		RemoteDesktopSettingsPatch,
+		RemoteDesktopStreamMediaMessage,
+		RemoteDesktopTransport,
+		RemoteDesktopHardwarePreference,
+		RemoteDesktopTransportDiagnostics,
+		RemoteDesktopTransportCapability,
+		RemoteDesktopSessionNegotiationRequest,
+		RemoteDesktopSessionNegotiationResponse,
+		RemoteDesktopWebRTCICEServer,
+		RemoteDesktopEncoder
+	} from '$lib/types/remote-desktop';
 	import SessionMetricsGrid from './remote-desktop/SessionMetricsGrid.svelte';
 	import { createInputChannel } from './remote-desktop/input-channel';
 
@@ -65,10 +65,10 @@
 		{ value: 'avoid', label: 'Avoid hardware' }
 	] satisfies { value: RemoteDesktopHardwarePreference; label: string }[];
 
-        const MAX_FRAME_QUEUE = 24;
-        const WEBRTC_STATS_INTERVAL_MS = 2_000;
-        const WEBRTC_DATA_CHANNEL_LABEL = 'remote-desktop-frames';
-        const SUPPORTED_CODECS: RemoteDesktopEncoder[] = ['hevc', 'avc', 'jpeg'];
+	const MAX_FRAME_QUEUE = 24;
+	const WEBRTC_STATS_INTERVAL_MS = 2_000;
+	const WEBRTC_DATA_CHANNEL_LABEL = 'remote-desktop-frames';
+	const SUPPORTED_CODECS: RemoteDesktopEncoder[] = ['hevc', 'avc', 'jpeg'];
 	const supportsImageBitmap = browser && typeof createImageBitmap === 'function';
 	const IMAGE_BASE64_PREFIX = {
 		png: 'data:image/png;base64,',
@@ -97,8 +97,8 @@
 	let streamWidth = $state<number | null>(null);
 	let streamHeight = $state<number | null>(null);
 	let latencyMs = $state<number | null>(null);
-        let transportDiagnostics = $state<RemoteDesktopTransportDiagnostics | null>(null);
-        let localTransportDiagnostics = $state<RemoteDesktopTransportDiagnostics | null>(null);
+	let transportDiagnostics = $state<RemoteDesktopTransportDiagnostics | null>(null);
+	let localTransportDiagnostics = $state<RemoteDesktopTransportDiagnostics | null>(null);
 	let isStarting = $state(false);
 	let isStopping = $state(false);
 	let isUpdating = $state(false);
@@ -107,8 +107,8 @@
 	let monitors = $state<RemoteDesktopMonitor[]>(fallbackMonitors);
 	let sessionActive = $state(false);
 	let sessionId = $state('');
-        let viewportEl: HTMLDivElement | null = null;
-        let webrtcVideoEl: HTMLVideoElement | null = null;
+	let viewportEl: HTMLDivElement | null = null;
+	let webrtcVideoEl: HTMLVideoElement | null = null;
 	let viewportFocused = $state(false);
 	let pointerCaptured = $state(false);
 	let activePointerId: number | null = null;
@@ -278,28 +278,28 @@
 	};
 	let canvasEl: HTMLCanvasElement | null = null;
 	let canvasContext: CanvasRenderingContext2D | null = null;
-        let eventSource: EventSource | null = null;
-        let streamSessionId: string | null = null;
-        let frameQueue: RemoteDesktopFramePacket[] = [];
-        let processing = $state(false);
-        let stopRequested = $state(false);
-        let imageBitmapFallbackLogged = $state(false);
-        let skipMouseSync = $state(true);
-        let skipKeyboardSync = $state(true);
-        let audioContext: AudioContext | null = null;
-        let audioQueueTime = 0;
-        let webrtcPc: RTCPeerConnection | null = null;
-        let webrtcSessionId: string | null = null;
-        let webrtcNegotiating = false;
-        let webrtcNegotiationAbort: AbortController | null = null;
-        let webrtcStatsInterval: ReturnType<typeof setInterval> | null = null;
-        let webrtcVideoStream: MediaStream | null = null;
-        let webrtcAudioStream: MediaStream | null = null;
-        let webrtcAudioSource: MediaStreamAudioSourceNode | null = null;
-        let webrtcVideoActive = $state(false);
-        let webrtcAudioActive = $state(false);
-        let webrtcInboundStats: { bytes: number; timestamp: number } | null = null;
-        let webrtcIceServers: RTCIceServer[] | null = null;
+	let eventSource: EventSource | null = null;
+	let streamSessionId: string | null = null;
+	let frameQueue: RemoteDesktopFramePacket[] = [];
+	let processing = $state(false);
+	let stopRequested = $state(false);
+	let imageBitmapFallbackLogged = $state(false);
+	let skipMouseSync = $state(true);
+	let skipKeyboardSync = $state(true);
+	let audioContext: AudioContext | null = null;
+	let audioQueueTime = 0;
+	let webrtcPc: RTCPeerConnection | null = null;
+	let webrtcSessionId: string | null = null;
+	let webrtcNegotiating = false;
+	let webrtcNegotiationAbort: AbortController | null = null;
+	let webrtcStatsInterval: ReturnType<typeof setInterval> | null = null;
+	let webrtcVideoStream: MediaStream | null = null;
+	let webrtcAudioStream: MediaStream | null = null;
+	let webrtcAudioSource: MediaStreamAudioSourceNode | null = null;
+	let webrtcVideoActive = $state(false);
+	let webrtcAudioActive = $state(false);
+	let webrtcInboundStats: { bytes: number; timestamp: number } | null = null;
+	let webrtcIceServers: RTCIceServer[] | null = null;
 
 	function isDocumentVisible() {
 		if (!browser) {
@@ -407,452 +407,453 @@
 		transportDiagnostics = null;
 	}
 
-        function cleanupAudio() {
-                if (webrtcAudioActive) {
-                        return;
-                }
-                if (audioContext) {
-                        audioContext.close().catch(() => {});
-                        audioContext = null;
-                }
-                audioQueueTime = 0;
+	function cleanupAudio() {
+		if (webrtcAudioActive) {
+			return;
+		}
+		if (audioContext) {
+			audioContext.close().catch(() => {});
+			audioContext = null;
+		}
+		audioQueueTime = 0;
 	}
 
-        function disconnectStream() {
-                if (eventSource) {
-                        eventSource.close();
-                        eventSource = null;
-                }
-                streamSessionId = null;
-                stopRequested = true;
-                frameQueue = [];
-                processing = false;
-                imageBitmapFallbackLogged = false;
-                inputChannel?.clear();
-                cleanupAudio();
-        }
+	function disconnectStream() {
+		if (eventSource) {
+			eventSource.close();
+			eventSource = null;
+		}
+		streamSessionId = null;
+		stopRequested = true;
+		frameQueue = [];
+		processing = false;
+		imageBitmapFallbackLogged = false;
+		inputChannel?.clear();
+		cleanupAudio();
+	}
 
-        function isWebRTCSupported() {
-                return browser && typeof RTCPeerConnection === 'function';
-        }
+	function isWebRTCSupported() {
+		return browser && typeof RTCPeerConnection === 'function';
+	}
 
-        function encodeBase64(value: string): string {
-                const encoder = new TextEncoder();
-                const bytes = encoder.encode(value);
-                let binary = '';
-                for (const byte of bytes) {
-                        binary += String.fromCharCode(byte);
-                }
-                return btoa(binary);
-        }
+	function encodeBase64(value: string): string {
+		const encoder = new TextEncoder();
+		const bytes = encoder.encode(value);
+		let binary = '';
+		for (const byte of bytes) {
+			binary += String.fromCharCode(byte);
+		}
+		return btoa(binary);
+	}
 
-        function decodeBase64(value: string): string {
-                const binary = atob(value);
-                const bytes = new Uint8Array(binary.length);
-                for (let index = 0; index < binary.length; index += 1) {
-                        bytes[index] = binary.charCodeAt(index);
-                }
-                const decoder = new TextDecoder();
-                return decoder.decode(bytes);
-        }
+	function decodeBase64(value: string): string {
+		const binary = atob(value);
+		const bytes = new Uint8Array(binary.length);
+		for (let index = 0; index < binary.length; index += 1) {
+			bytes[index] = binary.charCodeAt(index);
+		}
+		const decoder = new TextDecoder();
+		return decoder.decode(bytes);
+	}
 
-        function toRtcIceServers(servers: RemoteDesktopWebRTCICEServer[] | undefined) {
-                if (!servers || servers.length === 0) {
-                        return null;
-                }
-                const converted: RTCIceServer[] = [];
-                for (const server of servers) {
-                        if (!server || !Array.isArray(server.urls) || server.urls.length === 0) {
-                                continue;
-                        }
-                        const entry: RTCIceServer = {
-                                urls: [...server.urls]
-                        };
-                        if (server.username) {
-                                entry.username = server.username;
-                        }
-                        if (server.credential) {
-                                entry.credential = server.credential;
-                        }
-                        if (server.credentialType === 'oauth' || server.credentialType === 'password') {
-                                entry.credentialType = server.credentialType;
-                        }
-                        converted.push(entry);
-                }
-                return converted.length > 0 ? converted : null;
-        }
+	function toRtcIceServers(servers: RemoteDesktopWebRTCICEServer[] | undefined) {
+		if (!servers || servers.length === 0) {
+			return null;
+		}
+		const converted: RTCIceServer[] = [];
+		for (const server of servers) {
+			if (!server || !Array.isArray(server.urls) || server.urls.length === 0) {
+				continue;
+			}
+			const entry: RTCIceServer = {
+				urls: [...server.urls]
+			};
+			if (server.username) {
+				entry.username = server.username;
+			}
+			if (server.credential) {
+				entry.credential = server.credential;
+			}
+			if (server.credentialType === 'oauth' || server.credentialType === 'password') {
+				entry.credentialType = server.credentialType;
+			}
+			converted.push(entry);
+		}
+		return converted.length > 0 ? converted : null;
+	}
 
-        async function waitForPeerIceGathering(pc: RTCPeerConnection): Promise<void> {
-                if (pc.iceGatheringState === 'complete') {
-                        return;
-                }
-                await new Promise<void>((resolve, reject) => {
-                        const timeout = setTimeout(() => {
-                                cleanup();
-                                reject(new Error('WebRTC ICE gathering timeout'));
-                        }, 15_000);
-                        const cleanup = () => {
-                                clearTimeout(timeout);
-                                pc.onicegatheringstatechange = null;
-                        };
-                        const check = () => {
-                                if (pc.iceGatheringState === 'complete') {
-                                        cleanup();
-                                        resolve();
-                                }
-                        };
-                        pc.onicegatheringstatechange = () => {
-                                check();
-                        };
-                        check();
-                });
-        }
+	async function waitForPeerIceGathering(pc: RTCPeerConnection): Promise<void> {
+		if (pc.iceGatheringState === 'complete') {
+			return;
+		}
+		await new Promise<void>((resolve, reject) => {
+			const timeout = setTimeout(() => {
+				cleanup();
+				reject(new Error('WebRTC ICE gathering timeout'));
+			}, 15_000);
+			const cleanup = () => {
+				clearTimeout(timeout);
+				pc.onicegatheringstatechange = null;
+			};
+			const check = () => {
+				if (pc.iceGatheringState === 'complete') {
+					cleanup();
+					resolve();
+				}
+			};
+			pc.onicegatheringstatechange = () => {
+				check();
+			};
+			check();
+		});
+	}
 
-        function resetLocalDiagnostics() {
-                localTransportDiagnostics = null;
-        }
+	function resetLocalDiagnostics() {
+		localTransportDiagnostics = null;
+	}
 
-        function stopWebRTCStats() {
-                if (webrtcStatsInterval) {
-                        clearInterval(webrtcStatsInterval);
-                        webrtcStatsInterval = null;
-                }
-                webrtcInboundStats = null;
-        }
+	function stopWebRTCStats() {
+		if (webrtcStatsInterval) {
+			clearInterval(webrtcStatsInterval);
+			webrtcStatsInterval = null;
+		}
+		webrtcInboundStats = null;
+	}
 
-        function detachWebRTCAudio() {
-                if (webrtcAudioSource) {
-                        try {
-                                webrtcAudioSource.disconnect();
-                        } catch {
-                                // ignore
-                        }
-                        webrtcAudioSource = null;
-                }
-                if (webrtcAudioStream) {
-                        for (const track of webrtcAudioStream.getTracks()) {
-                                try {
-                                        track.stop();
-                                } catch {
-                                        // ignore
-                                }
-                        }
-                        webrtcAudioStream = null;
-                }
-                webrtcAudioActive = false;
-        }
+	function detachWebRTCAudio() {
+		if (webrtcAudioSource) {
+			try {
+				webrtcAudioSource.disconnect();
+			} catch {
+				// ignore
+			}
+			webrtcAudioSource = null;
+		}
+		if (webrtcAudioStream) {
+			for (const track of webrtcAudioStream.getTracks()) {
+				try {
+					track.stop();
+				} catch {
+					// ignore
+				}
+			}
+			webrtcAudioStream = null;
+		}
+		webrtcAudioActive = false;
+	}
 
-        function detachWebRTCVideo() {
-                if (webrtcVideoStream) {
-                        for (const track of webrtcVideoStream.getTracks()) {
-                                try {
-                                        track.stop();
-                                } catch {
-                                        // ignore
-                                }
-                        }
-                        webrtcVideoStream = null;
-                }
-                if (webrtcVideoEl) {
-                        try {
-                                webrtcVideoEl.pause();
-                        } catch {
-                                // ignore
-                        }
-                        webrtcVideoEl.srcObject = null;
-                }
-                webrtcVideoActive = false;
-        }
+	function detachWebRTCVideo() {
+		if (webrtcVideoStream) {
+			for (const track of webrtcVideoStream.getTracks()) {
+				try {
+					track.stop();
+				} catch {
+					// ignore
+				}
+			}
+			webrtcVideoStream = null;
+		}
+		if (webrtcVideoEl) {
+			try {
+				webrtcVideoEl.pause();
+			} catch {
+				// ignore
+			}
+			webrtcVideoEl.srcObject = null;
+		}
+		webrtcVideoActive = false;
+	}
 
-        function teardownWebRTC() {
-                webrtcNegotiationAbort?.abort();
-                webrtcNegotiationAbort = null;
-                webrtcNegotiating = false;
-                stopWebRTCStats();
-                if (webrtcPc) {
-                        try {
-                                webrtcPc.close();
-                        } catch {
-                                // ignore
-                        }
-                }
-                webrtcPc = null;
-                webrtcSessionId = null;
-                detachWebRTCVideo();
-                detachWebRTCAudio();
-                resetLocalDiagnostics();
-        }
+	function teardownWebRTC() {
+		webrtcNegotiationAbort?.abort();
+		webrtcNegotiationAbort = null;
+		webrtcNegotiating = false;
+		stopWebRTCStats();
+		if (webrtcPc) {
+			try {
+				webrtcPc.close();
+			} catch {
+				// ignore
+			}
+		}
+		webrtcPc = null;
+		webrtcSessionId = null;
+		detachWebRTCVideo();
+		detachWebRTCAudio();
+		resetLocalDiagnostics();
+	}
 
-        async function attachWebRTCAudioTrack(stream: MediaStream) {
-                if (!(await ensureAudioPlaybackContext())) {
-                        return;
-                }
-                if (!audioContext) {
-                        return;
-                }
-                detachWebRTCAudio();
-                try {
-                        const source = audioContext.createMediaStreamSource(stream);
-                        source.connect(audioContext.destination);
-                        webrtcAudioStream = stream;
-                        webrtcAudioSource = source;
-                        webrtcAudioActive = true;
-                } catch (err) {
-                        console.warn('Failed to attach remote desktop WebRTC audio track', err);
-                }
-        }
+	async function attachWebRTCAudioTrack(stream: MediaStream) {
+		if (!(await ensureAudioPlaybackContext())) {
+			return;
+		}
+		if (!audioContext) {
+			return;
+		}
+		detachWebRTCAudio();
+		try {
+			const source = audioContext.createMediaStreamSource(stream);
+			source.connect(audioContext.destination);
+			webrtcAudioStream = stream;
+			webrtcAudioSource = source;
+			webrtcAudioActive = true;
+		} catch (err) {
+			console.warn('Failed to attach remote desktop WebRTC audio track', err);
+		}
+	}
 
-        function attachWebRTCVideoTrack(stream: MediaStream) {
-                if (!webrtcVideoEl) {
-                        return;
-                }
-                detachWebRTCVideo();
-                webrtcVideoStream = stream;
-                try {
-                        webrtcVideoEl.srcObject = stream;
-                        webrtcVideoEl.muted = true;
-                        void webrtcVideoEl.play().catch(() => {});
-                        webrtcVideoActive = true;
-                } catch (err) {
-                        console.warn('Failed to attach remote desktop WebRTC video track', err);
-                }
-        }
+	function attachWebRTCVideoTrack(stream: MediaStream) {
+		if (!webrtcVideoEl) {
+			return;
+		}
+		detachWebRTCVideo();
+		webrtcVideoStream = stream;
+		try {
+			webrtcVideoEl.srcObject = stream;
+			webrtcVideoEl.muted = true;
+			void webrtcVideoEl.play().catch(() => {});
+			webrtcVideoActive = true;
+		} catch (err) {
+			console.warn('Failed to attach remote desktop WebRTC video track', err);
+		}
+	}
 
-        async function collectPeerDiagnostics() {
-                if (!webrtcPc) {
-                        return;
-                }
-                try {
-                        const report = await webrtcPc.getStats();
-                        let currentBitrateKbps: number | undefined;
-                        let jitterMs: number | undefined;
-                        let packetsLost: number | undefined;
-                        let rttMs: number | undefined;
-                        report.forEach((entry: unknown) => {
-                                if (!entry || typeof entry !== 'object') {
-                                        return;
-                                }
-                                const stats = entry as { type?: string } & Record<string, unknown>;
-                                switch (stats.type) {
-                                        case 'inbound-rtp': {
-                                                const kind = (stats as { kind?: string }).kind;
-                                                if (kind !== 'video' && kind !== 'audio') {
-                                                        break;
-                                                }
-                                                const bytes = (stats as { bytesReceived?: number }).bytesReceived;
-                                                const timestamp = (stats as { timestamp?: number }).timestamp;
-                                                if (
-                                                        typeof bytes === 'number' &&
-                                                        typeof timestamp === 'number' &&
-                                                        bytes >= 0 &&
-                                                        timestamp > 0
-                                                ) {
-                                                        if (webrtcInboundStats) {
-                                                                const deltaBytes = bytes - webrtcInboundStats.bytes;
-                                                                const deltaMs = timestamp - webrtcInboundStats.timestamp;
-                                                                if (deltaBytes > 0 && deltaMs > 0) {
-                                                                        currentBitrateKbps = Math.round((deltaBytes * 8) / deltaMs);
-                                                                        if (currentBitrateKbps < 0) {
-                                                                                currentBitrateKbps = undefined;
-                                                                        }
-                                                                }
-                                                        }
-                                                        webrtcInboundStats = { bytes, timestamp };
-                                                }
-                                                const jitter = (stats as { jitter?: number }).jitter;
-                                                if (typeof jitter === 'number') {
-                                                        jitterMs = Math.max(0, Math.round(jitter * 1000));
-                                                }
-                                                const lost = (stats as { packetsLost?: number }).packetsLost;
-                                                if (typeof lost === 'number') {
-                                                        packetsLost = Math.max(0, Math.round(lost));
-                                                }
-                                                break;
-                                        }
-                                        case 'candidate-pair': {
-                                                const state = (stats as { state?: string }).state;
-                                                const nominated = (stats as { nominated?: boolean }).nominated;
-                                                if (state === 'succeeded' && nominated !== false) {
-                                                        const rtt = (stats as { currentRoundTripTime?: number }).currentRoundTripTime;
-                                                        if (typeof rtt === 'number') {
-                                                                rttMs = Math.max(0, Math.round(rtt * 1000));
-                                                        }
-                                                }
-                                                break;
-                                        }
-                                }
-                        });
-                        const diagnostics: RemoteDesktopTransportDiagnostics = {
-                                transport: 'webrtc',
-                                codec: session?.negotiatedCodec ?? undefined,
-                                currentBitrateKbps,
-                                jitterMs,
-                                packetsLost,
-                                rttMs,
-                                lastUpdatedAt: new Date().toISOString()
-                        };
-                        localTransportDiagnostics = diagnostics;
-                } catch (err) {
-                        console.warn('Failed to collect remote desktop WebRTC diagnostics', err);
-                }
-        }
+	async function collectPeerDiagnostics() {
+		if (!webrtcPc) {
+			return;
+		}
+		try {
+			const report = await webrtcPc.getStats();
+			let currentBitrateKbps: number | undefined;
+			let jitterMs: number | undefined;
+			let packetsLost: number | undefined;
+			let rttMs: number | undefined;
+			report.forEach((entry: unknown) => {
+				if (!entry || typeof entry !== 'object') {
+					return;
+				}
+				const stats = entry as { type?: string } & Record<string, unknown>;
+				switch (stats.type) {
+					case 'inbound-rtp': {
+						const kind = (stats as { kind?: string }).kind;
+						if (kind !== 'video' && kind !== 'audio') {
+							break;
+						}
+						const bytes = (stats as { bytesReceived?: number }).bytesReceived;
+						const timestamp = (stats as { timestamp?: number }).timestamp;
+						if (
+							typeof bytes === 'number' &&
+							typeof timestamp === 'number' &&
+							bytes >= 0 &&
+							timestamp > 0
+						) {
+							if (webrtcInboundStats) {
+								const deltaBytes = bytes - webrtcInboundStats.bytes;
+								const deltaMs = timestamp - webrtcInboundStats.timestamp;
+								if (deltaBytes > 0 && deltaMs > 0) {
+									currentBitrateKbps = Math.round((deltaBytes * 8) / deltaMs);
+									if (currentBitrateKbps < 0) {
+										currentBitrateKbps = undefined;
+									}
+								}
+							}
+							webrtcInboundStats = { bytes, timestamp };
+						}
+						const jitter = (stats as { jitter?: number }).jitter;
+						if (typeof jitter === 'number') {
+							jitterMs = Math.max(0, Math.round(jitter * 1000));
+						}
+						const lost = (stats as { packetsLost?: number }).packetsLost;
+						if (typeof lost === 'number') {
+							packetsLost = Math.max(0, Math.round(lost));
+						}
+						break;
+					}
+					case 'candidate-pair': {
+						const state = (stats as { state?: string }).state;
+						const nominated = (stats as { nominated?: boolean }).nominated;
+						if (state === 'succeeded' && nominated !== false) {
+							const rtt = (stats as { currentRoundTripTime?: number }).currentRoundTripTime;
+							if (typeof rtt === 'number') {
+								rttMs = Math.max(0, Math.round(rtt * 1000));
+							}
+						}
+						break;
+					}
+				}
+			});
+			const diagnostics: RemoteDesktopTransportDiagnostics = {
+				transport: 'webrtc',
+				codec: session?.negotiatedCodec ?? undefined,
+				currentBitrateKbps,
+				jitterMs,
+				packetsLost,
+				rttMs,
+				lastUpdatedAt: new Date().toISOString()
+			};
+			localTransportDiagnostics = diagnostics;
+		} catch (err) {
+			console.warn('Failed to collect remote desktop WebRTC diagnostics', err);
+		}
+	}
 
-        function startWebRTCStats() {
-                stopWebRTCStats();
-                if (!webrtcPc) {
-                        return;
-                }
-                const poll = () => {
-                        if (!webrtcPc) {
-                                return;
-                        }
-                        void collectPeerDiagnostics();
-                };
-                poll();
-                webrtcStatsInterval = setInterval(poll, WEBRTC_STATS_INTERVAL_MS);
-        }
+	function startWebRTCStats() {
+		stopWebRTCStats();
+		if (!webrtcPc) {
+			return;
+		}
+		const poll = () => {
+			if (!webrtcPc) {
+				return;
+			}
+			void collectPeerDiagnostics();
+		};
+		poll();
+		webrtcStatsInterval = setInterval(poll, WEBRTC_STATS_INTERVAL_MS);
+	}
 
-        async function negotiateWebRTC(sessionId: string): Promise<boolean> {
-                if (!browser || !client || !isWebRTCSupported()) {
-                        return false;
-                }
-                if (webrtcNegotiating) {
-                        return false;
-                }
-                webrtcNegotiating = true;
-                webrtcNegotiationAbort?.abort();
-                const abort = new AbortController();
-                webrtcNegotiationAbort = abort;
-                try {
-                        const configuration: RTCConfiguration = webrtcIceServers
-                                ? { iceServers: webrtcIceServers }
-                                : {};
-                        const pc = new RTCPeerConnection(configuration);
-                        webrtcPc = pc;
-                        webrtcSessionId = sessionId;
-                        webrtcInboundStats = null;
-                        pc.addTransceiver('video', { direction: 'recvonly' });
-                        pc.addTransceiver('audio', { direction: 'recvonly' });
-                        pc.ontrack = (event) => {
-                                const [firstStream] = event.streams;
-                                if (event.track.kind === 'video') {
-                                        if (firstStream) {
-                                                attachWebRTCVideoTrack(firstStream);
-                                        } else {
-                                                attachWebRTCVideoTrack(new MediaStream([event.track]));
-                                        }
-                                } else if (event.track.kind === 'audio') {
-                                        const stream = firstStream ?? new MediaStream([event.track]);
-                                        void attachWebRTCAudioTrack(stream);
-                                }
-                        };
-                        pc.onconnectionstatechange = () => {
-                                if (!webrtcPc || pc !== webrtcPc) {
-                                        return;
-                                }
-                                if (
-                                        pc.connectionState === 'failed' ||
-                                        pc.connectionState === 'disconnected' ||
-                                        pc.connectionState === 'closed'
-                                ) {
-                                        console.warn('Remote desktop WebRTC connection lost, reverting to HTTP stream');
-                                        teardownWebRTC();
-                                }
-                        };
+	async function negotiateWebRTC(sessionId: string): Promise<boolean> {
+		if (!browser || !client || !isWebRTCSupported()) {
+			return false;
+		}
+		if (webrtcNegotiating) {
+			return false;
+		}
+		webrtcNegotiating = true;
+		webrtcNegotiationAbort?.abort();
+		const abort = new AbortController();
+		webrtcNegotiationAbort = abort;
+		try {
+			const configuration: RTCConfiguration = webrtcIceServers
+				? { iceServers: webrtcIceServers }
+				: {};
+			const pc = new RTCPeerConnection(configuration);
+			webrtcPc = pc;
+			webrtcSessionId = sessionId;
+			webrtcInboundStats = null;
+			pc.addTransceiver('video', { direction: 'recvonly' });
+			pc.addTransceiver('audio', { direction: 'recvonly' });
+			pc.ontrack = (event) => {
+				const [firstStream] = event.streams;
+				if (event.track.kind === 'video') {
+					if (firstStream) {
+						attachWebRTCVideoTrack(firstStream);
+					} else {
+						attachWebRTCVideoTrack(new MediaStream([event.track]));
+					}
+				} else if (event.track.kind === 'audio') {
+					const stream = firstStream ?? new MediaStream([event.track]);
+					void attachWebRTCAudioTrack(stream);
+				}
+			};
+			pc.onconnectionstatechange = () => {
+				if (!webrtcPc || pc !== webrtcPc) {
+					return;
+				}
+				if (
+					pc.connectionState === 'failed' ||
+					pc.connectionState === 'disconnected' ||
+					pc.connectionState === 'closed'
+				) {
+					console.warn('Remote desktop WebRTC connection lost, reverting to HTTP stream');
+					teardownWebRTC();
+				}
+			};
 
-                        const offer = await pc.createOffer();
-                        await pc.setLocalDescription(offer);
-                        await waitForPeerIceGathering(pc);
-                        const local = pc.localDescription;
-                        if (!local?.sdp) {
-                                throw new Error('Missing WebRTC local description');
-                        }
+			const offer = await pc.createOffer();
+			await pc.setLocalDescription(offer);
+			await waitForPeerIceGathering(pc);
+			const local = pc.localDescription;
+			if (!local?.sdp) {
+				throw new Error('Missing WebRTC local description');
+			}
 
-                        const transportCapabilities: RemoteDesktopTransportCapability[] = [
-                                {
-                                        transport: 'webrtc',
-                                        codecs: [...SUPPORTED_CODECS]
-                                },
-                                {
-                                        transport: 'http',
-                                        codecs: [...SUPPORTED_CODECS]
-                                }
-                        ];
+			const transportCapabilities: RemoteDesktopTransportCapability[] = [
+				{
+					transport: 'webrtc',
+					codecs: [...SUPPORTED_CODECS]
+				},
+				{
+					transport: 'http',
+					codecs: [...SUPPORTED_CODECS]
+				}
+			];
 
-                        const payload = {
-                                sessionId,
-                                transports: transportCapabilities,
-                                codecs: [...SUPPORTED_CODECS],
-                                intraRefresh: session?.settings.mode === 'video',
-                                webrtc: {
-                                        offer: encodeBase64(local.sdp),
-                                        dataChannel: WEBRTC_DATA_CHANNEL_LABEL
-                                }
-                        } satisfies RemoteDesktopSessionNegotiationRequest;
+			const payload = {
+				sessionId,
+				transports: transportCapabilities,
+				codecs: [...SUPPORTED_CODECS],
+				intraRefresh: session?.settings.mode === 'video',
+				webrtc: {
+					offer: encodeBase64(local.sdp),
+					dataChannel: WEBRTC_DATA_CHANNEL_LABEL
+				}
+			} satisfies RemoteDesktopSessionNegotiationRequest;
 
-                        const response = await fetch(
-                                `/api/agents/${client.id}/remote-desktop/transport`,
-                                {
-                                        method: 'POST',
-                                        headers: { 'Content-Type': 'application/json' },
-                                        body: JSON.stringify(payload),
-                                        signal: abort.signal
-                                }
-                        );
-                        if (!response.ok) {
-                                const message = (await response.text()) || 'Remote desktop transport negotiation failed';
-                                throw new Error(message);
-                        }
-                        const negotiation = (await response.json()) as RemoteDesktopSessionNegotiationResponse;
-                        if (!negotiation.accepted || negotiation.transport !== 'webrtc' || !negotiation.webrtc?.answer) {
-                                const reason = negotiation.reason?.trim();
-                                throw new Error(reason || 'WebRTC transport unavailable');
-                        }
+			const response = await fetch(`/api/agents/${client.id}/remote-desktop/transport`, {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify(payload),
+				signal: abort.signal
+			});
+			if (!response.ok) {
+				const message = (await response.text()) || 'Remote desktop transport negotiation failed';
+				throw new Error(message);
+			}
+			const negotiation = (await response.json()) as RemoteDesktopSessionNegotiationResponse;
+			if (
+				!negotiation.accepted ||
+				negotiation.transport !== 'webrtc' ||
+				!negotiation.webrtc?.answer
+			) {
+				const reason = negotiation.reason?.trim();
+				throw new Error(reason || 'WebRTC transport unavailable');
+			}
 
-                        const answerSdp = decodeBase64(negotiation.webrtc.answer);
-                        await pc.setRemoteDescription({ type: 'answer', sdp: answerSdp });
+			const answerSdp = decodeBase64(negotiation.webrtc.answer);
+			await pc.setRemoteDescription({ type: 'answer', sdp: answerSdp });
 
-                        const negotiatedIce = toRtcIceServers(negotiation.webrtc.iceServers);
-                        if (negotiatedIce) {
-                                webrtcIceServers = negotiatedIce;
-                                try {
-                                        pc.setConfiguration({ iceServers: negotiatedIce });
-                                } catch (err) {
-                                        console.warn('Failed to update WebRTC ICE configuration', err);
-                                }
-                        }
+			const negotiatedIce = toRtcIceServers(negotiation.webrtc.iceServers);
+			if (negotiatedIce) {
+				webrtcIceServers = negotiatedIce;
+				try {
+					pc.setConfiguration({ iceServers: negotiatedIce });
+				} catch (err) {
+					console.warn('Failed to update WebRTC ICE configuration', err);
+				}
+			}
 
-                        startWebRTCStats();
-                        return true;
-                } catch (err) {
-                        if (!abort.signal.aborted) {
-                                console.warn('Remote desktop WebRTC negotiation failed', err);
-                                teardownWebRTC();
-                                if (!infoMessage) {
-                                        infoMessage = 'WebRTC transport unavailable; using HTTP stream.';
-                                }
-                        }
-                        return false;
-                } finally {
-                        if (webrtcNegotiationAbort === abort) {
-                                webrtcNegotiationAbort = null;
-                        }
-                        webrtcNegotiating = false;
-                }
-        }
+			startWebRTCStats();
+			return true;
+		} catch (err) {
+			if (!abort.signal.aborted) {
+				console.warn('Remote desktop WebRTC negotiation failed', err);
+				teardownWebRTC();
+				if (!infoMessage) {
+					infoMessage = 'WebRTC transport unavailable; using HTTP stream.';
+				}
+			}
+			return false;
+		} finally {
+			if (webrtcNegotiationAbort === abort) {
+				webrtcNegotiationAbort = null;
+			}
+			webrtcNegotiating = false;
+		}
+	}
 
-        async function ensureWebRTC(sessionId: string) {
-                if (!browser || !sessionActive || transportPreference !== 'webrtc') {
-                        return;
-                }
-                if (!isWebRTCSupported()) {
-                        return;
-                }
-                if (webrtcSessionId === sessionId && webrtcPc) {
-                        return;
-                }
-                await negotiateWebRTC(sessionId);
-        }
+	async function ensureWebRTC(sessionId: string) {
+		if (!browser || !sessionActive || transportPreference !== 'webrtc') {
+			return;
+		}
+		if (!isWebRTCSupported()) {
+			return;
+		}
+		if (webrtcSessionId === sessionId && webrtcPc) {
+			return;
+		}
+		await negotiateWebRTC(sessionId);
+	}
 
 	function connectStream(id?: string) {
 		if (!browser) return;
@@ -972,15 +973,15 @@
 		if (currentSessionId && sessionKey && sessionKey !== currentSessionId) {
 			return;
 		}
-                for (const sample of samples) {
-                        if (webrtcAudioActive) {
-                                continue;
-                        }
-                        if (sample.kind === 'audio') {
-                                await handleAudioSample(sample);
-                        }
-                }
-        }
+		for (const sample of samples) {
+			if (webrtcAudioActive) {
+				continue;
+			}
+			if (sample.kind === 'audio') {
+				await handleAudioSample(sample);
+			}
+		}
+	}
 
 	async function ensureAudioPlaybackContext(): Promise<boolean> {
 		if (!browser) {
@@ -1087,11 +1088,11 @@
 		if (frame.keyFrame) {
 			frameQueue = [];
 		}
-                if (webrtcVideoActive) {
-                        frameQueue = [];
-                        return;
-                }
-                frameQueue.push(frame);
+		if (webrtcVideoActive) {
+			frameQueue = [];
+			return;
+		}
+		frameQueue.push(frame);
 
 		if (frameQueue.length > MAX_FRAME_QUEUE) {
 			while (frameQueue.length > MAX_FRAME_QUEUE) {
@@ -1688,14 +1689,14 @@
 		}
 	});
 
-        $effect(() => {
-                if (!sessionActive) {
-                        releasePointerCapture();
-                        releaseAllPressedKeys();
-                        inputChannel?.clear();
-                        teardownWebRTC();
-                }
-        });
+	$effect(() => {
+		if (!sessionActive) {
+			releasePointerCapture();
+			releaseAllPressedKeys();
+			inputChannel?.clear();
+			teardownWebRTC();
+		}
+	});
 
 	$effect(() => {
 		const current = session;
@@ -1725,40 +1726,40 @@
 		monitor = current.settings.monitor;
 		mouseEnabled = current.settings.mouse;
 		keyboardEnabled = current.settings.keyboard;
-                transportPreference = current.settings.transport ?? 'webrtc';
-                hardwarePreference = current.settings.hardware ?? 'auto';
-                const bitrate = current.settings.targetBitrateKbps ?? 0;
-                targetBitrateKbps = bitrate > 0 ? bitrate : null;
-                sessionActive = current.active === true;
-                sessionId = current.sessionId ?? '';
-                monitors =
-                        current.monitors && current.monitors.length > 0 ? current.monitors : fallbackMonitors;
-                if (current.metrics) {
-                        fps = typeof current.metrics.fps === 'number' ? current.metrics.fps : fps;
-                        bandwidth =
-                                typeof current.metrics.bandwidthKbps === 'number'
-                                        ? current.metrics.bandwidthKbps
-                                        : bandwidth;
-                }
-                if (!localTransportDiagnostics) {
-                        transportDiagnostics = current.transportDiagnostics ?? null;
-                }
-        });
+		transportPreference = current.settings.transport ?? 'webrtc';
+		hardwarePreference = current.settings.hardware ?? 'auto';
+		const bitrate = current.settings.targetBitrateKbps ?? 0;
+		targetBitrateKbps = bitrate > 0 ? bitrate : null;
+		sessionActive = current.active === true;
+		sessionId = current.sessionId ?? '';
+		monitors =
+			current.monitors && current.monitors.length > 0 ? current.monitors : fallbackMonitors;
+		if (current.metrics) {
+			fps = typeof current.metrics.fps === 'number' ? current.metrics.fps : fps;
+			bandwidth =
+				typeof current.metrics.bandwidthKbps === 'number'
+					? current.metrics.bandwidthKbps
+					: bandwidth;
+		}
+		if (!localTransportDiagnostics) {
+			transportDiagnostics = current.transportDiagnostics ?? null;
+		}
+	});
 
-        $effect(() => {
-                const localDiagnostics = localTransportDiagnostics;
-                if (localDiagnostics) {
-                        transportDiagnostics = localDiagnostics;
-                        return;
-                }
-                const sessionDiagnostics = session?.transportDiagnostics ?? null;
-                transportDiagnostics = sessionDiagnostics;
-        });
+	$effect(() => {
+		const localDiagnostics = localTransportDiagnostics;
+		if (localDiagnostics) {
+			transportDiagnostics = localDiagnostics;
+			return;
+		}
+		const sessionDiagnostics = session?.transportDiagnostics ?? null;
+		transportDiagnostics = sessionDiagnostics;
+	});
 
-        $effect(() => {
-                if (!sessionActive) {
-                        skipMouseSync = true;
-                        skipKeyboardSync = true;
+	$effect(() => {
+		if (!sessionActive) {
+			skipMouseSync = true;
+			skipKeyboardSync = true;
 		}
 	});
 
@@ -1805,34 +1806,34 @@
 			disconnectStream();
 			return;
 		}
-                connectStream(sessionId);
-        });
+		connectStream(sessionId);
+	});
 
-        $effect(() => {
-                const active = sessionActive;
-                const currentSession = sessionId;
-                const negotiated = session?.negotiatedTransport ?? null;
-                if (!browser) {
-                        return;
-                }
-                if (!active || transportPreference !== 'webrtc') {
-                        teardownWebRTC();
-                        return;
-                }
-                if (!currentSession) {
-                        return;
-                }
-                if (negotiated && negotiated !== 'webrtc') {
-                        teardownWebRTC();
-                        return;
-                }
-                void ensureWebRTC(currentSession);
-        });
+	$effect(() => {
+		const active = sessionActive;
+		const currentSession = sessionId;
+		const negotiated = session?.negotiatedTransport ?? null;
+		if (!browser) {
+			return;
+		}
+		if (!active || transportPreference !== 'webrtc') {
+			teardownWebRTC();
+			return;
+		}
+		if (!currentSession) {
+			return;
+		}
+		if (negotiated && negotiated !== 'webrtc') {
+			teardownWebRTC();
+			return;
+		}
+		void ensureWebRTC(currentSession);
+	});
 
-        onMount(() => {
-                if (!browser) {
-                        return () => {
-                                disconnectStream();
+	onMount(() => {
+		if (!browser) {
+			return () => {
+				disconnectStream();
 			};
 		}
 
@@ -1868,53 +1869,53 @@
 		window.addEventListener('pagehide', handlePageHide);
 		window.addEventListener('beforeunload', handlePageHide);
 
-                return () => {
-                        destroyed = true;
-                        document.removeEventListener('visibilitychange', handleVisibilityChange);
-                        window.removeEventListener('pagehide', handlePageHide);
-                        window.removeEventListener('beforeunload', handlePageHide);
-                        maybeStopSession({ keepalive: true });
-                        disconnectStream();
-                        teardownWebRTC();
-                };
-        });
+		return () => {
+			destroyed = true;
+			document.removeEventListener('visibilitychange', handleVisibilityChange);
+			window.removeEventListener('pagehide', handlePageHide);
+			window.removeEventListener('beforeunload', handlePageHide);
+			maybeStopSession({ keepalive: true });
+			disconnectStream();
+			teardownWebRTC();
+		};
+	});
 </script>
 
 <svelte:window on:keydown={handleKeyDown} on:keyup={handleKeyUp} />
 
 <Card>
 	<CardContent>
-                <div
-                        tabindex="-1"
-                        bind:this={viewportEl}
-                        class="relative overflow-hidden rounded-lg border border-border bg-muted/30 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
-                        role="application"
+		<div
+			tabindex="-1"
+			bind:this={viewportEl}
+			class="relative overflow-hidden rounded-lg border border-border bg-muted/30 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+			role="application"
 			aria-label="Remote desktop viewport"
 			onfocus={handleViewportFocus}
 			onblur={handleViewportBlur}
 			onpointerdown={handlePointerDown}
 			onpointerup={handlePointerUp}
 			onpointermove={handlePointerMove}
-                        onpointerleave={handlePointerLeave}
-                        onpointercancel={handlePointerLeave}
-                        onwheel={handleWheel}
-                        style="touch-action: none;"
-                >
-                        <video
-                                bind:this={webrtcVideoEl}
-                                class="absolute inset-0 h-full w-full object-contain transition-opacity duration-150"
-                                class:opacity-0={!webrtcVideoActive}
-                                autoplay
-                                playsinline
-                                muted
-                                controls={false}
-                                style="pointer-events: none;"
-                        />
-                        <canvas
-                                bind:this={canvasEl}
-                                class="block h-full w-full bg-slate-950"
-                                class:hidden={webrtcVideoActive}
-                        ></canvas>
+			onpointerleave={handlePointerLeave}
+			onpointercancel={handlePointerLeave}
+			onwheel={handleWheel}
+			style="touch-action: none;"
+		>
+			<video
+				bind:this={webrtcVideoEl}
+				class="absolute inset-0 h-full w-full object-contain transition-opacity duration-150"
+				class:opacity-0={!webrtcVideoActive}
+				autoplay
+				playsinline
+				muted
+				controls={false}
+				style="pointer-events: none;"
+			/>
+			<canvas
+				bind:this={canvasEl}
+				class="block h-full w-full bg-slate-950"
+				class:hidden={webrtcVideoActive}
+			></canvas>
 			{#if !sessionActive}
 				<div
 					class="absolute inset-0 flex items-center justify-center text-sm text-muted-foreground"

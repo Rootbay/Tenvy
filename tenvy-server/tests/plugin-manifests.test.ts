@@ -21,37 +21,36 @@ describe('loadPluginManifests', () => {
 
 	it('skips files that do not satisfy the manifest schema', async () => {
 		const directory = mkdtempSync(join(tmpdir(), 'tenvy-manifests-'));
-                const validManifest = {
-                        id: 'test-valid',
-                        name: 'Test Plugin',
-                        version: '0.1.0',
-                        entry: 'test.dll',
-                        description: 'A manifest used in tests',
-                        author: 'Unit Tests',
-                        repositoryUrl: 'https://github.com/rootbay/test-plugin',
-                        license: {
-                                spdxId: 'MIT',
-                                name: 'MIT License'
-                        },
-                        capabilities: ['clipboard.capture'],
-                        distribution: {
-                                defaultMode: 'manual',
-                                autoUpdate: false,
-                                signature: 'sha256',
-                                signatureHash:
-                                        '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef'
-                        },
-                        requirements: {
-                                platforms: ['windows'],
-                                architectures: ['x86_64'],
-                                requiredModules: ['clipboard']
-                        },
-                        package: {
-                                artifact: 'test.dll',
-                                sizeBytes: 1024,
-                                hash: '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef'
-                        }
-                } satisfies Record<string, unknown>;
+		const validManifest = {
+			id: 'test-valid',
+			name: 'Test Plugin',
+			version: '0.1.0',
+			entry: 'test.dll',
+			description: 'A manifest used in tests',
+			author: 'Unit Tests',
+			repositoryUrl: 'https://github.com/rootbay/test-plugin',
+			license: {
+				spdxId: 'MIT',
+				name: 'MIT License'
+			},
+			capabilities: ['clipboard.capture'],
+			distribution: {
+				defaultMode: 'manual',
+				autoUpdate: false,
+				signature: 'sha256',
+				signatureHash: '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef'
+			},
+			requirements: {
+				platforms: ['windows'],
+				architectures: ['x86_64'],
+				requiredModules: ['clipboard']
+			},
+			package: {
+				artifact: 'test.dll',
+				sizeBytes: 1024,
+				hash: '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef'
+			}
+		} satisfies Record<string, unknown>;
 
 		writeFileSync(join(directory, 'valid.json'), JSON.stringify(validManifest));
 		writeFileSync(join(directory, 'invalid.json'), JSON.stringify({ id: 'broken' }));
@@ -60,6 +59,6 @@ describe('loadPluginManifests', () => {
 
 		expect(records).toHaveLength(1);
 		expect(records[0]?.manifest.id).toBe('test-valid');
-                expect(records[0]?.verification.status).toBe('untrusted');
+		expect(records[0]?.verification.status).toBe('untrusted');
 	});
 });

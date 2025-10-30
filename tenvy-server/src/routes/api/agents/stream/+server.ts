@@ -12,15 +12,15 @@ function formatEvent(event: AgentRegistryEvent): Uint8Array {
 }
 
 export const GET: RequestHandler = ({ locals }) => {
-        const viewer = requireViewer(locals.user);
-        let stop: (() => void) | null = null;
+	const viewer = requireViewer(locals.user);
+	let stop: (() => void) | null = null;
 
-        const stream = new ReadableStream<Uint8Array>({
-                start(controller) {
-                        let active = true;
-                        let keepAlive: ReturnType<typeof setInterval> | null = null;
-                        let subscription: ReturnType<typeof registry.subscribeForAdmin> | null = null;
-                        let unsubscribe: () => void = () => {};
+	const stream = new ReadableStream<Uint8Array>({
+		start(controller) {
+			let active = true;
+			let keepAlive: ReturnType<typeof setInterval> | null = null;
+			let subscription: ReturnType<typeof registry.subscribeForAdmin> | null = null;
+			let unsubscribe: () => void = () => {};
 
 			const shutdown = () => {
 				if (!active) {
@@ -52,20 +52,22 @@ export const GET: RequestHandler = ({ locals }) => {
 				}
 			};
 
-                        subscription = registry.subscribeForAdmin(
-                                viewer.id,
-                                (event) => {
-                                        safeEnqueue(formatEvent(event));
-                                },
-                                { channel: 'sse' }
-                        );
+			subscription = registry.subscribeForAdmin(
+				viewer.id,
+				(event) => {
+					safeEnqueue(formatEvent(event));
+				},
+				{ channel: 'sse' }
+			);
 
-                        unsubscribe = () => {
-                                subscription?.unsubscribe();
-                                subscription = null;
-                        };
+			unsubscribe = () => {
+				subscription?.unsubscribe();
+				subscription = null;
+			};
 
-                        safeEnqueue(formatEvent({ type: 'agents', agents: subscription.snapshot } satisfies AgentRegistryEvent));
+			safeEnqueue(
+				formatEvent({ type: 'agents', agents: subscription.snapshot } satisfies AgentRegistryEvent)
+			);
 
 			keepAlive = setInterval(() => {
 				if (!safeEnqueue(encoder.encode(':ping\n\n'))) {

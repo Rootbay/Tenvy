@@ -234,87 +234,87 @@ export function createClientsTableStore(initialAgents: AgentSnapshot[]): {
 		}
 	);
 
-        let subscribers = 0;
-        let busUnsubscribe: (() => void) | null = null;
-        const optimisticAgents = new Map<string, AgentSnapshot>();
+	let subscribers = 0;
+	let busUnsubscribe: (() => void) | null = null;
+	const optimisticAgents = new Map<string, AgentSnapshot>();
 
-        const applyRegistryEvent = (event: RegistryEventMessage) => {
-                if (!event || typeof event !== 'object') {
-                        return;
-                }
+	const applyRegistryEvent = (event: RegistryEventMessage) => {
+		if (!event || typeof event !== 'object') {
+			return;
+		}
 
-                if (event.type === 'agents') {
-                        optimisticAgents.clear();
-                        agents.set(dedupeAgents(event.agents ?? []));
-                        return;
-                }
+		if (event.type === 'agents') {
+			optimisticAgents.clear();
+			agents.set(dedupeAgents(event.agents ?? []));
+			return;
+		}
 
-                if (event.type === 'agent') {
-                        if (event.optimistic) {
-                                optimisticAgents.set(event.agent.id, event.agent);
-                        } else {
-                                optimisticAgents.delete(event.agent.id);
-                        }
-                        agents.update((current) => dedupeAgents(upsertAgent(current, event.agent)));
-                }
-        };
+		if (event.type === 'agent') {
+			if (event.optimistic) {
+				optimisticAgents.set(event.agent.id, event.agent);
+			} else {
+				optimisticAgents.delete(event.agent.id);
+			}
+			agents.update((current) => dedupeAgents(upsertAgent(current, event.agent)));
+		}
+	};
 
-        const startBus = () => {
-                if (busUnsubscribe) {
-                        return;
-                }
-                busUnsubscribe = registryEventBus.subscribe((event) => {
-                        applyRegistryEvent(event);
-                });
-        };
+	const startBus = () => {
+		if (busUnsubscribe) {
+			return;
+		}
+		busUnsubscribe = registryEventBus.subscribe((event) => {
+			applyRegistryEvent(event);
+		});
+	};
 
-        const stopBus = () => {
-                busUnsubscribe?.();
-                busUnsubscribe = null;
-                optimisticAgents.clear();
-        };
+	const stopBus = () => {
+		busUnsubscribe?.();
+		busUnsubscribe = null;
+		optimisticAgents.clear();
+	};
 
-        return {
-                subscribe: (run, invalidate) => {
-                        const unsubscribe = state.subscribe(run, invalidate);
-                        subscribers += 1;
-                        if (subscribers === 1) {
-                                startBus();
-                        }
-                        return () => {
-                                unsubscribe();
-                                subscribers = Math.max(0, subscribers - 1);
-                                if (subscribers === 0) {
-                                        stopBus();
-                                }
-                        };
-                },
-                setAgents: (nextAgents) => {
-                        optimisticAgents.clear();
-                        agents.set(dedupeAgents(nextAgents ?? []));
-                },
-                setSearchQuery: (value) => searchQuery.set(value),
-                setStatusFilter: (value) => statusFilter.set(value),
-                setTagFilter: (value) => tagFilter.set(value),
-                setPerPage: (value) => perPage.set(Math.max(1, value)),
-                goToPage: (page) => currentPage.set(Math.max(1, Math.trunc(page))),
-                nextPage: () => {
-                        const { currentPage: page, totalPages } = get(state);
-                        currentPage.set(Math.min(totalPages, page + 1));
-                },
-                previousPage: () => {
-                        const { currentPage: page } = get(state);
-                        currentPage.set(Math.max(1, page - 1));
-                },
-                optimisticUpdateAgent: (agent: AgentSnapshot) => {
-                        registryEventBus.emitOptimistic({
-                                type: 'agent',
-                                agent
-                        } as RegistryEventMessage);
-                },
-                isOptimistic: (agentId: string) => optimisticAgents.has(agentId),
-                clearOptimisticAgent: (agentId: string) => {
-                        optimisticAgents.delete(agentId);
-                }
-        };
+	return {
+		subscribe: (run, invalidate) => {
+			const unsubscribe = state.subscribe(run, invalidate);
+			subscribers += 1;
+			if (subscribers === 1) {
+				startBus();
+			}
+			return () => {
+				unsubscribe();
+				subscribers = Math.max(0, subscribers - 1);
+				if (subscribers === 0) {
+					stopBus();
+				}
+			};
+		},
+		setAgents: (nextAgents) => {
+			optimisticAgents.clear();
+			agents.set(dedupeAgents(nextAgents ?? []));
+		},
+		setSearchQuery: (value) => searchQuery.set(value),
+		setStatusFilter: (value) => statusFilter.set(value),
+		setTagFilter: (value) => tagFilter.set(value),
+		setPerPage: (value) => perPage.set(Math.max(1, value)),
+		goToPage: (page) => currentPage.set(Math.max(1, Math.trunc(page))),
+		nextPage: () => {
+			const { currentPage: page, totalPages } = get(state);
+			currentPage.set(Math.min(totalPages, page + 1));
+		},
+		previousPage: () => {
+			const { currentPage: page } = get(state);
+			currentPage.set(Math.max(1, page - 1));
+		},
+		optimisticUpdateAgent: (agent: AgentSnapshot) => {
+			registryEventBus.emitOptimistic({
+				type: 'agent',
+				agent
+			} as RegistryEventMessage);
+		},
+		isOptimistic: (agentId: string) => optimisticAgents.has(agentId),
+		clearOptimisticAgent: (agentId: string) => {
+			optimisticAgents.delete(agentId);
+		}
+	};
 }

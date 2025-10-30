@@ -27,17 +27,17 @@ interface GitHubRepositoryCoordinates {
 }
 
 const resolveRepository = (manifest: PluginManifest): GitHubRepositoryCoordinates => {
-        const repoUrl = manifest.repositoryUrl?.trim();
-        if (!repoUrl) {
-                throw error(400, 'Repository URL is required for marketplace submissions');
-        }
-        try {
-                const parsed = new URL(repoUrl);
-                const segments = parsed.pathname.split('/').filter(Boolean);
-                if (segments.length < 2) throw new Error('missing owner or repository segment');
-                const owner = segments[0];
-                const repo = segments[1].replace(/\.git$/i, '');
-                return { owner, repo };
+	const repoUrl = manifest.repositoryUrl?.trim();
+	if (!repoUrl) {
+		throw error(400, 'Repository URL is required for marketplace submissions');
+	}
+	try {
+		const parsed = new URL(repoUrl);
+		const segments = parsed.pathname.split('/').filter(Boolean);
+		if (segments.length < 2) throw new Error('missing owner or repository segment');
+		const owner = segments[0];
+		const repo = segments[1].replace(/\.git$/i, '');
+		return { owner, repo };
 	} catch (cause) {
 		throw error(400, `Invalid GitHub repository URL: ${(cause as Error).message}`);
 	}
@@ -69,18 +69,14 @@ const ensureRepositoryMetadata = async (manifest: PluginManifest) => {
 
 	const repoLicense = typeof repoData.license === 'object' ? repoData.license : null;
 	const repoSpdx = typeof repoLicense?.spdx_id === 'string' ? repoLicense.spdx_id : '';
-        const manifestSpdx = manifest.license?.spdxId?.trim().toLowerCase() ?? '';
-        const normalizedRepoSpdx = repoSpdx.trim().toLowerCase();
-        if (
-                manifestSpdx &&
-                manifestSpdx !== normalizedRepoSpdx &&
-                normalizedRepoSpdx !== 'noassertion'
-        ) {
-                throw error(
-                        400,
-                        `Repository license mismatch. Expected ${manifest.license?.spdxId ?? 'unknown'}, received ${repoSpdx || 'unknown'}`
-                );
-        }
+	const manifestSpdx = manifest.license?.spdxId?.trim().toLowerCase() ?? '';
+	const normalizedRepoSpdx = repoSpdx.trim().toLowerCase();
+	if (manifestSpdx && manifestSpdx !== normalizedRepoSpdx && normalizedRepoSpdx !== 'noassertion') {
+		throw error(
+			400,
+			`Repository license mismatch. Expected ${manifest.license?.spdxId ?? 'unknown'}, received ${repoSpdx || 'unknown'}`
+		);
+	}
 
 	const release = await fetchGitHub(
 		`/repos/${owner}/${repo}/releases/tags/v${manifest.version}`

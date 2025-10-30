@@ -1,6 +1,7 @@
 package appvnc
 
 import (
+	"archive/zip"
 	"bytes"
 	"context"
 	"encoding/base64"
@@ -64,31 +65,41 @@ type Logger interface {
 
 // Config controls the runtime behaviour of the App VNC controller.
 type Config struct {
-	Logger         Logger
-	WorkspaceRoot  string
-	AgentID        string
-	BaseURL        string
-	AuthKey        string
-	Client         HTTPDoer
-	UserAgent      string
-	RequestTimeout time.Duration
+        Logger         Logger
+        WorkspaceRoot  string
+        AgentID        string
+        BaseURL        string
+        AuthKey        string
+        Client         HTTPDoer
+        UserAgent      string
+        RequestTimeout time.Duration
+}
+
+type seedDownloadConfig struct {
+        BaseURL   string
+        AgentID   string
+        AuthKey   string
+        Client    HTTPDoer
+        UserAgent string
+        Timeout   time.Duration
 }
 
 // Controller processes app-vnc commands sent by the controller.
 type Controller struct {
-	mu             sync.Mutex
-	logger         Logger
-	workspaceRoot  string
-	agentID        string
-	baseURL        string
-	authKey        string
-	client         HTTPDoer
-	userAgent      string
-	captureFactory surfaceCaptureFactory
-	frameInterval  frameIntervalFunc
-	requestTimeout time.Duration
-	now            func() time.Time
-	session        *sessionState
+        mu             sync.Mutex
+        logger         Logger
+        workspaceRoot  string
+        agentID        string
+        baseURL        string
+        authKey        string
+        client         HTTPDoer
+        userAgent      string
+        captureFactory surfaceCaptureFactory
+        frameInterval  frameIntervalFunc
+        requestTimeout time.Duration
+        now            func() time.Time
+        processWaiter  func(*Controller, *exec.Cmd, string)
+        session        *sessionState
 }
 
 type sessionState struct {
@@ -111,12 +122,13 @@ type sessionState struct {
 
 // NewController constructs a controller with default configuration.
 func NewController() *Controller {
-	return &Controller{
-		captureFactory: defaultSurfaceCaptureFactory,
-		frameInterval:  defaultFrameInterval,
-		requestTimeout: 10 * time.Second,
-		now:            time.Now,
-	}
+        return &Controller{
+                captureFactory: defaultSurfaceCaptureFactory,
+                frameInterval:  defaultFrameInterval,
+                requestTimeout: 10 * time.Second,
+                now:            time.Now,
+                processWaiter:  (*Controller).awaitProcess,
+        }
 }
 
 // Update applies runtime configuration such as logger routing or workspace roots.
@@ -196,107 +208,232 @@ func (c *Controller) Shutdown(ctx context.Context) {
 }
 
 func (c *Controller) start(ctx context.Context, payload protocol.AppVncCommandPayload) error {
-	sessionID := strings.TrimSpace(payload.SessionID)
-	if sessionID == "" {
-		return errors.New("missing session identifier")
+        sessionID := strings.TrimSpace(payload.SessionID)
+        if sessionID == "" {
+                return errors.New("missing session identifier")
+        }
+
+        c.mu.Lock()
+        if c.session != nil && c.session.id == sessionID {
+                c.applySettingsLocked(c.session, payload.Settings)
+                c.mu.Unlock()
+                return nil
+        }
+
+        var prev *sessionState
+        if c.session != nil {
+                prev = c.session
+                c.session = nil
+        }
+
+        if payload.Application == nil {
+                c.mu.Unlock()
+                if prev != nil {
+                        c.terminateSession(ctx, prev, errSessionReplaced)
+                }
+                return errors.New("missing application descriptor")
+        }
+
+        plan := resolveVirtualizationPlan(payload.Application, payload.Virtualization)
+        settings := resolveSettings(payload.Settings)
+        workspaceRoot := c.workspaceRoot
+        downloadCfg := c.seedDownloadConfigLocked()
+        c.mu.Unlock()
+
+        if prev != nil {
+                c.terminateSession(ctx, prev, errSessionReplaced)
+        }
+
+        if strings.TrimSpace(workspaceRoot) == "" {
+                workspaceRoot = os.TempDir()
+        }
+        workspace, err := os.MkdirTemp(workspaceRoot, "tenvy-appvnc-")
+        if err != nil {
+                return fmt.Errorf("prepare workspace: %w", err)
+        }
+
+        cleanup := func() {
+                if removeErr := os.RemoveAll(workspace); removeErr != nil {
+                        c.logf("app-vnc: failed to remove workspace %s: %v", workspace, removeErr)
+                }
+        }
+        success := false
+        defer func() {
+                if !success {
+                        cleanup()
+                }
+        }()
+
+        if plan != nil {
+                if err := c.materializeSeed(ctx, plan.ProfileSeed, filepath.Join(workspace, "profile"), "profile", downloadCfg); err != nil {
+                        c.logf("app-vnc: profile seed preparation failed: %v", err)
+                }
+                if err := c.materializeSeed(ctx, plan.DataRoot, filepath.Join(workspace, "data"), "data", downloadCfg); err != nil {
+                        c.logf("app-vnc: data root preparation failed: %v", err)
+                }
+        }
+
+        executable, err := selectExecutable(payload.Application, plan)
+        if err != nil {
+                return err
+        }
+
+        expandedExecutable := expandExecutablePath(executable)
+        env := mergeEnvironment(plan)
+        cmd := exec.CommandContext(ctx, expandedExecutable) // #nosec G204 - path originates from static descriptor
+        cmd.Dir = workspace
+        if len(env) > 0 {
+                cmd.Env = env
+        }
+
+        if err := cmd.Start(); err != nil {
+                return fmt.Errorf("launch %s: %w", expandedExecutable, err)
+        }
+
+        pid := 0
+        if cmd.Process != nil {
+                pid = cmd.Process.Pid
+        }
+        started := c.currentTime()
+        state := &sessionState{
+                id:          sessionID,
+                workspace:   workspace,
+                process:     cmd,
+                application: payload.Application,
+                plan:        plan,
+                settings:    settings,
+                startedAt:   started,
+                lastBeat:    started,
+                processID:   pid,
+        }
+
+        c.mu.Lock()
+        if c.session != nil {
+                c.mu.Unlock()
+                _ = cmd.Process.Signal(os.Interrupt)
+                _ = cmd.Wait()
+                return errors.New("app-vnc session replaced")
+        }
+        c.session = state
+        c.startCaptureLocked(state)
+        c.mu.Unlock()
+
+        c.logf("app-vnc: session %s started (%s)", sessionID, expandedExecutable)
+        waiter := c.processWaiter
+        if waiter == nil {
+                waiter = (*Controller).awaitProcess
+        }
+        go waiter(c, cmd, workspace)
+        success = true
+        return nil
+}
+
+func (c *Controller) materializeSeed(
+        ctx context.Context,
+        reference string,
+        target string,
+        label string,
+        cfg seedDownloadConfig,
+) error {
+        trimmed := strings.TrimSpace(reference)
+        if trimmed == "" {
+                return nil
+        }
+        if err := os.RemoveAll(target); err != nil && !os.IsNotExist(err) {
+                return err
+        }
+        if strings.HasPrefix(trimmed, "http://") || strings.HasPrefix(trimmed, "https://") || strings.HasPrefix(trimmed, "/") {
+                if err := c.downloadSeedBundle(ctx, trimmed, target, cfg); err != nil {
+                        return err
+                }
+                c.logf("app-vnc: downloaded %s seed to %s", label, target)
+                return nil
+        }
+	if err := clonePath(trimmed, target); err != nil {
+		return err
 	}
+	c.logf("app-vnc: cloned %s seed from %s", label, trimmed)
+	return nil
+}
 
-	c.mu.Lock()
-	defer c.mu.Unlock()
+func (c *Controller) seedDownloadConfigLocked() seedDownloadConfig {
+        return seedDownloadConfig{
+                BaseURL:   c.baseURL,
+                AgentID:   c.agentID,
+                AuthKey:   c.authKey,
+                Client:    c.client,
+                UserAgent: c.userAgent,
+                Timeout:   c.requestTimeout,
+        }
+}
 
-	if c.session != nil && c.session.id == sessionID {
-		c.applySettingsLocked(c.session, payload.Settings)
-		return nil
+func (c *Controller) downloadSeedBundle(ctx context.Context, reference, target string, cfg seedDownloadConfig) error {
+        client := cfg.Client
+        if client == nil {
+                return errors.New("app-vnc: missing http client")
+        }
+
+        url, err := resolveSeedURL(reference, cfg.BaseURL)
+        if err != nil {
+                return err
+        }
+
+        timeout := cfg.Timeout
+        if timeout <= 0 {
+                timeout = 30 * time.Second
+        }
+
+        reqCtx := ctx
+	if reqCtx == nil {
+		reqCtx = context.Background()
 	}
+	reqCtx, cancel := context.WithTimeout(reqCtx, timeout)
+	defer cancel()
 
-	if c.session != nil {
-		prev := c.session
-		c.session = nil
-		c.mu.Unlock()
-		c.terminateSession(ctx, prev, errSessionReplaced)
-		c.mu.Lock()
-	}
-
-	if payload.Application == nil {
-		return errors.New("missing application descriptor")
-	}
-
-	plan := resolveVirtualizationPlan(payload.Application, payload.Virtualization)
-	settings := resolveSettings(payload.Settings)
-
-	workspaceRoot := c.workspaceRoot
-	if strings.TrimSpace(workspaceRoot) == "" {
-		workspaceRoot = os.TempDir()
-	}
-	workspace, err := os.MkdirTemp(workspaceRoot, "tenvy-appvnc-")
+	req, err := http.NewRequestWithContext(reqCtx, http.MethodGet, url, nil)
 	if err != nil {
-		return fmt.Errorf("prepare workspace: %w", err)
+		return err
 	}
+        if ua := strings.TrimSpace(cfg.UserAgent); ua != "" {
+                req.Header.Set("User-Agent", ua)
+        }
+        if key := strings.TrimSpace(cfg.AuthKey); key != "" {
+                req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", key))
+        }
+        if agentID := strings.TrimSpace(cfg.AgentID); agentID != "" {
+                req.Header.Set("X-Tenvy-Agent-ID", agentID)
+        }
+        req.Header.Set("Accept", "application/zip")
 
-	cleanup := func() {
-		if removeErr := os.RemoveAll(workspace); removeErr != nil {
-			c.logf("app-vnc: failed to remove workspace %s: %v", workspace, removeErr)
-		}
-	}
-
-	if plan != nil {
-		if path := strings.TrimSpace(plan.ProfileSeed); path != "" {
-			target := filepath.Join(workspace, "profile")
-			if copyErr := clonePath(path, target); copyErr != nil {
-				c.logf("app-vnc: profile seed copy failed (%s -> %s): %v", path, target, copyErr)
-			} else {
-				c.logf("app-vnc: cloned profile seed %s", target)
-			}
-		}
-		if path := strings.TrimSpace(plan.DataRoot); path != "" {
-			target := filepath.Join(workspace, "data")
-			if copyErr := clonePath(path, target); copyErr != nil {
-				c.logf("app-vnc: data root copy failed (%s -> %s): %v", path, target, copyErr)
-			} else {
-				c.logf("app-vnc: cloned data root %s", target)
-			}
-		}
-	}
-
-	executable, err := selectExecutable(payload.Application, plan)
+	resp, err := client.Do(req)
 	if err != nil {
-		cleanup()
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 300 {
+		return fmt.Errorf("seed download failed: status %d", resp.StatusCode)
+	}
+
+	tempFile, err := os.CreateTemp(filepath.Dir(target), "tenvy-seed-*.zip")
+	if err != nil {
+		return err
+	}
+	tempName := tempFile.Name()
+	if _, err := io.Copy(tempFile, resp.Body); err != nil {
+		tempFile.Close()
+		os.Remove(tempName)
+		return err
+	}
+	if err := tempFile.Close(); err != nil {
+		os.Remove(tempName)
 		return err
 	}
 
-	expandedExecutable := expandExecutablePath(executable)
-	env := mergeEnvironment(plan)
-	cmd := exec.CommandContext(ctx, expandedExecutable) // #nosec G204 - path originates from static descriptor
-	cmd.Dir = workspace
-	if len(env) > 0 {
-		cmd.Env = env
-	}
+	defer os.Remove(tempName)
 
-	if err := cmd.Start(); err != nil {
-		cleanup()
-		return fmt.Errorf("launch %s: %w", expandedExecutable, err)
+	if err := extractZipArchive(tempName, target); err != nil {
+		return err
 	}
-
-	pid := 0
-	if cmd.Process != nil {
-		pid = cmd.Process.Pid
-	}
-	started := c.currentTime()
-	state := &sessionState{
-		id:          sessionID,
-		workspace:   workspace,
-		process:     cmd,
-		application: payload.Application,
-		plan:        plan,
-		settings:    settings,
-		startedAt:   started,
-		lastBeat:    started,
-		processID:   pid,
-	}
-	c.session = state
-	c.logf("app-vnc: session %s started (%s)", sessionID, expandedExecutable)
-	c.startCaptureLocked(state)
-	go c.awaitProcess(cmd, workspace)
 	return nil
 }
 
@@ -1070,6 +1207,79 @@ func copyFile(source, destination string, mode fs.FileMode) error {
 		return err
 	}
 	return out.Close()
+}
+
+func resolveSeedURL(reference, base string) (string, error) {
+	trimmed := strings.TrimSpace(reference)
+	if trimmed == "" {
+		return "", errors.New("empty seed reference")
+	}
+	if strings.HasPrefix(trimmed, "http://") || strings.HasPrefix(trimmed, "https://") {
+		return trimmed, nil
+	}
+	if strings.HasPrefix(trimmed, "/") {
+		trimmedBase := strings.TrimSpace(base)
+		if trimmedBase == "" {
+			return "", errors.New("missing base URL")
+		}
+		return strings.TrimRight(trimmedBase, "/") + trimmed, nil
+	}
+	return "", fmt.Errorf("unsupported seed reference: %s", reference)
+}
+
+func extractZipArchive(source, destination string) error {
+	reader, err := zip.OpenReader(source)
+	if err != nil {
+		return err
+	}
+	defer reader.Close()
+
+	if err := os.RemoveAll(destination); err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	if err := os.MkdirAll(destination, 0o755); err != nil {
+		return err
+	}
+
+	base := filepath.Clean(destination)
+	for _, file := range reader.File {
+		name := filepath.Clean(file.Name)
+		entryPath := filepath.Join(destination, name)
+		if !strings.HasPrefix(entryPath, base+string(os.PathSeparator)) && entryPath != base {
+			return fmt.Errorf("zip entry escapes destination: %s", file.Name)
+		}
+		if file.FileInfo().IsDir() {
+			if err := os.MkdirAll(entryPath, file.Mode().Perm()); err != nil {
+				return err
+			}
+			continue
+		}
+		if err := os.MkdirAll(filepath.Dir(entryPath), 0o755); err != nil {
+			return err
+		}
+		rc, err := file.Open()
+		if err != nil {
+			return err
+		}
+		out, err := os.OpenFile(entryPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, file.Mode().Perm())
+		if err != nil {
+			rc.Close()
+			return err
+		}
+		if _, err := io.Copy(out, rc); err != nil {
+			out.Close()
+			rc.Close()
+			return err
+		}
+		if err := out.Close(); err != nil {
+			rc.Close()
+			return err
+		}
+		if err := rc.Close(); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func currentPlatform() protocol.AppVncPlatform {

@@ -12,14 +12,14 @@
 	import { browser } from '$app/environment';
 	import type { Client } from '$lib/data/clients';
 	import ClientToolDialog from '$lib/components/client-tool-dialog.svelte';
-        import {
-                buildClientToolUrl,
-                getClientTool,
-                isDialogTool,
-                type ClientToolId,
-                type DialogToolId
-        } from '$lib/data/client-tools';
-        import { isWorkspaceTool } from '$lib/data/client-tool-workspaces';
+	import {
+		buildClientToolUrl,
+		getClientTool,
+		isDialogTool,
+		type ClientToolId,
+		type DialogToolId
+	} from '$lib/data/client-tools';
+	import { isWorkspaceTool } from '$lib/data/client-tool-workspaces';
 	import { createEventDispatcher } from 'svelte';
 	import { notifyToolActivationCommand } from '$lib/utils/agent-commands.js';
 	import type {
@@ -165,26 +165,26 @@
 			return;
 		}
 
-                if (browser) {
-                        notifyToolActivationCommand(client.id, toolId, {
-                                action: 'open',
-                                metadata: { surface: 'context-menu' }
-                        });
-                }
+		if (browser) {
+			notifyToolActivationCommand(client.id, toolId, {
+				action: 'open',
+				metadata: { surface: 'context-menu' }
+			});
+		}
 
-                if (isWorkspaceTool(toolId)) {
-                        dialogTool = null;
-                        const url = buildClientToolUrl(client.id, tool);
-                        if (browser) {
-                                goto(url as any);
-                        }
-                        return;
-                }
+		if (isWorkspaceTool(toolId)) {
+			dialogTool = null;
+			const url = buildClientToolUrl(client.id, tool);
+			if (browser) {
+				goto(url as any);
+			}
+			return;
+		}
 
-                if (target === 'dialog') {
-                        dialogTool = isDialogTool(toolId) ? toolId : (toolId as DialogToolId);
-                        return;
-                }
+		if (target === 'dialog') {
+			dialogTool = isDialogTool(toolId) ? toolId : (toolId as DialogToolId);
+			return;
+		}
 
 		dialogTool = null;
 
