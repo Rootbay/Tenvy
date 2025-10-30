@@ -1,5 +1,6 @@
 import type { RequestHandler } from './$types';
 import { registry } from '$lib/server/rat/store';
+import { requireViewer } from '$lib/server/authorization';
 import type { AgentRegistryEvent } from '../../../../../shared/types/registry-events';
 
 const encoder = new TextEncoder();
@@ -10,14 +11,16 @@ function formatEvent(event: AgentRegistryEvent): Uint8Array {
 	return encoder.encode(`data: ${payload}\n\n`);
 }
 
-export const GET: RequestHandler = () => {
-	let stop: (() => void) | null = null;
+export const GET: RequestHandler = ({ locals }) => {
+        const viewer = requireViewer(locals.user);
+        let stop: (() => void) | null = null;
 
-	const stream = new ReadableStream<Uint8Array>({
-		start(controller) {
-			let active = true;
-			let keepAlive: ReturnType<typeof setInterval> | null = null;
-			let unsubscribe: () => void = () => {};
+        const stream = new ReadableStream<Uint8Array>({
+                start(controller) {
+                        let active = true;
+                        let keepAlive: ReturnType<typeof setInterval> | null = null;
+                        let subscription: ReturnType<typeof registry.subscribeForAdmin> | null = null;
+                        let unsubscribe: () => void = () => {};
 
 			const shutdown = () => {
 				if (!active) {
@@ -49,13 +52,20 @@ export const GET: RequestHandler = () => {
 				}
 			};
 
-			unsubscribe = registry.subscribe((event) => {
-				safeEnqueue(formatEvent(event));
-			});
+                        subscription = registry.subscribeForAdmin(
+                                viewer.id,
+                                (event) => {
+                                        safeEnqueue(formatEvent(event));
+                                },
+                                { channel: 'sse' }
+                        );
 
-			safeEnqueue(
-				formatEvent({ type: 'agents', agents: registry.listAgents() } satisfies AgentRegistryEvent)
-			);
+                        unsubscribe = () => {
+                                subscription?.unsubscribe();
+                                subscription = null;
+                        };
+
+                        safeEnqueue(formatEvent({ type: 'agents', agents: subscription.snapshot } satisfies AgentRegistryEvent));
 
 			keepAlive = setInterval(() => {
 				if (!safeEnqueue(encoder.encode(':ping\n\n'))) {

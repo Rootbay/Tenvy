@@ -77,6 +77,14 @@ When running the server locally a development voucher is created automatically s
 
 ---
 
+## 🛰️ Multi-admin registry broadcast
+
+- The controller exposes a shared Server-Sent Events stream at `/api/agents/stream` that now fans out registry changes to every connected admin session. Subscriptions are persisted in the `registry_subscription` table so that new dashboards hydrate directly from the authoritative snapshot before replaying live updates.
+- Front-end stores subscribe through a shared event bus (`src/lib/stores/registry-events.ts`) which reconciles optimistic agent mutations as the server confirms them.
+- Automated coverage lives in `tenvy-server/tests/registry-broadcast.test.ts`; run it with `npm run test:unit -- --run tests/registry-broadcast.test.ts`.
+
+---
+
 ## 🧩 Plugin System
 
 Tenvy supports a unified plugin structure for both **server** and **client** sides.
