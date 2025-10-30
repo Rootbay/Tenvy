@@ -123,6 +123,129 @@ func TestSnapshotAllowsTrustedSignature(t *testing.T) {
 	}
 }
 
+func TestSnapshotHonorsRegistryApproval(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	pluginDir := filepath.Join(root, "approved")
+	artifactPath := filepath.Join(pluginDir, "plugin.bin")
+
+	payload := []byte("payload")
+	writeFile(t, artifactPath, payload)
+
+	hash := sha256SumHex(payload)
+	pub, priv, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatalf("generate key: %v", err)
+	}
+	signature := ed25519.Sign(priv, []byte(hash))
+
+	manifestJSON := fmt.Sprintf(`{
+                "id": "approved",
+                "name": "Approved",
+                "version": "1.0.0",
+                "entry": "plugin.bin",
+                "repositoryUrl": "https://github.com/rootbay/approved",
+                "license": { "spdxId": "MIT" },
+                "requirements": {},
+                "distribution": {
+                        "defaultMode": "manual",
+                        "autoUpdate": false,
+                        "signature": "ed25519",
+                        "signatureHash": "%s",
+                        "signatureSigner": "primary",
+                        "signatureValue": "%s"
+                },
+                "package": {"artifact": "plugin.bin", "hash": "%s"}
+        }`, hash, hex.EncodeToString(signature), hash)
+	writeFile(t, filepath.Join(pluginDir, "manifest.json"), []byte(manifestJSON))
+
+	opts := manifest.VerifyOptions{Ed25519PublicKeys: map[string]ed25519.PublicKey{"primary": pub}}
+	manager, err := plugins.NewManager(root, log.New(io.Discard, "", 0), opts)
+	if err != nil {
+		t.Fatalf("new manager: %v", err)
+	}
+
+	manager.UpdateRegistry(&manifest.ManifestList{
+		Version: "1",
+		Manifests: []manifest.ManifestDescriptor{{
+			PluginID:   "approved",
+			Version:    "1.0.0",
+			ApprovedAt: time.Now().UTC().Format(time.RFC3339),
+		}},
+	})
+
+	snapshot := manager.Snapshot()
+	if snapshot == nil || len(snapshot.Installations) != 1 {
+		t.Fatalf("expected one installation, got %#v", snapshot)
+	}
+	install := snapshot.Installations[0]
+	if install.Status != manifest.InstallInstalled {
+		t.Fatalf("expected approved plugin to be installed, got %s", install.Status)
+	}
+}
+
+func TestSnapshotBlocksUnapprovedRegistryPlugin(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	pluginDir := filepath.Join(root, "pending")
+	artifactPath := filepath.Join(pluginDir, "plugin.bin")
+	payload := []byte("payload")
+	writeFile(t, artifactPath, payload)
+
+	hash := sha256SumHex(payload)
+	pub, priv, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatalf("generate key: %v", err)
+	}
+	signature := ed25519.Sign(priv, []byte(hash))
+	manifestJSON := fmt.Sprintf(`{
+                "id": "pending",
+                "name": "Pending",
+                "version": "1.0.0",
+                "entry": "plugin.bin",
+                "repositoryUrl": "https://github.com/rootbay/pending",
+                "license": { "spdxId": "MIT" },
+                "requirements": {},
+                "distribution": {
+                        "defaultMode": "manual",
+                        "autoUpdate": false,
+                        "signature": "ed25519",
+                        "signatureHash": "%s",
+                        "signatureSigner": "primary",
+                        "signatureValue": "%s"
+                },
+                "package": {"artifact": "plugin.bin", "hash": "%s"}
+        }`, hash, hex.EncodeToString(signature), hash)
+	writeFile(t, filepath.Join(pluginDir, "manifest.json"), []byte(manifestJSON))
+
+	opts := manifest.VerifyOptions{Ed25519PublicKeys: map[string]ed25519.PublicKey{"primary": pub}}
+	manager, err := plugins.NewManager(root, log.New(io.Discard, "", 0), opts)
+	if err != nil {
+		t.Fatalf("new manager: %v", err)
+	}
+
+	manager.UpdateRegistry(&manifest.ManifestList{
+		Version: "1",
+		Manifests: []manifest.ManifestDescriptor{{
+			PluginID: "pending",
+			Version:  "1.0.0",
+			// ApprovedAt intentionally empty to simulate pending review.
+		}},
+	})
+
+	snapshot := manager.Snapshot()
+	if snapshot == nil || len(snapshot.Installations) != 1 {
+		t.Fatalf("expected one installation, got %#v", snapshot)
+	}
+	install := snapshot.Installations[0]
+	if install.Status != manifest.InstallBlocked {
+		t.Fatalf("expected pending plugin to be blocked, got %s", install.Status)
+	}
+	if install.Error == "" || !strings.Contains(install.Error, "awaiting approval") {
+		t.Fatalf("expected awaiting approval error, got %q", install.Error)
+	}
+}
+
 func TestSnapshotBlocksInvalidSignature(t *testing.T) {
 	t.Parallel()
 	root := t.TempDir()

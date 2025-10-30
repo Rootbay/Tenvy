@@ -24,11 +24,13 @@ const manifestFileName = "manifest.json"
 // Manager inspects local plugin artifacts and produces telemetry snapshots that
 // can be forwarded to the controller.
 type Manager struct {
-	root      string
-	logger    *log.Logger
-	verifyMu  sync.RWMutex
-	verifyOpt manifest.VerifyOptions
-	stageMu   sync.Mutex
+	root       string
+	logger     *log.Logger
+	verifyMu   sync.RWMutex
+	verifyOpt  manifest.VerifyOptions
+	stageMu    sync.Mutex
+	registryMu sync.RWMutex
+	registry   map[string]manifest.ManifestDescriptor
 }
 
 // NewManager creates a plugin manager rooted at the provided directory.
@@ -104,6 +106,45 @@ func (m *Manager) Snapshot() *manifest.SyncPayload {
 			Version:   mf.Version,
 			Status:    manifest.InstallInstalled,
 			Timestamp: &now,
+		}
+
+		if m.hasRegistry() {
+			if descriptor := m.registryDescriptor(mf.ID); descriptor != nil {
+				approvedVersion := strings.TrimSpace(descriptor.Version)
+				approvedAt := strings.TrimSpace(descriptor.ApprovedAt)
+				currentVersion := strings.TrimSpace(mf.Version)
+
+				switch {
+				case approvedVersion == "":
+					installation.Status = manifest.InstallBlocked
+					installation.Error = "registry: missing approved version"
+					installation.Timestamp = &now
+					payload.Installations = append(payload.Installations, installation)
+					continue
+				case !strings.EqualFold(approvedVersion, currentVersion):
+					installation.Status = manifest.InstallBlocked
+					installation.Error = fmt.Sprintf(
+						"registry: version %s not approved (expected %s)",
+						currentVersion,
+						approvedVersion,
+					)
+					installation.Timestamp = &now
+					payload.Installations = append(payload.Installations, installation)
+					continue
+				case approvedAt == "":
+					installation.Status = manifest.InstallBlocked
+					installation.Error = "registry: awaiting approval"
+					installation.Timestamp = &now
+					payload.Installations = append(payload.Installations, installation)
+					continue
+				}
+			} else {
+				installation.Status = manifest.InstallBlocked
+				installation.Error = "registry: plugin not approved"
+				installation.Timestamp = &now
+				payload.Installations = append(payload.Installations, installation)
+				continue
+			}
 		}
 
 		verificationResult, verifyErr := manifest.VerifySignature(mf, m.verificationOptions())
@@ -185,6 +226,66 @@ func (m *Manager) Snapshot() *manifest.SyncPayload {
 	}
 
 	return &payload
+}
+
+func (m *Manager) registryDescriptor(pluginID string) *manifest.ManifestDescriptor {
+	if m == nil {
+		return nil
+	}
+	normalized := strings.ToLower(strings.TrimSpace(pluginID))
+	if normalized == "" {
+		return nil
+	}
+	m.registryMu.RLock()
+	defer m.registryMu.RUnlock()
+	if len(m.registry) == 0 {
+		return nil
+	}
+	descriptor, ok := m.registry[normalized]
+	if !ok {
+		return nil
+	}
+	copy := descriptor
+	return &copy
+}
+
+func (m *Manager) hasRegistry() bool {
+	if m == nil {
+		return false
+	}
+	m.registryMu.RLock()
+	defer m.registryMu.RUnlock()
+	return len(m.registry) > 0
+}
+
+// UpdateRegistry caches the approved plugin descriptors from the controller registry feed.
+func (m *Manager) UpdateRegistry(list *manifest.ManifestList) {
+	if m == nil {
+		return
+	}
+	m.registryMu.Lock()
+	defer m.registryMu.Unlock()
+
+	if list == nil || len(list.Manifests) == 0 {
+		m.registry = nil
+		return
+	}
+
+	if m.registry == nil {
+		m.registry = make(map[string]manifest.ManifestDescriptor, len(list.Manifests))
+	} else {
+		for key := range m.registry {
+			delete(m.registry, key)
+		}
+	}
+
+	for _, descriptor := range list.Manifests {
+		id := strings.ToLower(strings.TrimSpace(descriptor.PluginID))
+		if id == "" {
+			continue
+		}
+		m.registry[id] = descriptor
+	}
 }
 
 // Root returns the plugin root directory managed by this instance.

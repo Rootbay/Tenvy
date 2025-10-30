@@ -8,6 +8,7 @@
 		formatSignatureTime,
 		signatureBadge
 	} from '$lib/components/plugins/utils.js';
+	import type { PluginManifest } from '../../../../../shared/types/plugin-manifest.js';
 	import { Badge } from '$lib/components/ui/badge/index.js';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import {
@@ -26,10 +27,12 @@
 		pluginCategoryLabels,
 		pluginStatusLabels,
 		pluginStatusStyles,
+		pluginApprovalLabels,
 		type Plugin,
 		type PluginCategory,
 		type PluginStatus,
-		type PluginUpdatePayload
+		type PluginUpdatePayload,
+		type PluginApprovalStatus
 	} from '$lib/data/plugin-view.js';
 	import type { MarketplaceEntitlement, MarketplaceListing } from '$lib/data/marketplace.js';
 	import type { AuthenticatedUser } from '$lib/components/plugins/types.js';
@@ -40,6 +43,22 @@
 	}: {
 		data: {
 			plugins: Plugin[];
+			registryEntries: {
+				id: string;
+				pluginId: string;
+				version: string;
+				approvalStatus: string;
+				publishedAt: string;
+				publishedBy: string | null;
+				approvedAt: string | null;
+				approvedBy: string | null;
+				approvalNote: string | null;
+				revokedAt: string | null;
+				revokedBy: string | null;
+				revocationReason: string | null;
+				manifest: PluginManifest;
+				metadata: Record<string, unknown> | null;
+			}[];
 			listings: MarketplaceListing[];
 			entitlements: MarketplaceEntitlement[];
 			user: AuthenticatedUser;
@@ -88,6 +107,10 @@
 	let marketplaceEntitlements = $state<MarketplaceEntitlement[]>(
 		data.entitlements.map((entitlement) => ({ ...entitlement }))
 	);
+	type RegistryEntry = (typeof data.registryEntries)[number];
+	let registryEntries = $state<RegistryEntry[]>(
+		data.registryEntries.map((entry) => ({ ...entry }))
+	);
 	const currentUser = $state<AuthenticatedUser>(data.user ?? null);
 	let searchTerm = $state('');
 	let statusFilter = $state<'all' | PluginStatus>('all');
@@ -116,6 +139,114 @@
 	function applyRegistryUpdate(next: Plugin[]) {
 		registry = next;
 		pluginSearchKeys = new Map(next.map((plugin) => [plugin.id, buildPluginSearchKey(plugin)]));
+	}
+
+	function patchPluginApproval(
+		pluginId: string,
+		status: PluginApprovalStatus,
+		approvedAt?: string | null
+	) {
+		const patched = registry.map((plugin) => {
+			if (plugin.id !== pluginId) {
+				return plugin;
+			}
+			const next: Plugin = { ...plugin, approvalStatus: status };
+			if (status === 'approved' && approvedAt) {
+				next.approvedAt = approvedAt;
+			} else {
+				delete (next as { approvedAt?: string }).approvedAt;
+			}
+			return next;
+		});
+		applyRegistryUpdate(patched);
+	}
+
+	function updateRegistryEntry(entryId: string, patch: Partial<RegistryEntry>) {
+		registryEntries = registryEntries.map((entry) =>
+			entry.id === entryId ? { ...entry, ...patch } : entry
+		);
+	}
+
+	async function approveRegistryEntry(entry: RegistryEntry) {
+		try {
+			const response = await fetch(`/api/plugins/registry/${entry.id}/approve`, {
+				method: 'POST',
+				headers: { 'content-type': 'application/json' },
+				body: JSON.stringify({})
+			});
+
+			if (!response.ok) {
+				const message = await response.text().catch(() => null);
+				throw new Error(message ?? 'Failed to approve plugin');
+			}
+
+			const payload = (await response.json()) as {
+				entry: {
+					approvalStatus: PluginApprovalStatus;
+					approvedAt: string | null;
+					approvalNote: string | null;
+				};
+			};
+
+			updateRegistryEntry(entry.id, {
+				approvalStatus: payload.entry.approvalStatus,
+				approvedAt: payload.entry.approvedAt,
+				approvalNote: payload.entry.approvalNote,
+				revokedAt: null,
+				revokedBy: null,
+				revocationReason: null
+			});
+			patchPluginApproval(entry.pluginId, payload.entry.approvalStatus, payload.entry.approvedAt);
+		} catch (err) {
+			console.error('Failed to approve registry entry', err);
+		}
+	}
+
+	async function revokeRegistryEntry(entry: RegistryEntry) {
+		try {
+			const response = await fetch(`/api/plugins/registry/${entry.id}/revoke`, {
+				method: 'POST',
+				headers: { 'content-type': 'application/json' },
+				body: JSON.stringify({})
+			});
+
+			if (!response.ok) {
+				const message = await response.text().catch(() => null);
+				throw new Error(message ?? 'Failed to revoke plugin');
+			}
+
+			const payload = (await response.json()) as {
+				entry: {
+					approvalStatus: PluginApprovalStatus;
+					revokedAt: string | null;
+					revocationReason: string | null;
+				};
+			};
+
+			updateRegistryEntry(entry.id, {
+				approvalStatus: payload.entry.approvalStatus,
+				revokedAt: payload.entry.revokedAt,
+				revocationReason: payload.entry.revocationReason
+			});
+			patchPluginApproval(entry.pluginId, payload.entry.approvalStatus, null);
+		} catch (err) {
+			console.error('Failed to revoke registry entry', err);
+		}
+	}
+
+	const approvalStyles: Record<PluginApprovalStatus, string> = {
+		approved: 'border-emerald-500/30 bg-emerald-500/10 text-emerald-500',
+		pending: 'border-amber-500/30 bg-amber-500/10 text-amber-500',
+		rejected: 'border-destructive/30 bg-destructive/10 text-destructive'
+	};
+
+	function formatTimestamp(value: string | null): string {
+		if (!value) return '—';
+		const date = new Date(value);
+		if (Number.isNaN(date.getTime())) {
+			return '—';
+		}
+		return date.toLocaleString();
 	}
 
 	async function updatePlugin(id: string, patch: PluginUpdatePayload) {
@@ -192,6 +323,7 @@
 	const canSubmitMarketplace = $derived(
 		currentUser?.role === 'admin' || currentUser?.role === 'developer'
 	);
+	const canManageRegistry = $derived(currentUser?.role === 'admin');
 
 	async function purchaseListing(listing: MarketplaceListing) {
 		if (!canPurchase) {
@@ -221,6 +353,109 @@
 </script>
 
 <section class="space-y-6">
+	<Card class="border-border/60">
+		<CardHeader class="space-y-2">
+			<div class="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
+				<div>
+					<CardTitle>Plugin registry</CardTitle>
+					<CardDescription>Track published manifests and manage approval state.</CardDescription>
+				</div>
+				{#if canManageRegistry}
+					<Badge variant="outline" class="px-2.5 py-1 text-xs font-medium">
+						Admin controls enabled
+					</Badge>
+				{/if}
+			</div>
+		</CardHeader>
+		<CardContent class="space-y-4">
+			{#if registryEntries.length === 0}
+				<p class="text-sm text-muted-foreground">
+					No plugins have been published to the registry yet.
+				</p>
+			{:else}
+				<div class="overflow-x-auto">
+					<table class="w-full text-sm">
+						<thead class="text-left text-xs text-muted-foreground uppercase">
+							<tr class="border-b border-border/60">
+								<th class="px-3 py-2 font-medium">Plugin</th>
+								<th class="px-3 py-2 font-medium">Version</th>
+								<th class="px-3 py-2 font-medium">Status</th>
+								<th class="px-3 py-2 font-medium">Published</th>
+								<th class="px-3 py-2 font-medium">Approved</th>
+								{#if canManageRegistry}
+									<th class="px-3 py-2 text-right font-medium">Actions</th>
+								{/if}
+							</tr>
+						</thead>
+						<tbody>
+							{#each registryEntries as entry (entry.id)}
+								<tr class="border-b border-border/40 last:border-b-0">
+									<td class="px-3 py-2 align-middle">
+										<div class="space-y-1">
+											<p class="font-medium text-foreground">
+												{entry.manifest.name}
+											</p>
+											<p class="text-xs text-muted-foreground">
+												{entry.manifest.description ?? 'No description provided'}
+											</p>
+										</div>
+									</td>
+									<td class="px-3 py-2 align-middle">
+										<code class="rounded bg-muted px-2 py-1 text-xs">
+											{entry.version}
+										</code>
+									</td>
+									<td class="px-3 py-2 align-middle">
+										<Badge
+											variant="outline"
+											class={cn(
+												'border text-xs font-medium',
+												approvalStyles[entry.approvalStatus as PluginApprovalStatus]
+											)}
+										>
+											{pluginApprovalLabels[entry.approvalStatus as PluginApprovalStatus] ??
+												entry.approvalStatus}
+										</Badge>
+									</td>
+									<td class="px-3 py-2 align-middle text-xs text-muted-foreground">
+										{formatTimestamp(entry.publishedAt)}
+									</td>
+									<td class="px-3 py-2 align-middle text-xs text-muted-foreground">
+										{formatTimestamp(entry.approvedAt)}
+									</td>
+									{#if canManageRegistry}
+										<td class="px-3 py-2 align-middle">
+											<div class="flex justify-end gap-2">
+												{#if entry.approvalStatus !== 'approved'}
+													<Button
+														type="button"
+														size="sm"
+														onclick={() => void approveRegistryEntry(entry)}
+													>
+														Approve
+													</Button>
+												{/if}
+												{#if entry.approvalStatus !== 'rejected'}
+													<Button
+														type="button"
+														size="sm"
+														variant="destructive"
+														onclick={() => void revokeRegistryEntry(entry)}
+													>
+														Revoke
+													</Button>
+												{/if}
+											</div>
+										</td>
+									{/if}
+								</tr>
+							{/each}
+						</tbody>
+					</table>
+				</div>
+			{/if}
+		</CardContent>
+	</Card>
 	<MarketplaceGrid
 		listings={marketplaceListings}
 		entitlements={marketplaceEntitlements}
