@@ -25,8 +25,8 @@ interface SeedManifestSchema {
 const MAX_SEED_ARCHIVE_SIZE = 512 * 1024 * 1024; // 512 MiB safety limit
 
 const seedDirectory = process.env.TENVY_APP_VNC_RESOURCE_DIR
-        ? resolve(process.env.TENVY_APP_VNC_RESOURCE_DIR)
-        : resolve(process.cwd(), 'resources/app-vnc');
+	? resolve(process.env.TENVY_APP_VNC_RESOURCE_DIR)
+	: resolve(process.cwd(), 'resources/app-vnc');
 
 const manifestPath = join(seedDirectory, 'manifest.json');
 
@@ -69,17 +69,17 @@ export async function listSeedBundles(appId?: string): Promise<AppVncSeedBundleM
 }
 
 function validateArchive(buffer: Buffer): void {
-        if (buffer.length < 4) {
-                throw new Error('Seed bundle too small');
-        }
-        if (buffer.length > MAX_SEED_ARCHIVE_SIZE) {
-                throw new Error('Seed bundle exceeds maximum size');
-        }
-        const signature = buffer.subarray(0, 4);
-        const ZIP_SIGNATURE = Buffer.from([0x50, 0x4b, 0x03, 0x04]);
-        if (!signature.equals(ZIP_SIGNATURE)) {
-                throw new Error('Seed bundle must be a ZIP archive');
-        }
+	if (buffer.length < 4) {
+		throw new Error('Seed bundle too small');
+	}
+	if (buffer.length > MAX_SEED_ARCHIVE_SIZE) {
+		throw new Error('Seed bundle exceeds maximum size');
+	}
+	const signature = buffer.subarray(0, 4);
+	const ZIP_SIGNATURE = Buffer.from([0x50, 0x4b, 0x03, 0x04]);
+	if (!signature.equals(ZIP_SIGNATURE)) {
+		throw new Error('Seed bundle must be a ZIP archive');
+	}
 }
 
 export async function registerSeedBundle(options: {
@@ -98,44 +98,44 @@ export async function registerSeedBundle(options: {
 	if (!platform) {
 		throw new Error('Missing target platform');
 	}
-        if (kind !== 'profile' && kind !== 'data') {
-                throw new Error('Invalid seed kind');
-        }
-        const buffer = options.buffer;
-        validateArchive(buffer);
-        await ensureSeedDirectory();
-        const manifest = await readManifest();
-        const id = randomUUID();
-        const fileName = `${id}.zip`;
-        const filePath = join(seedDirectory, fileName);
-        const sha256 = createHash('sha256').update(buffer).digest('hex');
-        const existing = manifest.bundles.find(
-                (bundle) => bundle.appId === appId && bundle.platform === platform && bundle.kind === kind
-        );
-        if (existing && existing.sha256 === sha256 && existing.size === buffer.length) {
-                return existing;
-        }
-        await writeFileAtomic(filePath, buffer);
-        const metadata: AppVncSeedBundleMetadata = {
-                id,
-                appId,
-                platform,
-                kind,
+	if (kind !== 'profile' && kind !== 'data') {
+		throw new Error('Invalid seed kind');
+	}
+	const buffer = options.buffer;
+	validateArchive(buffer);
+	await ensureSeedDirectory();
+	const manifest = await readManifest();
+	const id = randomUUID();
+	const fileName = `${id}.zip`;
+	const filePath = join(seedDirectory, fileName);
+	const sha256 = createHash('sha256').update(buffer).digest('hex');
+	const existing = manifest.bundles.find(
+		(bundle) => bundle.appId === appId && bundle.platform === platform && bundle.kind === kind
+	);
+	if (existing && existing.sha256 === sha256 && existing.size === buffer.length) {
+		return existing;
+	}
+	await writeFileAtomic(filePath, buffer);
+	const metadata: AppVncSeedBundleMetadata = {
+		id,
+		appId,
+		platform,
+		kind,
 		fileName,
 		originalName: options.originalName || fileName,
 		size: buffer.length,
 		sha256,
 		uploadedAt: new Date().toISOString()
 	};
-        manifest.bundles = manifest.bundles.filter(
-                (bundle) => !(bundle.appId === appId && bundle.platform === platform && bundle.kind === kind)
-        );
-        manifest.bundles.push(metadata);
-        await writeManifest(manifest);
-        if (existing && existing.fileName && existing.fileName !== fileName) {
-                await rm(join(seedDirectory, existing.fileName), { force: true });
-        }
-        return metadata;
+	manifest.bundles = manifest.bundles.filter(
+		(bundle) => !(bundle.appId === appId && bundle.platform === platform && bundle.kind === kind)
+	);
+	manifest.bundles.push(metadata);
+	await writeManifest(manifest);
+	if (existing && existing.fileName && existing.fileName !== fileName) {
+		await rm(join(seedDirectory, existing.fileName), { force: true });
+	}
+	return metadata;
 }
 
 export async function removeSeedBundle(id: string): Promise<void> {

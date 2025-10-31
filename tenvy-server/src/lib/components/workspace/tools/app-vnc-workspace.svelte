@@ -29,62 +29,62 @@
 
 	const { client } = $props<{ client: Client }>();
 
-        const applications = listAppVncApplications();
-        const qualityOptions: { value: AppVncSessionSettings['quality']; label: string }[] = [
-                { value: 'lossless', label: 'Lossless' },
-                { value: 'balanced', label: 'Balanced' },
-                { value: 'bandwidth', label: 'Bandwidth saver' }
-        ];
-        const platformLabels: Record<AppVncApplicationDescriptor['platforms'][number], string> = {
-                windows: 'Windows',
-                linux: 'Linux',
-                macos: 'macOS'
-        };
+	const applications = listAppVncApplications();
+	const qualityOptions: { value: AppVncSessionSettings['quality']; label: string }[] = [
+		{ value: 'lossless', label: 'Lossless' },
+		{ value: 'balanced', label: 'Balanced' },
+		{ value: 'bandwidth', label: 'Bandwidth saver' }
+	];
+	const platformLabels: Record<AppVncApplicationDescriptor['platforms'][number], string> = {
+		windows: 'Windows',
+		linux: 'Linux',
+		macos: 'macOS'
+	};
 
-        type SeedKind = 'profile' | 'data';
+	type SeedKind = 'profile' | 'data';
 
-        interface SeedBundle {
-                id: string;
-                appId: string;
-                platform: AppVncApplicationDescriptor['platforms'][number];
-                kind: SeedKind;
-                fileName: string;
-                originalName: string;
-                size: number;
-                sha256: string;
-                uploadedAt: string;
-        }
+	interface SeedBundle {
+		id: string;
+		appId: string;
+		platform: AppVncApplicationDescriptor['platforms'][number];
+		kind: SeedKind;
+		fileName: string;
+		originalName: string;
+		size: number;
+		sha256: string;
+		uploadedAt: string;
+	}
 
-        const seedKinds: ReadonlyArray<{
-                kind: SeedKind;
-                label: string;
-                description: string;
-        }> = [
-                {
-                        kind: 'profile',
-                        label: 'Profile seed',
-                        description: 'Pre-populated profile cloned before launch.'
-                },
-                {
-                        kind: 'data',
-                        label: 'Data seed',
-                        description: 'Optional data root materialized inside the workspace.'
-                }
-        ] as const;
+	const seedKinds: ReadonlyArray<{
+		kind: SeedKind;
+		label: string;
+		description: string;
+	}> = [
+		{
+			kind: 'profile',
+			label: 'Profile seed',
+			description: 'Pre-populated profile cloned before launch.'
+		},
+		{
+			kind: 'data',
+			label: 'Data seed',
+			description: 'Optional data root materialized inside the workspace.'
+		}
+	] as const;
 
-        let seedBundles = $state<SeedBundle[]>([]);
-        let seedLoading = $state(false);
-        let seedError = $state<string | null>(null);
-        let seedStatus = $state<string | null>(null);
-        let seedUploadFiles = $state<Record<string, File | null>>({});
-        let seedUploading = $state<Record<string, boolean>>({});
-        let seedDeleting = $state<string | null>(null);
-        let selectedSeedAppId = $state(applications[0]?.id ?? '');
+	let seedBundles = $state<SeedBundle[]>([]);
+	let seedLoading = $state(false);
+	let seedError = $state<string | null>(null);
+	let seedStatus = $state<string | null>(null);
+	let seedUploadFiles = $state<Record<string, File | null>>({});
+	let seedUploading = $state<Record<string, boolean>>({});
+	let seedDeleting = $state<string | null>(null);
+	let selectedSeedAppId = $state(applications[0]?.id ?? '');
 
-        const selectedSeedApplication = $derived<AppVncApplicationDescriptor | null>(() => {
-                const trimmed = selectedSeedAppId.trim();
-                return applications.find((app) => app.id === trimmed) ?? null;
-        });
+	const selectedSeedApplication = $derived<AppVncApplicationDescriptor | null>(() => {
+		const trimmed = selectedSeedAppId.trim();
+		return applications.find((app) => app.id === trimmed) ?? null;
+	});
 
 	const {
 		session,
@@ -117,176 +117,181 @@
 	let pointerActive = false;
 	let activePointerId: number | null = null;
 
-        const normalizedAppId = $derived(() => appId.trim());
-        const selectedApp = $derived<AppVncApplicationDescriptor | null>(() => {
-                const trimmed = normalizedAppId;
-                return applications.find((app) => app.id === trimmed) ?? null;
-        });
+	const normalizedAppId = $derived(() => appId.trim());
+	const selectedApp = $derived<AppVncApplicationDescriptor | null>(() => {
+		const trimmed = normalizedAppId;
+		return applications.find((app) => app.id === trimmed) ?? null;
+	});
 	const appSelectionLabel = $derived(() => {
 		if (selectedApp) {
 			return selectedApp.name;
 		}
-                return normalizedAppId ? `Custom · ${normalizedAppId}` : 'Manual selection';
-        });
+		return normalizedAppId ? `Custom · ${normalizedAppId}` : 'Manual selection';
+	});
 
-        function bundleKey(platform: AppVncApplicationDescriptor['platforms'][number], kind: SeedKind): string {
-                return `${platform}:${kind}`;
-        }
+	function bundleKey(
+		platform: AppVncApplicationDescriptor['platforms'][number],
+		kind: SeedKind
+	): string {
+		return `${platform}:${kind}`;
+	}
 
-        function seedBundleFor(
-                app: string,
-                platform: AppVncApplicationDescriptor['platforms'][number],
-                kind: SeedKind
-        ): SeedBundle | null {
-                return seedBundles.find(
-                        (bundle) => bundle.appId === app && bundle.platform === platform && bundle.kind === kind
-                ) ?? null;
-        }
+	function seedBundleFor(
+		app: string,
+		platform: AppVncApplicationDescriptor['platforms'][number],
+		kind: SeedKind
+	): SeedBundle | null {
+		return (
+			seedBundles.find(
+				(bundle) => bundle.appId === app && bundle.platform === platform && bundle.kind === kind
+			) ?? null
+		);
+	}
 
-        function currentSeedUpload(
-                platform: AppVncApplicationDescriptor['platforms'][number],
-                kind: SeedKind
-        ): File | null {
-                return seedUploadFiles[bundleKey(platform, kind)] ?? null;
-        }
+	function currentSeedUpload(
+		platform: AppVncApplicationDescriptor['platforms'][number],
+		kind: SeedKind
+	): File | null {
+		return seedUploadFiles[bundleKey(platform, kind)] ?? null;
+	}
 
-        function setSeedUpload(
-                platform: AppVncApplicationDescriptor['platforms'][number],
-                kind: SeedKind,
-                file: File | null
-        ) {
-                seedUploadFiles = { ...seedUploadFiles, [bundleKey(platform, kind)]: file };
-        }
+	function setSeedUpload(
+		platform: AppVncApplicationDescriptor['platforms'][number],
+		kind: SeedKind,
+		file: File | null
+	) {
+		seedUploadFiles = { ...seedUploadFiles, [bundleKey(platform, kind)]: file };
+	}
 
-        function seedUploadingKey(
-                platform: AppVncApplicationDescriptor['platforms'][number],
-                kind: SeedKind
-        ): boolean {
-                return Boolean(seedUploading[bundleKey(platform, kind)]);
-        }
+	function seedUploadingKey(
+		platform: AppVncApplicationDescriptor['platforms'][number],
+		kind: SeedKind
+	): boolean {
+		return Boolean(seedUploading[bundleKey(platform, kind)]);
+	}
 
-        function seedBundlesForPlatform(
-                app: string,
-                platform: AppVncApplicationDescriptor['platforms'][number]
-        ): Array<{ kind: SeedKind; label: string; description: string; bundle: SeedBundle | null }> {
-                return seedKinds.map((entry) => ({
-                        ...entry,
-                        bundle: seedBundleFor(app, platform, entry.kind)
-                }));
-        }
+	function seedBundlesForPlatform(
+		app: string,
+		platform: AppVncApplicationDescriptor['platforms'][number]
+	): Array<{ kind: SeedKind; label: string; description: string; bundle: SeedBundle | null }> {
+		return seedKinds.map((entry) => ({
+			...entry,
+			bundle: seedBundleFor(app, platform, entry.kind)
+		}));
+	}
 
-        async function loadSeedBundles() {
-                seedLoading = true;
-                seedError = null;
-                try {
-                        const response = await fetch('/api/app-vnc/seeds');
-                        if (!response.ok) {
-                                throw new Error(`Status ${response.status}`);
-                        }
-                        const body = (await response.json()) as { bundles?: SeedBundle[] };
-                        seedBundles = body.bundles ?? [];
-                } catch (err) {
-                        seedError = (err as Error).message ?? 'Failed to load seed bundles.';
-                } finally {
-                        seedLoading = false;
-                }
-        }
+	async function loadSeedBundles() {
+		seedLoading = true;
+		seedError = null;
+		try {
+			const response = await fetch('/api/app-vnc/seeds');
+			if (!response.ok) {
+				throw new Error(`Status ${response.status}`);
+			}
+			const body = (await response.json()) as { bundles?: SeedBundle[] };
+			seedBundles = body.bundles ?? [];
+		} catch (err) {
+			seedError = (err as Error).message ?? 'Failed to load seed bundles.';
+		} finally {
+			seedLoading = false;
+		}
+	}
 
-        async function uploadSeedBundle(
-                platform: AppVncApplicationDescriptor['platforms'][number],
-                kind: SeedKind
-        ) {
-                const app = selectedSeedAppId.trim();
-                if (!app) {
-                        seedError = 'Select an application before uploading a seed bundle.';
-                        return;
-                }
-                const file = currentSeedUpload(platform, kind);
-                if (!file) {
-                        seedError = 'Choose a ZIP bundle before uploading.';
-                        return;
-                }
-                const key = bundleKey(platform, kind);
-                seedUploading = { ...seedUploading, [key]: true };
-                seedError = null;
-                seedStatus = null;
-                try {
-                        const form = new FormData();
-                        form.append('appId', app);
-                        form.append('platform', platform);
-                        form.append('kind', kind);
-                        form.append('bundle', file);
-                        const response = await fetch('/api/app-vnc/seeds', {
-                                method: 'POST',
-                                body: form
-                        });
-                        if (!response.ok) {
-                                throw new Error(`Status ${response.status}`);
-                        }
-                        const body = (await response.json()) as { bundles?: SeedBundle[] };
-                        seedBundles = body.bundles ?? seedBundles;
-                        setSeedUpload(platform, kind, null);
-                        const kindLabel = seedKinds.find((entry) => entry.kind === kind)?.label ?? 'Seed';
-                        seedStatus = `${kindLabel} uploaded for ${platformLabels[platform] ?? platform}.`;
-                } catch (err) {
-                        seedError = (err as Error).message ?? 'Failed to upload seed bundle.';
-                } finally {
-                        seedUploading = { ...seedUploading, [key]: false };
-                }
-        }
+	async function uploadSeedBundle(
+		platform: AppVncApplicationDescriptor['platforms'][number],
+		kind: SeedKind
+	) {
+		const app = selectedSeedAppId.trim();
+		if (!app) {
+			seedError = 'Select an application before uploading a seed bundle.';
+			return;
+		}
+		const file = currentSeedUpload(platform, kind);
+		if (!file) {
+			seedError = 'Choose a ZIP bundle before uploading.';
+			return;
+		}
+		const key = bundleKey(platform, kind);
+		seedUploading = { ...seedUploading, [key]: true };
+		seedError = null;
+		seedStatus = null;
+		try {
+			const form = new FormData();
+			form.append('appId', app);
+			form.append('platform', platform);
+			form.append('kind', kind);
+			form.append('bundle', file);
+			const response = await fetch('/api/app-vnc/seeds', {
+				method: 'POST',
+				body: form
+			});
+			if (!response.ok) {
+				throw new Error(`Status ${response.status}`);
+			}
+			const body = (await response.json()) as { bundles?: SeedBundle[] };
+			seedBundles = body.bundles ?? seedBundles;
+			setSeedUpload(platform, kind, null);
+			const kindLabel = seedKinds.find((entry) => entry.kind === kind)?.label ?? 'Seed';
+			seedStatus = `${kindLabel} uploaded for ${platformLabels[platform] ?? platform}.`;
+		} catch (err) {
+			seedError = (err as Error).message ?? 'Failed to upload seed bundle.';
+		} finally {
+			seedUploading = { ...seedUploading, [key]: false };
+		}
+	}
 
-        async function deleteSeedBundle(bundle: SeedBundle) {
-                const { id, kind, platform } = bundle;
-                seedDeleting = id;
-                seedError = null;
-                seedStatus = null;
-                try {
-                        const response = await fetch(`/api/app-vnc/seeds/${id}`, { method: 'DELETE' });
-                        if (!response.ok) {
-                                throw new Error(`Status ${response.status}`);
-                        }
-                        await loadSeedBundles();
-                        const kindLabel = seedKinds.find((entry) => entry.kind === kind)?.label ?? 'Seed';
-                        seedStatus = `${kindLabel} removed for ${platformLabels[platform] ?? platform}.`;
-                } catch (err) {
-                        seedError = (err as Error).message ?? 'Failed to remove seed bundle.';
-                } finally {
-                        seedDeleting = null;
-                }
-        }
+	async function deleteSeedBundle(bundle: SeedBundle) {
+		const { id, kind, platform } = bundle;
+		seedDeleting = id;
+		seedError = null;
+		seedStatus = null;
+		try {
+			const response = await fetch(`/api/app-vnc/seeds/${id}`, { method: 'DELETE' });
+			if (!response.ok) {
+				throw new Error(`Status ${response.status}`);
+			}
+			await loadSeedBundles();
+			const kindLabel = seedKinds.find((entry) => entry.kind === kind)?.label ?? 'Seed';
+			seedStatus = `${kindLabel} removed for ${platformLabels[platform] ?? platform}.`;
+		} catch (err) {
+			seedError = (err as Error).message ?? 'Failed to remove seed bundle.';
+		} finally {
+			seedDeleting = null;
+		}
+	}
 
-        function handleSeedFileSelection(
-                platform: AppVncApplicationDescriptor['platforms'][number],
-                kind: SeedKind,
-                event: Event
-        ) {
-                const input = event.currentTarget as HTMLInputElement | null;
-                const file = input?.files?.[0] ?? null;
-                setSeedUpload(platform, kind, file);
-        }
+	function handleSeedFileSelection(
+		platform: AppVncApplicationDescriptor['platforms'][number],
+		kind: SeedKind,
+		event: Event
+	) {
+		const input = event.currentTarget as HTMLInputElement | null;
+		const file = input?.files?.[0] ?? null;
+		setSeedUpload(platform, kind, file);
+	}
 
-        function formatSeedSize(size?: number): string {
-                if (!size || size <= 0) {
-                        return '—';
-                }
-                const kb = size / 1024;
-                if (kb < 1024) {
-                        return `${kb >= 10 ? Math.round(kb) : Math.round(kb * 10) / 10} KB`;
-                }
-                const mb = kb / 1024;
-                return `${mb >= 10 ? Math.round(mb) : Math.round(mb * 10) / 10} MB`;
-        }
+	function formatSeedSize(size?: number): string {
+		if (!size || size <= 0) {
+			return '—';
+		}
+		const kb = size / 1024;
+		if (kb < 1024) {
+			return `${kb >= 10 ? Math.round(kb) : Math.round(kb * 10) / 10} KB`;
+		}
+		const mb = kb / 1024;
+		return `${mb >= 10 ? Math.round(mb) : Math.round(mb * 10) / 10} MB`;
+	}
 
-        function formatSeedTimestamp(value?: string): string {
-                if (!value) {
-                        return '—';
-                }
-                const date = new Date(value);
-                if (Number.isNaN(date.getTime())) {
-                        return value;
-                }
-                return date.toLocaleString();
-        }
+	function formatSeedTimestamp(value?: string): string {
+		if (!value) {
+			return '—';
+		}
+		const date = new Date(value);
+		if (Number.isNaN(date.getTime())) {
+			return value;
+		}
+		return date.toLocaleString();
+	}
 
 	function formatPlatforms(platforms?: AppVncApplicationDescriptor['platforms']): string {
 		if (!platforms || platforms.length === 0) {
@@ -473,30 +478,30 @@
 		} satisfies AppVncInputEvent);
 	}
 
-        $effect(() => {
-                const current = $session;
-                if (current && current.active) {
-                        quality = current.settings.quality;
-                        monitor = current.settings.monitor;
+	$effect(() => {
+		const current = $session;
+		if (current && current.active) {
+			quality = current.settings.quality;
+			monitor = current.settings.monitor;
 			captureCursor = current.settings.captureCursor;
 			clipboardSync = current.settings.clipboardSync;
 			blockLocalInput = current.settings.blockLocalInput;
 			heartbeatInterval = current.settings.heartbeatInterval;
 			appId = current.settings.appId?.trim() ?? '';
-                        windowTitle = current.settings.windowTitle?.trim() ?? '';
-                }
-        });
+			windowTitle = current.settings.windowTitle?.trim() ?? '';
+		}
+	});
 
-        $effect(() => {
-                if (!selectedSeedAppId && applications.length > 0) {
-                        selectedSeedAppId = applications[0].id;
-                }
-        });
+	$effect(() => {
+		if (!selectedSeedAppId && applications.length > 0) {
+			selectedSeedAppId = applications[0].id;
+		}
+	});
 
-        onMount(() => {
-                void refreshSession();
-                void loadSeedBundles();
-        });
+	onMount(() => {
+		void refreshSession();
+		void loadSeedBundles();
+	});
 
 	onDestroy(() => {
 		dispose();
@@ -691,136 +696,152 @@
 				<p class="text-sm text-emerald-500">{$infoMessage}</p>
 			{/if}
 		</CardContent>
-        </Card>
+	</Card>
 
-        <Card>
-                <CardHeader>
-                        <CardTitle class="text-base">Seed bundle management</CardTitle>
-                        <CardDescription>
-                                Upload per-application seed bundles. Stored bundles are served from
-                                <code class="rounded bg-muted px-1 py-0.5 text-xs">resources/app-vnc</code>.
-                        </CardDescription>
-                </CardHeader>
-                <CardContent class="space-y-6">
-                        <div class="grid gap-2 md:max-w-sm">
-                                <Label for="workspace-avnc-seed-app">Application</Label>
-                                <Select
-                                        type="single"
-                                        value={selectedSeedAppId}
-                                        onValueChange={(value) => (selectedSeedAppId = value)}
-                                >
-                                        <SelectTrigger id="workspace-avnc-seed-app" class="w-full">
-                                                <span class="truncate">
-                                                        {selectedSeedApplication
-                                                                ? selectedSeedApplication.name
-                                                                : selectedSeedAppId
-                                                                        ? selectedSeedAppId
-                                                                        : 'Select application'}
-                                                </span>
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                                {#each applications as application (application.id)}
-                                                        <SelectItem value={application.id}>
-                                                                <span class="flex flex-col gap-0.5">
-                                                                        <span class="font-medium">{application.name}</span>
-                                                                        <span class="text-xs text-muted-foreground">
-                                                                                {formatPlatforms(application.platforms)}
-                                                                        </span>
-                                                                </span>
-                                                        </SelectItem>
-                                                {/each}
-                                        </SelectContent>
-                                </Select>
-                                <p class="text-xs text-muted-foreground">
-                                        Bundles are delivered to agents on demand when launching the corresponding profile.
-                                </p>
-                        </div>
+	<Card>
+		<CardHeader>
+			<CardTitle class="text-base">Seed bundle management</CardTitle>
+			<CardDescription>
+				Upload per-application seed bundles. Stored bundles are served from
+				<code class="rounded bg-muted px-1 py-0.5 text-xs">resources/app-vnc</code>.
+			</CardDescription>
+		</CardHeader>
+		<CardContent class="space-y-6">
+			<div class="grid gap-2 md:max-w-sm">
+				<Label for="workspace-avnc-seed-app">Application</Label>
+				<Select
+					type="single"
+					value={selectedSeedAppId}
+					onValueChange={(value) => (selectedSeedAppId = value)}
+				>
+					<SelectTrigger id="workspace-avnc-seed-app" class="w-full">
+						<span class="truncate">
+							{selectedSeedApplication
+								? selectedSeedApplication.name
+								: selectedSeedAppId
+									? selectedSeedAppId
+									: 'Select application'}
+						</span>
+					</SelectTrigger>
+					<SelectContent>
+						{#each applications as application (application.id)}
+							<SelectItem value={application.id}>
+								<span class="flex flex-col gap-0.5">
+									<span class="font-medium">{application.name}</span>
+									<span class="text-xs text-muted-foreground">
+										{formatPlatforms(application.platforms)}
+									</span>
+								</span>
+							</SelectItem>
+						{/each}
+					</SelectContent>
+				</Select>
+				<p class="text-xs text-muted-foreground">
+					Bundles are delivered to agents on demand when launching the corresponding profile.
+				</p>
+			</div>
 
-                        <div class="flex flex-wrap gap-3">
-                                <Button type="button" variant="outline" size="sm" onclick={() => loadSeedBundles()} disabled={seedLoading}>
-                                        {seedLoading ? 'Refreshing…' : 'Refresh metadata'}
-                                </Button>
-                        </div>
+			<div class="flex flex-wrap gap-3">
+				<Button
+					type="button"
+					variant="outline"
+					size="sm"
+					onclick={() => loadSeedBundles()}
+					disabled={seedLoading}
+				>
+					{seedLoading ? 'Refreshing…' : 'Refresh metadata'}
+				</Button>
+			</div>
 
-                        {#if seedError}
-                                <p class="text-sm text-destructive">{seedError}</p>
-                        {/if}
-                        {#if seedStatus}
-                                <p class="text-sm text-emerald-500">{seedStatus}</p>
-                        {/if}
+			{#if seedError}
+				<p class="text-sm text-destructive">{seedError}</p>
+			{/if}
+			{#if seedStatus}
+				<p class="text-sm text-emerald-500">{seedStatus}</p>
+			{/if}
 
-                        {#if selectedSeedApplication}
-                                <div class="space-y-4">
-                                        {#each selectedSeedApplication.platforms as platform (platform)}
-                                                <div class="space-y-4 rounded-lg border border-border/60 p-4">
-                                                        <div class="flex items-center justify-between">
-                                                                <p class="text-sm font-medium text-foreground">
-                                                                        {platformLabels[platform] ?? platform}
-                                                                </p>
-                                                        </div>
-                                                        <div class="grid gap-4 md:grid-cols-2">
-                                                                {#each seedBundlesForPlatform(selectedSeedApplication.id, platform) as seedEntry (seedEntry.kind)}
-                                                                        <div class="space-y-3 rounded-lg border border-dashed border-border/60 bg-muted/20 p-3">
-                                                                                <div class="flex items-start justify-between gap-3">
-                                                                                        <div>
-                                                                                                <p class="text-sm font-medium text-foreground">{seedEntry.label}</p>
-                                                                                                <p class="text-xs text-muted-foreground">{seedEntry.description}</p>
-                                                                                        </div>
-                                                                                        {#if seedEntry.bundle}
-                                                                                                <Button
-                                                                                                        type="button"
-                                                                                                        variant="ghost"
-                                                                                                        size="sm"
-                                                                                                        class="text-destructive"
-                                                                                                        onclick={() => seedEntry.bundle && deleteSeedBundle(seedEntry.bundle)}
-                                                                                                        disabled={seedEntry.bundle ? seedDeleting === seedEntry.bundle.id : false}
-                                                                                                >
-                                                                                                        {seedEntry.bundle && seedDeleting === seedEntry.bundle.id ? 'Removing…' : 'Remove'}
-                                                                                                </Button>
-                                                                                        {/if}
-                                                                                </div>
-                                                                                <div class="rounded bg-background/80 p-2 text-xs text-muted-foreground">
-                                                                                        {#if seedEntry.bundle}
-                                                                                                <p>File: {seedEntry.bundle.originalName} ({formatSeedSize(seedEntry.bundle.size)})</p>
-                                                                                                <p>Uploaded: {formatSeedTimestamp(seedEntry.bundle.uploadedAt)}</p>
-                                                                                        {:else}
-                                                                                                <p>No bundle uploaded for this platform.</p>
-                                                                                        {/if}
-                                                                                </div>
-                                                                                <div class="space-y-2">
-                                                                                        <input
-                                                                                                class="block w-full rounded border border-border/60 bg-background px-3 py-2 text-sm"
-                                                                                                type="file"
-                                                                                                accept=".zip"
-                                                                                                bind:this={(element) => registerSeedInput(platform, seedEntry.kind, element)}
-                                                                                                on:change={(event) => handleSeedFileSelection(platform, seedEntry.kind, event)}
-                                                                                        />
-                                                                                        <Button
-                                                                                                type="button"
-                                                                                                size="sm"
-                                                                                                onclick={() => uploadSeedBundle(platform, seedEntry.kind)}
-                                                                                                disabled={!currentSeedUpload(platform, seedEntry.kind) || seedUploadingKey(platform, seedEntry.kind)}
-                                                                                        >
-                                                                                                {seedUploadingKey(platform, seedEntry.kind)
-                                                                                                        ? 'Uploading…'
-                                                                                                        : 'Upload bundle'}
-                                                                                        </Button>
-                                                                                </div>
-                                                                        </div>
-                                                                {/each}
-                                                        </div>
-                                                </div>
-                                        {/each}
-                                </div>
-                        {:else}
-                                <p class="text-sm text-muted-foreground">Select an application to manage seed bundles.</p>
-                        {/if}
-                </CardContent>
-        </Card>
+			{#if selectedSeedApplication}
+				<div class="space-y-4">
+					{#each selectedSeedApplication.platforms as platform (platform)}
+						<div class="space-y-4 rounded-lg border border-border/60 p-4">
+							<div class="flex items-center justify-between">
+								<p class="text-sm font-medium text-foreground">
+									{platformLabels[platform] ?? platform}
+								</p>
+							</div>
+							<div class="grid gap-4 md:grid-cols-2">
+								{#each seedBundlesForPlatform(selectedSeedApplication.id, platform) as seedEntry (seedEntry.kind)}
+									<div
+										class="space-y-3 rounded-lg border border-dashed border-border/60 bg-muted/20 p-3"
+									>
+										<div class="flex items-start justify-between gap-3">
+											<div>
+												<p class="text-sm font-medium text-foreground">{seedEntry.label}</p>
+												<p class="text-xs text-muted-foreground">{seedEntry.description}</p>
+											</div>
+											{#if seedEntry.bundle}
+												<Button
+													type="button"
+													variant="ghost"
+													size="sm"
+													class="text-destructive"
+													onclick={() => seedEntry.bundle && deleteSeedBundle(seedEntry.bundle)}
+													disabled={seedEntry.bundle ? seedDeleting === seedEntry.bundle.id : false}
+												>
+													{seedEntry.bundle && seedDeleting === seedEntry.bundle.id
+														? 'Removing…'
+														: 'Remove'}
+												</Button>
+											{/if}
+										</div>
+										<div class="rounded bg-background/80 p-2 text-xs text-muted-foreground">
+											{#if seedEntry.bundle}
+												<p>
+													File: {seedEntry.bundle.originalName} ({formatSeedSize(
+														seedEntry.bundle.size
+													)})
+												</p>
+												<p>Uploaded: {formatSeedTimestamp(seedEntry.bundle.uploadedAt)}</p>
+											{:else}
+												<p>No bundle uploaded for this platform.</p>
+											{/if}
+										</div>
+										<div class="space-y-2">
+											<input
+												class="block w-full rounded border border-border/60 bg-background px-3 py-2 text-sm"
+												type="file"
+												accept=".zip"
+												bind:this={element) => registerSeedInput(platform, seedEntry.kind, element)}
+												on:change={(event) =>
+													handleSeedFileSelection(platform, seedEntry.kind, event)}
+											/>
+											<Button
+												type="button"
+												size="sm"
+												onclick={() => uploadSeedBundle(platform, seedEntry.kind)}
+												disabled={!currentSeedUpload(platform, seedEntry.kind) ||
+													seedUploadingKey(platform, seedEntry.kind)}
+											>
+												{seedUploadingKey(platform, seedEntry.kind)
+													? 'Uploading…'
+													: 'Upload bundle'}
+											</Button>
+										</div>
+									</div>
+								{/each}
+							</div>
+						</div>
+					{/each}
+				</div>
+			{:else}
+				<p class="text-sm text-muted-foreground">Select an application to manage seed bundles.</p>
+			{/if}
+		</CardContent>
+	</Card>
 
-        <Card>
-                <CardHeader>
-                        <CardTitle class="text-base">Live application surface</CardTitle>
+	<Card>
+		<CardHeader>
+			<CardTitle class="text-base">Live application surface</CardTitle>
 			<CardDescription>
 				Engage with the remote workspace using covert application VNC transport.
 			</CardDescription>
