@@ -12,6 +12,7 @@ import ClipboardManagerWorkspace from '$lib/components/workspace/tools/clipboard
 import RecoveryWorkspace from '$lib/components/workspace/tools/recovery-workspace.svelte';
 import OptionsWorkspace from '$lib/components/workspace/tools/options-workspace.svelte';
 import ClientChatWorkspace from '$lib/components/workspace/tools/client-chat-workspace.svelte';
+import OpenUrlWorkspace from '$lib/components/workspace/tools/open-url-workspace.svelte';
 import TriggerMonitorWorkspace from '$lib/components/workspace/tools/trigger-monitor-workspace.svelte';
 import IpGeolocationWorkspace from '$lib/components/workspace/tools/ip-geolocation-workspace.svelte';
 import EnvironmentVariablesWorkspace from '$lib/components/workspace/tools/environment-variables-workspace.svelte';
@@ -27,8 +28,9 @@ export const workspaceComponentMap = {
 	'registry-manager': RegistryManagerWorkspace,
 	'clipboard-manager': ClipboardManagerWorkspace,
 	recovery: RecoveryWorkspace,
-	options: OptionsWorkspace,
-	'client-chat': ClientChatWorkspace,
+        options: OptionsWorkspace,
+        'open-url': OpenUrlWorkspace,
+        'client-chat': ClientChatWorkspace,
 	'trigger-monitor': TriggerMonitorWorkspace,
 	'ip-geolocation': IpGeolocationWorkspace,
 	'environment-variables': EnvironmentVariablesWorkspace
@@ -52,8 +54,9 @@ export const workspaceToolIds = [
 	'registry-manager',
 	'clipboard-manager',
 	'recovery',
-	'options',
-	'client-chat',
+        'options',
+        'open-url',
+        'client-chat',
 	'trigger-monitor',
 	'ip-geolocation',
 	'environment-variables'

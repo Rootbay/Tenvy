@@ -5,9 +5,15 @@ import { render } from 'vitest-browser-svelte';
 import type { Client } from '$lib/data/clients';
 import type { WorkspaceLogEntry } from '$lib/workspace/types';
 
+import ClientToolWorkspace from '$lib/components/workspace/client-tool-workspace.svelte';
+import { getClientTool } from '$lib/data/client-tools';
 import OpenUrlWorkspace from './open-url-workspace.svelte';
 
 const originalFetch = globalThis.fetch;
+
+vi.mock('$lib/utils/agent-commands.js', () => ({
+        notifyToolActivationCommand: vi.fn()
+}));
 
 const baseClient: Client = {
 	id: 'agent-321',
@@ -89,9 +95,9 @@ describe('open-url workspace', () => {
 		component.$destroy();
 	});
 
-	it('records a queued delivery when the command awaits the next agent poll', async () => {
-		const fetchMock = globalThis.fetch as unknown as ReturnType<typeof vi.fn>;
-		fetchMock.mockResolvedValue(
+        it('records a queued delivery when the command awaits the next agent poll', async () => {
+                const fetchMock = globalThis.fetch as unknown as ReturnType<typeof vi.fn>;
+                fetchMock.mockResolvedValue(
 			Promise.resolve({
 				ok: true,
 				json: vi.fn().mockResolvedValue({
@@ -134,6 +140,43 @@ describe('open-url workspace', () => {
 			})
 		);
 
-		component.$destroy();
-	});
+                component.$destroy();
+        });
+
+        it('renders the open-url workspace when loaded through ClientToolWorkspace', async () => {
+                const fetchMock = globalThis.fetch as unknown as ReturnType<typeof vi.fn>;
+                fetchMock.mockResolvedValue(
+                        Promise.resolve({
+                                ok: true,
+                                json: vi.fn().mockResolvedValue({
+                                        delivery: 'session',
+                                        command: {
+                                                id: 'cmd-open-url',
+                                                name: 'open-url',
+                                                payload: { url: 'https://example.com' },
+                                                createdAt: new Date().toISOString()
+                                        }
+                                })
+                        } as unknown as Response)
+                );
+
+                const tool = getClientTool('open-url');
+                const { component } = render(ClientToolWorkspace, {
+                        props: {
+                                client: baseClient,
+                                tool
+                        }
+                });
+
+                const urlField = page.getByLabelText('URL');
+                await expect.element(urlField).toBeInTheDocument();
+
+                const queueButton = page.getByRole('button', { name: 'Queue launch' });
+                await expect.element(queueButton).toBeInTheDocument();
+
+                const fallbackAlert = page.getByText('Workspace not implemented');
+                await expect.element(fallbackAlert).not.toBeInTheDocument();
+
+                component.$destroy();
+        });
 });
