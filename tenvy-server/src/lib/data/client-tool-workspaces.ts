@@ -6,6 +6,7 @@ import WebcamControlWorkspace from '$lib/components/workspace/tools/webcam-contr
 import AudioControlWorkspace from '$lib/components/workspace/tools/audio-control-workspace.svelte';
 import CmdWorkspace from '$lib/components/workspace/tools/cmd-workspace.svelte';
 import FileManagerWorkspace from '$lib/components/workspace/tools/file-manager-workspace.svelte';
+import SystemInfoWorkspace from '$lib/components/workspace/tools/system-info-workspace.svelte';
 import SystemMonitorWorkspace from '$lib/components/workspace/tools/system-monitor-workspace.svelte';
 import RegistryManagerWorkspace from '$lib/components/workspace/tools/registry-manager-workspace.svelte';
 import ClipboardManagerWorkspace from '$lib/components/workspace/tools/clipboard-manager-workspace.svelte';
@@ -18,13 +19,14 @@ import IpGeolocationWorkspace from '$lib/components/workspace/tools/ip-geolocati
 import EnvironmentVariablesWorkspace from '$lib/components/workspace/tools/environment-variables-workspace.svelte';
 
 export const workspaceComponentMap = {
-	'app-vnc': AppVncWorkspace,
-	'remote-desktop': RemoteDesktopWorkspace,
-	'webcam-control': WebcamControlWorkspace,
-	'audio-control': AudioControlWorkspace,
-	cmd: CmdWorkspace,
-	'file-manager': FileManagerWorkspace,
-	'system-monitor': SystemMonitorWorkspace,
+        'app-vnc': AppVncWorkspace,
+        'remote-desktop': RemoteDesktopWorkspace,
+        'webcam-control': WebcamControlWorkspace,
+        'audio-control': AudioControlWorkspace,
+        cmd: CmdWorkspace,
+        'file-manager': FileManagerWorkspace,
+        'system-info': SystemInfoWorkspace,
+        'system-monitor': SystemMonitorWorkspace,
 	'registry-manager': RegistryManagerWorkspace,
 	'clipboard-manager': ClipboardManagerWorkspace,
 	recovery: RecoveryWorkspace,
@@ -42,15 +44,16 @@ const keyloggerModesMap = {
 } as const satisfies Partial<Record<DialogToolId, 'standard' | 'offline'>>;
 
 export const workspaceToolIds = [
-	'app-vnc',
-	'remote-desktop',
-	'webcam-control',
-	'audio-control',
-	'keylogger-standard',
-	'keylogger-offline',
-	'cmd',
-	'file-manager',
-	'system-monitor',
+        'app-vnc',
+        'remote-desktop',
+        'webcam-control',
+        'audio-control',
+        'keylogger-standard',
+        'keylogger-offline',
+        'cmd',
+        'file-manager',
+        'system-info',
+        'system-monitor',
 	'registry-manager',
 	'clipboard-manager',
 	'recovery',
