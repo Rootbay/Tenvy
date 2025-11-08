@@ -73,36 +73,36 @@
 		inventory?.outputs.find((device) => device.id === selectedOutputId) ?? null;
 	const selectedTrack = () => uploads.find((track) => track.id === selectedTrackId) ?? null;
 
-        const mischiefMeter = $derived<string>(() => {
+        const mischiefMeter = $derived(() => {
                 const points = (uploads.length > 0 ? 1 : 0) + (chaosMode ? 2 : 0) + (rickrollInsurance ? 1 : 0);
                 if (points >= 3) {
                         return 'Maximum hijinks armed';
-		}
-		if (points === 2) {
-			return 'Chaotic neutral vibes';
-		}
-		if (points === 1) {
-			return 'Mischief warming up';
-		}
-		return 'Serious operator detected';
-	});
+                }
+                if (points === 2) {
+                        return 'Chaotic neutral vibes';
+                }
+                if (points === 1) {
+                        return 'Mischief warming up';
+                }
+                return 'Serious operator detected';
+        }) as unknown as string;
 
-	const heroMetadata = $derived([
-		{
-			label: 'Inputs discovered',
-			value: inventory ? inventory.inputs.length.toString() : pendingInventory ? 'Pending' : '0'
+        const heroMetadata = $derived([
+                {
+                        label: 'Inputs discovered',
+                        value: inventory ? inventory.inputs.length.toString() : pendingInventory ? 'Pending' : '0'
 		},
 		{
 			label: 'Session state',
 			value: session ? (session.active ? 'Active' : 'Stopped') : 'Idle',
 			hint: listening ? 'Streaming live microphone audio to the controller.' : undefined
 		},
-		{
-			label: 'Uploaded bops',
-			value: uploads.length ? uploads.length.toString() : '0',
-			hint: uploads.length ? mischiefMeter : undefined
-		}
-	]);
+                {
+                        label: 'Uploaded bops',
+                        value: uploads.length ? uploads.length.toString() : '0',
+                        hint: uploads.length ? mischiefMeter : undefined
+                }
+        ]) as unknown as { label: string; value: string; hint?: string }[];
 
 	let eventSource = $state<EventSource | null>(null);
 	let audioContext = $state<AudioContext | null>(null);

@@ -9,14 +9,14 @@
 			({ type: 'file'; files?: FileList } | { type?: InputType; files?: undefined })
 	>;
 
-	let {
-		ref = $bindable(null),
-		value = $bindable(),
-		type,
-		files = $bindable(),
-		class: className,
-		...restProps
-	}: Props = $props();
+        let {
+                ref = $bindable(null),
+                value = $bindable(),
+                type,
+                files = $bindable(),
+                class: className,
+                ...restProps
+        }: Props = $props<Props, HTMLInputAttributes['on']>();
 </script>
 
 {#if type === 'file'}

@@ -19,7 +19,7 @@ import IpGeolocationWorkspace from '$lib/components/workspace/tools/ip-geolocati
 import EnvironmentVariablesWorkspace from '$lib/components/workspace/tools/environment-variables-workspace.svelte';
 import NotesWorkspace from '$lib/components/workspace/tools/notes-workspace.svelte';
 
-export const workspaceComponentMap = {
+export const workspaceComponentMap: Partial<Record<DialogToolId, Component<any>>> = {
 	'app-vnc': AppVncWorkspace,
 	'remote-desktop': RemoteDesktopWorkspace,
 	'webcam-control': WebcamControlWorkspace,
@@ -38,12 +38,12 @@ export const workspaceComponentMap = {
 	'trigger-monitor': TriggerMonitorWorkspace,
 	'ip-geolocation': IpGeolocationWorkspace,
 	'environment-variables': EnvironmentVariablesWorkspace
-} satisfies Partial<Record<DialogToolId, Component<any>>>;
+};
 
-const keyloggerModesMap = {
-	'keylogger-standard': 'standard',
-	'keylogger-offline': 'offline'
-} as const satisfies Partial<Record<DialogToolId, 'standard' | 'offline'>>;
+const keyloggerModesMap: Partial<Record<DialogToolId, 'standard' | 'offline'>> = {
+        'keylogger-standard': 'standard',
+        'keylogger-offline': 'offline'
+};
 
 export const workspaceToolIds = [
 	'app-vnc',
@@ -76,10 +76,10 @@ export function isWorkspaceTool(id: ClientToolId): id is DialogToolId {
 	return workspaceToolSet.has(id as DialogToolId);
 }
 
-export function getWorkspaceComponent(id: DialogToolId) {
-	return workspaceComponentMap[id] ?? null;
+export function getWorkspaceComponent(id: DialogToolId): Component<any> | null {
+        return workspaceComponentMap[id] ?? null;
 }
 
-export function getKeyloggerMode(id: DialogToolId) {
-	return keyloggerModesMap[id] ?? null;
+export function getKeyloggerMode(id: DialogToolId): 'standard' | 'offline' | null {
+        return keyloggerModesMap[id] ?? null;
 }

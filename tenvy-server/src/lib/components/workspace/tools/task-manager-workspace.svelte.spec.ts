@@ -67,7 +67,10 @@ describe('task-manager workspace agent requests', () => {
 			} as unknown as Response)
 		);
 
-		const { component } = render(TaskManagerWorkspace, { props: { client: baseClient } });
+                const { component, unmount } = render(TaskManagerWorkspace, {
+                        target: document.body,
+                        props: { client: baseClient }
+                });
 
 		await new Promise((resolve) => setTimeout(resolve, 0));
 
@@ -77,7 +80,7 @@ describe('task-manager workspace agent requests', () => {
 
 		await expect.element(page.getByText('nginx')).toBeInTheDocument();
 
-		component.$destroy();
+                unmount();
 	});
 
 	it('surfaces errors returned by the agent task manager endpoint', async () => {
@@ -100,7 +103,10 @@ describe('task-manager workspace agent requests', () => {
 			} as unknown as Response)
 		);
 
-		const { component } = render(TaskManagerWorkspace, { props: { client: baseClient } });
+                const { component, unmount } = render(TaskManagerWorkspace, {
+                        target: document.body,
+                        props: { client: baseClient }
+                });
 
 		await new Promise((resolve) => setTimeout(resolve, 0));
 
@@ -113,6 +119,6 @@ describe('task-manager workspace agent requests', () => {
 			.element(page.getByText('Timed out waiting for agent response'))
 			.toBeInTheDocument();
 
-		component.$destroy();
+                unmount();
 	});
 });

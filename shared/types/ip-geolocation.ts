@@ -1,5 +1,16 @@
 import { z } from 'zod';
 
+const IPV4_PATTERN = /^(?:(?:25[0-5]|2[0-4]\d|1?\d?\d)\.){3}(?:25[0-5]|2[0-4]\d|1?\d?\d)$/;
+const IPV6_PATTERN =
+  /^((?:[0-9a-fA-F]{1,4}:){7}[0-9a-fA-F]{1,4}|(?:[0-9a-fA-F]{1,4}:){1,7}:|:(?::[0-9a-fA-F]{1,4}){1,7}|(?:[0-9a-fA-F]{1,4}:){1,6}:[0-9a-fA-F]{1,4}|(?:[0-9a-fA-F]{1,4}:){1,5}(?::[0-9a-fA-F]{1,4}){1,2}|(?:[0-9a-fA-F]{1,4}:){1,4}(?::[0-9a-fA-F]{1,4}){1,3}|(?:[0-9a-fA-F]{1,4}:){1,3}(?::[0-9a-fA-F]{1,4}){1,4}|(?:[0-9a-fA-F]{1,4}:){1,2}(?::[0-9a-fA-F]{1,4}){1,5}|[0-9a-fA-F]{1,4}:(?:(?::[0-9a-fA-F]{1,4}){1,6})|:(?:(?::[0-9a-fA-F]{1,4}){1,7}))$/;
+
+const ipAddressSchema = z
+  .string()
+  .min(3)
+  .refine((value) => IPV4_PATTERN.test(value) || IPV6_PATTERN.test(value), {
+    message: 'Invalid IP address',
+  });
+
 export const geoProviderSchema = z.enum(['ipinfo', 'maxmind', 'db-ip']);
 export type GeoProvider = z.infer<typeof geoProviderSchema>;
 
@@ -11,7 +22,7 @@ export const geoTimezoneSchema = z.object({
 export type GeoTimezone = z.infer<typeof geoTimezoneSchema>;
 
 export const geoLookupResultSchema = z.object({
-  ip: z.string().ip({ version: 'v4v6' }),
+  ip: ipAddressSchema,
   provider: geoProviderSchema,
   city: z.string().optional(),
   region: z.string().optional(),
@@ -42,7 +53,7 @@ export const geoCommandRequestSchema = z.discriminatedUnion('action', [
   }),
   z.object({
     action: z.literal('lookup'),
-    ip: z.string().ip({ version: 'v4v6' }),
+    ip: ipAddressSchema,
     provider: geoProviderSchema,
     includeTimezone: z.boolean().optional(),
     includeMap: z.boolean().optional(),

@@ -469,11 +469,11 @@
 		return (await response.json()) as FileManagerResource;
 	}
 
-	function applyFilePreview(resource: FileContent) {
-		filePreview = resource;
-		editorEncoding = resource.encoding;
-		editorContent = resource.encoding === 'utf-8' ? resource.content : '';
-	}
+        function applyFilePreview(resource: FileContent) {
+                filePreview = resource;
+                editorEncoding = resource.encoding ?? 'utf-8';
+                editorContent = resource.encoding === 'utf-8' ? resource.content : '';
+        }
 
 	function pushHistory(path: string) {
 		const trimmed = path.trim();
