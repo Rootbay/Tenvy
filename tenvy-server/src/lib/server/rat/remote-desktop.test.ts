@@ -206,13 +206,86 @@ describe('RemoteDesktopManager WebRTC negotiation', () => {
 			| undefined;
 		expect(historyEntry?.type).toBe('media');
 		expect(historyEntry?.media).toHaveLength(1);
-		expect(historyEntry?.media?.[0]?.codec).toBe('pcm');
-		broadcastSpy.mockRestore();
-	});
+                expect(historyEntry?.media?.[0]?.codec).toBe('pcm');
+                broadcastSpy.mockRestore();
+        });
 
-	it('rejects negotiation when plugin version mismatches', async () => {
-		const manager = await createManager();
-		const session = manager.createSession('agent-1');
+        it('throttles WebRTC diagnostics collection to the configured interval', async () => {
+                vi.useFakeTimers();
+                try {
+                        const manager = await createManager();
+                        const session = manager.createSession('agent-1');
+
+                        const request: RemoteDesktopSessionNegotiationRequest = {
+                                sessionId: session.sessionId,
+                                transports: [
+                                        {
+                                                transport: 'webrtc',
+                                                codecs: ['hevc'],
+                                                features: { intraRefresh: true, binaryFrames: true }
+                                        }
+                                ],
+                                codecs: ['hevc'],
+                                pluginVersion: requiredPluginVersion,
+                                webrtc: {
+                                        offer: Buffer.from('mock-offer', 'utf8').toString('base64'),
+                                        dataChannel: 'remote-desktop-frames'
+                                }
+                        };
+
+                        await manager.negotiateTransport('agent-1', request);
+                        const pipelineRecord = createdPipelines[0];
+                        const pipeline = pipelineRecord?.pipeline;
+                        if (!pipelineRecord || !pipeline) {
+                                throw new Error('Pipeline not created');
+                        }
+
+                        pipeline.diagnostics = {
+                                transport: 'webrtc',
+                                codec: 'hevc',
+                                currentBitrateKbps: 1,
+                                bandwidthEstimateKbps: 2,
+                                rttMs: 3
+                        } satisfies RemoteDesktopTransportDiagnostics;
+
+                        const baseFrame: RemoteDesktopFramePacket = {
+                                sessionId: session.sessionId,
+                                sequence: 1,
+                                timestamp: new Date().toISOString(),
+                                width: 1280,
+                                height: 720,
+                                keyFrame: true,
+                                encoding: 'jpeg',
+                                image: Buffer.from([1]).toString('base64')
+                        };
+
+                        const sendFrame = async (sequence: number) => {
+                                const frame = { ...baseFrame, sequence } satisfies RemoteDesktopFramePacket;
+                                pipelineRecord.options.onMessage?.(JSON.stringify(frame));
+                                await Promise.resolve();
+                        };
+
+                        await sendFrame(1);
+                        expect(pipeline.collectDiagnostics).toHaveBeenCalledTimes(1);
+
+                        await sendFrame(2);
+                        expect(pipeline.collectDiagnostics).toHaveBeenCalledTimes(1);
+
+                        vi.advanceTimersByTime(999);
+                        await sendFrame(3);
+                        expect(pipeline.collectDiagnostics).toHaveBeenCalledTimes(1);
+
+                        vi.advanceTimersByTime(2);
+                        await sendFrame(4);
+                        expect(pipeline.collectDiagnostics).toHaveBeenCalledTimes(2);
+                } finally {
+                        vi.useRealTimers();
+                }
+        });
+
+        it('rejects negotiation when plugin version mismatches', async () => {
+                const manager = await createManager();
+                const session = manager.createSession('agent-1');
 
 		const response = await manager.negotiateTransport('agent-1', {
 			sessionId: session.sessionId,
