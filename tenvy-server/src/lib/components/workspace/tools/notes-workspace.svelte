@@ -7,7 +7,7 @@
 	import { Button } from '$lib/components/ui/button/index.js';
 	import type { Client } from '$lib/data/clients';
 
-        const { client, class: className = '' } = $props<
+        const { client, class: className = '', secondary } = $props<
                 {
                         client: Client;
                         class?: string;
@@ -39,7 +39,7 @@
 		return value.map((tag) => `${tag ?? ''}`.trim()).filter((tag) => tag.length > 0);
 	}
 
-        function clearNoteFeedback(_: Event) {
+        function clearNoteFeedback() {
                 noteSaveError = null;
                 noteSaveSuccess = null;
         }
@@ -185,22 +185,22 @@
 	<div class="flex-1 space-y-6 overflow-auto px-6 py-5">
 		<div class="grid gap-2">
 			<Label for={notesFieldId}>Operational notes</Label>
-			<Textarea
-				id={notesFieldId}
-				class="min-h-32"
-				bind:value={noteText}
-				on:input={clearNoteFeedback}
-				placeholder={`Add context, requirements, or follow-up actions for ${client.codename}.`}
-			/>
+                        <Textarea
+                                id={notesFieldId}
+                                class="min-h-32"
+                                bind:value={noteText}
+                                on:input={() => clearNoteFeedback()}
+                                placeholder={`Add context, requirements, or follow-up actions for ${client.codename}.`}
+                        />
 		</div>
 		<div class="grid gap-2">
 			<Label for={`${notesFieldId}-tags`}>Quick tags</Label>
-			<Input
-				id={`${notesFieldId}-tags`}
-				bind:value={noteTagsInput}
-				on:input={clearNoteFeedback}
-				placeholder="intel priority staging"
-			/>
+                        <Input
+                                id={`${notesFieldId}-tags`}
+                                bind:value={noteTagsInput}
+                                on:input={() => clearNoteFeedback()}
+                                placeholder="intel priority staging"
+                        />
 		</div>
 		{#if noteSaveError}
 			<p class="text-sm text-destructive">{noteSaveError}</p>
@@ -208,9 +208,11 @@
 			<p class="text-sm text-emerald-600">{noteSaveSuccess}</p>
 		{/if}
 	</div>
-	<div class="flex items-center justify-end gap-2 border-t border-border/70 bg-muted/30 px-6 py-4">
-		<slot name="secondary" let:noteSavePending />
-		<Button type="submit" disabled={noteSavePending}>
+        <div class="flex items-center justify-end gap-2 border-t border-border/70 bg-muted/30 px-6 py-4">
+                {#if secondary}
+                        {@render secondary({ noteSavePending })}
+                {/if}
+                <Button type="submit" disabled={noteSavePending}>
 			{#if noteSavePending}
 				Saving…
 			{:else}

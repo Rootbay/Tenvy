@@ -81,10 +81,9 @@
 	let seedDeleting = $state<string | null>(null);
 	let selectedSeedAppId = $state(applications[0]?.id ?? '');
 
-	const selectedSeedApplication = $derived<AppVncApplicationDescriptor | null>(() => {
-		const trimmed = selectedSeedAppId.trim();
-		return applications.find((app) => app.id === trimmed) ?? null;
-	});
+        const selectedSeedApplication = $derived(
+                applications.find((app) => app.id === selectedSeedAppId.trim()) ?? null
+        );
 
 	const {
 		session,
@@ -117,17 +116,17 @@
 	let pointerActive = false;
 	let activePointerId: number | null = null;
 
-        const normalizedAppId = $derived<string>(() => appId.trim());
-	const selectedApp = $derived<AppVncApplicationDescriptor | null>(() => {
-		const trimmed = normalizedAppId;
-		return applications.find((app) => app.id === trimmed) ?? null;
-	});
-	const appSelectionLabel = $derived(() => {
-		if (selectedApp) {
-			return selectedApp.name;
-		}
-		return normalizedAppId ? `Custom · ${normalizedAppId}` : 'Manual selection';
-	});
+        const normalizedAppId = $derived(appId.trim());
+        const selectedApp = $derived(
+                applications.find((app) => app.id === normalizedAppId) ?? null
+        );
+        const appSelectionLabel = $derived(
+                selectedApp
+                        ? selectedApp.name
+                        : normalizedAppId
+                          ? `Custom · ${normalizedAppId}`
+                          : 'Manual selection'
+        );
 
 	function bundleKey(
 		platform: AppVncApplicationDescriptor['platforms'][number],

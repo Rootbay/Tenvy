@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { browser } from '$app/environment';
-	import { onMount } from 'svelte';
+        import { onMount } from 'svelte';
 	import { SvelteMap, SvelteSet } from 'svelte/reactivity';
 	import { Card, CardContent, CardFooter } from '$lib/components/ui/card/index.js';
 	import { Button } from '$lib/components/ui/button/index.js';
@@ -86,7 +86,7 @@
 	let encoder = $state<RemoteDesktopSettings['encoder']>('auto');
 	let transportPreference = $state<RemoteDesktopTransport>('webrtc');
 	let hardwarePreference = $state<RemoteDesktopHardwarePreference>('auto');
-	let targetBitrateKbps = $state<number | null>(null);
+        let targetBitrateKbps = $state<number | null>(null);
 	let mode = $state<RemoteDesktopSettings['mode']>('video');
 	let monitor = $state(0);
 	let mouseEnabled = $state(false);
@@ -105,13 +105,13 @@
 	let errorMessage = $state<string | null>(null);
 	let infoMessage = $state<string | null>(null);
 	let monitors = $state<RemoteDesktopMonitor[]>(fallbackMonitors);
-	let sessionActive = $state(false);
-	let sessionId = $state('');
-	let viewportEl: HTMLDivElement | null = null;
-	let webrtcVideoEl: HTMLVideoElement | null = null;
-	let viewportFocused = $state(false);
+        let sessionActive = $state(false);
+        let sessionId = $state('');
+        let viewportEl: HTMLDivElement | null = null;
+        let webrtcVideoEl: HTMLVideoElement | null = null;
+        let viewportFocused = $state(false);
 	let pointerCaptured = $state(false);
-	let activePointerId: number | null = null;
+        let activePointerId: number | null = null;
 	interface RemoteDesktopInputDispatchResponse {
 		accepted?: boolean;
 		delivered?: boolean;
@@ -1422,11 +1422,11 @@
 		}
 	}
 
-	async function updateSession(partial: RemoteDesktopSettingsPatch) {
-		if (!client || !session?.sessionId) return;
-		if (Object.keys(partial).length === 0) {
-			return;
-		}
+        async function updateSession(partial: RemoteDesktopSettingsPatch) {
+                if (!client || !session?.sessionId) return;
+                if (Object.keys(partial).length === 0) {
+                        return;
+                }
 		isUpdating = true;
 		try {
 			const response = await fetch(`/api/agents/${client.id}/remote-desktop/session`, {
@@ -1443,16 +1443,33 @@
 		} catch (err) {
 			errorMessage =
 				err instanceof Error ? err.message : 'Failed to update remote desktop settings';
-		} finally {
-			isUpdating = false;
-		}
-	}
+                } finally {
+                        isUpdating = false;
+                }
+        }
 
-	function queueInput(event: RemoteDesktopInputEvent) {
-		if (!browser || !sessionActive || !sessionId || !client || !inputChannel) {
-			return;
-		}
-		inputChannel.enqueue(event);
+        function handleBitrateInput(event: Event) {
+                const element = event.currentTarget as HTMLInputElement;
+                const parsed = Number.parseInt(element.value, 10);
+                if (Number.isNaN(parsed) || parsed <= 0) {
+                        targetBitrateKbps = null;
+                        element.value = '';
+                        if (sessionActive) {
+                                void updateSession({ targetBitrateKbps: 0 });
+                        }
+                        return;
+                }
+                targetBitrateKbps = parsed;
+                if (sessionActive) {
+                        void updateSession({ targetBitrateKbps: parsed });
+                }
+        }
+
+        function queueInput(event: RemoteDesktopInputEvent) {
+                if (!browser || !sessionActive || !sessionId || !client || !inputChannel) {
+                        return;
+                }
+                inputChannel.enqueue(event);
 	}
 
 	function queueInputBatch(events: RemoteDesktopInputEvent[]) {
@@ -2100,31 +2117,16 @@
 			</div>
 			<div class="w-56">
 				<Label class="text-sm font-medium" for="bitrate-input">Target bitrate (kbps)</Label>
-				<Input
-					id="bitrate-input"
-					type="number"
-					min="0"
-					step="100"
-					placeholder="Auto"
-					value={targetBitrateKbps ?? ''}
-					disabled={!sessionActive || isUpdating}
-                                        on:input={(event) => {
-                                                const element = event.currentTarget as HTMLInputElement;
-                                                const parsed = Number.parseInt(element.value, 10);
-                                                if (Number.isNaN(parsed) || parsed <= 0) {
-                                                        targetBitrateKbps = null;
-							element.value = '';
-							if (sessionActive) {
-								void updateSession({ targetBitrateKbps: 0 });
-							}
-							return;
-						}
-						targetBitrateKbps = parsed;
-						if (sessionActive) {
-							void updateSession({ targetBitrateKbps: parsed });
-						}
-					}}
-				/>
+                                <Input
+                                        id="bitrate-input"
+                                        type="number"
+                                        min="0"
+                                        step="100"
+                                        placeholder="Auto"
+                                        value={targetBitrateKbps ?? ''}
+                                        disabled={!sessionActive || isUpdating}
+                                        on:input={handleBitrateInput}
+                                />
 			</div>
 			<div class="flex items-center gap-2">
 				<p class="text-sm font-medium">Mouse control</p>
