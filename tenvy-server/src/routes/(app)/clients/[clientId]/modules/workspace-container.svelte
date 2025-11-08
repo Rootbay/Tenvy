@@ -178,28 +178,24 @@
 						{/key}
 					</CardContent>
 				</Card>
+			{:else if empty}
+				{@render empty()}
 			{:else}
-				{#if empty}
-					{@render empty()}
-				{:else}
-					<Card class="border-dashed">
-						<CardHeader>
-							<CardTitle>Select a module</CardTitle>
-							<CardDescription>
-								Choose a capability to launch its dedicated workspace for {client.codename}.
-							</CardDescription>
-						</CardHeader>
-						<CardContent class="space-y-3 text-sm text-muted-foreground">
-							<p>
-								Workspaces preserve each tool&rsquo;s state while you evaluate remote workflows.
-							</p>
-							<p>
-								Use the navigation panel to switch between modules or close the workspace when
-								you&rsquo;re done.
-							</p>
-						</CardContent>
-					</Card>
-				{/if}
+				<Card class="border-dashed">
+					<CardHeader>
+						<CardTitle>Select a module</CardTitle>
+						<CardDescription>
+							Choose a capability to launch its dedicated workspace for {client.codename}.
+						</CardDescription>
+					</CardHeader>
+					<CardContent class="space-y-3 text-sm text-muted-foreground">
+						<p>Workspaces preserve each tool&rsquo;s state while you evaluate remote workflows.</p>
+						<p>
+							Use the navigation panel to switch between modules or close the workspace when
+							you&rsquo;re done.
+						</p>
+					</CardContent>
+				</Card>
 			{/if}
 		</div>
 	</div>

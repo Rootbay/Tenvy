@@ -37,28 +37,28 @@ function formatLastSeen(value: string): string {
 }
 
 function mapAgentToClient(agent: AgentSnapshot): Client {
-        const hostname = agent.metadata.hostname || agent.id;
-        const tags = agent.metadata.tags ?? [];
-        const operatorNote = agent.operatorNote;
+	const hostname = agent.metadata.hostname || agent.id;
+	const tags = agent.metadata.tags ?? [];
+	const operatorNote = agent.operatorNote;
 
-        return {
-                id: agent.id,
-                codename: hostname.toUpperCase(),
-                hostname,
+	return {
+		id: agent.id,
+		codename: hostname.toUpperCase(),
+		hostname,
 		ip: agent.metadata.publicIpAddress ?? agent.metadata.ipAddress ?? 'Unknown',
 		location: 'Unknown',
 		os: agent.metadata.os,
 		platform: inferClientPlatform(agent.metadata.os),
-                version: agent.metadata.version ?? 'Unknown',
-                status: mapAgentStatus(agent.status),
-                lastSeen: formatLastSeen(agent.lastSeen),
-                tags,
-                risk: determineClientRisk(agent.status),
-                notes: operatorNote?.note ?? '',
-                noteTags: operatorNote?.tags ?? [],
-                noteUpdatedAt: operatorNote?.updatedAt ?? null,
-                noteUpdatedBy: operatorNote?.updatedBy ?? null
-        } satisfies Client;
+		version: agent.metadata.version ?? 'Unknown',
+		status: mapAgentStatus(agent.status),
+		lastSeen: formatLastSeen(agent.lastSeen),
+		tags,
+		risk: determineClientRisk(agent.status),
+		notes: operatorNote?.note ?? '',
+		noteTags: operatorNote?.tags ?? [],
+		noteUpdatedAt: operatorNote?.updatedAt ?? null,
+		noteUpdatedBy: operatorNote?.updatedBy ?? null
+	} satisfies Client;
 }
 
 export const load = (async ({ params, fetch }) => {
