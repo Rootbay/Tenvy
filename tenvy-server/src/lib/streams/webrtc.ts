@@ -1,11 +1,14 @@
 import { decode as decodeMsgpack } from '@msgpack/msgpack';
 import type {
-	RemoteDesktopEncoder,
-	RemoteDesktopFramePacket,
-	RemoteDesktopMediaSample,
-	RemoteDesktopTransport,
-	RemoteDesktopTransportDiagnostics,
-	RemoteDesktopWebRTCICEServer
+        RemoteDesktopDeltaRect,
+        RemoteDesktopEncoder,
+        RemoteDesktopFramePacket,
+        RemoteDesktopMediaSample,
+        RemoteDesktopTransport,
+        RemoteDesktopTransportDiagnostics,
+        RemoteDesktopVideoClip,
+        RemoteDesktopVideoFrame,
+        RemoteDesktopWebRTCICEServer
 } from '$lib/types/remote-desktop';
 
 type DataHandler = (
@@ -265,11 +268,11 @@ function normalizeDecodedPayload(
 }
 
 function normalizeFramePacket(value: Record<string, unknown>): RemoteDesktopFramePacket | null {
-	const sessionId = value.sessionId;
-	const width = value.width;
-	const height = value.height;
-	const encoding = value.encoding;
-	const timestamp = value.timestamp;
+        const sessionId = value.sessionId;
+        const width = value.width;
+        const height = value.height;
+        const encoding = value.encoding;
+        const timestamp = value.timestamp;
 	if (
 		typeof sessionId !== 'string' ||
 		typeof width !== 'number' ||
@@ -280,9 +283,8 @@ function normalizeFramePacket(value: Record<string, unknown>): RemoteDesktopFram
 		return null;
 	}
 
-	const frame: RemoteDesktopFramePacket = {
-		...(value as RemoteDesktopFramePacket)
-	};
+        const candidate = value as RemoteDesktopFramePacket;
+        const frame: RemoteDesktopFramePacket = { ...candidate };
 
 	const image = toBase64String(value.image);
 	if (image === null) {
@@ -293,12 +295,12 @@ function normalizeFramePacket(value: Record<string, unknown>): RemoteDesktopFram
 	}
 
 	if (Array.isArray(value.deltas)) {
-		const deltas: RemoteDesktopFramePacket['deltas'] = [];
-		for (const entry of value.deltas as unknown[]) {
-			if (!entry || typeof entry !== 'object') {
-				return null;
-			}
-			const rect = { ...(entry as RemoteDesktopFramePacket['deltas'][number]) };
+                const deltas: RemoteDesktopFramePacket['deltas'] = [];
+                for (const entry of value.deltas as unknown[]) {
+                        if (!entry || typeof entry !== 'object') {
+                                return null;
+                        }
+                        const rect = { ...(entry as RemoteDesktopDeltaRect) };
 			const data = toBase64String((entry as { data?: unknown }).data);
 			if (data === null || data === undefined) {
 				return null;
@@ -311,15 +313,13 @@ function normalizeFramePacket(value: Record<string, unknown>): RemoteDesktopFram
 
 	if (value.clip && typeof value.clip === 'object') {
 		const clipSource = value.clip as { durationMs?: unknown; frames?: unknown };
-		const framesSource = Array.isArray(clipSource.frames) ? clipSource.frames : [];
-		const frames: RemoteDesktopFramePacket['clip']['frames'] = [];
-		for (const entry of framesSource) {
-			if (!entry || typeof entry !== 'object') {
-				return null;
-			}
-			const clipFrame = {
-				...(entry as RemoteDesktopFramePacket['clip']['frames'][number])
-			};
+                const framesSource = Array.isArray(clipSource.frames) ? clipSource.frames : [];
+                const frames: RemoteDesktopVideoClip['frames'] = [];
+                for (const entry of framesSource) {
+                        if (!entry || typeof entry !== 'object') {
+                                return null;
+                        }
+                        const clipFrame = { ...(entry as RemoteDesktopVideoFrame) };
 			const data = toBase64String((entry as { data?: unknown }).data);
 			if (data === null || data === undefined) {
 				return null;
@@ -327,14 +327,14 @@ function normalizeFramePacket(value: Record<string, unknown>): RemoteDesktopFram
 			clipFrame.data = data;
 			frames.push(clipFrame);
 		}
-		frame.clip = {
-			durationMs:
-				typeof clipSource.durationMs === 'number'
-					? clipSource.durationMs
-					: (frame.clip?.durationMs ?? 0),
-			frames
-		};
-	}
+                frame.clip = {
+                        durationMs:
+                                typeof clipSource.durationMs === 'number' && Number.isFinite(clipSource.durationMs)
+                                        ? clipSource.durationMs
+                                        : 0,
+                        frames
+                } satisfies RemoteDesktopVideoClip;
+        }
 
 	if (Array.isArray(value.media)) {
 		const media = normalizeMediaSamples(value.media);
@@ -393,43 +393,72 @@ function toBase64String(value: unknown): string | undefined | null {
 }
 
 function normalizeIceServers(
-	servers: RemoteDesktopWebRTCICEServer[]
+        servers?: readonly (RemoteDesktopWebRTCICEServer | Record<string, unknown>)[] | null
 ): RemoteDesktopWebRTCICEServer[] {
-	const normalized: RemoteDesktopWebRTCICEServer[] = [];
-	for (const server of servers) {
-		if (!server) continue;
-		const urls = Array.isArray(server.urls)
-			? server.urls
-			: typeof (server as { urls?: unknown }).urls === 'string'
-				? [(server as { urls: string }).urls]
-				: [];
-		const cleaned = urls.map((url) => url.trim()).filter((url) => url.length > 0);
-		if (cleaned.length === 0) {
-			continue;
-		}
-		const entry: RemoteDesktopWebRTCICEServer = { urls: cleaned };
-		if (server.username) {
-			entry.username = server.username;
-		}
-		if (server.credential) {
-			entry.credential = server.credential;
-		}
-		if (server.credentialType) {
-			entry.credentialType = server.credentialType;
-		}
-		normalized.push(entry);
-	}
-	return normalized;
+        if (!servers || servers.length === 0) {
+                return [];
+        }
+
+        const normalized: RemoteDesktopWebRTCICEServer[] = [];
+        for (const server of servers) {
+                if (!server) continue;
+
+                const urlSource = (server as { urls?: unknown }).urls;
+                const urls = Array.isArray(urlSource)
+                        ? urlSource
+                        : typeof urlSource === 'string'
+                                ? [urlSource]
+                                : [];
+                const cleaned = urls
+                        .map((url) => (typeof url === 'string' ? url.trim() : ''))
+                        .filter((url) => url.length > 0);
+
+                if (cleaned.length === 0) {
+                        continue;
+                }
+
+                const entry: RemoteDesktopWebRTCICEServer = { urls: [...cleaned] };
+
+                const username = (server as { username?: unknown }).username;
+                if (typeof username === 'string' && username.trim() !== '') {
+                        entry.username = username.trim();
+                }
+
+                const credential = (server as { credential?: unknown }).credential;
+                if (typeof credential === 'string' && credential.trim() !== '') {
+                        entry.credential = credential.trim();
+                }
+
+                const credentialType = (server as { credentialType?: unknown }).credentialType;
+                if (typeof credentialType === 'string') {
+                        const normalizedType = credentialType.trim().toLowerCase();
+                        if (normalizedType === 'oauth') {
+                                entry.credentialType = 'oauth';
+                        } else if (normalizedType === 'password' || entry.credential) {
+                                if (entry.credential) {
+                                        entry.credentialType = 'password';
+                                }
+                        }
+                } else if (entry.credential) {
+                        entry.credentialType = 'password';
+                }
+
+                normalized.push(entry);
+        }
+
+        return normalized;
 }
 
 function toRtcIceServers(servers: RemoteDesktopWebRTCICEServer[]): RTCIceServer[] {
-	return servers.map((server) => {
-		const entry: RTCIceServer = { urls: [...server.urls] };
-		if (server.username) {
-			entry.username = server.username;
-		}
-		if (server.credential) {
-			entry.credential = server.credential;
+        return servers.map((server) => {
+                const entry: RTCIceServer & { credentialType?: 'oauth' | 'password' } = {
+                        urls: [...server.urls]
+                };
+                if (server.username) {
+                        entry.username = server.username;
+                }
+                if (server.credential) {
+                        entry.credential = server.credential;
 		}
 		if (server.credentialType === 'oauth') {
 			entry.credentialType = 'oauth';

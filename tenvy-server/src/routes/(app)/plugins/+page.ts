@@ -1,7 +1,7 @@
 import { error } from '@sveltejs/kit';
 import type { PageLoad } from './$types';
 import type { Plugin } from '$lib/data/plugin-view.js';
-import type { PluginManifest } from '../../../../../shared/types/plugin-manifest.js';
+import type { PluginManifest } from '../../../../../shared/types/plugin-manifest';
 import type {
 	MarketplaceEntitlementsResponse,
 	MarketplaceListingsResponse

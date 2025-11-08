@@ -240,13 +240,14 @@ describe('RemoteDesktopManager WebRTC negotiation', () => {
 				throw new Error('Pipeline not created');
 			}
 
-			pipeline.diagnostics = {
-				transport: 'webrtc',
-				codec: 'hevc',
-				currentBitrateKbps: 1,
-				bandwidthEstimateKbps: 2,
-				rttMs: 3
-			} satisfies RemoteDesktopTransportDiagnostics;
+                        pipeline.diagnostics = {
+                                transport: 'webrtc',
+                                codec: 'hevc',
+                                currentBitrateKbps: 1,
+                                bandwidthEstimateKbps: 2,
+                                rttMs: 3,
+                                lastUpdatedAt: new Date().toISOString()
+                        } satisfies RemoteDesktopTransportDiagnostics;
 
 			const baseFrame: RemoteDesktopFramePacket = {
 				sessionId: session.sessionId,
@@ -334,44 +335,49 @@ describe('RemoteDesktopManager WebRTC negotiation', () => {
 			height: 600,
 			keyFrame: true,
 			encoding: 'clip',
-			clip: {
-				durationMs: 33,
-				frames: [
-					{
-						offsetMs: 0,
-						width: 800,
-						height: 600,
-						encoding: 'video/mp4',
-						data: new Uint8Array([1, 2, 3, 4])
-					}
-				]
-			},
+                        clip: {
+                                durationMs: 33,
+                                frames: [
+                                        {
+                                                offsetMs: 0,
+                                                width: 800,
+                                                height: 600,
+                                                encoding: 'jpeg',
+                                                data: Buffer.from([1, 2, 3, 4]).toString('base64')
+                                        }
+                                ]
+                        },
 			encoder: 'hevc',
 			media: [
-				{
-					kind: 'video',
-					codec: 'hevc',
-					timestamp: Date.now(),
-					data: new Uint8Array([9, 9, 9])
-				}
-			]
-		};
+                                {
+                                        kind: 'video',
+                                        codec: 'hevc',
+                                        timestamp: Date.now(),
+                                        data: Buffer.from([9, 9, 9]).toString('base64')
+                                }
+                        ]
+                };
 
 		const binaryPayload = encodeMsgpack(binaryFrame);
-		const jsonComparable = {
-			...binaryFrame,
-			clip: {
-				durationMs: binaryFrame.clip?.durationMs,
-				frames: binaryFrame.clip?.frames.map((frame) => ({
-					...frame,
-					data: Buffer.from(frame.data).toString('base64')
-				}))
-			},
-			media: binaryFrame.media?.map((sample) => ({
-				...sample,
-				data: Buffer.from(sample.data).toString('base64')
-			}))
-		} satisfies RemoteDesktopFramePacket;
+                const clipFrames = binaryFrame.clip?.frames ?? [];
+                const clip = binaryFrame.clip
+                        ? ({
+                                  durationMs: binaryFrame.clip.durationMs ?? 0,
+                                  frames: clipFrames.map((frame) => ({
+                                          ...frame,
+                                          data: Buffer.from(frame.data).toString('base64')
+                                  }))
+                          } satisfies RemoteDesktopFramePacket['clip'])
+                        : undefined;
+
+                const jsonComparable = {
+                        ...binaryFrame,
+                        clip,
+                        media: binaryFrame.media?.map((sample) => ({
+                                ...sample,
+                                data: Buffer.from(sample.data).toString('base64')
+                        }))
+                } satisfies RemoteDesktopFramePacket;
 		const jsonPayload = Buffer.from(JSON.stringify(jsonComparable));
 
 		pipelineRecord?.options.onMessage?.(JSON.parse(JSON.stringify(jsonComparable)));

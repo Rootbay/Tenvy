@@ -17,10 +17,10 @@ import {
 	PluginRegistryError
 } from '$lib/server/plugins/registry-store.js';
 import {
-	validatePluginManifest,
-	verifyPluginSignature,
-	type PluginManifest
-} from '../../../../../shared/types/plugin-manifest.js';
+        validatePluginManifest,
+        verifyPluginSignature,
+        type PluginManifest
+} from '../../../../../shared/types/plugin-manifest';
 
 const MANIFEST_FILE_EXTENSION = '.json';
 const PLUGIN_ID_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9._-]*$/;

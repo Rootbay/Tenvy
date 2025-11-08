@@ -187,7 +187,7 @@ export function formatRelativeTime(input?: Date | null): string {
 	return input.toISOString();
 }
 import type {
-	PluginSignatureStatus,
-	PluginSignatureType,
-	PluginRuntimeType
-} from '../../../../shared/types/plugin-manifest.js';
+        PluginSignatureStatus,
+        PluginSignatureType,
+        PluginRuntimeType
+} from '../../../../shared/types/plugin-manifest';

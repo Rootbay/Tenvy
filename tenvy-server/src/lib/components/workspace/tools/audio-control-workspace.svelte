@@ -73,10 +73,10 @@
 		inventory?.outputs.find((device) => device.id === selectedOutputId) ?? null;
 	const selectedTrack = () => uploads.find((track) => track.id === selectedTrackId) ?? null;
 
-	const mischiefMeter = $derived(() => {
-		const points = (uploads.length > 0 ? 1 : 0) + (chaosMode ? 2 : 0) + (rickrollInsurance ? 1 : 0);
-		if (points >= 3) {
-			return 'Maximum hijinks armed';
+        const mischiefMeter = $derived<string>(() => {
+                const points = (uploads.length > 0 ? 1 : 0) + (chaosMode ? 2 : 0) + (rickrollInsurance ? 1 : 0);
+                if (points >= 3) {
+                        return 'Maximum hijinks armed';
 		}
 		if (points === 2) {
 			return 'Chaotic neutral vibes';

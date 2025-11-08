@@ -7,9 +7,9 @@ import { tmpdir } from 'node:os';
 import { createPluginRuntimeStore } from './runtime-store.js';
 import { plugin as pluginTable } from '$lib/server/db/schema.js';
 import type {
-	PluginManifest,
-	PluginSignatureVerificationSummary
-} from '../../../../../shared/types/plugin-manifest.js';
+        PluginManifest,
+        PluginSignatureVerificationSummary
+} from '../../../../../shared/types/plugin-manifest';
 import type { LoadedPluginManifest } from '$lib/data/plugin-manifests.js';
 
 const PLUGIN_TABLE_DDL = `

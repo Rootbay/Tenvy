@@ -8,7 +8,7 @@ import {
 	type MarketplaceStatus
 } from '$lib/server/plugins/marketplace/index.js';
 import { requireDeveloper, hasRole } from '$lib/server/authorization.js';
-import type { PluginManifest } from '../../../../../../shared/types/plugin-manifest.js';
+import type { PluginManifest } from '../../../../../../shared/types/plugin-manifest';
 
 const githubHeaders = () => {
 	const headers: Record<string, string> = {

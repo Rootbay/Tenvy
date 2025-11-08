@@ -7,20 +7,20 @@ import {
 	pluginMarketplaceTransaction
 } from '$lib/server/db/schema.js';
 import type {
-	PluginManifest,
-	PluginLicenseInfo,
-	PluginSignatureVerificationError,
-	PluginSignatureVerificationResult,
-	PluginSignatureVerificationSummary,
-	PluginSignatureStatus,
-	PluginSignatureType
-} from '../../../../../../shared/types/plugin-manifest.js';
+        PluginManifest,
+        PluginLicenseInfo,
+        PluginSignatureVerificationError,
+        PluginSignatureVerificationResult,
+        PluginSignatureVerificationSummary,
+        PluginSignatureStatus,
+        PluginSignatureType
+} from '../../../../../../shared/types/plugin-manifest';
 import {
-	validatePluginManifest,
-	verifyPluginSignature,
-	resolveManifestSignature,
-	isPluginSignatureType
-} from '../../../../../../shared/types/plugin-manifest.js';
+        validatePluginManifest,
+        verifyPluginSignature,
+        resolveManifestSignature,
+        isPluginSignatureType
+} from '../../../../../../shared/types/plugin-manifest';
 import { getVerificationOptions } from '$lib/server/plugins/signature-policy.js';
 
 type MarketplaceListingRow = typeof pluginMarketplaceListing.$inferSelect;

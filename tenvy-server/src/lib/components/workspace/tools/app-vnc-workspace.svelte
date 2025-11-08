@@ -117,7 +117,7 @@
 	let pointerActive = false;
 	let activePointerId: number | null = null;
 
-	const normalizedAppId = $derived(() => appId.trim());
+        const normalizedAppId = $derived<string>(() => appId.trim());
 	const selectedApp = $derived<AppVncApplicationDescriptor | null>(() => {
 		const trimmed = normalizedAppId;
 		return applications.find((app) => app.id === trimmed) ?? null;
@@ -388,9 +388,10 @@
 		viewportEl?.focus();
 		pointerActive = true;
 		activePointerId = event.pointerId;
-		try {
-			event.currentTarget?.setPointerCapture?.(event.pointerId);
-		} catch {
+                try {
+                        const target = event.currentTarget as HTMLElement | null;
+                        target?.setPointerCapture?.(event.pointerId);
+                } catch {
 			// ignore capture failures
 		}
 		const position = pointerPosition(event);
@@ -421,9 +422,10 @@
 			} satisfies AppVncInputEvent);
 			pointerActive = false;
 			activePointerId = null;
-			try {
-				event.currentTarget?.releasePointerCapture?.(event.pointerId);
-			} catch {
+                        try {
+                                const target = event.currentTarget as HTMLElement | null;
+                                target?.releasePointerCapture?.(event.pointerId);
+                        } catch {
 				// ignore release failure
 			}
 		}
@@ -435,9 +437,10 @@
 		}
 		pointerActive = false;
 		activePointerId = null;
-		try {
-			event.currentTarget?.releasePointerCapture?.(event.pointerId);
-		} catch {
+                try {
+                        const target = event.currentTarget as HTMLElement | null;
+                        target?.releasePointerCapture?.(event.pointerId);
+                } catch {
 			// ignore
 		}
 	}

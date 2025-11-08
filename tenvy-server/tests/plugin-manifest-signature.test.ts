@@ -1,11 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import nacl from 'tweetnacl';
 
-import type { PluginManifest } from '../../shared/types/plugin-manifest.js';
-import {
-	PluginSignatureVerificationError,
-	verifyPluginSignature
-} from '../../shared/types/plugin-manifest.js';
+import type { PluginManifest } from '../../shared/types/plugin-manifest';
+import { verifyPluginSignature } from '../../shared/types/plugin-manifest';
 
 const toHex = (value: Uint8Array): string =>
 	Array.from(value, (byte) => byte.toString(16).padStart(2, '0')).join('');
@@ -63,13 +60,13 @@ describe('verifyPluginSignature', () => {
 			}
 		};
 
-		await expect(
-			verifyPluginSignature(manifest, {
-				sha256AllowList: ['deadbeef']
-			})
-		).rejects.toMatchObject<PluginSignatureVerificationError>({
-			code: 'HASH_NOT_ALLOWED'
-		});
+                await expect(
+                        verifyPluginSignature(manifest, {
+                                sha256AllowList: ['deadbeef']
+                        })
+                ).rejects.toMatchObject({
+                        code: 'HASH_NOT_ALLOWED'
+                });
 	});
 
 	it('verifies ed25519 signatures with known keys', async () => {

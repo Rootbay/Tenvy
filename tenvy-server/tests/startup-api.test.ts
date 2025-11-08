@@ -26,8 +26,8 @@ vi.mock('../src/lib/server/rat/startup-manager.js', () => ({
 	StartupManagerAgentError: MockStartupAgentError
 }));
 
-const modulePromise = import('../src/routes/api/agents/[id]/startup/+server.js');
-const entryModulePromise = import('../src/routes/api/agents/[id]/startup/[entryId]/+server.js');
+const modulePromise = import('../src/routes/api/agents/[id]/startup/+server');
+const entryModulePromise = import('../src/routes/api/agents/[id]/startup/[entryId]/+server');
 
 type Handler =
 	Awaited<typeof modulePromise> extends infer T
@@ -44,22 +44,19 @@ type EntryHandler =
 		: never;
 
 function createEvent<T extends Handler | EntryHandler>(
-	handler: T,
-	init: Partial<Parameters<T>[0]> & { method?: string } = {}
+        handler: T,
+        init: Partial<Parameters<T>[0]> & { method?: string } = {}
 ): Parameters<T>[0] {
-	const method = init.method ?? 'GET';
-	return {
-		params: { id: 'agent-1', ...(init.params ?? {}) },
-		request:
-			init.request ??
-			new Request('https://controller.test/api', {
-				method,
-				headers: init.request?.headers,
-				body: init.request?.body
-			}),
-		locals: init.locals ?? { user: { id: 'tester' } },
-		...init
-	} as Parameters<T>[0];
+        const method = init.method ?? 'GET';
+        const request = init.request instanceof Request
+                ? init.request
+                : new Request('https://controller.test/api', { method });
+        return {
+                params: { id: 'agent-1', ...(init.params ?? {}) },
+                request,
+                locals: init.locals ?? { user: { id: 'tester' } },
+                ...init
+        } as Parameters<T>[0];
 }
 
 describe('startup manager API', () => {

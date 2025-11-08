@@ -1,8 +1,8 @@
 import { env } from '$env/dynamic/private';
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import type { AgentPluginSignaturePolicy } from '../../../../../../shared/types/config.js';
-import type { PluginSignatureVerificationOptions } from '../../../../../../shared/types/plugin-manifest.js';
+import type { AgentPluginSignaturePolicy } from '../../../../../../shared/types/config';
+import type { PluginSignatureVerificationOptions } from '../../../../../../shared/types/plugin-manifest';
 
 type ServerSignaturePolicy = {
 	sha256AllowList: string[];

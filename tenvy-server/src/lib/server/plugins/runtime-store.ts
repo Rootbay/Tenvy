@@ -3,10 +3,11 @@ import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
 import type { PluginDeliveryMode, PluginStatus } from '$lib/data/plugin-view.js';
 import { db } from '$lib/server/db/index.js';
 import { plugin } from '$lib/server/db/schema.js';
+import type * as Schema from '$lib/server/db/schema.js';
 import type {
-	PluginApprovalStatus,
-	PluginRuntimeType
-} from '../../../../shared/types/plugin-manifest.js';
+        PluginApprovalStatus,
+        PluginRuntimeType
+} from '../../../../shared/types/plugin-manifest';
 import type { LoadedPluginManifest } from '$lib/data/plugin-manifests.js';
 
 type PluginTable = typeof plugin;
@@ -14,7 +15,7 @@ type PluginInsert = typeof plugin.$inferInsert;
 
 export type PluginRuntimeRow = typeof plugin.$inferSelect;
 
-type DatabaseClient = BetterSQLite3Database<PluginTable>;
+type DatabaseClient = BetterSQLite3Database<typeof Schema>;
 
 export type PluginRuntimePatch = Partial<{
 	status: PluginStatus;

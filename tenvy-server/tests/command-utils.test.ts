@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { splitCommandLine } from '../../shared/utils/command.ts';
+import { splitCommandLine } from '../../shared/utils/command';
 
 describe('splitCommandLine', () => {
 	it('preserves empty arguments created by double quotes', () => {

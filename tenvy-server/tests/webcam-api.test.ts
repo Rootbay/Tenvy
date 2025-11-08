@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mockEnv = { env: {} };
 
-vi.mock('$env/dynamic/private', () => mockEnv, { virtual: true });
+vi.mock('$env/dynamic/private', () => mockEnv);
 
 const queueCommand = vi.fn();
 
@@ -27,14 +27,14 @@ vi.mock('../src/lib/server/rat/store.js', () => ({
 }));
 
 const refreshModule = await import(
-	'../src/routes/api/agents/[clientId]/webcam/devices/refresh/+server.js'
+        '../src/routes/api/agents/[clientId]/webcam/devices/refresh/+server'
 );
-const devicesModule = await import('../src/routes/api/agents/[clientId]/webcam/devices/+server.js');
+const devicesModule = await import('../src/routes/api/agents/[clientId]/webcam/devices/+server');
 const sessionsModule = await import(
-	'../src/routes/api/agents/[clientId]/webcam/sessions/+server.js'
+        '../src/routes/api/agents/[clientId]/webcam/sessions/+server'
 );
 const sessionModule = await import(
-	'../src/routes/api/agents/[clientId]/webcam/sessions/[sessionId]/+server.js'
+        '../src/routes/api/agents/[clientId]/webcam/sessions/[sessionId]/+server'
 );
 const { webcamControlManager } = await import('../src/lib/server/rat/webcam.js');
 

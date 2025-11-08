@@ -1,5 +1,5 @@
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { PluginManifest } from '../../shared/types/plugin-manifest.js';
+import type { PluginManifest } from '../../shared/types/plugin-manifest';
 
 vi.mock('$env/dynamic/private', () => ({ env: { DATABASE_URL: ':memory:' } }));
 

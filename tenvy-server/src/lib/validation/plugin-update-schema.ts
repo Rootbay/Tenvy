@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { pluginApprovalStatuses } from '../../../../shared/types/plugin-manifest.js';
+import { pluginApprovalStatuses } from '../../../../shared/types/plugin-manifest';
 
 const pluginStatusEnum = z.enum(['active', 'disabled', 'update', 'error']);
 const deliveryModeEnum = z.enum(['manual', 'automatic']);
