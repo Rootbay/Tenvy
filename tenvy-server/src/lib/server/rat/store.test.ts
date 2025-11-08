@@ -98,6 +98,37 @@ describe('AgentRegistry database integration', () => {
 		expect(restoredNotes[0]?.id).toBe('note-1');
 	});
 
+	it('persists downloads catalogue entries across instances', async () => {
+		const registry = new AgentRegistry();
+		const registration = registry.registerAgent({ metadata: baseMetadata });
+
+		const downloads = [
+			{
+				id: 'atlas.exe',
+				displayName: 'Atlas Explorer',
+				version: '2.3.1',
+				description: 'Reconnaissance utility',
+				tags: ['recon']
+			}
+		];
+
+		registry.updateDownloadsCatalogue(registration.agentId, downloads);
+		await registry.flush();
+
+		const restored = new AgentRegistry();
+		const restoredDownloads = restored.getDownloadsCatalogue(registration.agentId);
+
+		expect(restoredDownloads).toEqual([
+			{
+				id: 'atlas.exe',
+				displayName: 'Atlas Explorer',
+				version: '2.3.1',
+				description: 'Reconnaissance utility',
+				tags: ['recon']
+			}
+		]);
+	});
+
 	it('records audit events for queued and executed commands', async () => {
 		const registry = new AgentRegistry();
 		const registration = registry.registerAgent({ metadata: baseMetadata });

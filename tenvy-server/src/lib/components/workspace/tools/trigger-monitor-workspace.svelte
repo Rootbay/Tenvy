@@ -31,6 +31,10 @@
 	} from '$lib/types/trigger-monitor';
 	import { MAX_TRIGGER_MONITOR_WATCHLIST_ENTRIES } from '$lib/types/trigger-monitor';
 	import type { ProcessListResponse } from '$lib/types/task-manager';
+	import {
+		downloadCatalogueResponseSchema,
+		type DownloadCatalogueEntry
+	} from '$lib/types/downloads';
 	import { Plus, Trash2 } from '@lucide/svelte';
 	import { appendWorkspaceLog, createWorkspaceLogEntry } from '$lib/workspace/utils';
 	import type { WorkspaceLogEntry } from '$lib/workspace/types';
@@ -56,6 +60,7 @@
 	let watchlistDraft = $state<TriggerMonitorWatchlist>([]);
 	let watchlistSuggestions = $state<WatchlistSuggestion[]>([]);
 	let watchlistSuggestionsLoading = $state(false);
+	let watchlistSuggestionsLoaded = $state(false);
 	let watchlistSuggestionsError = $state<string | null>(null);
 	let watchlistFilter = $state('');
 	let draftNotice = $state<string | null>(null);
@@ -257,7 +262,7 @@
 		urlAlertOnClose = false;
 		watchlistFilter = '';
 		watchlistDialogOpen = true;
-		if (watchlistSuggestions.length === 0 && !watchlistSuggestionsLoading) {
+		if (!watchlistSuggestionsLoaded && !watchlistSuggestionsLoading) {
 			void loadWatchlistSuggestions();
 		}
 	}
@@ -267,58 +272,73 @@
 		watchlistDialogOpen = false;
 	}
 
-	async function loadWatchlistSuggestions() {
+	function toDownloadSuggestion(entry: DownloadCatalogueEntry): WatchlistSuggestion {
+		const detailSegments = [entry.version?.trim(), entry.description?.trim()]
+			.map((value) => (value && value.length > 0 ? value : null))
+			.filter((value): value is string => Boolean(value));
+
+		return {
+			id: entry.id.trim(),
+			displayName: entry.displayName.trim(),
+			detail: detailSegments.join(' · ') || undefined,
+			source: 'download'
+		} satisfies WatchlistSuggestion;
+	}
+
+	async function readResponseError(response: Response): Promise<string> {
+		try {
+			const contentType = response.headers.get('content-type') ?? '';
+			if (contentType.includes('application/json')) {
+				const payload = (await response.json()) as { message?: string; error?: string };
+				return payload?.message || payload?.error || response.statusText || 'Request failed';
+			}
+			const detail = await response.text();
+			return detail || response.statusText || 'Request failed';
+		} catch {
+			return response.statusText || 'Request failed';
+		}
+	}
+
+	async function loadWatchlistSuggestions(options: { force?: boolean } = {}) {
+		const force = Boolean(options.force);
+		if (watchlistSuggestionsLoading && !force) {
+			return;
+		}
+		if (!force && watchlistSuggestionsLoaded) {
+			return;
+		}
+
+		if (force) {
+			watchlistSuggestionsLoaded = false;
+		}
+
 		watchlistSuggestionsLoading = true;
 		watchlistSuggestionsError = null;
 		draftNotice = null;
-		const errors: string[] = [];
+
+		const issues: string[] = [];
 
 		async function fetchDownloadSuggestions(): Promise<WatchlistSuggestion[]> {
 			try {
 				const response = await fetch(`/api/agents/${client.id}/downloads`);
 				if (!response.ok) {
-					throw new Error(response.statusText || 'Request failed');
+					throw new Error(await readResponseError(response));
 				}
-				const payload = await response.json();
-				const collection = Array.isArray(payload?.downloads)
-					? payload.downloads
-					: Array.isArray(payload)
-						? payload
-						: [];
-				const suggestions: WatchlistSuggestion[] = [];
-				for (const item of collection) {
-					if (!item || typeof item !== 'object') {
-						continue;
-					}
-					const record = item as Record<string, unknown>;
-					const idCandidate = [
-						record.id,
-						record.identifier,
-						record.slug,
-						record.executable,
-						record.path
-					].find((value) => typeof value === 'string' && value.trim().length > 0);
-					const nameCandidate = [record.displayName, record.name, record.title, record.label].find(
-						(value) => typeof value === 'string' && value.trim().length > 0
-					);
-					if (!idCandidate || !nameCandidate) {
-						continue;
-					}
-					const detailCandidate = [record.version, record.description]
-						.map((value) =>
-							typeof value === 'string' && value.trim().length > 0 ? value.trim() : null
-						)
-						.filter(Boolean);
-					suggestions.push({
-						id: (idCandidate as string).trim(),
-						displayName: (nameCandidate as string).trim(),
-						detail: detailCandidate[0] ?? undefined,
-						source: 'download'
-					});
+				const raw = await response.json();
+				const parsed = downloadCatalogueResponseSchema.safeParse(raw);
+				if (!parsed.success) {
+					throw new Error('Unexpected downloads response shape');
 				}
-				return suggestions;
+				const entries = parsed.data.downloads;
+				if (entries.length === 0) {
+					issues.push('No downloads catalogue entries are available for this agent.');
+					return [];
+				}
+				return entries.map((entry) => toDownloadSuggestion(entry));
 			} catch (err) {
-				errors.push(`Downloads list unavailable: ${(err as Error).message || 'request failed'}`);
+				issues.push(
+					`Downloads catalogue unavailable: ${(err as Error).message || 'request failed'}`
+				);
 				return [];
 			}
 		}
@@ -327,8 +347,7 @@
 			try {
 				const response = await fetch(`/api/agents/${client.id}/task-manager/processes`);
 				if (!response.ok) {
-					const detail = await response.text().catch(() => '');
-					throw new Error(detail || response.statusText || 'Request failed');
+					throw new Error(await readResponseError(response));
 				}
 				const payload = (await response.json()) as ProcessListResponse;
 				const suggestions: WatchlistSuggestion[] = [];
@@ -354,35 +373,35 @@
 				}
 				return suggestions;
 			} catch (err) {
-				errors.push(
+				issues.push(
 					`Task manager process list unavailable: ${(err as Error).message || 'request failed'}`
 				);
 				return [];
 			}
 		}
 
-		const [downloads, processes] = await Promise.all([
-			fetchDownloadSuggestions(),
-			fetchProcessSuggestions()
-		]);
+		try {
+			const [downloads, processes] = await Promise.all([
+				fetchDownloadSuggestions(),
+				fetchProcessSuggestions()
+			]);
 
-		const combined = [...downloads, ...processes];
-		const dedupedMap = new Map<string, WatchlistSuggestion>();
-		for (const suggestion of combined) {
-			const key = `${suggestion.source}:${suggestion.id.toLowerCase()}`;
-			if (!dedupedMap.has(key)) {
-				dedupedMap.set(key, suggestion);
+			const combined = [...downloads, ...processes];
+			const dedupedMap = new Map<string, WatchlistSuggestion>();
+			for (const suggestion of combined) {
+				const key = `${suggestion.source}:${suggestion.id.toLowerCase()}`;
+				if (!dedupedMap.has(key)) {
+					dedupedMap.set(key, suggestion);
+				}
 			}
+			watchlistSuggestions = Array.from(dedupedMap.values()).sort((a, b) =>
+				a.displayName.localeCompare(b.displayName)
+			);
+			watchlistSuggestionsError = issues.length > 0 ? issues.join(' ') : null;
+		} finally {
+			watchlistSuggestionsLoading = false;
+			watchlistSuggestionsLoaded = true;
 		}
-		watchlistSuggestions = Array.from(dedupedMap.values()).sort((a, b) =>
-			a.displayName.localeCompare(b.displayName)
-		);
-
-		if (errors.length > 0) {
-			watchlistSuggestionsError = errors.join(' ');
-		}
-
-		watchlistSuggestionsLoading = false;
 	}
 
 	function handleAddSuggestion(entry: WatchlistSuggestion) {
@@ -766,7 +785,7 @@
 							<button
 								type="button"
 								class="underline-offset-4 hover:underline"
-								onclick={() => void loadWatchlistSuggestions()}
+								onclick={() => void loadWatchlistSuggestions({ force: true })}
 							>
 								Refresh
 							</button>

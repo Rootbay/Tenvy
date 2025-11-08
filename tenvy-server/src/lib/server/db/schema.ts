@@ -293,17 +293,18 @@ export const agent = sqliteTable(
 		status: text('status').notNull().default('offline'),
 		connectedAt: timestamp('connected_at', { defaultNow: true }),
 		lastSeen: timestamp('last_seen', { defaultNow: true }),
-                metrics: text('metrics'),
-                config: text('config').notNull(),
-                optionsState: text('options_state'),
-                operatorNote: text('operator_note'),
-                operatorNoteTags: text('operator_note_tags'),
-                operatorNoteUpdatedAt: timestamp('operator_note_updated_at', { optional: true }),
-                operatorNoteUpdatedBy: text('operator_note_updated_by'),
-                fingerprint: text('fingerprint').notNull(),
-                createdAt: timestamp('created_at', { defaultNow: true }),
-                updatedAt: timestamp('updated_at', { defaultNow: true })
-        },
+		metrics: text('metrics'),
+		config: text('config').notNull(),
+		optionsState: text('options_state'),
+		downloadsCatalogue: text('downloads_catalogue'),
+		operatorNote: text('operator_note'),
+		operatorNoteTags: text('operator_note_tags'),
+		operatorNoteUpdatedAt: timestamp('operator_note_updated_at', { optional: true }),
+		operatorNoteUpdatedBy: text('operator_note_updated_by'),
+		fingerprint: text('fingerprint').notNull(),
+		createdAt: timestamp('created_at', { defaultNow: true }),
+		updatedAt: timestamp('updated_at', { defaultNow: true })
+	},
 	(table) => ({
 		fingerprintIdx: uniqueIndex('agent_fingerprint_idx').on(table.fingerprint)
 	})

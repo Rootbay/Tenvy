@@ -310,5 +310,6 @@ ensureColumn('agent', 'operator_note', 'operator_note TEXT');
 ensureColumn('agent', 'operator_note_tags', 'operator_note_tags TEXT');
 ensureColumn('agent', 'operator_note_updated_at', 'operator_note_updated_at INTEGER');
 ensureColumn('agent', 'operator_note_updated_by', 'operator_note_updated_by TEXT');
+ensureColumn('agent', 'downloads_catalogue', 'downloads_catalogue TEXT');
 
 export const db = drizzle(client, { schema });
