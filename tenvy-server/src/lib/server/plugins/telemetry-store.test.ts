@@ -172,7 +172,7 @@ describe('PluginTelemetryStore', () => {
 				status: 'installed',
 				hash: manifestHash,
 				timestamp: now,
-				error: null
+                                error: undefined
 			}
 		]);
 
@@ -210,7 +210,7 @@ describe('PluginTelemetryStore', () => {
 				status: 'installed',
 				hash: mismatchedHash,
 				timestamp: now,
-				error: null
+                                error: undefined
 			}
 		]);
 
@@ -250,7 +250,7 @@ describe('PluginTelemetryStore', () => {
 				status: 'installed',
 				hash: manifestHash,
 				timestamp: now,
-				error: null
+                                error: undefined
 			}
 		]);
 
@@ -286,7 +286,7 @@ describe('PluginTelemetryStore', () => {
 			status: 'installed',
 			hash: manifestHash,
 			timestamp: iso,
-			error: null
+                                error: undefined
 		} as unknown as PluginInstallationTelemetry;
 
 		await store.syncAgent('agent-1', baseMetadata, [legacyPayload]);
@@ -370,7 +370,7 @@ describe('PluginTelemetryStore', () => {
 				status: 'installed',
 				hash: manifestHash,
 				timestamp: Date.now(),
-				error: null
+                                error: undefined
 			}
 		]);
 
@@ -413,7 +413,7 @@ describe('PluginTelemetryStore', () => {
 			.set({ approvalStatus: 'approved', approvedAt })
 			.where(eq(pluginTable.id, 'test-plugin'));
 
-		(store as { manifestSnapshot?: unknown }).manifestSnapshot = null;
+                store.invalidateManifestSnapshot();
 
 		const baseline = await store.getManifestSnapshot();
 		const descriptor = baseline.manifests[0];

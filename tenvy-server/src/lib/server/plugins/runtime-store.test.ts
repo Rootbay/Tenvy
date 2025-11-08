@@ -1,11 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import Database from 'better-sqlite3';
 import { drizzle } from 'drizzle-orm/better-sqlite3';
+import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { createPluginRuntimeStore } from './runtime-store.js';
-import { plugin as pluginTable } from '$lib/server/db/schema.js';
+import * as schema from '$lib/server/db/schema.js';
 import type {
         PluginManifest,
         PluginSignatureVerificationSummary
@@ -102,9 +103,9 @@ let dbPath: string;
 
 const openRuntimeStore = () => {
 	const sqlite = new Database(dbPath);
-	sqlite.exec(PLUGIN_TABLE_DDL);
-	const drizzleDb = drizzle(sqlite, { schema: { plugin: pluginTable } });
-	return { store: createPluginRuntimeStore(drizzleDb), sqlite };
+        sqlite.exec(PLUGIN_TABLE_DDL);
+        const drizzleDb = drizzle(sqlite, { schema }) as BetterSQLite3Database<typeof schema>;
+        return { store: createPluginRuntimeStore(drizzleDb), sqlite };
 };
 
 beforeEach(() => {
