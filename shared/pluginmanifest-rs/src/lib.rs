@@ -74,7 +74,7 @@ pub enum PluginApprovalStatus {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
-#[serde(default)]
+#[serde(default, rename_all = "camelCase")]
 pub struct PluginRequirements {
     pub min_agent_version: Option<String>,
     pub max_agent_version: Option<String>,
@@ -85,6 +85,7 @@ pub struct PluginRequirements {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct PluginDistribution {
     pub default_mode: PluginDeliveryMode,
     #[serde(default)]
@@ -103,6 +104,7 @@ pub struct PluginDistribution {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct PluginLicenseInfo {
     #[serde(default)]
     pub spdx_id: Option<String>,
@@ -113,6 +115,7 @@ pub struct PluginLicenseInfo {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct PluginPackageDescriptor {
     pub artifact: String,
     #[serde(default)]
@@ -122,6 +125,7 @@ pub struct PluginPackageDescriptor {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct PluginRuntimeHostContract {
     #[serde(default)]
     pub api_version: Option<String>,
@@ -130,6 +134,7 @@ pub struct PluginRuntimeHostContract {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct PluginRuntimeDescriptor {
     #[serde(default)]
     pub r#type: Option<PluginRuntimeType>,
@@ -140,6 +145,7 @@ pub struct PluginRuntimeDescriptor {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct PluginManifest {
     pub id: String,
     pub name: String,
@@ -179,25 +185,25 @@ pub struct AgentPluginManifestState {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct PluginManifestDescriptorDistribution {
     pub default_mode: PluginDeliveryMode,
     pub auto_update: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct PluginManifestDescriptor {
-    #[serde(rename = "pluginId")]
     pub plugin_id: String,
     pub version: String,
-    #[serde(rename = "manifestDigest")]
     pub manifest_digest: String,
-    #[serde(default, rename = "artifactHash")]
+    #[serde(default)]
     pub artifact_hash: Option<String>,
-    #[serde(default, rename = "artifactSizeBytes")]
+    #[serde(default)]
     pub artifact_size_bytes: Option<i64>,
-    #[serde(default, rename = "approvedAt")]
+    #[serde(default)]
     pub approved_at: Option<String>,
-    #[serde(default, rename = "manualPushAt")]
+    #[serde(default)]
     pub manual_push_at: Option<String>,
     #[serde(default)]
     pub dependencies: Vec<String>,
@@ -205,8 +211,8 @@ pub struct PluginManifestDescriptor {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct PluginInstallationTelemetry {
-    #[serde(rename = "pluginId")]
     pub plugin_id: String,
     pub version: String,
     pub status: PluginInstallStatus,
