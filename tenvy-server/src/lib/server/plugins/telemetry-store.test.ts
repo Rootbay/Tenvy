@@ -14,11 +14,11 @@ import {
 	pluginInstallation as pluginInstallationTable,
 	auditEvent as auditEventTable
 } from '$lib/server/db/schema.js';
-import type { AgentMetadata } from '../../../../../shared/types/agent.js';
+import type { AgentMetadata } from '../../../../../shared/types/agent';
 import type {
-	PluginInstallationTelemetry,
-	PluginManifest
-} from '../../../../../shared/types/plugin-manifest.js';
+        PluginInstallationTelemetry,
+        PluginManifest
+} from '../../../../../shared/types/plugin-manifest';
 
 vi.mock('$env/dynamic/private', () => import('../../../../tests/mocks/env-dynamic-private'));
 

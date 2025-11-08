@@ -26,11 +26,12 @@
 		Info,
 		Package
 	} from '@lucide/svelte';
-	import {
-		pluginStatusLabels,
-		pluginStatusStyles,
-		pluginApprovalLabels
-	} from '$lib/data/plugin-view.js';
+        import {
+                pluginStatusLabels,
+                pluginStatusStyles,
+                pluginApprovalLabels
+        } from '$lib/data/plugin-view.js';
+        import type { PluginStatus } from '$lib/data/plugin-view.js';
 	import type { ClientPlugin } from '$lib/data/client-plugin-view.js';
 
 	let { data }: { data: { clientId: string; plugins: ClientPlugin[] } } = $props();
@@ -173,9 +174,14 @@
 							</CardDescription>
 						</div>
 						<div class="flex flex-col items-end gap-2 text-xs">
-							<Badge class={cn('border', pluginStatusStyles[plugin.globalStatus])}>
-								{pluginStatusLabels[plugin.globalStatus]}
-							</Badge>
+                                                        <Badge
+                                                                class={cn(
+                                                                        'border',
+                                                                        pluginStatusStyles[plugin.globalStatus as PluginStatus]
+                                                                )}
+                                                        >
+                                                                {pluginStatusLabels[plugin.globalStatus as PluginStatus]}
+                                                        </Badge>
 							<Badge class={cn('border', approvalVariant(plugin.approvalStatus))}>
 								{pluginApprovalLabels[plugin.approvalStatus as keyof typeof pluginApprovalLabels] ??
 									plugin.approvalStatus}
@@ -232,8 +238,8 @@
 								<Switch
 									aria-label={`Toggle ${plugin.name}`}
 									checked={plugin.telemetry.enabled}
-									onCheckedChange={(event) => updatePluginEnabled(plugin.id, event.detail)}
-								/>
+                                                                        onCheckedChange={(value) => updatePluginEnabled(plugin.id, value)}
+                                                                />
 								<span>{plugin.telemetry.enabled ? 'Enabled' : 'Disabled'}</span>
 							</div>
 						</div>

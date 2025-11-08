@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { HttpError } from '@sveltejs/kit';
-import { GET, __testing } from '../src/routes/api/geo/[ip]/+server.js';
+import { GET, __testing } from '../src/routes/api/geo/[ip]/+server';
 
 function createEvent(
 	ip: string,
@@ -20,11 +20,11 @@ describe('GET /api/geo/[ip]', () => {
 	});
 
 	it('returns provider data for a valid public IP', async () => {
-		const fetchMock = vi.fn(
-			async () =>
-				new Response(
-					JSON.stringify({
-						status: 'success',
+                const fetchMock = vi.fn<typeof fetch>(
+                        async () =>
+                                new Response(
+                                        JSON.stringify({
+                                                status: 'success',
 						country: 'United States',
 						countryCode: 'us',
 						proxy: false
@@ -55,11 +55,11 @@ describe('GET /api/geo/[ip]', () => {
 	});
 
 	it('serves cached responses without hitting the provider again', async () => {
-		const fetchMock = vi.fn(
-			async () =>
-				new Response(
-					JSON.stringify({
-						status: 'success',
+                const fetchMock = vi.fn<typeof fetch>(
+                        async () =>
+                                new Response(
+                                        JSON.stringify({
+                                                status: 'success',
 						country: 'Canada',
 						countryCode: 'CA',
 						proxy: true
@@ -73,7 +73,7 @@ describe('GET /api/geo/[ip]', () => {
 
 		await GET(createEvent('1.1.1.1', fetchMock));
 
-		const fetchMockSecond = vi.fn();
+                const fetchMockSecond = vi.fn<typeof fetch>();
 		const setHeadersSecond = vi.fn();
 		const cachedResponse = await GET(createEvent('1.1.1.1', fetchMockSecond, setHeadersSecond));
 
@@ -96,13 +96,13 @@ describe('GET /api/geo/[ip]', () => {
 	});
 
 	it('propagates provider failures as a 502 error', async () => {
-		const fetchMock = vi.fn(
-			async () =>
-				new Response(JSON.stringify({ status: 'fail', message: 'invalid query' }), {
-					status: 200,
-					headers: { 'Content-Type': 'application/json' }
-				})
-		);
+                const fetchMock = vi.fn<typeof fetch>(
+                        async () =>
+                                new Response(JSON.stringify({ status: 'fail', message: 'invalid query' }), {
+                                        status: 200,
+                                        headers: { 'Content-Type': 'application/json' }
+                                })
+                );
 
 		try {
 			await GET(createEvent('2.2.2.2', fetchMock, vi.fn()));
@@ -110,10 +110,12 @@ describe('GET /api/geo/[ip]', () => {
 		} catch (error) {
 			const err = error as HttpError;
 			expect(err.status).toBe(502);
-			const message =
-				typeof err.body === 'object' && err.body && 'message' in err.body
-					? String((err.body as { message?: unknown }).message ?? '')
-					: String(err.message ?? err);
+                        const message =
+                                typeof err.body === 'object' && err.body && 'message' in err.body
+                                        ? String((err.body as { message?: unknown }).message ?? '')
+                                        : 'message' in err
+                                                ? String((err as { message?: unknown }).message ?? '')
+                                                : String(err);
 			expect(message).toContain('invalid query');
 		}
 	});

@@ -7,12 +7,12 @@ import {
 	verifyPluginSignature,
 	resolveManifestSignature,
 	isPluginSignatureType,
-	type PluginManifest,
-	type PluginSignatureVerificationError,
-	type PluginSignatureVerificationResult,
-	type PluginSignatureVerificationSummary,
-	type PluginApprovalStatus
-} from '../../../../../shared/types/plugin-manifest.js';
+        type PluginManifest,
+        type PluginSignatureVerificationError,
+        type PluginSignatureVerificationResult,
+        type PluginSignatureVerificationSummary,
+        type PluginApprovalStatus
+} from '../../../../../shared/types/plugin-manifest';
 import { getVerificationOptions } from '$lib/server/plugins/signature-policy.js';
 import {
 	createPluginRuntimeStore,
@@ -139,13 +139,7 @@ const summarizeVerificationSuccess = (
 		: summary.certificateChain;
 	summary.signedAt = result.signedAt ?? summary.signedAt;
 
-	if (result.trusted) {
-		summary.status = 'trusted';
-	} else if (result.signatureType === 'none') {
-		summary.status = 'unsigned';
-	} else {
-		summary.status = 'untrusted';
-	}
+        summary.status = result.trusted ? 'trusted' : 'untrusted';
 
 	return summary;
 };

@@ -1,6 +1,7 @@
 import { paraglideVitePlugin } from '@inlang/paraglide-js';
 import tailwindcss from '@tailwindcss/vite';
 import { defineConfig } from 'vitest/config';
+import type { AliasOptions } from 'vite';
 import { sveltekit } from '@sveltejs/kit/vite';
 import { fileURLToPath } from 'node:url';
 
@@ -38,13 +39,16 @@ const serverPort = resolvePort(process.env.TENVY_SERVER_PORT ?? process.env.PORT
 const serverHost = resolveHost(process.env.TENVY_SERVER_HOST ?? process.env.HOST ?? null);
 const isVitest = process.env.VITEST === 'true';
 
-const testAliases = isVitest
-	? {
-			'$env/dynamic/private': fileURLToPath(
-				new URL('./tests/mocks/env-dynamic-private.ts', import.meta.url)
-			)
-		}
-	: {};
+const testAliases: AliasOptions = isVitest
+        ? [
+                        {
+                                find: '$env/dynamic/private',
+                                replacement: fileURLToPath(
+                                        new URL('./tests/mocks/env-dynamic-private.ts', import.meta.url)
+                                )
+                        }
+                ]
+        : [];
 
 const enableBrowserTests = process.env.ENABLE_BROWSER_TESTS === 'true';
 
@@ -96,11 +100,9 @@ export default defineConfig({
 		port: serverPort,
 		strictPort: true
 	},
-	resolve: {
-		alias: {
-			...testAliases
-		}
-	},
+        resolve: {
+                alias: testAliases
+        },
 	test: enableBrowserTests
 		? {
 				expect: { requireAssertions: true },

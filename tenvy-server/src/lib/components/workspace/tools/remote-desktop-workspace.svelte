@@ -460,14 +460,16 @@
 		if (!servers || servers.length === 0) {
 			return null;
 		}
-		const converted: RTCIceServer[] = [];
-		for (const server of servers) {
-			if (!server || !Array.isArray(server.urls) || server.urls.length === 0) {
-				continue;
-			}
-			const entry: RTCIceServer = {
-				urls: [...server.urls]
-			};
+                const converted: RTCIceServer[] = [];
+                for (const server of servers) {
+                        if (!server || !Array.isArray(server.urls) || server.urls.length === 0) {
+                                continue;
+                        }
+                        const entry: RTCIceServer & {
+                                credentialType?: 'oauth' | 'password';
+                        } = {
+                                urls: [...server.urls]
+                        };
 			if (server.username) {
 				entry.username = server.username;
 			}
@@ -477,8 +479,8 @@
 			if (server.credentialType === 'oauth' || server.credentialType === 'password') {
 				entry.credentialType = server.credentialType;
 			}
-			converted.push(entry);
-		}
+                        converted.push(entry);
+                }
 		return converted.length > 0 ? converted : null;
 	}
 
@@ -2106,11 +2108,11 @@
 					placeholder="Auto"
 					value={targetBitrateKbps ?? ''}
 					disabled={!sessionActive || isUpdating}
-					on:change={(event) => {
-						const element = event.currentTarget as HTMLInputElement;
-						const parsed = Number.parseInt(element.value, 10);
-						if (Number.isNaN(parsed) || parsed <= 0) {
-							targetBitrateKbps = null;
+                                        on:input={(event) => {
+                                                const element = event.currentTarget as HTMLInputElement;
+                                                const parsed = Number.parseInt(element.value, 10);
+                                                if (Number.isNaN(parsed) || parsed <= 0) {
+                                                        targetBitrateKbps = null;
 							element.value = '';
 							if (sessionActive) {
 								void updateSession({ targetBitrateKbps: 0 });

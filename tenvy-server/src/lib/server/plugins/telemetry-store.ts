@@ -1,18 +1,18 @@
 import { createHash, randomUUID } from 'crypto';
 import { and, eq, sql } from 'drizzle-orm';
-import type { AgentMetadata } from '../../../../../shared/types/agent.js';
+import type { AgentMetadata } from '../../../../../shared/types/agent';
 import {
 	pluginInstallStatuses,
 	resolveManifestSignature,
 	type PluginInstallationTelemetry,
-	type PluginManifest,
-	type PluginPlatform,
-	type PluginArchitecture,
-	type PluginManifestDescriptor,
-	type PluginManifestDelta,
-	type AgentPluginManifestState,
-	type PluginManifestSnapshot
-} from '../../../../../shared/types/plugin-manifest.js';
+        type PluginManifest,
+        type PluginPlatform,
+        type PluginArchitecture,
+        type PluginManifestDescriptor,
+        type PluginManifestDelta,
+        type AgentPluginManifestState,
+        type PluginManifestSnapshot
+} from '../../../../../shared/types/plugin-manifest';
 import { loadPluginManifests, type LoadedPluginManifest } from '$lib/data/plugin-manifests.js';
 import { db } from '$lib/server/db/index.js';
 import {
@@ -782,16 +782,16 @@ export class PluginTelemetryStore {
 			return;
 		}
 		const now = new Date();
-		const result = await db
-			.update(pluginInstallationTable)
-			.set({ enabled: patch.enabled, updatedAt: now })
-			.where(
-				and(
-					eq(pluginInstallationTable.agentId, agentId),
-					eq(pluginInstallationTable.pluginId, pluginId)
-				)
-			);
-		if (result.rowsAffected === 0) {
+                const result = await db
+                        .update(pluginInstallationTable)
+                        .set({ enabled: patch.enabled, updatedAt: now })
+                        .where(
+                                and(
+                                        eq(pluginInstallationTable.agentId, agentId),
+                                        eq(pluginInstallationTable.pluginId, pluginId)
+                                )
+                        );
+                if ((result.changes ?? 0) === 0) {
 			await db
 				.insert(pluginInstallationTable)
 				.values({

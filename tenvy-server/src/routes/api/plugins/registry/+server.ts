@@ -5,7 +5,7 @@ import {
 	PluginRegistryError
 } from '$lib/server/plugins/registry-store.js';
 import { requireOperator, requireDeveloper } from '$lib/server/authorization.js';
-import type { PluginManifest } from '../../../../../../shared/types/plugin-manifest.js';
+import type { PluginManifest } from '../../../../../../shared/types/plugin-manifest';
 
 const registry = createPluginRegistryStore();
 

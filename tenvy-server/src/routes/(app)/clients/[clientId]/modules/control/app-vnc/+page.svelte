@@ -42,8 +42,8 @@
 		};
 	}>();
 
-	const client = $derived(data.client);
-	const applications = $derived(data.applications);
+        const client = $derived.by<Client>(() => data.client);
+        const applications = $derived.by<AppVncApplicationDescriptor[]>(() => data.applications);
 	const {
 		session: sessionStore,
 		frameUrl,
@@ -82,17 +82,17 @@
 		linux: 'Linux',
 		macos: 'macOS'
 	};
-	const normalizedAppId = $derived(() => appId.trim());
-	const selectedApp = $derived<AppVncApplicationDescriptor | null>(() => {
-		const trimmed = normalizedAppId;
-		return applications.find((app) => app.id === trimmed) ?? null;
-	});
-	const appSelectionLabel = $derived(() => {
-		if (selectedApp) {
-			return selectedApp.name;
-		}
-		return normalizedAppId ? `Custom · ${normalizedAppId}` : 'Manual selection';
-	});
+        const normalizedAppId = $derived.by<string>(() => appId.trim());
+        const selectedApp = $derived.by<AppVncApplicationDescriptor | null>(() => {
+                const trimmed = normalizedAppId;
+                return applications.find((app: AppVncApplicationDescriptor) => app.id === trimmed) ?? null;
+        });
+        const appSelectionLabel = $derived.by<string>(() => {
+                if (selectedApp) {
+                        return selectedApp.name;
+                }
+                return normalizedAppId ? `Custom · ${normalizedAppId}` : 'Manual selection';
+        });
 
 	function formatPlatforms(platforms?: AppVncApplicationDescriptor['platforms']): string {
 		if (!platforms || platforms.length === 0) {
@@ -189,9 +189,10 @@
 		viewportEl?.focus();
 		pointerActive = true;
 		activePointerId = event.pointerId;
-		try {
-			event.currentTarget?.setPointerCapture?.(event.pointerId);
-		} catch {
+                const target = event.currentTarget as HTMLElement | null;
+                try {
+                        target?.setPointerCapture?.(event.pointerId);
+                } catch {
 			// ignore capture failures
 		}
 		const position = pointerPosition(event);
@@ -222,9 +223,10 @@
 			} satisfies AppVncInputEvent);
 			pointerActive = false;
 			activePointerId = null;
-			try {
-				event.currentTarget?.releasePointerCapture?.(event.pointerId);
-			} catch {
+                        const target = event.currentTarget as HTMLElement | null;
+                        try {
+                                target?.releasePointerCapture?.(event.pointerId);
+                        } catch {
 				// ignore release failure
 			}
 		}
@@ -236,9 +238,10 @@
 		}
 		pointerActive = false;
 		activePointerId = null;
-		try {
-			event.currentTarget?.releasePointerCapture?.(event.pointerId);
-		} catch {
+                const target = event.currentTarget as HTMLElement | null;
+                try {
+                        target?.releasePointerCapture?.(event.pointerId);
+                } catch {
 			// ignore
 		}
 	}

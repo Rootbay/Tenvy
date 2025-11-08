@@ -2,17 +2,17 @@ import { env } from '$env/dynamic/private';
 import { readdir, readFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import type {
-	PluginManifest,
-	PluginSignatureVerificationError,
-	PluginSignatureVerificationResult,
-	PluginSignatureVerificationSummary
-} from '../../../../shared/types/plugin-manifest.js';
+        PluginManifest,
+        PluginSignatureVerificationError,
+        PluginSignatureVerificationResult,
+        PluginSignatureVerificationSummary
+} from '../../../../shared/types/plugin-manifest';
 import {
-	validatePluginManifest,
-	verifyPluginSignature,
-	resolveManifestSignature,
-	isPluginSignatureType
-} from '../../../../shared/types/plugin-manifest.js';
+        validatePluginManifest,
+        verifyPluginSignature,
+        resolveManifestSignature,
+        isPluginSignatureType
+} from '../../../../shared/types/plugin-manifest';
 import { getVerificationOptions } from '$lib/server/plugins/signature-policy.js';
 import {
 	createPluginRegistryStore,
@@ -94,13 +94,7 @@ const summarizeVerificationSuccess = (
 		: summary.certificateChain;
 	summary.signedAt = result.signedAt ?? summary.signedAt;
 
-	if (result.trusted) {
-		summary.status = 'trusted';
-	} else if (result.signatureType === 'none') {
-		summary.status = 'unsigned';
-	} else {
-		summary.status = 'untrusted';
-	}
+        summary.status = result.trusted ? 'trusted' : 'untrusted';
 
 	return summary;
 };
@@ -174,8 +168,8 @@ export async function loadPluginManifests(
 		const directory = resolveDirectory(options.directory);
 
 		let entries: Awaited<ReturnType<typeof readdir>>;
-		try {
-			entries = await readdir(directory, { withFileTypes: true });
+                try {
+                        entries = await readdir(directory, { withFileTypes: true, encoding: 'utf8' });
 		} catch (error) {
 			const err = error as NodeJS.ErrnoException;
 			if (err?.code === 'ENOENT') {

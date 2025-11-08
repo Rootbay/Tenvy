@@ -19,7 +19,13 @@ const RELEASE_ARTIFACT_SIGNATURE =
 	'2b4a75ee35bc4f9f9b15b84e8c993886f1ae98ce73e289df36c03835fc2920a71e9df3018650e99b0e48df6483d1adb112efec64edcd883725ef1e9dcc7c040b';
 
 const toBuffer = (value: string | Uint8Array | Buffer): Buffer =>
-	typeof value === 'string' ? Buffer.from(value, 'utf8') : Buffer.from(value);
+        typeof value === 'string' ? Buffer.from(value, 'utf8') : Buffer.from(value);
+
+const toArrayBuffer = (buffer: Buffer): ArrayBuffer => {
+        const view = new Uint8Array(buffer.byteLength);
+        view.set(buffer);
+        return view.buffer;
+};
 
 const createZipPluginPackage = async (files: Record<string, string | Uint8Array | Buffer>) => {
 	const zip = new JSZip();
@@ -30,23 +36,23 @@ const createZipPluginPackage = async (files: Record<string, string | Uint8Array 
 };
 
 const createTarGzPluginPackage = async (files: Record<string, string | Uint8Array | Buffer>) => {
-	const pack = createTarPack();
-	const chunks: Buffer[] = [];
-	pack.on('data', (chunk) => {
-		chunks.push(Buffer.from(chunk));
-	});
-	const completion = new Promise<void>((resolve, reject) => {
-		pack.on('end', () => resolve());
-		pack.on('error', (err) => reject(err));
-	});
-	for (const [name, content] of Object.entries(files)) {
-		await new Promise<void>((resolveEntry, rejectEntry) => {
-			pack.entry({ name }, toBuffer(content), (err) => {
-				if (err) {
-					rejectEntry(err);
-				} else {
-					resolveEntry();
-				}
+        const pack = createTarPack();
+        const chunks: Buffer[] = [];
+        pack.on('data', (chunk: Buffer) => {
+                chunks.push(Buffer.from(chunk));
+        });
+        const completion = new Promise<void>((resolve, reject) => {
+                pack.on('end', () => resolve());
+                pack.on('error', (err: Error) => reject(err));
+        });
+        for (const [name, content] of Object.entries(files)) {
+                await new Promise<void>((resolveEntry, rejectEntry) => {
+                        pack.entry({ name }, toBuffer(content), (err?: Error | null) => {
+                                if (err) {
+                                        rejectEntry(err);
+                                } else {
+                                        resolveEntry();
+                                }
 			});
 		});
 	}
@@ -57,11 +63,12 @@ const createTarGzPluginPackage = async (files: Record<string, string | Uint8Arra
 };
 
 const mockEnv = vi.hoisted(() => {
-	process.env.DATABASE_URL = ':memory:';
-	return { env: { DATABASE_URL: ':memory:' } };
+        process.env.DATABASE_URL = ':memory:';
+        const env: Record<string, string | undefined> = { DATABASE_URL: ':memory:' };
+        return { env };
 });
 
-vi.mock('$env/dynamic/private', () => mockEnv, { virtual: true });
+vi.mock('$env/dynamic/private', () => mockEnv);
 
 const authorizeAgent = vi.fn();
 const getAgent = vi.fn();
@@ -142,11 +149,11 @@ describe('agent plugin API', () => {
 
 		process.env.TENVY_PLUGIN_MANIFEST_DIR = manifestDir;
 		process.env.TENVY_PLUGIN_TRUST_CONFIG = trustPath;
-		mockEnv.env = {
-			DATABASE_URL: ':memory:',
-			TENVY_PLUGIN_MANIFEST_DIR: manifestDir,
-			TENVY_PLUGIN_TRUST_CONFIG: trustPath
-		};
+                Object.assign(mockEnv.env, {
+                        DATABASE_URL: ':memory:',
+                        TENVY_PLUGIN_MANIFEST_DIR: manifestDir,
+                        TENVY_PLUGIN_TRUST_CONFIG: trustPath
+                });
 
 		refreshSignaturePolicy();
 
@@ -160,19 +167,23 @@ describe('agent plugin API', () => {
 		rmSync(manifestDir, { recursive: true, force: true });
 		rmSync(trustDir, { recursive: true, force: true });
 		delete process.env.TENVY_PLUGIN_MANIFEST_DIR;
-		delete process.env.TENVY_PLUGIN_TRUST_CONFIG;
-		mockEnv.env = { DATABASE_URL: ':memory:' };
+                delete process.env.TENVY_PLUGIN_TRUST_CONFIG;
+                Object.keys(mockEnv.env).forEach((key) => {
+                        if (key !== 'DATABASE_URL') {
+                                delete mockEnv.env[key];
+                        }
+                });
+                mockEnv.env.DATABASE_URL = ':memory:';
 	});
 
 	it('returns manifest snapshots and artifacts for authorized agents', async () => {
 		const sharedModule = await import('../src/routes/api/agents/[id]/plugins/_shared.js');
 		const { telemetryStore } = sharedModule;
 		await telemetryStore.getManifestSnapshot();
-		await db
-			.update(pluginTable)
-			.set({ approvalStatus: 'approved', approvedAt: new Date() })
-			.where(eq(pluginTable.id, manifestId));
-		(telemetryStore as { manifestSnapshot?: unknown }).manifestSnapshot = null;
+                await db
+                        .update(pluginTable)
+                        .set({ approvalStatus: 'approved', approvedAt: new Date() })
+                        .where(eq(pluginTable.id, manifestId));
 
 		const listModule = await import('../src/routes/api/clients/[id]/plugins/+server.js');
 		const manifestModule = await import(
@@ -239,7 +250,7 @@ describe('agent plugin API', () => {
 	});
 
 	it('accepts plugin uploads from zip archives and persists runtime metadata', async () => {
-		const { POST } = await import('../src/routes/api/plugins/+server.ts');
+            const { POST } = await import('../src/routes/api/plugins/+server');
 
 		const artifactPayload = 'uploaded artifact payload';
 		const artifactBuffer = Buffer.from(artifactPayload, 'utf8');
@@ -281,11 +292,13 @@ describe('agent plugin API', () => {
 			'uploaded.bin': artifactBuffer
 		});
 
-		const form = new FormData();
-		form.set(
-			'artifact',
-			new File([archiveBuffer], 'uploaded.zip', { type: 'application/octet-stream' })
-		);
+                const form = new FormData();
+                form.set(
+                        'artifact',
+                        new File([toArrayBuffer(archiveBuffer)], 'uploaded.zip', {
+                                type: 'application/octet-stream'
+                        })
+                );
 
 		const response = await POST({
 			locals: { user: developerUser },
@@ -309,7 +322,7 @@ describe('agent plugin API', () => {
 	});
 
 	it('accepts plugin uploads from tar.gz archives', async () => {
-		const { POST } = await import('../src/routes/api/plugins/+server.ts');
+            const { POST } = await import('../src/routes/api/plugins/+server');
 
 		const artifactBuffer = Buffer.from('tar payload', 'utf8');
 		const artifactHash = createHash('sha256').update(artifactBuffer).digest('hex');
@@ -347,8 +360,11 @@ describe('agent plugin API', () => {
 			'tar.bin': artifactBuffer
 		});
 
-		const form = new FormData();
-		form.set('artifact', new File([archiveBuffer], 'tar-plugin.tar.gz'));
+                const form = new FormData();
+                form.set(
+                        'artifact',
+                        new File([toArrayBuffer(archiveBuffer)], 'tar-plugin.tar.gz')
+                );
 
 		const response = await POST({
 			locals: { user: developerUser },
@@ -362,7 +378,7 @@ describe('agent plugin API', () => {
 	});
 
 	it('rejects uploads with invalid manifests', async () => {
-		const { POST } = await import('../src/routes/api/plugins/+server.ts');
+            const { POST } = await import('../src/routes/api/plugins/+server');
 
 		const archiveBuffer = await createZipPluginPackage({
 			'manifest.json': JSON.stringify({
@@ -377,8 +393,8 @@ describe('agent plugin API', () => {
 			'artifact.bin': 'broken'
 		});
 
-		const form = new FormData();
-		form.set('artifact', new File([archiveBuffer], 'invalid.zip'));
+                const form = new FormData();
+                form.set('artifact', new File([toArrayBuffer(archiveBuffer)], 'invalid.zip'));
 
 		await expect(
 			POST({
@@ -392,12 +408,12 @@ describe('agent plugin API', () => {
 	});
 
 	it('rejects uploads when manifest is missing from archive', async () => {
-		const { POST } = await import('../src/routes/api/plugins/+server.ts');
+            const { POST } = await import('../src/routes/api/plugins/+server');
 
 		const archiveBuffer = await createZipPluginPackage({ 'plugin.bin': 'content' });
 
-		const form = new FormData();
-		form.set('artifact', new File([archiveBuffer], 'no-manifest.zip'));
+                const form = new FormData();
+                form.set('artifact', new File([toArrayBuffer(archiveBuffer)], 'no-manifest.zip'));
 
 		await expect(
 			POST({
@@ -411,7 +427,7 @@ describe('agent plugin API', () => {
 	});
 
 	it('rejects uploads when artifact hash mismatches manifest', async () => {
-		const { POST } = await import('../src/routes/api/plugins/+server.ts');
+            const { POST } = await import('../src/routes/api/plugins/+server');
 
 		const artifactBuffer = Buffer.from('actual artifact', 'utf8');
 		const manifestHash = '0'.repeat(64);
@@ -437,8 +453,8 @@ describe('agent plugin API', () => {
 			'mismatch.bin': artifactBuffer
 		});
 
-		const form = new FormData();
-		form.set('artifact', new File([archiveBuffer], 'hash-mismatch.zip'));
+                const form = new FormData();
+                form.set('artifact', new File([toArrayBuffer(archiveBuffer)], 'hash-mismatch.zip'));
 
 		await expect(
 			POST({
@@ -452,7 +468,7 @@ describe('agent plugin API', () => {
 	});
 
 	it('rejects uploads when signature verification fails', async () => {
-		const { POST } = await import('../src/routes/api/plugins/+server.ts');
+            const { POST } = await import('../src/routes/api/plugins/+server');
 
 		const artifactBuffer = Buffer.from('unsigned artifact', 'utf8');
 		const artifactHash = createHash('sha256').update(artifactBuffer).digest('hex');
@@ -478,8 +494,8 @@ describe('agent plugin API', () => {
 			'signature.bin': artifactBuffer
 		});
 
-		const form = new FormData();
-		form.set('artifact', new File([archiveBuffer], 'signature-failure.zip'));
+                const form = new FormData();
+                form.set('artifact', new File([toArrayBuffer(archiveBuffer)], 'signature-failure.zip'));
 
 		await expect(
 			POST({
@@ -493,7 +509,7 @@ describe('agent plugin API', () => {
 	});
 
 	it('rejects uploads with duplicate version numbers', async () => {
-		const { POST } = await import('../src/routes/api/plugins/+server.ts');
+            const { POST } = await import('../src/routes/api/plugins/+server');
 
 		const artifactBuffer = Buffer.from(artifactContent, 'utf8');
 		const manifestHash = createHash('sha256').update(artifactBuffer).digest('hex');
@@ -522,8 +538,8 @@ describe('agent plugin API', () => {
 			'pkg.zip': artifactBuffer
 		});
 
-		const form = new FormData();
-		form.set('artifact', new File([archiveBuffer], 'pkg.zip'));
+                const form = new FormData();
+                form.set('artifact', new File([toArrayBuffer(archiveBuffer)], 'pkg.zip'));
 
 		await expect(
 			POST({
@@ -537,18 +553,17 @@ describe('agent plugin API', () => {
 	});
 
 	it('records manual stage requests for clients', async () => {
-		const bootstrapStore = new PluginTelemetryStore();
-		await bootstrapStore.getManifestSnapshot();
-		const approvedAt = new Date();
-		await db
-			.update(pluginTable)
-			.set({ approvalStatus: 'approved', approvedAt })
-			.where(eq(pluginTable.id, manifestId));
-		(bootstrapStore as { manifestSnapshot?: unknown }).manifestSnapshot = null;
+                const bootstrapStore = new PluginTelemetryStore();
+                await bootstrapStore.getManifestSnapshot();
+                const approvedAt = new Date();
+                await db
+                        .update(pluginTable)
+                        .set({ approvalStatus: 'approved', approvedAt })
+                        .where(eq(pluginTable.id, manifestId));
 
-		const stageModule = await import(
-			'../src/routes/api/clients/[id]/plugins/[pluginId]/stage/+server.ts'
-		);
+                const stageModule = await import(
+                        '../src/routes/api/clients/[id]/plugins/[pluginId]/stage/+server'
+                );
 
 		const response = await stageModule.POST({
 			params: { id: 'agent-1', pluginId: manifestId },

@@ -10,7 +10,7 @@
 		CardTitle
 	} from '$lib/components/ui/card/index.js';
 	import { Tabs, TabsContent, TabsList, TabsTrigger } from '$lib/components/ui/tabs/index.js';
-	import { onDestroy, onMount, tick } from 'svelte';
+import { onDestroy, onMount, tick } from 'svelte';
 	import { SvelteSet } from 'svelte/reactivity';
 	import { toast } from 'svelte-sonner';
 	import ConnectionTab from './components/ConnectionTab.svelte';
@@ -103,8 +103,8 @@
 	const DEFAULT_TAB: BuildTab = 'connection';
 	let activeTab = $state<BuildTab>(DEFAULT_TAB);
 
-	type TabComponent = typeof ConnectionTab;
-	type TabLoader = () => Promise<{ default: TabComponent }>;
+type TabComponent = new (...args: any[]) => import('svelte').SvelteComponent;
+type TabLoader = () => Promise<{ default: TabComponent }>;
 
         const TAB_COMPONENT_LOADERS: Record<BuildTab, TabLoader> = {
                 connection: async () => ({ default: ConnectionTab }),

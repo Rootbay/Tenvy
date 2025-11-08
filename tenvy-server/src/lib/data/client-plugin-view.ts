@@ -1,5 +1,5 @@
 import { agentModuleCapabilityIndex } from '../../../../shared/modules/index.js';
-import type { PluginManifest } from '../../../../shared/types/plugin-manifest.js';
+import type { PluginManifest } from '../../../../shared/types/plugin-manifest';
 import { formatFileSize, formatRelativeTime } from './plugin-view.js';
 import type { Plugin } from './plugins.js';
 import type { AgentPluginRecord } from '$lib/server/plugins/telemetry-store.js';
