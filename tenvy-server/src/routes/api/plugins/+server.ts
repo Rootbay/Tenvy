@@ -144,15 +144,13 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 		}
 
 		const validationErrors = validatePluginManifest(manifest);
-		if (validationErrors.length > 0) {
-			console.warn('Rejected plugin upload: manifest failed validation', {
-				errors: validationErrors
-			});
-			throw error(400, {
-				message: 'Invalid plugin manifest',
-				details: validationErrors
-			});
-		}
+                if (validationErrors.length > 0) {
+                        console.warn('Rejected plugin upload: manifest failed validation', {
+                                errors: validationErrors
+                        });
+                        const details = validationErrors.join(', ');
+                        throw error(400, details ? `Invalid plugin manifest: ${details}` : 'Invalid plugin manifest');
+                }
 
 		const pluginId = ensurePluginId(manifest);
 		const manifestDirectory = resolveManifestDirectory();

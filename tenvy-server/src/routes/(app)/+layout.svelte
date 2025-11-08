@@ -42,8 +42,8 @@
 		persistPortSelection
 	} from '$lib/utils/rat-port-preferences.js';
 	import { browser } from '$app/environment';
-	import { goto } from '$app/navigation';
-	import { resolve } from '$app/paths';
+        import { goto } from '$app/navigation';
+        import { resolve } from '$app/paths';
 	import {
 		Activity,
 		Bell,
@@ -63,14 +63,16 @@
 	import type { ComponentProps } from 'svelte';
 	import { toggleMode } from 'mode-watcher';
 
-	type NavItem = {
-		title: string;
-		icon: IconComponent;
-		badge?: string;
-		badgeClass?: string;
-		slug: NavKey;
-		href: string;
-	};
+        type NavHref = '/dashboard' | '/clients' | '/build' | '/activity' | '/plugins';
+
+        type NavItem = {
+                title: string;
+                icon: IconComponent;
+                badge?: string;
+                badgeClass?: string;
+                slug: NavKey;
+                href: NavHref;
+        };
 
 	type SidebarMenuButtonChildContext = Parameters<
 		NonNullable<ComponentProps<typeof SidebarMenuButton>['child']>
@@ -83,39 +85,39 @@
 			badge: 'Live',
 			badgeClass: 'bg-emerald-500/20 text-emerald-500',
 			slug: 'dashboard',
-			href: '/dashboard'
-		},
-		{
-			title: 'Clients',
-			icon: Users,
-			badge: '18',
-			badgeClass: 'bg-blue-500/15 text-blue-500',
-			slug: 'clients',
-			href: '/clients'
-		},
-		{
-			title: 'Build',
-			icon: Hammer,
-			slug: 'build',
-			href: '/build'
-		},
-		{
-			title: 'Activity',
-			icon: Activity,
-			badge: '12',
-			badgeClass: 'bg-sidebar-primary/10 text-sidebar-primary',
-			slug: 'activity',
-			href: '/activity'
-		},
-		{
-			title: 'Plugins',
-			icon: PlugZap,
-			badge: '3',
-			badgeClass: 'bg-purple-500/15 text-purple-500',
-			slug: 'plugins',
-			href: '/plugins'
-		}
-	];
+                        href: '/dashboard'
+                },
+                {
+                        title: 'Clients',
+                        icon: Users,
+                        badge: '18',
+                        badgeClass: 'bg-blue-500/15 text-blue-500',
+                        slug: 'clients',
+                        href: '/clients'
+                },
+                {
+                        title: 'Build',
+                        icon: Hammer,
+                        slug: 'build',
+                        href: '/build'
+                },
+                {
+                        title: 'Activity',
+                        icon: Activity,
+                        badge: '12',
+                        badgeClass: 'bg-sidebar-primary/10 text-sidebar-primary',
+                        slug: 'activity',
+                        href: '/activity'
+                },
+                {
+                        title: 'Plugins',
+                        icon: PlugZap,
+                        badge: '3',
+                        badgeClass: 'bg-purple-500/15 text-purple-500',
+                        slug: 'plugins',
+                        href: '/plugins'
+                }
+        ];
 
 	const navSummaries: Record<NavKey, { title: string; description: string }> = {
 		dashboard: {

@@ -87,3 +87,5 @@ export const geoCommandResponseSchema = z.union([
 ]);
 export type GeoCommandResponse = z.infer<typeof geoCommandResponseSchema>;
 
+export type GeoCommandPayload = GeoCommandRequest;
+

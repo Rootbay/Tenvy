@@ -1,6 +1,6 @@
 import { registry, RegistryError } from './store';
 import type { ClipboardTriggerEvent } from '$lib/types/clipboard';
-import type { CommandName, CommandPayload } from '../../../../../../shared/types/messages';
+import type { CommandName, CommandPayload } from '../../../../../shared/types/messages';
 
 const allowedCommandNames: readonly CommandName[] = [
 	'ping',

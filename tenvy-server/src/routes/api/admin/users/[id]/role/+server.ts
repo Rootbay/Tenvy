@@ -19,9 +19,9 @@ export const PATCH: RequestHandler = async ({ params, request, locals }) => {
 	const targetId = params.id;
 	const result = await db.update(table.user).set({ role }).where(eq(table.user.id, targetId));
 
-	if (result.rowsAffected === 0) {
-		throw error(404, 'User not found');
-	}
+        if (result.changes === 0) {
+                throw error(404, 'User not found');
+        }
 
 	const [updated] = await db
 		.select({
