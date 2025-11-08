@@ -849,16 +849,16 @@
 		<CardContent class="space-y-4">
 			<div
 				class="relative flex h-[360px] w-full items-center justify-center overflow-hidden rounded-lg border bg-black"
-				tabindex="0"
+				tabindex={0}
 				bind:this={viewportEl}
 				data-testid="app-vnc-viewport"
-				on:pointerdown={handlePointerDown}
-				on:pointermove={handlePointerMove}
-				on:pointerup={handlePointerUp}
-				on:pointercancel={handlePointerCancel}
-				on:wheel={handleWheel}
-				on:keydown={(event) => handleKey(event, true)}
-				on:keyup={(event) => handleKey(event, false)}
+				onpointerdown={handlePointerDown}
+				onpointermove={handlePointerMove}
+				onpointerup={handlePointerUp}
+				onpointercancel={handlePointerCancel}
+				onwheel={handleWheel}
+				onkeydown={(event) => handleKey(event, true)}
+				onkeyup={(event) => handleKey(event, false)}
 			>
 				{#if $frameUrl}
 					<img

@@ -15,22 +15,25 @@
 	import { buildClientToolUrl, type ClientToolDefinition } from '$lib/data/client-tools';
 	import ClientToolWorkspace from '$lib/components/workspace/client-tool-workspace.svelte';
 	import { isWorkspaceTool } from '$lib/data/client-tool-workspaces';
-	import type { AgentSnapshot } from '../../../../../../shared/types/agent';
+	import type { AgentSnapshot } from '../../../../../../../shared/types/agent';
 	import { ArrowLeft, X } from '@lucide/svelte';
+	import type { Snippet } from 'svelte';
 
-	const {
+	let {
 		client,
 		agent = null,
 		tools,
 		activeTool = null,
-		segments = []
-	} = $props<{
+		segments = [],
+		empty
+	}: {
 		client: Client;
 		agent?: AgentSnapshot | null;
 		tools: ClientToolDefinition[];
 		activeTool?: ClientToolDefinition | null;
 		segments?: string[];
-	}>();
+		empty?: Snippet;
+	} = $props();
 
 	const baseModulesUrl = `/clients/${client.id}/modules`;
 
@@ -176,7 +179,9 @@
 					</CardContent>
 				</Card>
 			{:else}
-				<slot name="empty">
+				{#if empty}
+					{@render empty()}
+				{:else}
 					<Card class="border-dashed">
 						<CardHeader>
 							<CardTitle>Select a module</CardTitle>
@@ -194,7 +199,7 @@
 							</p>
 						</CardContent>
 					</Card>
-				</slot>
+				{/if}
 			{/if}
 		</div>
 	</div>

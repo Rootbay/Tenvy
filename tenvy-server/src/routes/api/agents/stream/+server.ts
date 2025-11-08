@@ -1,7 +1,7 @@
 import type { RequestHandler } from './$types';
 import { registry } from '$lib/server/rat/store';
 import { requireViewer } from '$lib/server/authorization';
-import type { AgentRegistryEvent } from '../../../../../shared/types/registry-events';
+import type { AgentRegistryEvent } from '../../../../../../shared/types/registry-events';
 
 const encoder = new TextEncoder();
 const PING_INTERVAL_MS = 15_000;

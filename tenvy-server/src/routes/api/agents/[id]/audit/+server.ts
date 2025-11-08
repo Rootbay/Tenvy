@@ -4,7 +4,7 @@ import { db } from '$lib/server/db';
 import * as table from '$lib/server/db/schema';
 import { desc, eq } from 'drizzle-orm';
 import { requireViewer } from '$lib/server/authorization';
-import type { CommandAcknowledgementRecord } from '../../../../../../shared/types/messages';
+import type { CommandAcknowledgementRecord } from '../../../../../../../shared/types/messages';
 
 function parseAcknowledgement(value: string | null): CommandAcknowledgementRecord | null {
 	if (!value) {

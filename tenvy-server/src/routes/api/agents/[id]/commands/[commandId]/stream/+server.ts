@@ -2,7 +2,7 @@ import { error } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { requireViewer } from '$lib/server/authorization';
 import { registry, RegistryError } from '$lib/server/rat/store';
-import type { CommandOutputEvent } from '../../../../../../../../shared/types/messages';
+import type { CommandOutputEvent } from '../../../../../../../../../shared/types/messages';
 
 const encoder = new TextEncoder();
 const PING_INTERVAL_MS = 15_000;

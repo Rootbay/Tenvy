@@ -1,7 +1,7 @@
 import { error } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { registry, RegistryError } from '$lib/server/rat/store';
-import type { CommandOutputEvent } from '../../../../../../../../shared/types/messages';
+import type { CommandOutputEvent } from '../../../../../../../../../shared/types/messages';
 
 function getBearerToken(header: string | null): string | undefined {
 	if (!header) {

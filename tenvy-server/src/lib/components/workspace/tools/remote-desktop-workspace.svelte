@@ -1895,12 +1895,12 @@
 	});
 </script>
 
-<svelte:window on:keydown={handleKeyDown} on:keyup={handleKeyUp} />
+<svelte:window onkeydown={handleKeyDown} onkeyup={handleKeyUp} />
 
 <Card>
 	<CardContent>
 		<div
-			tabindex="-1"
+			tabindex="0"
 			bind:this={viewportEl}
 			class="relative overflow-hidden rounded-lg border border-border bg-muted/30 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
 			role="application"
@@ -1924,7 +1924,7 @@
                                 muted
                                 controls={false}
                                 style="pointer-events: none; image-rendering: pixelated; image-rendering: crisp-edges;"
-                        />
+                        ></video>
                         <canvas
                                 bind:this={canvasEl}
                                 class="block h-full w-full bg-slate-950"

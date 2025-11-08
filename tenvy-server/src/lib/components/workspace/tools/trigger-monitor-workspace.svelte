@@ -623,16 +623,16 @@
 									<td class="px-3 py-3 text-center align-middle">
 										<Switch
 											checked={entry.alertOnOpen}
-											on:click={(event) => handleWatchlistToggle(event, index, 'alertOnOpen')}
-											on:keydown={(event) => handleWatchlistToggle(event, index, 'alertOnOpen')}
+											onclick={(event) => handleWatchlistToggle(event, index, 'alertOnOpen')}
+											onkeydown={(event) => handleWatchlistToggle(event, index, 'alertOnOpen')}
 											disabled={saving}
 										/>
 									</td>
 									<td class="px-3 py-3 text-center align-middle">
 										<Switch
 											checked={entry.alertOnClose}
-											on:click={(event) => handleWatchlistToggle(event, index, 'alertOnClose')}
-											on:keydown={(event) => handleWatchlistToggle(event, index, 'alertOnClose')}
+											onclick={(event) => handleWatchlistToggle(event, index, 'alertOnClose')}
+											onkeydown={(event) => handleWatchlistToggle(event, index, 'alertOnClose')}
 											disabled={saving}
 										/>
 									</td>
@@ -918,16 +918,16 @@
 												<span class="text-foreground">Alert when opened</span>
 												<Switch
 													checked={entry.alertOnOpen}
-													on:click={(event) => handleDraftToggle(event, index, 'alertOnOpen')}
-													on:keydown={(event) => handleDraftToggle(event, index, 'alertOnOpen')}
+													onclick={(event) => handleDraftToggle(event, index, 'alertOnOpen')}
+													onkeydown={(event) => handleDraftToggle(event, index, 'alertOnOpen')}
 												/>
 											</label>
 											<label class="flex items-center justify-between gap-3">
 												<span class="text-foreground">Alert when closed</span>
 												<Switch
 													checked={entry.alertOnClose}
-													on:click={(event) => handleDraftToggle(event, index, 'alertOnClose')}
-													on:keydown={(event) => handleDraftToggle(event, index, 'alertOnClose')}
+													onclick={(event) => handleDraftToggle(event, index, 'alertOnClose')}
+													onkeydown={(event) => handleDraftToggle(event, index, 'alertOnClose')}
 												/>
 											</label>
 										</div>

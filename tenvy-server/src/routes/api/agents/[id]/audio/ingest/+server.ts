@@ -1,7 +1,7 @@
 import { error } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { audioBridgeManager, AudioBridgeError } from '$lib/server/rat/audio';
-import { AUDIO_STREAM_TOKEN_HEADER } from '../../../../../../../shared/constants/protocol';
+import { AUDIO_STREAM_TOKEN_HEADER } from '../../../../../../../../shared/constants/protocol';
 
 export const GET: RequestHandler = ({ request, params }) => {
 	if (request.headers.get('upgrade')?.toLowerCase() !== 'websocket') {

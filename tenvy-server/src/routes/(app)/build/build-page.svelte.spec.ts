@@ -2,7 +2,7 @@ import { page } from '@vitest/browser/context';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { render } from 'vitest-browser-svelte';
 import { tick } from 'svelte';
-import type { BuildRequest } from '../../../../shared/types/build';
+import type { BuildRequest } from '../../../../../shared/types/build';
 
 const persistenceImportSpy = vi.hoisted(() => vi.fn());
 const executionImportSpy = vi.hoisted(() => vi.fn());
