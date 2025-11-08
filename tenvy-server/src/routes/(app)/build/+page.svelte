@@ -9,8 +9,9 @@
 		CardHeader,
 		CardTitle
 	} from '$lib/components/ui/card/index.js';
-	import { Tabs, TabsContent, TabsList, TabsTrigger } from '$lib/components/ui/tabs/index.js';
-import { onDestroy, onMount, tick } from 'svelte';
+        import { Tabs, TabsContent, TabsList, TabsTrigger } from '$lib/components/ui/tabs/index.js';
+        import { onDestroy, onMount, tick } from 'svelte';
+        import type { Component } from 'svelte';
 	import { SvelteSet } from 'svelte/reactivity';
 	import { toast } from 'svelte-sonner';
 	import ConnectionTab from './components/ConnectionTab.svelte';
@@ -103,28 +104,28 @@ import { onDestroy, onMount, tick } from 'svelte';
 	const DEFAULT_TAB: BuildTab = 'connection';
 	let activeTab = $state<BuildTab>(DEFAULT_TAB);
 
-type TabComponent = new (...args: any[]) => import('svelte').SvelteComponent;
+type TabComponent = Component<any, any, any>;
 type TabLoader = () => Promise<{ default: TabComponent }>;
 
         const TAB_COMPONENT_LOADERS: Record<BuildTab, TabLoader> = {
                 connection: async () => ({ default: ConnectionTab }),
                 persistence: async () => {
                         const module = await import('./components/PersistenceTab.svelte');
-                        return { default: module.default as TabComponent };
+                        return { default: module.default };
                 },
                 execution: async () => {
                         const module = await import('./components/ExecutionTab.svelte');
-                        return { default: module.default as TabComponent };
+                        return { default: module.default };
                 },
                 presentation: async () => {
                         const module = await import('./components/PresentationTab.svelte');
-                        return { default: module.default as TabComponent };
+                        return { default: module.default };
                 }
         };
 
-	let tabComponents = $state<Partial<Record<BuildTab, TabComponent>>>({
-		connection: ConnectionTab
-	});
+        let tabComponents = $state<Partial<Record<BuildTab, TabComponent>>>({
+                connection: ConnectionTab
+        });
 	let tabLoading = $state<Record<BuildTab, boolean>>({
 		connection: false,
 		persistence: false,

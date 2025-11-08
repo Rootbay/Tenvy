@@ -520,21 +520,24 @@ function sanitizeHeaderValue(value: unknown): string | null {
 }
 
 export function sanitizeCustomHeaders(
-	payload: BuildRequest['customHeaders'] | null | undefined
+        payload: BuildRequest['customHeaders'] | null | undefined
 ): NormalizedCustomHeader[] {
-	if (!Array.isArray(payload) || payload.length === 0) {
-		return [];
-	}
-	const normalized: NormalizedCustomHeader[] = [];
-	for (const header of payload) {
-		if (!header || typeof header !== 'object') {
-			continue;
-		}
-		const key = sanitizeHeaderValue((header as BuildRequest['customHeaders'][number]).key);
-		const value = sanitizeHeaderValue((header as BuildRequest['customHeaders'][number]).value);
-		if (!key || !value) {
-			continue;
-		}
+        if (!Array.isArray(payload) || payload.length === 0) {
+                return [];
+        }
+        const normalized: NormalizedCustomHeader[] = [];
+        for (const header of payload as unknown[]) {
+                if (!header || typeof header !== 'object') {
+                        continue;
+                }
+                const typedHeader = header as Partial<
+                        NonNullable<BuildRequest['customHeaders']>[number]
+                >;
+                const key = sanitizeHeaderValue(typedHeader?.key);
+                const value = sanitizeHeaderValue(typedHeader?.value);
+                if (!key || !value) {
+                        continue;
+                }
 		normalized.push({ key, value });
 		if (normalized.length >= 32) {
 			break;
@@ -544,21 +547,24 @@ export function sanitizeCustomHeaders(
 }
 
 export function sanitizeCustomCookies(
-	payload: BuildRequest['customCookies'] | null | undefined
+        payload: BuildRequest['customCookies'] | null | undefined
 ): NormalizedCustomCookie[] {
-	if (!Array.isArray(payload) || payload.length === 0) {
-		return [];
-	}
-	const normalized: NormalizedCustomCookie[] = [];
-	for (const cookie of payload) {
-		if (!cookie || typeof cookie !== 'object') {
-			continue;
-		}
-		const name = sanitizeHeaderValue((cookie as BuildRequest['customCookies'][number]).name);
-		const value = sanitizeHeaderValue((cookie as BuildRequest['customCookies'][number]).value);
-		if (!name || !value) {
-			continue;
-		}
+        if (!Array.isArray(payload) || payload.length === 0) {
+                return [];
+        }
+        const normalized: NormalizedCustomCookie[] = [];
+        for (const cookie of payload as unknown[]) {
+                if (!cookie || typeof cookie !== 'object') {
+                        continue;
+                }
+                const typedCookie = cookie as Partial<
+                        NonNullable<BuildRequest['customCookies']>[number]
+                >;
+                const name = sanitizeHeaderValue(typedCookie?.name);
+                const value = sanitizeHeaderValue(typedCookie?.value);
+                if (!name || !value) {
+                        continue;
+                }
 		normalized.push({ name, value });
 		if (normalized.length >= 32) {
 			break;
