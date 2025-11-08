@@ -3,7 +3,6 @@
   "private": true,
   "type": "module",
   "dependencies": {
-    "tweetnacl": "^1.0.3",
-    "zod": "^4.1.12"
+    "tweetnacl": "^1.0.3"
   }
 }
