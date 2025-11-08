@@ -11,9 +11,9 @@
 	}>();
 	const selectedCountry = props.selectedCountry;
 
-	function toggleCountry(code: string) {
-		selectedCountry.update((current) => (current === code ? null : code));
-	}
+        function toggleCountry(code: string) {
+                selectedCountry.update((current: string | null) => (current === code ? null : code));
+        }
 
 	function resolveFlagUrl(code: string | null): string | null {
 		if (!code || code.length === 0) {

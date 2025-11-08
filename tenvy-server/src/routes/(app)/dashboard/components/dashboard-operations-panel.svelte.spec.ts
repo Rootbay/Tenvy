@@ -57,14 +57,12 @@ describe('dashboard-operations-panel', () => {
 
 	it('shows the map view by default and renders logs on demand', async () => {
 		const selectedCountry = writable<string | null>(null);
-		render(DashboardOperationsPanel, {
-			props: {
-				clients,
-				logs,
-				generatedAt: new Date().toISOString(),
-				selectedCountry
-			}
-		});
+                const { unmount } = render(DashboardOperationsPanel, {
+                        clients,
+                        logs,
+                        generatedAt: new Date().toISOString(),
+                        selectedCountry
+                });
 
 		await expect.element(page.getByTestId('client-map-stub')).toBeInTheDocument();
 
@@ -78,5 +76,6 @@ describe('dashboard-operations-panel', () => {
 		await expect
 			.element(page.getByText('No events matched this country filter.'))
 			.toBeInTheDocument();
-	});
+                unmount();
+        });
 });

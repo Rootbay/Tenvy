@@ -2,12 +2,10 @@
 	import { onMount } from 'svelte';
 	import type { DashboardClient } from '$lib/data/dashboard';
 
-	interface LazyMapProps {
-		clients?: DashboardClient[];
-		highlightCountry?: string | null;
-	}
-
-	const { clients, highlightCountry } = $props() as LazyMapProps;
+        const { clients, highlightCountry } = $props<{
+                clients?: DashboardClient[];
+                highlightCountry?: string | null;
+        }>();
 
 	let MapComponent = $state<typeof import('./client-presence-map.svelte').default | null>(null);
 
