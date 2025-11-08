@@ -5,6 +5,7 @@ import { db } from '$lib/server/db';
 import * as table from '$lib/server/db/schema';
 import { eq } from 'drizzle-orm';
 import { limitWebAuthn } from '$lib/server/rate-limiters';
+import { ensureChallengeOptions } from '$lib/server/auth/webauthn-utils';
 
 const CHALLENGE_TTL_MS = 1000 * 60 * 5;
 
@@ -44,22 +45,23 @@ export const POST: RequestHandler = async (event) => {
 		}
 	});
 
-	const options = await generateRegistrationOptions({
-		rpName: 'Tenvy Controller',
-		rpID: event.url.hostname,
-		userName: `tenvy-${user.id.slice(0, 8)}`,
-		userID: userIdBytes,
-		timeout: 60_000,
-		attestationType: 'none',
-		authenticatorSelection: {
-			residentKey: 'required',
-			requireResidentKey: true,
-			userVerification: 'required'
-		},
-		excludeCredentials
-	});
+        const rawOptions = await generateRegistrationOptions({
+                rpName: 'Tenvy Controller',
+                rpID: event.url.hostname,
+                userName: `tenvy-${user.id.slice(0, 8)}`,
+                userID: userIdBytes,
+                timeout: 60_000,
+                attestationType: 'none',
+                authenticatorSelection: {
+                        residentKey: 'required',
+                        requireResidentKey: true,
+                        userVerification: 'required'
+                },
+                excludeCredentials
+        });
+        const options = ensureChallengeOptions(rawOptions, 'registration');
 
-	await db
+        await db
 		.update(table.user)
 		.set({
 			currentChallenge: options.challenge,
