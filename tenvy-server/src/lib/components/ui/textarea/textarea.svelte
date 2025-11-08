@@ -1,15 +1,20 @@
 <script lang="ts">
-	import type { HTMLTextareaAttributes } from 'svelte/elements';
+        import type { HTMLTextareaAttributes } from 'svelte/elements';
 	import { cn, type WithElementRef } from '$lib/utils.js';
 
 	type Props = WithElementRef<HTMLTextareaAttributes, HTMLTextAreaElement>;
+
+        export interface $$Events {
+                input: Event & { currentTarget: HTMLTextAreaElement };
+                change: Event & { currentTarget: HTMLTextAreaElement };
+        }
 
         let {
                 ref = $bindable(null),
                 value = $bindable(),
                 class: className,
                 ...restProps
-        }: Props = $props<Props, HTMLTextareaAttributes['on']>();
+        }: Props = $props();
 </script>
 
 <textarea

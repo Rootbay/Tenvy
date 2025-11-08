@@ -22,21 +22,28 @@
         import { ArrowLeft, X } from '@lucide/svelte';
         import type { Snippet } from 'svelte';
 
-	let {
-		client,
-		agent = null,
-		tools,
+        export interface $$Slots {
+                empty?: () => Snippet;
+        }
+
+        let {
+                client,
+                agent = null,
+                tools,
                 activeTool = null,
                 segments = [],
                 empty
-        }: {
-                client: Client;
-                agent?: AgentSnapshot | null;
-                tools: ClientToolDefinition[];
-                activeTool?: ClientToolDefinition | null;
-                segments?: string[];
-                empty?: Snippet;
-        } = $props();
+        } = $props<
+                {
+                        client: Client;
+                        agent?: AgentSnapshot | null;
+                        tools: ClientToolDefinition[];
+                        activeTool?: ClientToolDefinition | null;
+                        segments?: string[];
+                },
+                Record<string, never>,
+                $$Slots
+        >();
 
         const categoryLabels: Record<string, string> = {
 		overview: 'Overview',
@@ -62,7 +69,9 @@
                                         key,
                                         label:
                                                 categoryLabels[key] ??
-                                                key.replace(/-/g, ' ').replace(/\b\w/g, (char) => char.toUpperCase()),
+                                                key
+                                                        .replace(/-/g, ' ')
+                                                        .replace(/\b\w/g, (char: string) => char.toUpperCase()),
                                         items: []
                                 } satisfies Group;
                                 index.set(key, group);
@@ -180,7 +189,7 @@
 					</CardContent>
 				</Card>
                         {:else if empty}
-                                {@render empty()}
+                                {@render empty!()}
                         {:else}
                                 <Card class="border-dashed">
                                         <CardHeader>
