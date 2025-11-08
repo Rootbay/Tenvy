@@ -883,15 +883,18 @@
 			}
 		});
 
-		eventSource.addEventListener('frame', (event) => {
-			const frame = parseFrameEvent(event as MessageEvent);
-			if (frame) {
-				enqueueFrame(frame);
-				if (frame.media && frame.media.length > 0) {
-					void handleMediaSamples(frame.sessionId, frame.media);
-				}
-			}
-		});
+                eventSource.addEventListener('frame', (event) => {
+                        if (webrtcVideoActive) {
+                                return;
+                        }
+                        const frame = parseFrameEvent(event as MessageEvent);
+                        if (frame) {
+                                enqueueFrame(frame);
+                                if (frame.media && frame.media.length > 0) {
+                                        void handleMediaSamples(frame.sessionId, frame.media);
+                                }
+                        }
+                });
 
 		eventSource.addEventListener('media', (event) => {
 			const detail = parseMediaEvent(event as MessageEvent);
