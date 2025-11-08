@@ -807,14 +807,12 @@
 											{/if}
 										</div>
 										<div class="space-y-2">
-											<input
-												class="block w-full rounded border border-border/60 bg-background px-3 py-2 text-sm"
-												type="file"
-												accept=".zip"
-												bind:this={element) => registerSeedInput(platform, seedEntry.kind, element)}
-												on:change={(event) =>
-													handleSeedFileSelection(platform, seedEntry.kind, event)}
-											/>
+										<input
+											class="block w-full rounded border border-border/60 bg-background px-3 py-2 text-sm"
+											type="file"
+											accept=".zip"
+											onchange={(event) => handleSeedFileSelection(platform, seedEntry.kind, event)}
+										/>
 											<Button
 												type="button"
 												size="sm"
