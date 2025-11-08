@@ -1,16 +1,20 @@
 <script lang="ts">
-	import { browser } from '$app/environment';
-	import { onMount } from 'svelte';
+        import { browser } from '$app/environment';
+        import { onMount, type Snippet } from 'svelte';
 	import { Textarea } from '$lib/components/ui/textarea/index.js';
 	import { Input } from '$lib/components/ui/input/index.js';
 	import { Label } from '$lib/components/ui/label/index.js';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import type { Client } from '$lib/data/clients';
 
-	const { client, class: className = '' } = $props<{
-		client: Client;
-		class?: string;
-	}>();
+        const { client, class: className = '' } = $props<
+                {
+                        client: Client;
+                        class?: string;
+                },
+                Record<string, never>,
+                { secondary?: (args: { noteSavePending: boolean }) => Snippet }
+        >();
 
 	let noteText = $state(client.notes ?? '');
 	let noteTagsInput = $state(client.noteTags?.join(' ') ?? '');
@@ -35,10 +39,10 @@
 		return value.map((tag) => `${tag ?? ''}`.trim()).filter((tag) => tag.length > 0);
 	}
 
-	function clearNoteFeedback() {
-		noteSaveError = null;
-		noteSaveSuccess = null;
-	}
+        function clearNoteFeedback(_: Event) {
+                noteSaveError = null;
+                noteSaveSuccess = null;
+        }
 
 	onMount(() => {
 		if (!browser) {

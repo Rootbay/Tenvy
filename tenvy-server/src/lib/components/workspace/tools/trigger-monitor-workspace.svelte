@@ -78,21 +78,21 @@
 		source: WatchlistSuggestionSource;
 	};
 
-	const filteredSuggestions = $derived(() => {
-		if (!watchlistFilter.trim()) {
-			return watchlistSuggestions;
-		}
-		const query = watchlistFilter.trim().toLowerCase();
-		return watchlistSuggestions.filter((item) => {
-			return (
-				item.displayName.toLowerCase().includes(query) ||
-				item.id.toLowerCase().includes(query) ||
-				(item.detail ? item.detail.toLowerCase().includes(query) : false)
-			);
-		});
-	});
+        const filteredSuggestions = $derived(() => {
+                if (!watchlistFilter.trim()) {
+                        return watchlistSuggestions;
+                }
+                const query = watchlistFilter.trim().toLowerCase();
+                return watchlistSuggestions.filter((item) => {
+                        return (
+                                item.displayName.toLowerCase().includes(query) ||
+                                item.id.toLowerCase().includes(query) ||
+                                (item.detail ? item.detail.toLowerCase().includes(query) : false)
+                        );
+                });
+        }) as unknown as WatchlistSuggestion[];
 
-	const recentEvents = $derived(() => events.slice(0, 12));
+        const recentEvents = $derived(() => events.slice(0, 12)) as unknown as TriggerMonitorEvent[];
 
 	const seenEventIds = new Set<string>();
 
@@ -208,16 +208,13 @@
 			if (event.key !== ' ' && event.key !== 'Enter') {
 				return false;
 			}
-		}
+                }
 
-		event.preventDefault();
-		if ('stopImmediatePropagation' in event) {
-			event.stopImmediatePropagation();
-		} else {
-			event.stopPropagation();
-		}
-		return true;
-	}
+                event.preventDefault();
+                event.stopImmediatePropagation();
+                event.stopPropagation();
+                return true;
+        }
 
 	function handleWatchlistToggle(
 		event: MouseEvent | KeyboardEvent,

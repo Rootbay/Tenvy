@@ -1,8 +1,8 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { Button } from '$lib/components/ui/button/index.js';
-	import { Input } from '$lib/components/ui/input/index.js';
-	import { Label } from '$lib/components/ui/label/index.js';
+        import { Button } from '$lib/components/ui/button/index.js';
+        import { Input } from '$lib/components/ui/input/index.js';
+        import { Label } from '$lib/components/ui/label/index.js';
 	import {
 		Select,
 		SelectContent,
@@ -19,8 +19,8 @@
 		CardTitle
 	} from '$lib/components/ui/card/index.js';
 	import { Alert, AlertDescription, AlertTitle } from '$lib/components/ui/alert/index.js';
-	import type { DialogToolId } from '$lib/data/client-tools';
-	import type { Client } from '$lib/data/clients';
+        import { getClientTool, type DialogToolId } from '$lib/data/client-tools';
+        import type { Client } from '$lib/data/clients';
 	import { appendWorkspaceLog, createWorkspaceLogEntry } from '$lib/workspace/utils';
 	import { notifyToolActivationCommand } from '$lib/utils/agent-commands.js';
 	import type { WorkspaceLogEntry } from '$lib/workspace/types';
@@ -35,11 +35,19 @@
 		snapshot: TcpConnectionSnapshot | null;
 	}
 
-	const {
-		client,
-		toolId = 'system-monitor',
-		panel = 'network'
-	} = $props<{ client: Client; toolId?: DialogToolId; panel?: 'network' }>();
+        const {
+                client,
+                toolId = 'system-monitor',
+                panel = 'network'
+        } = $props<{ client: Client; toolId?: DialogToolId; panel?: 'network' }>();
+
+        const tool = getClientTool(toolId) ?? {
+                id: toolId,
+                title: 'TCP Connections',
+                segments: ['management', 'system-monitor'],
+                target: 'dialog',
+                description: 'Live inventory of socket telemetry associated with running processes.'
+        };
 
 	const stateOptions: { label: string; value: 'all' | TcpConnectionState }[] = [
 		{ label: 'All states', value: 'all' },

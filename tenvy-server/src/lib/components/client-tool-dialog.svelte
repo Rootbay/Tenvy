@@ -76,36 +76,34 @@
 
 	const tool = getClientTool(toolId);
 
-	const activeWorkspace = $derived(() => getWorkspaceComponent(toolId));
-	const keyloggerMode = $derived(() => getKeyloggerMode(toolId));
-	const isWorkspaceDialog = $derived(isWorkspaceTool(toolId));
-	const missingAgent = $derived(workspaceRequiresAgent.has(toolId) && !agent);
-	const workspaceProps = $derived(() => {
-		if (!activeWorkspace) {
-			return null;
-		}
+        const activeWorkspace = getWorkspaceComponent(toolId);
+        const keyloggerMode = getKeyloggerMode(toolId);
+        const isWorkspaceDialog = isWorkspaceTool(toolId);
+        const missingAgent = workspaceRequiresAgent.has(toolId) && !agent;
+        const workspaceProps: Record<string, unknown> | null = (() => {
+                if (!activeWorkspace) {
+                        return null;
+                }
 
-		if (toolId === 'cmd' && !agent) {
-			return null;
-		}
+                if (toolId === 'cmd' && !agent) {
+                        return null;
+                }
 
-		const base: Record<string, unknown> = { client };
+                const base: Record<string, unknown> = { client };
 
-		if (toolId === 'cmd' && agent) {
-			base.agent = agent;
-		}
+                if (toolId === 'cmd' && agent) {
+                        base.agent = agent;
+                }
 
-		if (toolId === 'remote-desktop') {
-			base.initialSession = null;
-		}
+                if (toolId === 'remote-desktop') {
+                        base.initialSession = null;
+                }
 
-		return base;
-	});
+                return base;
+        })();
 
-	const windowWidth = $derived(!isWorkspaceDialog ? 640 : toolId === 'system-monitor' ? 1180 : 980);
-	const windowHeight = $derived(
-		isWorkspaceDialog ? (toolId === 'system-monitor' ? 720 : 640) : 540
-	);
+        const windowWidth = !isWorkspaceDialog ? 640 : toolId === 'system-monitor' ? 1180 : 980;
+        const windowHeight = isWorkspaceDialog ? (toolId === 'system-monitor' ? 720 : 640) : 540;
 
 	onMount(() => {
 		if (!browser) {
@@ -410,14 +408,15 @@
 											<label
 												class="flex items-start gap-3 rounded-md border border-transparent px-2 py-2 transition hover:border-border/60"
 											>
-												<Checkbox
-													aria-describedby={`${checklistId}-description`}
-													aria-label={resolveChecklistLabel(item)}
-													checked={Boolean(openUrlChecklistState[item.id])}
-													disabled={openUrlPending || openUrlComplete}
-													on:checkedChange={(event) =>
-														setChecklistChecked(item.id, event.detail === true)}
-												/>
+                                                                                                <Checkbox
+                                                                                                        aria-describedby={`${checklistId}-description`}
+                                                                                                        aria-label={resolveChecklistLabel(item)}
+                                                                                                        checked={Boolean(openUrlChecklistState[item.id])}
+                                                                                                        disabled={openUrlPending || openUrlComplete}
+                                                                                                        onCheckedChange={(value) =>
+                                                                                                                setChecklistChecked(item.id, value === true)
+                                                                                                        }
+                                                                                                />
 												<div class="space-y-1 text-sm leading-relaxed">
 													<span class="font-medium text-foreground"
 														>{resolveChecklistLabel(item)}</span

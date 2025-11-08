@@ -50,7 +50,7 @@
 
 	type Group = { key: string; label: string; items: ClientToolDefinition[] };
 
-        const groupedTools: Group[] = $derived(() => {
+        const groupedTools = $derived(() => {
                 const order: Group[] = [];
                 const index = new Map<string, Group>();
 
@@ -75,9 +75,9 @@
                         ...group,
                         items: group.items.slice()
                 }));
-        });
+        }) as unknown as Group[];
 
-        const activeToolId: string | null = $derived(() => activeTool?.id ?? null);
+        const activeToolId = $derived(() => activeTool?.id ?? null) as unknown as string | null;
 
         function toWorkspaceUrl(tool: ClientToolDefinition) {
                 return buildClientToolUrl(client.id, tool);

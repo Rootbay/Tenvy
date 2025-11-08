@@ -115,7 +115,10 @@ describe('trigger-monitor workspace suggestions', () => {
 			throw new Error(`Unhandled fetch: ${url}`);
 		});
 
-		const { component } = render(TriggerMonitorWorkspace, { props: { client: baseClient } });
+                const { component, unmount } = render(TriggerMonitorWorkspace, {
+                        target: document.body,
+                        props: { client: baseClient }
+                });
 
 		await new Promise((resolve) => setTimeout(resolve, 0));
 
@@ -126,7 +129,7 @@ describe('trigger-monitor workspace suggestions', () => {
 
 		await expect.element(page.getByText('Atlas Explorer')).toBeInTheDocument();
 		await expect.element(page.getByText('systemd')).toBeInTheDocument();
-		component.$destroy();
+                unmount();
 	});
 
 	it('surfaces catalogue errors once and avoids repeated auto-fetching', async () => {
@@ -160,7 +163,10 @@ describe('trigger-monitor workspace suggestions', () => {
 			throw new Error(`Unhandled fetch: ${url}`);
 		});
 
-		const { component } = render(TriggerMonitorWorkspace, { props: { client: baseClient } });
+                const { component, unmount } = render(TriggerMonitorWorkspace, {
+                        target: document.body,
+                        props: { client: baseClient }
+                });
 
 		await new Promise((resolve) => setTimeout(resolve, 0));
 
@@ -189,6 +195,6 @@ describe('trigger-monitor workspace suggestions', () => {
 		});
 		expect(downloadCalls).toHaveLength(1);
 
-		component.$destroy();
+                unmount();
 	});
 });

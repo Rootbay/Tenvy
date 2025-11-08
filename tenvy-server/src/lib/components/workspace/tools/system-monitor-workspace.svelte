@@ -72,10 +72,10 @@
 		Low: 'bg-emerald-500/80 text-emerald-50 shadow-sm'
 	};
 
-	const heroMetrics = [
-		{
-			label: 'Hostname',
-			value: client.hostname ?? client.codename,
+        const heroMetrics = [
+                {
+                        label: 'Hostname',
+                        value: client.hostname ?? client.codename,
 			hint: `Codename ${client.codename}`
 		},
 		{
@@ -87,22 +87,34 @@
 			label: 'Location',
 			value: client.location,
 			hint: `IP ${client.ip}`
-		}
-	];
+                }
+        ];
 
-	let activeView = $state<ViewKey>(initialView);
-	let lastNotifiedView: ViewKey | null = null;
+        let activeView = $state<ViewKey>(initialView);
+        let lastNotifiedView: ViewKey | null = null;
 
-	$effect(() => {
-		if (activeView === lastNotifiedView) {
-			return;
-		}
-		lastNotifiedView = activeView;
-		notifyToolActivationCommand(client.id, monitorToolId, {
-			action: 'panel:activate',
-			metadata: { panel: activeView }
-		});
-	});
+        function getStatusLabel(status: Client['status']): string {
+                return statusLabels[status];
+        }
+
+        function getStatusTone(status: Client['status']): string {
+                return statusTone[status];
+        }
+
+        function getRiskTone(risk: Client['risk']): string {
+                return riskTone[risk];
+        }
+
+        $effect(() => {
+                if (activeView === lastNotifiedView) {
+                        return;
+                }
+                lastNotifiedView = activeView;
+                notifyToolActivationCommand(client.id, monitorToolId, {
+                        action: 'event:panel-activate',
+                        metadata: { panel: activeView }
+                });
+        });
 </script>
 
 <div class="flex flex-col gap-6">
@@ -112,16 +124,16 @@
 		<div class="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
 			<div class="space-y-4">
 				<div class="flex flex-wrap items-center gap-3">
-					<Badge
-						class={`rounded-full px-3 py-1 text-xs font-semibold tracking-wide uppercase ${statusTone[client.status]}`}
-					>
-						{statusLabels[client.status]}
-					</Badge>
-					<Badge
-						class={`rounded-full border border-transparent px-3 py-1 text-xs font-semibold tracking-wide uppercase ${riskTone[client.risk]}`}
-					>
-						Risk: {client.risk}
-					</Badge>
+                                        <Badge
+                                                class={`rounded-full px-3 py-1 text-xs font-semibold tracking-wide uppercase ${getStatusTone(client.status)}`}
+                                        >
+                                                {getStatusLabel(client.status)}
+                                        </Badge>
+                                        <Badge
+                                                class={`rounded-full border border-transparent px-3 py-1 text-xs font-semibold tracking-wide uppercase ${getRiskTone(client.risk)}`}
+                                        >
+                                                Risk: {client.risk}
+                                        </Badge>
 				</div>
 				<div class="space-y-2">
 					<h1 class="text-3xl font-semibold tracking-tight text-foreground">System Monitor</h1>

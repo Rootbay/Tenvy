@@ -4,12 +4,12 @@
 
 	type Props = WithElementRef<HTMLTextareaAttributes, HTMLTextAreaElement>;
 
-	let {
-		ref = $bindable(null),
-		value = $bindable(),
-		class: className,
-		...restProps
-	}: Props = $props();
+        let {
+                ref = $bindable(null),
+                value = $bindable(),
+                class: className,
+                ...restProps
+        }: Props = $props<Props, HTMLTextareaAttributes['on']>();
 </script>
 
 <textarea

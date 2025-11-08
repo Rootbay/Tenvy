@@ -161,7 +161,10 @@ describe('system info workspace', () => {
 			json: vi.fn().mockResolvedValue(snapshot)
 		} as unknown as Response);
 
-		const { component } = render(SystemInfoWorkspace, { props: { client: baseClient } });
+                const { component, unmount } = render(SystemInfoWorkspace, {
+                        target: document.body,
+                        props: { client: baseClient }
+                });
 
 		await new Promise((resolve) => setTimeout(resolve, 0));
 
@@ -175,7 +178,7 @@ describe('system info workspace', () => {
 			.element(page.getByText('Disk usage metrics were approximated.'))
 			.toBeInTheDocument();
 
-		component.$destroy();
+                unmount();
 	});
 
 	it('surfaces errors returned by the system information endpoint', async () => {
@@ -186,7 +189,10 @@ describe('system info workspace', () => {
 			text: vi.fn().mockResolvedValue('Timed out waiting for agent response')
 		} as unknown as Response);
 
-		const { component } = render(SystemInfoWorkspace, { props: { client: baseClient } });
+                const { component, unmount } = render(SystemInfoWorkspace, {
+                        target: document.body,
+                        props: { client: baseClient }
+                });
 		await new Promise((resolve) => setTimeout(resolve, 0));
 
 		await expect.element(page.getByText('Unable to load system information')).toBeInTheDocument();
@@ -194,7 +200,7 @@ describe('system info workspace', () => {
 			.element(page.getByText('Timed out waiting for agent response'))
 			.toBeInTheDocument();
 
-		component.$destroy();
+                unmount();
 	});
 
 	it('requests a refreshed snapshot when the refresh action is triggered', async () => {
@@ -213,7 +219,10 @@ describe('system info workspace', () => {
 				json: vi.fn().mockResolvedValue(snapshot)
 			} as unknown as Response);
 
-		render(SystemInfoWorkspace, { props: { client: baseClient } });
+                const { unmount } = render(SystemInfoWorkspace, {
+                        target: document.body,
+                        props: { client: baseClient }
+                });
 
 		await new Promise((resolve) => setTimeout(resolve, 0));
 
@@ -227,5 +236,6 @@ describe('system info workspace', () => {
 			2,
 			`/api/agents/${baseClient.id}/system-info?refresh=true`
 		);
-	});
+                unmount();
+        });
 });

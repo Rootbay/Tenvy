@@ -61,7 +61,10 @@ describe('open-url workspace', () => {
 			} as unknown as Response)
 		);
 
-		const { component } = render(OpenUrlWorkspace, { props: { client: baseClient } });
+                const { component, unmount } = render(OpenUrlWorkspace, {
+                        target: document.body,
+                        props: { client: baseClient }
+                });
 		const logs: WorkspaceLogEntry[][] = [];
 		component.$on('logchange', (event) => {
 			logs.push(event.detail);
@@ -92,7 +95,7 @@ describe('open-url workspace', () => {
 			detail: 'Launch dispatched to live session'
 		});
 
-		component.$destroy();
+                unmount();
 	});
 
 	it('records a queued delivery when the command awaits the next agent poll', async () => {
@@ -112,7 +115,10 @@ describe('open-url workspace', () => {
 			} as unknown as Response)
 		);
 
-		const { component } = render(OpenUrlWorkspace, { props: { client: baseClient } });
+                const { component, unmount } = render(OpenUrlWorkspace, {
+                        target: document.body,
+                        props: { client: baseClient }
+                });
 		const logs: WorkspaceLogEntry[][] = [];
 		component.$on('logchange', (event) => {
 			logs.push(event.detail);
@@ -140,7 +146,7 @@ describe('open-url workspace', () => {
 			})
 		);
 
-		component.$destroy();
+                unmount();
 	});
 
 	it('renders the open-url workspace when loaded through ClientToolWorkspace', async () => {
@@ -161,12 +167,13 @@ describe('open-url workspace', () => {
 		);
 
 		const tool = getClientTool('open-url');
-		const { component } = render(ClientToolWorkspace, {
-			props: {
-				client: baseClient,
-				tool
-			}
-		});
+                const { component, unmount } = render(ClientToolWorkspace, {
+                        target: document.body,
+                        props: {
+                                client: baseClient,
+                                tool
+                        }
+                });
 
 		const urlField = page.getByLabelText('URL');
 		await expect.element(urlField).toBeInTheDocument();
@@ -177,6 +184,6 @@ describe('open-url workspace', () => {
 		const fallbackAlert = page.getByText('Workspace not implemented');
 		await expect.element(fallbackAlert).not.toBeInTheDocument();
 
-		component.$destroy();
+                unmount();
 	});
 });
