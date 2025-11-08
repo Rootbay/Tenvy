@@ -52,7 +52,7 @@ declare module 'tar-stream' {
                 on(event: 'error', listener: (error: Error) => void): this;
         }
 
-        interface ExtractStream {
+        interface ExtractStream extends NodeJS.WritableStream {
                 on(
                         event: 'entry',
                         listener: (header: TarEntryHeader, stream: TarEntryStream, next: () => void) => void

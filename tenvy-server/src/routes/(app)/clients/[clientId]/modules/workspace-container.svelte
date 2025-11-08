@@ -1,7 +1,6 @@
 <script lang="ts">
-	import { goto } from '$app/navigation';
-	import { resolve } from '$app/paths';
-	import { Button } from '$lib/components/ui/button/index.js';
+        import { goto } from '$app/navigation';
+        import { Button } from '$lib/components/ui/button/index.js';
 	import {
 		Card,
 		CardContent,
@@ -12,32 +11,34 @@
 	import { Separator } from '$lib/components/ui/separator/index.js';
 	import { cn } from '$lib/utils.js';
 	import type { Client } from '$lib/data/clients';
-	import { buildClientToolUrl, type ClientToolDefinition } from '$lib/data/client-tools';
-	import ClientToolWorkspace from '$lib/components/workspace/client-tool-workspace.svelte';
-	import { isWorkspaceTool } from '$lib/data/client-tool-workspaces';
-	import type { AgentSnapshot } from '../../../../../../../shared/types/agent';
-	import { ArrowLeft, X } from '@lucide/svelte';
-	import type { Snippet } from 'svelte';
+        import {
+                buildClientToolUrl,
+                type ClientToolDefinition,
+                type ClientToolId
+        } from '$lib/data/client-tools';
+        import ClientToolWorkspace from '$lib/components/workspace/client-tool-workspace.svelte';
+        import { isWorkspaceTool } from '$lib/data/client-tool-workspaces';
+        import type { AgentSnapshot } from '../../../../../../../shared/types/agent';
+        import { ArrowLeft, X } from '@lucide/svelte';
+        import type { Snippet } from 'svelte';
 
 	let {
 		client,
 		agent = null,
 		tools,
-		activeTool = null,
-		segments = [],
-		empty
-	}: {
-		client: Client;
-		agent?: AgentSnapshot | null;
-		tools: ClientToolDefinition[];
-		activeTool?: ClientToolDefinition | null;
-		segments?: string[];
-		empty?: Snippet;
-	} = $props();
+                activeTool = null,
+                segments = [],
+                empty
+        }: {
+                client: Client;
+                agent?: AgentSnapshot | null;
+                tools: ClientToolDefinition[];
+                activeTool?: ClientToolDefinition | null;
+                segments?: string[];
+                empty?: Snippet;
+        } = $props();
 
-	const baseModulesUrl = `/clients/${client.id}/modules`;
-
-	const categoryLabels: Record<string, string> = {
+        const categoryLabels: Record<string, string> = {
 		overview: 'Overview',
 		control: 'Control',
 		management: 'Management',
@@ -49,46 +50,46 @@
 
 	type Group = { key: string; label: string; items: ClientToolDefinition[] };
 
-	const groupedTools = $derived(() => {
-		const order: Group[] = [];
-		const index = new Map<string, Group>();
+        const groupedTools: Group[] = $derived(() => {
+                const order: Group[] = [];
+                const index = new Map<string, Group>();
 
-		for (const tool of tools) {
-			const key = tool.segments[0] ?? 'misc';
-			let group = index.get(key);
-			if (!group) {
-				group = {
-					key,
-					label:
-						categoryLabels[key] ??
-						key.replace(/-/g, ' ').replace(/\b\w/g, (char) => char.toUpperCase()),
-					items: []
-				} satisfies Group;
-				index.set(key, group);
-				order.push(group);
-			}
-			group.items.push(tool);
-		}
+                for (const tool of tools) {
+                        const key = tool.segments[0] ?? 'misc';
+                        let group = index.get(key);
+                        if (!group) {
+                                group = {
+                                        key,
+                                        label:
+                                                categoryLabels[key] ??
+                                                key.replace(/-/g, ' ').replace(/\b\w/g, (char) => char.toUpperCase()),
+                                        items: []
+                                } satisfies Group;
+                                index.set(key, group);
+                                order.push(group);
+                        }
+                        group.items.push(tool);
+                }
 
-		return order.map((group) => ({
-			...group,
-			items: group.items.slice()
-		}));
-	});
+                return order.map((group) => ({
+                        ...group,
+                        items: group.items.slice()
+                }));
+        });
 
-	const activeToolId = $derived(activeTool?.id ?? null);
+        const activeToolId: string | null = $derived(() => activeTool?.id ?? null);
 
-	function toWorkspaceUrl(tool: ClientToolDefinition) {
-		return resolve(buildClientToolUrl(client.id, tool));
-	}
+        function toWorkspaceUrl(tool: ClientToolDefinition) {
+                return buildClientToolUrl(client.id, tool);
+        }
 
-	function closeWorkspace() {
-		goto(baseModulesUrl);
-	}
+        function closeWorkspace() {
+                goto(`/clients/${client.id}/modules`);
+        }
 
-	function returnToClients() {
-		goto('/clients');
-	}
+        function returnToClients() {
+                goto('/clients');
+        }
 </script>
 
 <section class="space-y-6">
@@ -115,12 +116,12 @@
 
 	<div class="grid gap-6 lg:grid-cols-[260px_minmax(0,1fr)]">
 		<aside class="space-y-6 rounded-lg border border-border/60 bg-background/40 p-4">
-			{#each groupedTools as group (group.key)}
-				<div class="space-y-2">
-					<p class="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
-						{group.label}
-					</p>
-					<div class="flex flex-col gap-1">
+                        {#each groupedTools as group, index (group.key)}
+                                <div class="space-y-2">
+                                        <p class="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
+                                                {group.label}
+                                        </p>
+                                        <div class="flex flex-col gap-1">
 						{#each group.items as item (item.id)}
 							{@const isActive = activeToolId === item.id}
 							<a
@@ -133,7 +134,7 @@
 								href={toWorkspaceUrl(item)}
 							>
 								<span class="truncate">{item.title}</span>
-								{#if isWorkspaceTool(item.id)}
+                                                                {#if isWorkspaceTool(item.id as ClientToolId)}
 									<span
 										class={cn(
 											'text-[0.65rem] font-medium tracking-wide uppercase',
@@ -146,12 +147,12 @@
 							</a>
 						{/each}
 					</div>
-				</div>
-				{#if group !== groupedTools.at(-1)}
-					<Separator />
-				{/if}
-			{/each}
-		</aside>
+                                </div>
+                                {#if index < groupedTools.length - 1}
+                                        <Separator />
+                                {/if}
+                        {/each}
+                </aside>
 
 		<div class="space-y-4">
 			{#if activeTool}
@@ -178,25 +179,25 @@
 						{/key}
 					</CardContent>
 				</Card>
-			{:else if empty}
-				{@render empty()}
-			{:else}
-				<Card class="border-dashed">
-					<CardHeader>
-						<CardTitle>Select a module</CardTitle>
-						<CardDescription>
-							Choose a capability to launch its dedicated workspace for {client.codename}.
-						</CardDescription>
-					</CardHeader>
-					<CardContent class="space-y-3 text-sm text-muted-foreground">
-						<p>Workspaces preserve each tool&rsquo;s state while you evaluate remote workflows.</p>
-						<p>
-							Use the navigation panel to switch between modules or close the workspace when
-							you&rsquo;re done.
-						</p>
-					</CardContent>
-				</Card>
-			{/if}
-		</div>
+                        {:else if empty}
+                                {@render empty()}
+                        {:else}
+                                <Card class="border-dashed">
+                                        <CardHeader>
+                                                <CardTitle>Select a module</CardTitle>
+                                                <CardDescription>
+                                                        Choose a capability to launch its dedicated workspace for {client.codename}.
+                                                </CardDescription>
+                                        </CardHeader>
+                                        <CardContent class="space-y-3 text-sm text-muted-foreground">
+                                                <p>Workspaces preserve each tool&rsquo;s state while you evaluate remote workflows.</p>
+                                                <p>
+                                                        Use the navigation panel to switch between modules or close the workspace when
+                                                        you&rsquo;re done.
+                                                </p>
+                                        </CardContent>
+                                </Card>
+                        {/if}
+                </div>
 	</div>
 </section>

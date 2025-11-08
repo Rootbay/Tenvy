@@ -813,11 +813,11 @@ export class PluginTelemetryStore {
 		await this.refreshAggregates(pluginId);
 	}
 
-	async recordManualPush(_agentId: string, pluginId: string): Promise<void> {
-		const trimmed = pluginId.trim();
-		if (trimmed.length === 0) {
-			return;
-		}
+        async recordManualPush(_agentId: string, pluginId: string): Promise<void> {
+                const trimmed = pluginId.trim();
+                if (trimmed.length === 0) {
+                        return;
+                }
 
 		await this.ensureManifestIndex();
 		if (this.manifestConflicts.has(trimmed)) {
@@ -828,15 +828,19 @@ export class PluginTelemetryStore {
 			throw new Error(`Plugin ${trimmed} not registered`);
 		}
 
-		await this.runtimeStore.ensure(record);
-		await this.runtimeStore.update(trimmed, { lastManualPushAt: new Date() });
-		this.manifestSnapshot = null;
-	}
+                await this.runtimeStore.ensure(record);
+                await this.runtimeStore.update(trimmed, { lastManualPushAt: new Date() });
+                this.manifestSnapshot = null;
+        }
 
-	private async ensureManifestSnapshot(): Promise<{
-		version: string;
-		entries: PluginManifestDescriptor[];
-		digests: Map<string, string>;
+        invalidateManifestSnapshot(): void {
+                this.manifestSnapshot = null;
+        }
+
+        private async ensureManifestSnapshot(): Promise<{
+                version: string;
+                entries: PluginManifestDescriptor[];
+                digests: Map<string, string>;
 	}> {
 		if (!this.manifestSnapshot) {
 			await this.buildManifestSnapshot();
