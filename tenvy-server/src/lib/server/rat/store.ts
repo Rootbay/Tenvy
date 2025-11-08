@@ -54,10 +54,10 @@ import type {
 import type { RemoteDesktopInputBurst } from '../../../../../shared/types/remote-desktop';
 import type { AppVncInputBurst } from '../../../../../shared/types/app-vnc';
 import {
-	downloadCatalogueSchema,
-	type DownloadCatalogue,
-	type DownloadCatalogueEntry
-} from '../../../../../shared/types/downloads';
+        downloadCatalogueSchema,
+        type DownloadCatalogue,
+        type DownloadCatalogueEntry
+} from '$lib/types/downloads';
 import { PluginTelemetryStore } from '../plugins/telemetry-store.js';
 import { getAgentSignaturePolicy } from '../plugins/signature-policy.js';
 

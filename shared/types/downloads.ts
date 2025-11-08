@@ -1,26 +1,29 @@
-import { z } from "zod";
+/**
+ * Entry describing a downloadable artefact that can be delivered to an agent.
+ */
+export interface DownloadCatalogueEntry {
+  /** Unique identifier for the download entry. */
+  id: string;
+  /** Human readable name to show in the UI. */
+  displayName: string;
+  /** Optional description surfaced alongside the entry. */
+  description?: string;
+  /** Optional version string for the artefact. */
+  version?: string;
+  /** Optional executable name expected to be present after download. */
+  executable?: string;
+  /** Optional filesystem path to install or reference the artefact. */
+  path?: string;
+  /** Optional integrity hash for the download. */
+  hash?: string;
+  /** Optional size of the download in bytes. */
+  sizeBytes?: number;
+  /** Optional tags used for filtering and organisation. */
+  tags?: string[];
+}
 
-export const downloadCatalogueEntrySchema = z.object({
-  id: z.string().trim().min(1, "Download identifier is required."),
-  displayName: z.string().trim().min(1, "Download display name is required."),
-  description: z.string().trim().min(1).optional(),
-  version: z.string().trim().min(1).optional(),
-  executable: z.string().trim().min(1).optional(),
-  path: z.string().trim().min(1).optional(),
-  hash: z.string().trim().min(1).optional(),
-  sizeBytes: z.number().int().nonnegative().optional(),
-  tags: z.array(z.string().trim().min(1)).max(16).optional(),
-});
+export type DownloadCatalogue = DownloadCatalogueEntry[];
 
-export const downloadCatalogueSchema = z.array(downloadCatalogueEntrySchema);
-export const downloadCatalogueResponseSchema = z.object({
-  downloads: downloadCatalogueSchema,
-});
-
-export type DownloadCatalogueEntry = z.infer<
-  typeof downloadCatalogueEntrySchema
->;
-export type DownloadCatalogue = z.infer<typeof downloadCatalogueSchema>;
-export type DownloadCatalogueResponse = z.infer<
-  typeof downloadCatalogueResponseSchema
->;
+export interface DownloadCatalogueResponse {
+  downloads: DownloadCatalogue;
+}
