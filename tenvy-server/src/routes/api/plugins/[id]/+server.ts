@@ -81,21 +81,21 @@ const hasUpdates = (patch: PluginRepositoryUpdate): boolean => {
 };
 
 const handleRepositoryError = (id: string, err: unknown): never => {
-	if (err instanceof Error && err.message.includes('manifest')) {
-		throw error(404, { message: `Plugin ${id} not found` });
-	}
+        if (err instanceof Error && err.message.includes('manifest')) {
+                throw error(404, `Plugin ${id} not found`);
+        }
 
-	throw err;
+        throw err;
 };
 
 export const GET: RequestHandler = async ({ params }) => {
-	const { id } = params;
-	try {
-		const plugin = await repository.get(id);
-		return json({ plugin });
-	} catch (err) {
-		handleRepositoryError(id, err);
-	}
+        const { id } = params;
+        try {
+                const plugin = await repository.get(id);
+                return json({ plugin });
+        } catch (err) {
+                return handleRepositoryError(id, err);
+        }
 };
 
 export const PATCH: RequestHandler = async ({ locals, params, request }) => {
@@ -116,10 +116,10 @@ export const PATCH: RequestHandler = async ({ locals, params, request }) => {
 	}
 
 	const parsed = pluginUpdateSchema.safeParse(parsedBody);
-	if (!parsed.success) {
-		const message = parsed.error.errors.map((issue) => issue.message).join(', ');
-		throw error(400, { message: message || 'Invalid request payload' });
-	}
+        if (!parsed.success) {
+                const message = parsed.error.issues.map((issue) => issue.message).join(', ');
+                throw error(400, message || 'Invalid request payload');
+        }
 
 	const payload: PluginUpdatePayloadInput = parsed.data;
 
@@ -129,19 +129,19 @@ export const PATCH: RequestHandler = async ({ locals, params, request }) => {
 		throw error(400, { message: 'No update fields supplied' });
 	}
 
-	try {
-		if (update.approvalStatus === 'approved') {
-			const current = await repository.get(id);
-			if (current.signature.status !== 'trusted' || !current.signature.trusted) {
-				throw error(409, {
+        try {
+                if (update.approvalStatus === 'approved') {
+                        const current = await repository.get(id);
+                        if (current.signature.status !== 'trusted' || !current.signature.trusted) {
+                                throw error(409, {
 					message: 'Plugin cannot be approved until its signature is trusted'
 				});
 			}
 		}
 
-		const plugin: Plugin = await repository.update(id, update);
-		return json({ plugin });
-	} catch (err) {
-		handleRepositoryError(id, err);
-	}
+                const plugin: Plugin = await repository.update(id, update);
+                return json({ plugin });
+        } catch (err) {
+                return handleRepositoryError(id, err);
+        }
 };

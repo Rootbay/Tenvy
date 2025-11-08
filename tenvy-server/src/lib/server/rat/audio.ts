@@ -588,12 +588,12 @@ export class AudioBridgeManager {
 			}
 		};
 
-		const handleMessage = (event: MessageEvent) => {
-			try {
-				this.handleBinaryPayload(agentId, record, event.data);
-			} catch (err) {
-				handleClose();
-				const reason = err instanceof AudioBridgeError ? err.message : 'Audio stream error';
+                const handleMessage = (event: MessageEvent) => {
+                        try {
+                                this.handleBinaryPayload(agentId, record, event.data);
+                        } catch (err) {
+                                handleClose();
+                                const reason = err instanceof AudioBridgeError ? err.message : 'Audio stream error';
 				try {
 					socket.close(1011, reason);
 				} catch {
@@ -602,15 +602,23 @@ export class AudioBridgeManager {
 			}
 		};
 
-		if (typeof socket.addEventListener === 'function') {
-			socket.addEventListener('message', handleMessage as EventListener);
-			socket.addEventListener('close', handleClose as EventListener);
-			socket.addEventListener('error', handleClose as EventListener);
-		} else {
-			(socket as { onmessage?: (event: MessageEvent) => void }).onmessage = handleMessage;
-			(socket as { onclose?: () => void }).onclose = handleClose;
-			(socket as { onerror?: () => void }).onerror = handleClose;
-		}
+                const handleCloseEvent = (_event: CloseEvent) => {
+                        handleClose();
+                };
+
+                const handleErrorEvent = (_event: Event) => {
+                        handleClose();
+                };
+
+                if (typeof socket.addEventListener === 'function') {
+                        socket.addEventListener('message', handleMessage);
+                        socket.addEventListener('close', handleCloseEvent);
+                        socket.addEventListener('error', handleErrorEvent);
+                } else {
+                        socket.onmessage = handleMessage;
+                        socket.onclose = handleCloseEvent;
+                        socket.onerror = handleErrorEvent;
+                }
 	}
 
 	private broadcast(record: AudioSessionRecord, event: string, payload: unknown) {

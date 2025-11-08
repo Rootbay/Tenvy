@@ -131,3 +131,5 @@ export type TriggerMonitorCommandResponse = z.infer<
   typeof triggerMonitorCommandResponseSchema
 >;
 
+export type TriggerMonitorCommandPayload = TriggerMonitorCommandRequest;
+

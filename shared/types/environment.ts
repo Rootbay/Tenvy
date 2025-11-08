@@ -82,3 +82,5 @@ export const environmentCommandResponseSchema = z.union([
 ]);
 export type EnvironmentCommandResponse = z.infer<typeof environmentCommandResponseSchema>;
 
+export type EnvironmentCommandPayload = EnvironmentCommandRequest;
+

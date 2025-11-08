@@ -13,7 +13,7 @@ class MockRegistryError extends Error {
 	status = 404;
 }
 
-vi.mock('$env/dynamic/private', () => ({ env: { DATABASE_URL: ':memory:' } }), { virtual: true });
+vi.mock('$env/dynamic/private', () => ({ env: { DATABASE_URL: ':memory:' } }));
 vi.mock('./store', () => ({
 	registry: mockedRegistry,
 	RegistryError: MockRegistryError

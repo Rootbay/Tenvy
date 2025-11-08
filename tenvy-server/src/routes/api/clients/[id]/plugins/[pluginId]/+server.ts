@@ -30,9 +30,9 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 	}
 
 	const parsed = clientPluginUpdateSchema.safeParse(payload);
-	if (!parsed.success) {
-		throw error(400, parsed.error.errors[0]?.message ?? 'Invalid request payload');
-	}
+        if (!parsed.success) {
+                throw error(400, parsed.error.issues[0]?.message ?? 'Invalid request payload');
+        }
 
 	if (parsed.data.enabled !== undefined) {
 		await telemetryStore.updateAgentPlugin(id, pluginId, { enabled: parsed.data.enabled });

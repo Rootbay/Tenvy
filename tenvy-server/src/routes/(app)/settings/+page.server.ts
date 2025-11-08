@@ -19,13 +19,19 @@ export const load: PageServerLoad = async ({ locals }) => {
 		.innerJoin(voucher, eq(user.voucherId, voucher.id))
 		.orderBy(user.createdAt);
 
-	return {
-		user: admin,
-		members: records.map((record) => ({
-			...record,
-			createdAt: record.createdAt.toISOString(),
-			voucherExpiresAt: record.voucherExpiresAt ? record.voucherExpiresAt.toISOString() : null,
-			voucherRedeemedAt: record.voucherRedeemedAt ? record.voucherRedeemedAt.toISOString() : null
-		}))
-	};
+        return {
+                user: admin,
+                members: records.map((record) => {
+                        if (!record.createdAt) {
+                                throw new Error('User record missing creation timestamp');
+                        }
+
+                        return {
+                                ...record,
+                                createdAt: record.createdAt.toISOString(),
+                        voucherExpiresAt: record.voucherExpiresAt ? record.voucherExpiresAt.toISOString() : null,
+                        voucherRedeemedAt: record.voucherRedeemedAt ? record.voucherRedeemedAt.toISOString() : null
+                        };
+                })
+        };
 };

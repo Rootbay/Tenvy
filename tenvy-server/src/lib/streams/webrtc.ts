@@ -283,7 +283,7 @@ function normalizeFramePacket(value: Record<string, unknown>): RemoteDesktopFram
 		return null;
 	}
 
-        const candidate = value as RemoteDesktopFramePacket;
+        const candidate = value as unknown as RemoteDesktopFramePacket;
         const frame: RemoteDesktopFramePacket = { ...candidate };
 
 	const image = toBase64String(value.image);

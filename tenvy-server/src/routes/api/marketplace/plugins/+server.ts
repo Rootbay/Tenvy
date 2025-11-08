@@ -43,12 +43,12 @@ const resolveRepository = (manifest: PluginManifest): GitHubRepositoryCoordinate
 	}
 };
 
-async function fetchGitHub(path: string) {
-	let response: Response;
-	try {
-		response = await fetch(`https://api.github.com${path}`, {
-			headers: githubHeaders()
-		});
+async function fetchGitHub<T extends Record<string, unknown>>(path: string): Promise<T> {
+        let response: Response;
+        try {
+                response = await fetch(`https://api.github.com${path}`, {
+                        headers: githubHeaders()
+                });
 	} catch (cause) {
 		throw error(502, `Failed to contact GitHub: ${(cause as Error).message}`);
 	}
@@ -56,43 +56,49 @@ async function fetchGitHub(path: string) {
 		const message = await response.text().catch(() => response.statusText);
 		throw error(response.status, message || 'GitHub API request failed');
 	}
-	return response.json() as Promise<Record<string, unknown>>;
+        return response.json() as Promise<T>;
 }
 
 const ensureRepositoryMetadata = async (manifest: PluginManifest) => {
-	const { owner, repo } = resolveRepository(manifest);
-	const repoData = await fetchGitHub(`/repos/${owner}/${repo}`);
+        const { owner, repo } = resolveRepository(manifest);
+        type GitHubRepository = {
+                private?: boolean;
+                license?: { spdx_id?: string | null } | null;
+        } & Record<string, unknown>;
 
-	if (repoData.private === true) {
-		throw error(400, 'Repository must be public to be eligible for the marketplace');
-	}
+        const repoData = await fetchGitHub<GitHubRepository>(`/repos/${owner}/${repo}`);
 
-	const repoLicense = typeof repoData.license === 'object' ? repoData.license : null;
-	const repoSpdx = typeof repoLicense?.spdx_id === 'string' ? repoLicense.spdx_id : '';
-	const manifestSpdx = manifest.license?.spdxId?.trim().toLowerCase() ?? '';
-	const normalizedRepoSpdx = repoSpdx.trim().toLowerCase();
-	if (manifestSpdx && manifestSpdx !== normalizedRepoSpdx && normalizedRepoSpdx !== 'noassertion') {
-		throw error(
-			400,
-			`Repository license mismatch. Expected ${manifest.license?.spdxId ?? 'unknown'}, received ${repoSpdx || 'unknown'}`
-		);
-	}
+        if (repoData.private === true) {
+                throw error(400, 'Repository must be public to be eligible for the marketplace');
+        }
 
-	const release = await fetchGitHub(
-		`/repos/${owner}/${repo}/releases/tags/v${manifest.version}`
-	).catch(async () => fetchGitHub(`/repos/${owner}/${repo}/releases/latest`));
+        const repoLicense = repoData.license ?? null;
+        const repoSpdx = typeof repoLicense?.spdx_id === 'string' ? repoLicense.spdx_id : '';
+        const manifestSpdx = manifest.license?.spdxId?.trim().toLowerCase() ?? '';
+        const normalizedRepoSpdx = repoSpdx.trim().toLowerCase();
+        if (manifestSpdx && manifestSpdx !== normalizedRepoSpdx && normalizedRepoSpdx !== 'noassertion') {
+                throw error(
+                        400,
+                        `Repository license mismatch. Expected ${manifest.license?.spdxId ?? 'unknown'}, received ${repoSpdx || 'unknown'}`
+                );
+        }
 
-	const assets = Array.isArray(release.assets)
-		? (release.assets as Array<Record<string, unknown>>)
-		: [];
-	const artifactName = manifest.package.artifact;
-	const assetMatch = assets.find(
-		(asset) => typeof asset.name === 'string' && asset.name === artifactName
-	);
-	if (!assetMatch) {
-		throw error(
-			400,
-			`Release for ${manifest.version} does not include artifact ${artifactName}. Submit a published build.`
+        type GitHubAsset = { name?: string | null } & Record<string, unknown>;
+        type GitHubRelease = { assets?: GitHubAsset[] } & Record<string, unknown>;
+
+        const release = await fetchGitHub<GitHubRelease>(
+                `/repos/${owner}/${repo}/releases/tags/v${manifest.version}`
+        ).catch(async () => fetchGitHub<GitHubRelease>(`/repos/${owner}/${repo}/releases/latest`));
+
+        const assets = Array.isArray(release.assets) ? release.assets : [];
+        const artifactName = manifest.package.artifact;
+        const assetMatch = assets.find(
+                (asset) => typeof asset?.name === 'string' && asset.name === artifactName
+        );
+        if (!assetMatch) {
+                throw error(
+                        400,
+                        `Release for ${manifest.version} does not include artifact ${artifactName}. Submit a published build.`
 		);
 	}
 };

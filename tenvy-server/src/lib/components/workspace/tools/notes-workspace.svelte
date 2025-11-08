@@ -1,20 +1,16 @@
 <script lang="ts">
         import { browser } from '$app/environment';
-        import { onMount, type Snippet } from 'svelte';
+        import { onMount } from 'svelte';
 	import { Textarea } from '$lib/components/ui/textarea/index.js';
 	import { Input } from '$lib/components/ui/input/index.js';
 	import { Label } from '$lib/components/ui/label/index.js';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import type { Client } from '$lib/data/clients';
 
-        const { client, class: className = '', secondary } = $props<
-                {
-                        client: Client;
-                        class?: string;
-                },
-                Record<string, never>,
-                { secondary?: (args: { noteSavePending: boolean }) => Snippet }
-        >();
+        const { client, class: className = '' } = $props<{
+                client: Client;
+                class?: string;
+        }>();
 
 	let noteText = $state(client.notes ?? '');
 	let noteTagsInput = $state(client.noteTags?.join(' ') ?? '');
@@ -209,9 +205,7 @@
 		{/if}
 	</div>
         <div class="flex items-center justify-end gap-2 border-t border-border/70 bg-muted/30 px-6 py-4">
-                {#if secondary}
-                        {@render secondary({ noteSavePending })}
-                {/if}
+                <slot name="secondary" {noteSavePending} />
                 <Button type="submit" disabled={noteSavePending}>
 			{#if noteSavePending}
 				Saving…

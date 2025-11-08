@@ -294,9 +294,9 @@
 </script>
 
 <Dialog.Root
-	bind:open
-	onOpenChange={handleOpenChange}
-	onOpenChangeComplete={handleOpenChangeComplete}
+        bind:open
+        onOpenChange={handleOpenChange}
+        onOpenChangeComplete={handleOpenChangeComplete}
 >
 	<Dialog.Content
 		class="pointer-events-none top-0 left-0 z-50 h-screen w-screen max-w-none translate-x-0 translate-y-0 border-none bg-transparent p-0 shadow-none"
@@ -354,16 +354,16 @@
 						</div>
 					{:else if toolId === 'system-info'}
 						<SystemInformationDialog {client} />
-					{:else if toolId === 'notes'}
-						<NotesWorkspace {client}>
-							<svelte:fragment slot="secondary" let:noteSavePending>
-								<Dialog.Close>
-									{#snippet child({ props })}
-										<Button variant="outline" disabled={noteSavePending} {...props}>Cancel</Button>
-									{/snippet}
-								</Dialog.Close>
-							</svelte:fragment>
-						</NotesWorkspace>
+                                        {:else if toolId === 'notes'}
+                                                <NotesWorkspace {client}>
+                                                        <svelte:fragment slot="secondary" let:noteSavePending>
+                                                                <Dialog.Close>
+                                                                        {#snippet child({ props })}
+                                                                                <Button variant="outline" disabled={noteSavePending} {...props}>Cancel</Button>
+                                                                        {/snippet}
+                                                                </Dialog.Close>
+                                                        </svelte:fragment>
+                                                </NotesWorkspace>
 					{:else if toolId === 'open-url'}
 						<form class="flex h-full flex-col" onsubmit={handleOpenUrlSubmit}>
 							<div class="flex-1 space-y-6 overflow-auto px-6 py-5">
