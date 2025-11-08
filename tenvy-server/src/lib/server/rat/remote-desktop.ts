@@ -44,6 +44,7 @@ const MAX_MONITORS = 16;
 const MAX_DELTA_RECTS = 512;
 const MAX_CLIP_FRAMES = 60;
 const MAX_BASE64_PAYLOAD = 16 * 1024 * 1024; // 16 MiB
+const DIAGNOSTICS_INTERVAL_MS = 1_000;
 
 const defaultSettings: RemoteDesktopSettings = Object.freeze({
 	quality: 'auto',
@@ -204,10 +205,11 @@ interface RemoteDesktopSessionRecord {
 	id: string;
 	agentId: string;
 	active: boolean;
-	createdAt: Date;
-	lastUpdatedAt?: Date;
-	lastSequence?: number;
-	settings: RemoteDesktopSettings;
+        createdAt: Date;
+        lastUpdatedAt?: Date;
+        lastSequence?: number;
+        lastDiagnosticsAt?: number;
+        settings: RemoteDesktopSettings;
 	activeEncoder?: RemoteDesktopEncoder;
 	negotiatedCodec?: RemoteDesktopEncoder;
 	transport?: RemoteDesktopTransport;
@@ -1132,10 +1134,11 @@ export class RemoteDesktopManager {
 		remoteDesktopInputService.disconnect(agentId, record.id);
 		record.active = false;
 		this.replaceTransportHandle(record, null, null);
-		record.lastUpdatedAt = new Date();
-		record.inputSequence = 0;
-		record.transportDiagnostics = undefined;
-		this.broadcastSession(agentId);
+                record.lastUpdatedAt = new Date();
+                record.inputSequence = 0;
+                record.transportDiagnostics = undefined;
+                record.lastDiagnosticsAt = undefined;
+                this.broadcastSession(agentId);
 		this.broadcast(agentId, 'end', { reason: 'closed' });
 
 		record.history = [];
@@ -1406,12 +1409,15 @@ export class RemoteDesktopManager {
 			return;
 		}
 
-		const previous = record.transportHandle;
-		const previousPipeline = record.pipeline;
-		record.transportHandle = handle ?? null;
-		record.pipeline = pipeline ?? null;
+                const previous = record.transportHandle;
+                const previousPipeline = record.pipeline;
+                record.transportHandle = handle ?? null;
+                record.pipeline = pipeline ?? null;
+                if (previousPipeline !== record.pipeline) {
+                        record.lastDiagnosticsAt = undefined;
+                }
 
-		if (previous && previous !== handle) {
+                if (previous && previous !== handle) {
 			try {
 				previous.close();
 			} catch (err) {
@@ -1560,15 +1566,25 @@ export class RemoteDesktopManager {
 			}
 		}
 
-		const currentPipeline = record.pipeline;
-		if (!currentPipeline) {
-			return;
-		}
-		void currentPipeline.collectDiagnostics().then((diagnostics) => {
-			if (!diagnostics || record.pipeline !== currentPipeline) {
-				return;
-			}
-			const previous = record.transportDiagnostics;
+                const currentPipeline = record.pipeline;
+                if (!currentPipeline) {
+                        return;
+                }
+                const now = Date.now();
+                if (record.lastDiagnosticsAt && now - record.lastDiagnosticsAt < DIAGNOSTICS_INTERVAL_MS) {
+                        return;
+                }
+                record.lastDiagnosticsAt = now;
+                void currentPipeline.collectDiagnostics().then((diagnostics) => {
+                        if (record.pipeline !== currentPipeline) {
+                                return;
+                        }
+                        if (!diagnostics) {
+                                record.lastDiagnosticsAt = undefined;
+                                return;
+                        }
+                        record.lastDiagnosticsAt = Date.now();
+                        const previous = record.transportDiagnostics;
 			const next = { ...diagnostics } satisfies RemoteDesktopTransportDiagnostics;
 			if (record.encoderHardware) {
 				next.hardwareEncoder = record.encoderHardware;
