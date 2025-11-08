@@ -31,6 +31,13 @@ export interface AgentMetrics {
   latencyMs?: number;
 }
 
+export interface AgentOperatorNote {
+  note: string;
+  tags: string[];
+  updatedAt: string | null;
+  updatedBy?: string | null;
+}
+
 export interface AgentSnapshot {
   id: string;
   metadata: AgentMetadata;
@@ -41,6 +48,7 @@ export interface AgentSnapshot {
   pendingCommands: number;
   recentResults: CommandResult[];
   liveSession?: boolean;
+  operatorNote?: AgentOperatorNote;
 }
 
 export interface AgentListResponse {

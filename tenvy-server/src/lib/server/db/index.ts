@@ -306,5 +306,9 @@ ensureColumn('plugin', 'signature_chain', 'signature_chain TEXT');
 ensureColumn('audit_event', 'acknowledged_at', 'acknowledged_at INTEGER');
 ensureColumn('audit_event', 'acknowledgement', 'acknowledgement TEXT');
 ensureColumn('agent', 'options_state', 'options_state TEXT');
+ensureColumn('agent', 'operator_note', 'operator_note TEXT');
+ensureColumn('agent', 'operator_note_tags', 'operator_note_tags TEXT');
+ensureColumn('agent', 'operator_note_updated_at', 'operator_note_updated_at INTEGER');
+ensureColumn('agent', 'operator_note_updated_by', 'operator_note_updated_by TEXT');
 
 export const db = drizzle(client, { schema });

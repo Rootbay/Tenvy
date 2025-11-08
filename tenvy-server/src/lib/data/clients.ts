@@ -14,8 +14,11 @@ export type Client = {
 	status: ClientStatus;
 	lastSeen: string;
 	tags: string[];
-	risk: ClientRisk;
-	notes?: string;
+        risk: ClientRisk;
+        notes?: string;
+        noteTags?: string[];
+        noteUpdatedAt?: string | null;
+        noteUpdatedBy?: string | null;
 };
 
 export const clients: Client[] = [

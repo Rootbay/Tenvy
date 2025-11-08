@@ -666,25 +666,29 @@
 		return status === 'error' ? 'High' : 'Medium';
 	}
 
-	function mapAgentToClient(agent: AgentSnapshot): Client {
-		const tags = agent.metadata.tags ?? [];
+        function mapAgentToClient(agent: AgentSnapshot): Client {
+                const tags = agent.metadata.tags ?? [];
+                const operatorNote = agent.operatorNote;
 
-		return {
-			id: agent.id,
-			codename: agent.metadata.hostname?.toUpperCase() ?? agent.id.toUpperCase(),
-			hostname: agent.metadata.hostname,
+                return {
+                        id: agent.id,
+                        codename: agent.metadata.hostname?.toUpperCase() ?? agent.id.toUpperCase(),
+                        hostname: agent.metadata.hostname,
 			ip: agent.metadata.publicIpAddress ?? agent.metadata.ipAddress ?? 'Unknown',
 			location: getAgentLocation(agent).label,
 			os: agent.metadata.os,
 			platform: inferClientPlatform(agent.metadata.os),
 			version: agent.metadata.version ?? 'Unknown',
-			status: mapAgentStatusToClientStatus(agent.status),
-			lastSeen: formatRelative(agent.lastSeen),
-			tags,
-			risk: determineClientRisk(agent.status),
-			notes: tags.length > 0 ? `Tags: ${tags.join(', ')}` : undefined
-		};
-	}
+                        status: mapAgentStatusToClientStatus(agent.status),
+                        lastSeen: formatRelative(agent.lastSeen),
+                        tags,
+                        risk: determineClientRisk(agent.status),
+                        notes: operatorNote?.note ?? '',
+                        noteTags: operatorNote?.tags ?? [],
+                        noteUpdatedAt: operatorNote?.updatedAt ?? null,
+                        noteUpdatedBy: operatorNote?.updatedBy ?? null
+                };
+        }
 
 	function openSection(section: SectionKey, agent: AgentSnapshot) {
 		const toolId = sectionToolMap[section];
