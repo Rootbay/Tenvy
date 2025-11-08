@@ -4,6 +4,8 @@ import { defineConfig } from 'vitest/config';
 import type { AliasOptions } from 'vite';
 import { sveltekit } from '@sveltejs/kit/vite';
 import { fileURLToPath } from 'node:url';
+import { playwright } from '@vitest/browser-playwright';
+import type { BrowserInstanceOption } from 'vitest/node';
 
 function resolvePort(value?: string | null): number {
 	if (!value) {
@@ -58,16 +60,19 @@ const serverTestConfig = {
 	exclude: ['src/**/*.svelte.{test,spec}.{js,ts}']
 };
 
+const playwrightProvider = playwright();
+const browserInstances: BrowserInstanceOption[] = [{ browser: 'chromium' }];
+
 const browserProjects = [
-	{
-		test: {
-			name: 'client',
-			environment: 'browser' as const,
-			browser: {
-				enabled: true,
-				provider: 'playwright',
-				instances: [{ browser: 'chromium' }]
-			},
+        {
+                test: {
+                        name: 'client',
+                        environment: 'browser' as const,
+                        browser: {
+                                enabled: true,
+                                provider: playwrightProvider,
+                                instances: browserInstances
+                        },
 			include: ['src/**/*.svelte.{test,spec}.{js,ts}'],
 			exclude: ['src/lib/server/**'],
 			setupFiles: ['./vitest-setup-client.ts']

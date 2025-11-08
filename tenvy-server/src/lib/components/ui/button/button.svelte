@@ -32,15 +32,18 @@
 	export type ButtonVariant = VariantProps<typeof buttonVariants>['variant'];
 	export type ButtonSize = VariantProps<typeof buttonVariants>['size'];
 
-	export type ButtonProps = WithElementRef<HTMLButtonAttributes> &
-		WithElementRef<HTMLAnchorAttributes> & {
-			variant?: ButtonVariant;
-			size?: ButtonSize;
-		};
+        type AnchorElementProps = Omit<HTMLAnchorAttributes, 'href'> & { href?: string | URL };
+        type ButtonElementProps = Omit<HTMLButtonAttributes, 'href'>;
+
+        export type ButtonProps = WithElementRef<ButtonElementProps> &
+                WithElementRef<AnchorElementProps> & {
+                        variant?: ButtonVariant;
+                        size?: ButtonSize;
+                };
 </script>
 
 <script lang="ts">
-	import { resolve } from '$app/paths';
+        import { base } from '$app/paths';
 
 	let {
 		class: className,
@@ -56,12 +59,15 @@
 </script>
 
 {#if href}
-	{@const computedHref = typeof href === 'string' ? href : href.toString()}
-	{#if disabled}
-		<a
-			bind:this={ref}
-			data-slot="button"
-			class={cn(buttonVariants({ variant, size }), className)}
+        {@const computedHref = typeof href === 'string' ? href : href.toString()}
+        {@const resolvedHref = computedHref.startsWith('/') && !computedHref.startsWith('//')
+                ? `${base}${computedHref}`
+                : computedHref}
+        {#if disabled}
+                <a
+                        bind:this={ref}
+                        data-slot="button"
+                        class={cn(buttonVariants({ variant, size }), className)}
 			aria-disabled={true}
 			role="link"
 			tabindex={-1}
@@ -70,14 +76,14 @@
 			{@render children?.()}
 		</a>
 	{:else}
-		<a
-			bind:this={ref}
-			data-slot="button"
-			class={cn(buttonVariants({ variant, size }), className)}
-			href={resolve(computedHref)}
-			aria-disabled={false}
-			{...restProps}
-		>
+                <a
+                        bind:this={ref}
+                        data-slot="button"
+                        class={cn(buttonVariants({ variant, size }), className)}
+                        href={resolvedHref}
+                        aria-disabled={false}
+                        {...restProps}
+                >
 			{@render children?.()}
 		</a>
 	{/if}

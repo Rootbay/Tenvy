@@ -7,7 +7,7 @@ import type * as Schema from '$lib/server/db/schema.js';
 import type {
         PluginApprovalStatus,
         PluginRuntimeType
-} from '../../../../shared/types/plugin-manifest';
+} from '../../../../../shared/types/plugin-manifest';
 import type { LoadedPluginManifest } from '$lib/data/plugin-manifests.js';
 
 type PluginTable = typeof plugin;

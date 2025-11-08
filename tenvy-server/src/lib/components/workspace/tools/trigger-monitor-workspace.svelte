@@ -122,9 +122,9 @@
 		}`;
 	}
 
-	function cloneWatchlist(entries: TriggerMonitorWatchlist): TriggerMonitorWatchlist {
-		return entries.map((entry) => ({ ...entry }));
-	}
+        function cloneWatchlist(entries: TriggerMonitorWatchlist): TriggerMonitorWatchlist {
+                return entries.map((entry: TriggerMonitorWatchlistEntry) => ({ ...entry }));
+        }
 
 	function watchlistEntryKey(entry: TriggerMonitorWatchlistEntry): string {
 		return `${entry.kind}:${entry.id.trim().toLowerCase()}`;
@@ -163,41 +163,44 @@
 
 	function addDraftEntry(entry: TriggerMonitorWatchlistEntry) {
 		const key = watchlistEntryKey(entry);
-		const existingIndex = watchlistDraft.findIndex((item) => watchlistEntryKey(item) === key);
-		if (existingIndex !== -1) {
-			watchlistDraft = watchlistDraft.map((item, index) =>
-				index === existingIndex ? { ...item, ...entry } : item
-			);
+                const existingIndex = watchlistDraft.findIndex((item: TriggerMonitorWatchlistEntry) => {
+                        return watchlistEntryKey(item) === key;
+                });
+                if (existingIndex !== -1) {
+                        watchlistDraft = watchlistDraft.map(
+                                (item: TriggerMonitorWatchlistEntry, index: number) =>
+                                        index === existingIndex ? { ...item, ...entry } : item
+                        );
 			draftNotice = `${entry.displayName} updated.`;
 			return;
 		}
 		if (!ensureWatchlistCapacity()) {
 			return;
 		}
-		watchlistDraft = [...watchlistDraft, { ...entry }];
+                watchlistDraft = [...watchlistDraft, { ...entry }];
 		draftNotice = `${entry.displayName} added to watchlist.`;
 	}
 
 	function removeDraftEntry(index: number) {
-		watchlistDraft = watchlistDraft.filter((_, current) => current !== index);
+                watchlistDraft = watchlistDraft.filter((_, current: number) => current !== index);
 		draftNotice = null;
 	}
 
 	function updateDraftEntry(index: number, patch: Partial<TriggerMonitorWatchlistEntry>) {
-		watchlistDraft = watchlistDraft.map((entry, current) =>
-			current === index ? { ...entry, ...patch } : entry
-		);
-	}
+                watchlistDraft = watchlistDraft.map((entry: TriggerMonitorWatchlistEntry, current: number) =>
+                        current === index ? { ...entry, ...patch } : entry
+                );
+        }
 
-	function removeWatchlistEntry(index: number) {
-		watchlist = watchlist.filter((_, current) => current !== index);
-	}
+        function removeWatchlistEntry(index: number) {
+                watchlist = watchlist.filter((_, current: number) => current !== index);
+        }
 
-	function updateWatchlistEntry(index: number, patch: Partial<TriggerMonitorWatchlistEntry>) {
-		watchlist = watchlist.map((entry, current) =>
-			current === index ? { ...entry, ...patch } : entry
-		);
-	}
+        function updateWatchlistEntry(index: number, patch: Partial<TriggerMonitorWatchlistEntry>) {
+                watchlist = watchlist.map((entry: TriggerMonitorWatchlistEntry, current: number) =>
+                        current === index ? { ...entry, ...patch } : entry
+                );
+        }
 
 	function interceptToggleEvent(event: MouseEvent | KeyboardEvent): boolean {
 		if (event instanceof MouseEvent) {

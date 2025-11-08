@@ -1,5 +1,6 @@
 import { env } from '$env/dynamic/private';
 import { readdir, readFile } from 'node:fs/promises';
+import type { Dirent } from 'node:fs';
 import { join, resolve } from 'node:path';
 import type {
         PluginManifest,
@@ -167,9 +168,9 @@ export async function loadPluginManifests(
 	if (options.directory) {
 		const directory = resolveDirectory(options.directory);
 
-		let entries: Awaited<ReturnType<typeof readdir>>;
+                let entries: Dirent[];
                 try {
-                        entries = await readdir(directory, { withFileTypes: true, encoding: 'utf8' });
+                        entries = await readdir(directory, { withFileTypes: true });
 		} catch (error) {
 			const err = error as NodeJS.ErrnoException;
 			if (err?.code === 'ENOENT') {
