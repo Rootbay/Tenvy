@@ -1,5 +1,6 @@
 <script lang="ts">
-	import { browser } from '$app/environment';
+        import { browser } from '$app/environment';
+        import { onMount } from 'svelte';
 	import { Textarea } from '$lib/components/ui/textarea/index.js';
 	import { Input } from '$lib/components/ui/input/index.js';
 	import { Label } from '$lib/components/ui/label/index.js';
@@ -12,24 +13,102 @@
 	}>();
 
 	let noteText = $state(client.notes ?? '');
-	let noteTagsInput = $state(client.tags?.join(' ') ?? '');
+        let noteTagsInput = $state(client.noteTags?.join(' ') ?? '');
 	let noteSavePending = $state(false);
 	let noteSaveError = $state<string | null>(null);
 	let noteSaveSuccess = $state<string | null>(null);
 
 	const notesFieldId = `client-${client.id}-notes`;
 
-	function parseTags(input: string): string[] {
-		return input
-			.split(/[\,\s]+/)
-			.map((tag) => tag.trim())
-			.filter(Boolean);
-	}
+        function parseTags(input: string): string[] {
+                return input
+                        .split(/[\,\s]+/)
+                        .map((tag) => tag.trim())
+                        .filter(Boolean);
+        }
 
-	function clearNoteFeedback() {
-		noteSaveError = null;
-		noteSaveSuccess = null;
-	}
+        function normalizeTagsFromResponse(value: unknown): string[] {
+                if (!Array.isArray(value)) {
+                        return [];
+                }
+
+                return value
+                        .map((tag) => `${tag ?? ''}`.trim())
+                        .filter((tag) => tag.length > 0);
+        }
+
+        function clearNoteFeedback() {
+                noteSaveError = null;
+                noteSaveSuccess = null;
+        }
+
+        onMount(() => {
+                if (!browser) {
+                        return;
+                }
+
+                const controller = new AbortController();
+
+                const loadNote = async () => {
+                        try {
+                                const response = await fetch(`/api/agents/${client.id}/notes`, {
+                                        method: 'GET',
+                                        signal: controller.signal
+                                });
+
+                                if (!response.ok) {
+                                        const message = (await response.text())?.trim();
+                                        noteSaveError = message || 'Failed to load notes';
+                                        return;
+                                }
+
+                                let payload: unknown = null;
+                                try {
+                                        payload = await response.json();
+                                } catch {
+                                        payload = null;
+                                }
+
+                                const nextNote =
+                                        payload && typeof (payload as Record<string, unknown>).note === 'string'
+                                                ? ((payload as { note: string }).note ?? '').trimEnd()
+                                                : '';
+                                const nextTags = normalizeTagsFromResponse(
+                                        payload && 'tags' in (payload as Record<string, unknown>)
+                                                ? (payload as { tags: unknown }).tags
+                                                : []
+                                );
+                                const updatedAt =
+                                        payload && 'updatedAt' in (payload as Record<string, unknown>)
+                                                ? ((payload as { updatedAt: unknown }).updatedAt ?? null)
+                                                : null;
+                                const updatedBy =
+                                        payload && 'updatedBy' in (payload as Record<string, unknown>)
+                                                ? ((payload as { updatedBy: unknown }).updatedBy ?? null)
+                                                : null;
+
+                                noteText = nextNote;
+                                noteTagsInput = nextTags.join(' ');
+                                client.notes = nextNote;
+                                client.noteTags = nextTags;
+                                client.noteUpdatedAt = typeof updatedAt === 'string' || updatedAt === null ? updatedAt : null;
+                                client.noteUpdatedBy = typeof updatedBy === 'string' ? updatedBy : null;
+                                noteSaveError = null;
+                                noteSaveSuccess = null;
+                        } catch (err) {
+                                if (err instanceof DOMException && err.name === 'AbortError') {
+                                        return;
+                                }
+                                noteSaveError = err instanceof Error ? err.message : 'Failed to load notes';
+                        }
+                };
+
+                void loadNote();
+
+                return () => {
+                        controller.abort();
+                };
+        });
 
 	async function handleSubmit(event: SubmitEvent) {
 		event.preventDefault();
@@ -67,24 +146,31 @@
 				responseBody = null;
 			}
 
-			let nextNote = trimmed;
-			if (responseBody && typeof (responseBody as Record<string, unknown>).note === 'string') {
-				const received = (responseBody as { note: string }).note ?? '';
-				nextNote = received.trimEnd();
-			}
+                        const nextNote =
+                                responseBody && typeof (responseBody as Record<string, unknown>).note === 'string'
+                                        ? ((responseBody as { note: string }).note ?? '').trimEnd()
+                                        : trimmed;
+                        const nextTags =
+                                responseBody && 'tags' in (responseBody as Record<string, unknown>)
+                                        ? normalizeTagsFromResponse((responseBody as { tags: unknown }).tags)
+                                        : tags;
+                        const updatedAt =
+                                responseBody && 'updatedAt' in (responseBody as Record<string, unknown>)
+                                        ? ((responseBody as { updatedAt: unknown }).updatedAt ?? null)
+                                        : null;
+                        const updatedBy =
+                                responseBody && 'updatedBy' in (responseBody as Record<string, unknown>)
+                                        ? ((responseBody as { updatedBy: unknown }).updatedBy ?? null)
+                                        : null;
 
-			let nextTags = tags;
-			if (responseBody && Array.isArray((responseBody as Record<string, unknown>).tags)) {
-				nextTags = (responseBody as { tags: unknown[] }).tags
-					.map((tag) => `${tag}`.trim())
-					.filter(Boolean);
-			}
-
-			noteText = nextNote;
-			client.notes = nextNote;
-			noteTagsInput = nextTags.join(' ');
-			noteSaveSuccess = 'Notes saved';
-		} catch (err) {
+                        noteText = nextNote;
+                        client.notes = nextNote;
+                        noteTagsInput = nextTags.join(' ');
+                        client.noteTags = nextTags;
+                        client.noteUpdatedAt = typeof updatedAt === 'string' || updatedAt === null ? updatedAt : null;
+                        client.noteUpdatedBy = typeof updatedBy === 'string' ? updatedBy : null;
+                        noteSaveSuccess = 'Notes saved';
+                } catch (err) {
 			noteSaveError = err instanceof Error ? err.message : 'Failed to save notes';
 		} finally {
 			noteSavePending = false;

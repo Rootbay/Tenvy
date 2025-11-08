@@ -19,10 +19,11 @@ import type { NoteEnvelope } from '../../../../../shared/types/notes';
 import type { AgentRegistryEvent } from '../../../../../shared/types/registry-events';
 import { COMMAND_STREAM_SUBPROTOCOL } from '../../../../../shared/constants/protocol';
 import type {
-	AgentMetadata,
-	AgentMetrics,
-	AgentSnapshot,
-	AgentStatus
+        AgentMetadata,
+        AgentMetrics,
+        AgentSnapshot,
+        AgentStatus,
+        AgentOperatorNote
 } from '../../../../../shared/types/agent';
 import type {
 	AgentRegistrationRequest,
@@ -103,22 +104,30 @@ interface AgentRecord {
 	lastSeen: Date;
 	metrics?: AgentMetrics;
 	config: AgentConfig;
-	pendingCommands: Command[];
-	recentResults: CommandResult[];
-	sharedNotes: Map<string, SharedNoteRecord>;
-	fingerprint: string;
+        pendingCommands: Command[];
+        recentResults: CommandResult[];
+        sharedNotes: Map<string, SharedNoteRecord>;
+        operatorNote: OperatorNoteRecord | null;
+        fingerprint: string;
 	session?: AgentSessionRecord;
 	lastQueueDropWarning?: number;
 	optionsState?: OptionsState | null;
 }
 
 interface SharedNoteRecord {
-	id: string;
-	ciphertext: string;
-	nonce: string;
-	digest: string;
-	version: number;
-	updatedAt: Date;
+        id: string;
+        ciphertext: string;
+        nonce: string;
+        digest: string;
+        version: number;
+        updatedAt: Date;
+}
+
+interface OperatorNoteRecord {
+        note: string;
+        tags: string[];
+        updatedAt: Date | null;
+        updatedBy: string | null;
 }
 
 type AgentRegistrySubscriber = (event: AgentRegistryEvent) => void;
@@ -1234,25 +1243,63 @@ export class AgentRegistry {
 				row.connectedAt instanceof Date ? row.connectedAt : new Date(row.connectedAt ?? Date.now());
 			const lastSeen =
 				row.lastSeen instanceof Date ? row.lastSeen : new Date(row.lastSeen ?? connectedAt);
-			const sharedNotes = notesByAgent.get(row.id) ?? new Map<string, SharedNoteRecord>();
-			const pendingCommands = commandsByAgent.get(row.id) ?? [];
-			const recentResults = mergeRecentResults([], resultsByAgent.get(row.id) ?? []);
+                        const sharedNotes = notesByAgent.get(row.id) ?? new Map<string, SharedNoteRecord>();
+                        const pendingCommands = commandsByAgent.get(row.id) ?? [];
+                        const recentResults = mergeRecentResults([], resultsByAgent.get(row.id) ?? []);
+                        let operatorNote: OperatorNoteRecord | null = null;
 
-			const record: AgentRecord = {
-				id: row.id,
-				keyHash: row.keyHash,
-				metadata: normalizedMetadata,
+                        if (
+                                row.operatorNote !== null ||
+                                row.operatorNoteTags !== null ||
+                                row.operatorNoteUpdatedAt !== null ||
+                                row.operatorNoteUpdatedBy !== null
+                        ) {
+                                let parsedTags: string[] = [];
+                                if (typeof row.operatorNoteTags === 'string') {
+                                        try {
+                                                const parsed = JSON.parse(row.operatorNoteTags) as unknown;
+                                                if (Array.isArray(parsed)) {
+                                                        parsedTags = parsed
+                                                                .map((tag) =>
+                                                                        typeof tag === 'string' ? tag : `${tag}`
+                                                                )
+                                                                .map((tag) => tag.trim())
+                                                                .filter((tag) => tag.length > 0);
+                                                }
+                                        } catch {
+                                                parsedTags = [];
+                                        }
+                                }
+
+                                operatorNote = {
+                                        note: row.operatorNote ?? '',
+                                        tags: parsedTags,
+                                        updatedAt:
+                                                row.operatorNoteUpdatedAt instanceof Date
+                                                        ? row.operatorNoteUpdatedAt
+                                                        : row.operatorNoteUpdatedAt
+                                                        ? new Date(row.operatorNoteUpdatedAt)
+                                                        : null,
+                                        updatedBy: row.operatorNoteUpdatedBy ?? null
+                                };
+                        }
+
+                        const record: AgentRecord = {
+                                id: row.id,
+                                keyHash: row.keyHash,
+                                metadata: normalizedMetadata,
 				status: row.status as AgentStatus,
 				connectedAt,
 				lastSeen,
 				metrics,
-				config: normalizeConfig(config),
-				pendingCommands,
-				recentResults,
-				sharedNotes,
-				fingerprint: row.fingerprint,
-				optionsState: optionsState ? cloneOptionsState(optionsState) : null
-			};
+                                config: normalizeConfig(config),
+                                pendingCommands,
+                                recentResults,
+                                sharedNotes,
+                                operatorNote,
+                                fingerprint: row.fingerprint,
+                                optionsState: optionsState ? cloneOptionsState(optionsState) : null
+                        };
 
 			this.agents.set(record.id, record);
 			this.fingerprints.set(record.fingerprint, record.id);
@@ -1310,20 +1357,26 @@ export class AgentRegistry {
 			const existingIds = new Set(existing.map((row) => row.id));
 
 			for (const record of agents) {
-				const payload = {
-					id: record.id,
-					keyHash: record.keyHash,
-					metadata: JSON.stringify(record.metadata),
-					status: record.status,
-					connectedAt: record.connectedAt,
-					lastSeen: record.lastSeen,
-					metrics: record.metrics ? JSON.stringify(record.metrics) : null,
-					config: JSON.stringify(record.config),
-					optionsState: record.optionsState ? JSON.stringify(record.optionsState) : null,
-					fingerprint: record.fingerprint,
-					createdAt: record.connectedAt,
-					updatedAt: now
-				};
+                                const payload = {
+                                        id: record.id,
+                                        keyHash: record.keyHash,
+                                        metadata: JSON.stringify(record.metadata),
+                                        status: record.status,
+                                        connectedAt: record.connectedAt,
+                                        lastSeen: record.lastSeen,
+                                        metrics: record.metrics ? JSON.stringify(record.metrics) : null,
+                                        config: JSON.stringify(record.config),
+                                        optionsState: record.optionsState ? JSON.stringify(record.optionsState) : null,
+                                        operatorNote: record.operatorNote ? record.operatorNote.note : null,
+                                        operatorNoteTags: record.operatorNote
+                                                ? JSON.stringify(record.operatorNote.tags)
+                                                : null,
+                                        operatorNoteUpdatedAt: record.operatorNote?.updatedAt ?? null,
+                                        operatorNoteUpdatedBy: record.operatorNote?.updatedBy ?? null,
+                                        fingerprint: record.fingerprint,
+                                        createdAt: record.connectedAt,
+                                        updatedAt: now
+                                };
 
 				if (existingIds.has(record.id)) {
 					tx.update(agentTable)
@@ -1332,15 +1385,19 @@ export class AgentRegistry {
 							metadata: payload.metadata,
 							status: payload.status,
 							connectedAt: payload.connectedAt,
-							lastSeen: payload.lastSeen,
-							metrics: payload.metrics,
-							config: payload.config,
-							optionsState: payload.optionsState,
-							fingerprint: payload.fingerprint,
-							updatedAt: payload.updatedAt
-						})
-						.where(eq(agentTable.id, record.id))
-						.run();
+                                                        lastSeen: payload.lastSeen,
+                                                        metrics: payload.metrics,
+                                                        config: payload.config,
+                                                        optionsState: payload.optionsState,
+                                                        operatorNote: payload.operatorNote,
+                                                        operatorNoteTags: payload.operatorNoteTags,
+                                                        operatorNoteUpdatedAt: payload.operatorNoteUpdatedAt,
+                                                        operatorNoteUpdatedBy: payload.operatorNoteUpdatedBy,
+                                                        fingerprint: payload.fingerprint,
+                                                        updatedAt: payload.updatedAt
+                                                })
+                                                .where(eq(agentTable.id, record.id))
+                                                .run();
 				} else {
 					tx.insert(agentTable).values(payload).run();
 					existingIds.add(record.id);
@@ -1419,13 +1476,23 @@ export class AgentRegistry {
 			metadata: cloneMetadata(record.metadata),
 			status: record.status,
 			connectedAt: record.connectedAt.toISOString(),
-			lastSeen: record.lastSeen.toISOString(),
-			metrics: cloneMetrics(record.metrics),
-			pendingCommands: record.pendingCommands.length,
-			recentResults: record.recentResults.map((result) => ({ ...result })),
-			liveSession: Boolean(record.session)
-		} satisfies AgentSnapshot;
-	}
+                        lastSeen: record.lastSeen.toISOString(),
+                        metrics: cloneMetrics(record.metrics),
+                        pendingCommands: record.pendingCommands.length,
+                        recentResults: record.recentResults.map((result) => ({ ...result })),
+                        liveSession: Boolean(record.session),
+                        operatorNote: record.operatorNote
+                                ? ({
+                                          note: record.operatorNote.note,
+                                          tags: [...record.operatorNote.tags],
+                                          updatedAt: record.operatorNote.updatedAt
+                                                  ? record.operatorNote.updatedAt.toISOString()
+                                                  : null,
+                                          updatedBy: record.operatorNote.updatedBy
+                                  }) satisfies AgentOperatorNote
+                                : undefined
+                } satisfies AgentSnapshot;
+        }
 
 	private detachSession(
 		record: AgentRecord,
@@ -1598,12 +1665,13 @@ export class AgentRegistry {
 			lastSeen: now,
 			metrics: undefined,
 			config: normalizeConfig(null),
-			pendingCommands: [],
-			recentResults: [],
-			sharedNotes: new Map(),
-			fingerprint,
-			optionsState: null
-		};
+                        pendingCommands: [],
+                        recentResults: [],
+                        sharedNotes: new Map(),
+                        operatorNote: null,
+                        fingerprint,
+                        optionsState: null
+                };
 
 		this.agents.set(id, record);
 		this.fingerprints.set(fingerprint, id);
@@ -2167,19 +2235,72 @@ export class AgentRegistry {
 		record.lastSeen = new Date();
 	}
 
-	peekCommands(id: string): Command[] {
-		const record = this.agents.get(id);
-		if (!record) {
-			throw new RegistryError('Agent not found', 404);
-		}
-		return [...record.pendingCommands];
-	}
+        peekCommands(id: string): Command[] {
+                const record = this.agents.get(id);
+                if (!record) {
+                        throw new RegistryError('Agent not found', 404);
+                }
+                return [...record.pendingCommands];
+        }
 
-	syncSharedNotes(id: string, key: string | undefined, payload: NoteEnvelope[]): NoteEnvelope[] {
-		const record = this.agents.get(id);
-		if (!record) {
-			throw new RegistryError('Agent not found', 404);
-		}
+        getOperatorNote(id: string): AgentOperatorNote {
+                const record = this.agents.get(id);
+                if (!record) {
+                        throw new RegistryError('Agent not found', 404);
+                }
+
+                if (!record.operatorNote) {
+                        return { note: '', tags: [], updatedAt: null, updatedBy: null } satisfies AgentOperatorNote;
+                }
+
+                return {
+                        note: record.operatorNote.note,
+                        tags: [...record.operatorNote.tags],
+                        updatedAt: record.operatorNote.updatedAt
+                                ? record.operatorNote.updatedAt.toISOString()
+                                : null,
+                        updatedBy: record.operatorNote.updatedBy
+                } satisfies AgentOperatorNote;
+        }
+
+        updateOperatorNote(
+                id: string,
+                payload: { note?: string; tags?: string[] },
+                options: { operatorId?: string } = {}
+        ): AgentOperatorNote {
+                const record = this.agents.get(id);
+                if (!record) {
+                        throw new RegistryError('Agent not found', 404);
+                }
+
+                const normalizedNote = typeof payload.note === 'string' ? payload.note.trimEnd() : '';
+                const normalizedTags = this.normalizeTags(Array.isArray(payload.tags) ? payload.tags : []);
+                const updatedAt = new Date();
+                const updatedBy = options.operatorId ?? null;
+
+                record.operatorNote = {
+                        note: normalizedNote,
+                        tags: normalizedTags,
+                        updatedAt,
+                        updatedBy
+                } satisfies OperatorNoteRecord;
+
+                this.schedulePersist();
+                this.notifyAgentUpdate(record);
+
+                return {
+                        note: normalizedNote,
+                        tags: [...normalizedTags],
+                        updatedAt: updatedAt.toISOString(),
+                        updatedBy
+                } satisfies AgentOperatorNote;
+        }
+
+        syncSharedNotes(id: string, key: string | undefined, payload: NoteEnvelope[]): NoteEnvelope[] {
+                const record = this.agents.get(id);
+                if (!record) {
+                        throw new RegistryError('Agent not found', 404);
+                }
 
 		if (!this.verifyAgentKey(record, key)) {
 			throw new RegistryError('Invalid agent key', 401);
