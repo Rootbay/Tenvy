@@ -1077,15 +1077,26 @@
 		scheduleAudioPlayback(pcm, channels);
 	}
 
-	function ensureContext(): CanvasRenderingContext2D | null {
-		if (!canvasEl) {
-			return null;
-		}
-		if (!canvasContext) {
-			canvasContext = canvasEl.getContext('2d');
-		}
-		return canvasContext;
-	}
+        function ensureContext(): CanvasRenderingContext2D | null {
+                if (!canvasEl) {
+                        return null;
+                }
+                if (!canvasContext) {
+                        const context = canvasEl.getContext('2d');
+                        if (!context) {
+                                return null;
+                        }
+                        context.imageSmoothingEnabled = false;
+                        (context as CanvasRenderingContext2D & { mozImageSmoothingEnabled?: boolean }).mozImageSmoothingEnabled =
+                                false;
+                        (context as CanvasRenderingContext2D & { webkitImageSmoothingEnabled?: boolean }).webkitImageSmoothingEnabled =
+                                false;
+                        (context as CanvasRenderingContext2D & { msImageSmoothingEnabled?: boolean }).msImageSmoothingEnabled =
+                                false;
+                        canvasContext = context;
+                }
+                return canvasContext;
+        }
 
 	function enqueueFrame(frame: RemoteDesktopFramePacket) {
 		if (frame.keyFrame) {
@@ -1904,21 +1915,22 @@
 			onwheel={handleWheel}
 			style="touch-action: none;"
 		>
-			<video
-				bind:this={webrtcVideoEl}
-				class="absolute inset-0 h-full w-full object-contain transition-opacity duration-150"
-				class:opacity-0={!webrtcVideoActive}
-				autoplay
-				playsinline
-				muted
-				controls={false}
-				style="pointer-events: none;"
-			/>
-			<canvas
-				bind:this={canvasEl}
-				class="block h-full w-full bg-slate-950"
-				class:hidden={webrtcVideoActive}
-			></canvas>
+                        <video
+                                bind:this={webrtcVideoEl}
+                                class="absolute inset-0 h-full w-full object-contain transition-opacity duration-150"
+                                class:opacity-0={!webrtcVideoActive}
+                                autoplay
+                                playsinline
+                                muted
+                                controls={false}
+                                style="pointer-events: none; image-rendering: pixelated; image-rendering: crisp-edges;"
+                        />
+                        <canvas
+                                bind:this={canvasEl}
+                                class="block h-full w-full bg-slate-950"
+                                style="image-rendering: pixelated; image-rendering: crisp-edges;"
+                                class:hidden={webrtcVideoActive}
+                        ></canvas>
 			{#if !sessionActive}
 				<div
 					class="absolute inset-0 flex items-center justify-center text-sm text-muted-foreground"
