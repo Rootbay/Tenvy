@@ -1,0 +1,12 @@
+[package]
+name = "tenvy_plugin_manifest"
+version = "0.1.0"
+edition = "2021"
+description = "Shared plugin manifest types and validation utilities for the Tenvy workspace."
+license = "MIT"
+authors = ["Tenvy Contributors"]
+
+[dependencies]
+serde = { version = "1.0", features = ["derive"] }
+semver = "1.0"
+thiserror = "1.0"

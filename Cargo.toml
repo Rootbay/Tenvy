@@ -1,0 +1,5 @@
+[workspace]
+members = [
+    "shared/pluginmanifest-rs"
+]
+resolver = "2"
