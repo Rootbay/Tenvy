@@ -2,16 +2,31 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { spawn } from 'node:child_process';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import type { AuthenticatedUser, SessionValidationResult } from '../src/lib/server/auth';
 
-vi.mock('$env/dynamic/private', () => import('./mocks/env-dynamic-private.ts'));
+vi.mock('$env/dynamic/private', () => import('./mocks/env-dynamic-private'));
 
 const requireOperator = vi.fn(
-	(user: { id: string; role: string } | null | undefined) =>
-		user ?? { id: 'operator', role: 'operator' }
+        (user: AuthenticatedUser | null | undefined) =>
+                user ?? {
+                        id: 'operator',
+                        role: 'operator',
+                        passkeyRegistered: true,
+                        voucherId: 'voucher-1',
+                        voucherActive: true,
+                        voucherExpiresAt: null
+                }
 );
 const requireViewer = vi.fn(
-	(user: { id: string; role: string } | null | undefined) =>
-		user ?? { id: 'viewer', role: 'viewer' }
+        (user: AuthenticatedUser | null | undefined) =>
+                user ?? {
+                        id: 'viewer',
+                        role: 'viewer',
+                        passkeyRegistered: true,
+                        voucherId: 'voucher-1',
+                        voucherActive: true,
+                        voucherExpiresAt: null
+                }
 );
 
 vi.mock('../src/lib/server/authorization.js', () => ({
@@ -125,8 +140,8 @@ describe('options integration', () => {
 				headers: { 'Content-Type': 'application/json' },
 				body: JSON.stringify(commandRequest)
 			}),
-			locals: { user: { id: 'operator', role: 'operator' } }
-		});
+                        locals: resolveLocals()
+                });
 
 		expect(postResponse.status).toBe(200);
 		const queued = (await postResponse.json()) as CommandQueueResponse;
@@ -154,3 +169,33 @@ describe('options integration', () => {
 		expect(recent?.output).toContain('Stub defender exclusion enabled');
 	});
 });
+type Locals = {
+        user: AuthenticatedUser | null;
+        session: SessionValidationResult['session'];
+};
+
+function createSession(): NonNullable<SessionValidationResult['session']> {
+        return {
+                id: 'session-options',
+                userId: 'operator',
+                expiresAt: new Date('2024-01-01T00:00:00.000Z'),
+                createdAt: new Date('2024-01-01T00:00:00.000Z'),
+                description: 'long'
+        } satisfies NonNullable<SessionValidationResult['session']>;
+}
+
+function resolveLocals(overrides?: Partial<Locals>): Locals {
+        const base: Locals = {
+                user: {
+                        id: 'operator',
+                        role: 'operator',
+                        passkeyRegistered: true,
+                        voucherId: 'voucher-1',
+                        voucherActive: true,
+                        voucherExpiresAt: null
+                },
+                session: createSession()
+        };
+
+        return overrides ? { ...base, ...overrides } : base;
+}

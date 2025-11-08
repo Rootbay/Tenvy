@@ -4,25 +4,23 @@
 	import { Label } from '$lib/components/ui/label/index.js';
 	import { Switch } from '$lib/components/ui/switch/index.js';
 
-	interface Props {
-		executionDelaySeconds: string;
-		executionMinUptimeMinutes: string;
-		executionAllowedUsernames: string;
-		executionAllowedLocales: string;
-		executionStartDate: string;
-		executionEndDate: string;
-		executionRequireInternet: boolean;
-	}
-
-	let {
-		executionDelaySeconds = $bindable(),
-		executionMinUptimeMinutes = $bindable(),
-		executionAllowedUsernames = $bindable(),
-		executionAllowedLocales = $bindable(),
-		executionStartDate = $bindable(),
-		executionEndDate = $bindable(),
-		executionRequireInternet = $bindable()
-	}: Props = $props();
+        let {
+                executionDelaySeconds = $bindable(),
+                executionMinUptimeMinutes = $bindable(),
+                executionAllowedUsernames = $bindable(),
+                executionAllowedLocales = $bindable(),
+                executionStartDate = $bindable(),
+                executionEndDate = $bindable(),
+                executionRequireInternet = $bindable()
+        } = $props<{
+                executionDelaySeconds: string;
+                executionMinUptimeMinutes: string;
+                executionAllowedUsernames: string;
+                executionAllowedLocales: string;
+                executionStartDate: string;
+                executionEndDate: string;
+                executionRequireInternet: boolean;
+        }>();
 </script>
 
 <section class="space-y-4 rounded-lg border border-border/70 bg-background/60 p-6 shadow-sm">

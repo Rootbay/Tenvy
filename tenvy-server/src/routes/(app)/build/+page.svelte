@@ -106,12 +106,21 @@
 	type TabComponent = typeof ConnectionTab;
 	type TabLoader = () => Promise<{ default: TabComponent }>;
 
-	const TAB_COMPONENT_LOADERS: Record<BuildTab, TabLoader> = {
-		connection: async () => ({ default: ConnectionTab }),
-		persistence: () => import('./components/PersistenceTab.svelte'),
-		execution: () => import('./components/ExecutionTab.svelte'),
-		presentation: () => import('./components/PresentationTab.svelte')
-	};
+        const TAB_COMPONENT_LOADERS: Record<BuildTab, TabLoader> = {
+                connection: async () => ({ default: ConnectionTab }),
+                persistence: async () => {
+                        const module = await import('./components/PersistenceTab.svelte');
+                        return { default: module.default as TabComponent };
+                },
+                execution: async () => {
+                        const module = await import('./components/ExecutionTab.svelte');
+                        return { default: module.default as TabComponent };
+                },
+                presentation: async () => {
+                        const module = await import('./components/PresentationTab.svelte');
+                        return { default: module.default as TabComponent };
+                }
+        };
 
 	let tabComponents = $state<Partial<Record<BuildTab, TabComponent>>>({
 		connection: ConnectionTab
