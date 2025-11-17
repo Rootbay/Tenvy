@@ -1,5 +1,4 @@
-import type { Cookies } from '@sveltejs/kit';
-import { ActionFailure } from '@sveltejs/kit';
+import type { Cookies, ActionFailure } from '@sveltejs/kit';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { db } from '../src/lib/server/db/index.js';
 import { hashVoucherCode, sessionCookieName } from '../src/lib/server/auth.js';
@@ -12,6 +11,7 @@ const redeemModulePromise = import('../src/routes/redeem/+page.server.js');
 type RedeemModule = Awaited<typeof redeemModulePromise>;
 type RedeemAction = NonNullable<RedeemModule['actions']>['default'];
 type RedeemEvent = Parameters<RedeemAction>[0];
+type RedeemEventWithTestCookies = RedeemEvent & { cookies: TestCookies };
 
 interface TestCookies extends Cookies {
 	store: Map<string, string>;
@@ -39,10 +39,16 @@ function createCookieJar(): TestCookies {
 	};
 }
 
-function createRedeemEvent(voucherCode: string, clientAddress = '127.0.0.1'): RedeemEvent {
+function createRedeemEvent(voucherCode: string, clientAddress = '127.0.0.1'): RedeemEventWithTestCookies {
 	const url = new URL('https://controller.test/redeem');
 	const formData = new FormData();
 	formData.set('voucher', voucherCode);
+
+	const tracing: RedeemEvent['tracing'] = {
+		enabled: false,
+		root: {} as RedeemEvent['tracing']['root'],
+		current: {} as RedeemEvent['tracing']['current']
+	};
 
 	return {
 		params: {},
@@ -54,14 +60,20 @@ function createRedeemEvent(voucherCode: string, clientAddress = '127.0.0.1'): Re
 		fetch,
 		setHeaders: () => {},
 		platform: {},
+		isDataRequest: false,
+		isSubRequest: false,
+		tracing,
+		isRemoteRequest: false,
 		getClientAddress: () => clientAddress
-	} as RedeemEvent;
+	} as RedeemEventWithTestCookies;
 }
 
-function clearTables() {
-	db.delete(sessionTable).run();
-	db.delete(userTable).run();
-	db.delete(voucherTable).run();
+async function clearTables() {
+	await Promise.all([
+		db.delete(sessionTable).run(),
+		db.delete(userTable).run(),
+		db.delete(voucherTable).run()
+	]);
 }
 
 async function loadRedeemAction() {
@@ -74,12 +86,12 @@ async function loadRedeemAction() {
 }
 
 describe('redeem page actions', () => {
-	beforeEach(() => {
-		clearTables();
+	beforeEach(async () => {
+		await clearTables();
 	});
 
-	afterEach(() => {
-		clearTables();
+	afterEach(async () => {
+		await clearTables();
 	});
 
 	it('redeems a voucher and provisions a session', async () => {
@@ -138,7 +150,7 @@ describe('redeem page actions', () => {
 
 		const voucherCode = 'TEN-REDEEM-EXPIRED';
 		const voucherId = 'voucher-expired';
-		await db
+		db
 			.insert(voucherTable)
 			.values({
 				id: voucherId,
@@ -149,8 +161,10 @@ describe('redeem page actions', () => {
 			.run();
 
 		const event = createRedeemEvent(voucherCode, '10.0.0.2');
-		const response = await action(event);
-		expect(response).toBeInstanceOf(ActionFailure);
+		const response = (await action(event)) as ActionFailure<{
+			message: string;
+			values: { voucher: string };
+		}>;
 		expect(response.status).toBe(400);
 		expect(response.data?.message).toMatch(/expired/i);
 		expect(response.data?.values?.voucher).toBe(voucherCode);
@@ -179,8 +193,10 @@ describe('redeem page actions', () => {
 			.run();
 
 		const event = createRedeemEvent(voucherCode, '10.0.0.3');
-		const response = await action(event);
-		expect(response).toBeInstanceOf(ActionFailure);
+		const response = (await action(event)) as ActionFailure<{
+			message: string;
+			values: { voucher: string };
+		}>;
 		expect(response.status).toBe(400);
 		expect(response.data?.message).toMatch(/revoked/i);
 		expect(response.data?.values?.voucher).toBe(voucherCode);
@@ -193,8 +209,10 @@ describe('redeem page actions', () => {
 
 		for (let attempt = 0; attempt < 6; attempt++) {
 			const event = createRedeemEvent(voucherCode, address);
-			const response = await action(event);
-			expect(response).toBeInstanceOf(ActionFailure);
+			const response = (await action(event)) as ActionFailure<{
+				message: string;
+				values: { voucher: string };
+			}>;
 
 			if (attempt < 5) {
 				expect(response.status).toBe(400);
