@@ -16,14 +16,14 @@ export const POST: RequestHandler = async (event) => {
 		return json({ message }, { status: 429 });
 	}
 
-        const rawOptions = await generateAuthenticationOptions({
-                timeout: 60_000,
-                rpID: event.url.hostname,
-                userVerification: 'required'
-        });
-        const options = ensureChallengeOptions(rawOptions, 'authentication');
+	const rawOptions = await generateAuthenticationOptions({
+		timeout: 60_000,
+		rpID: event.url.hostname,
+		userVerification: 'required'
+	});
+	const options = ensureChallengeOptions(rawOptions, 'authentication');
 
-        event.cookies.set(CHALLENGE_COOKIE, options.challenge, {
+	event.cookies.set(CHALLENGE_COOKIE, options.challenge, {
 		path: '/',
 		maxAge: CHALLENGE_TTL,
 		httpOnly: true,

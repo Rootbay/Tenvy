@@ -27,16 +27,16 @@ class MockEventSource {
 		this.readyState = 2;
 	}
 
-        addEventListener(
-                type: string,
-                listener: EventListenerOrEventListenerObject | null,
-                _options?: boolean | AddEventListenerOptions
-        ): void {
-                if (!listener) {
-                        return;
-                }
-                const handler = typeof listener === 'function' ? listener : listener.handleEvent.bind(listener);
-                let bucket = this.listeners.get(type);
+	addEventListener(
+		type: string,
+		listener: EventListenerOrEventListenerObject | null,
+		_options?: boolean | AddEventListenerOptions
+	): void {
+		if (!listener) {
+			return;
+		}
+		const handler = typeof listener === 'function' ? listener : listener.handleEvent.bind(listener);
+		let bucket = this.listeners.get(type);
 		if (!bucket) {
 			bucket = new Set();
 			this.listeners.set(type, bucket);
@@ -44,16 +44,16 @@ class MockEventSource {
 		bucket.add(handler as (event: MessageEvent) => void);
 	}
 
-        removeEventListener(
-                type: string,
-                listener: EventListenerOrEventListenerObject | null,
-                _options?: boolean | EventListenerOptions
-        ): void {
-                if (!listener) {
-                        return;
-                }
-                const handler = typeof listener === 'function' ? listener : listener.handleEvent.bind(listener);
-                this.listeners.get(type)?.delete(handler as (event: MessageEvent) => void);
+	removeEventListener(
+		type: string,
+		listener: EventListenerOrEventListenerObject | null,
+		_options?: boolean | EventListenerOptions
+	): void {
+		if (!listener) {
+			return;
+		}
+		const handler = typeof listener === 'function' ? listener : listener.handleEvent.bind(listener);
+		this.listeners.get(type)?.delete(handler as (event: MessageEvent) => void);
 	}
 
 	dispatchEvent(_event: Event): boolean {

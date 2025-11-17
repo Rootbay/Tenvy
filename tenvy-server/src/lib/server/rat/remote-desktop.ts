@@ -3,26 +3,26 @@ import type { PluginManifest } from '../../../../../shared/types/plugin-manifest
 import remoteDesktopEngineManifestJson from '../../../../../shared/pluginmanifest/remote-desktop-engine.json';
 import type {
 	RemoteDesktopEncoder,
-        RemoteDesktopFrameMetrics,
-        RemoteDesktopFramePacket,
-        RemoteDesktopDeltaRect,
-        RemoteDesktopHardwarePreference,
-        RemoteDesktopInputBurst,
-        RemoteDesktopInputEvent,
-        RemoteDesktopMediaSample,
-        RemoteDesktopMonitor,
-        RemoteDesktopSessionNegotiationRequest,
-        RemoteDesktopSessionNegotiationResponse,
-        RemoteDesktopSessionState,
-        RemoteDesktopSettings,
-        RemoteDesktopSettingsPatch,
-        RemoteDesktopTransport,
-        RemoteDesktopTransportCapability,
-        RemoteDesktopTransportDiagnostics,
-        RemoteDesktopStreamMediaMessage,
-        RemoteDesktopWebRTCICEServer,
-        RemoteDesktopVideoClip,
-        RemoteDesktopVideoFrame
+	RemoteDesktopFrameMetrics,
+	RemoteDesktopFramePacket,
+	RemoteDesktopDeltaRect,
+	RemoteDesktopHardwarePreference,
+	RemoteDesktopInputBurst,
+	RemoteDesktopInputEvent,
+	RemoteDesktopMediaSample,
+	RemoteDesktopMonitor,
+	RemoteDesktopSessionNegotiationRequest,
+	RemoteDesktopSessionNegotiationResponse,
+	RemoteDesktopSessionState,
+	RemoteDesktopSettings,
+	RemoteDesktopSettingsPatch,
+	RemoteDesktopTransport,
+	RemoteDesktopTransportCapability,
+	RemoteDesktopTransportDiagnostics,
+	RemoteDesktopStreamMediaMessage,
+	RemoteDesktopWebRTCICEServer,
+	RemoteDesktopVideoClip,
+	RemoteDesktopVideoFrame
 } from '$lib/types/remote-desktop';
 import { registry } from './store';
 import { WebRTCPipeline } from '$lib/streams/webrtc';
@@ -94,36 +94,36 @@ function parseConfiguredIceServers(): readonly RemoteDesktopWebRTCICEServer[] {
 }
 
 function normalizeIceServers(
-        servers?: (RemoteDesktopWebRTCICEServer | Record<string, unknown>)[] | null
+	servers?: (RemoteDesktopWebRTCICEServer | Record<string, unknown>)[] | null
 ): RemoteDesktopWebRTCICEServer[] {
 	if (!servers || servers.length === 0) {
 		return [];
 	}
 
 	const normalized: RemoteDesktopWebRTCICEServer[] = [];
-        for (const server of servers) {
-                if (!server) continue;
+	for (const server of servers) {
+		if (!server) continue;
 
-                const urlSource = (server as { urls?: unknown }).urls;
-                const urls = Array.isArray(urlSource)
-                        ? urlSource
-                        : typeof urlSource === 'string'
-                                ? [urlSource]
-                                : [];
+		const urlSource = (server as { urls?: unknown }).urls;
+		const urls = Array.isArray(urlSource)
+			? urlSource
+			: typeof urlSource === 'string'
+				? [urlSource]
+				: [];
 
-                const cleaned = urls
-                        .map((url) => (typeof url === 'string' ? url.trim() : ''))
-                        .filter((url) => url.length > 0);
+		const cleaned = urls
+			.map((url) => (typeof url === 'string' ? url.trim() : ''))
+			.filter((url) => url.length > 0);
 
 		if (cleaned.length === 0) {
 			continue;
 		}
 
-                const entry: RemoteDesktopWebRTCICEServer = { urls: cleaned };
+		const entry: RemoteDesktopWebRTCICEServer = { urls: cleaned };
 
-                if (typeof server.username === 'string' && server.username.trim() !== '') {
-                        entry.username = server.username.trim();
-                }
+		if (typeof server.username === 'string' && server.username.trim() !== '') {
+			entry.username = server.username.trim();
+		}
 		if (typeof server.credential === 'string' && server.credential.trim() !== '') {
 			entry.credential = server.credential.trim();
 		}
@@ -161,13 +161,13 @@ function cloneIceServer(server: RemoteDesktopWebRTCICEServer): RemoteDesktopWebR
 }
 
 function cloneIceServers(
-        servers: readonly RemoteDesktopWebRTCICEServer[]
+	servers: readonly RemoteDesktopWebRTCICEServer[]
 ): RemoteDesktopWebRTCICEServer[] {
-        return servers.map((server) => cloneIceServer(server));
+	return servers.map((server) => cloneIceServer(server));
 }
 
 function resolveIceServers(
-        requested?: RemoteDesktopWebRTCICEServer[] | null
+	requested?: RemoteDesktopWebRTCICEServer[] | null
 ): RemoteDesktopWebRTCICEServer[] {
 	const normalized = normalizeIceServers(requested);
 	if (normalized.length > 0) {
@@ -177,15 +177,15 @@ function resolveIceServers(
 }
 
 function toRtcIceServers(servers: RemoteDesktopWebRTCICEServer[]): RTCIceServer[] {
-        return servers.map((server) => {
-                const entry: RTCIceServer & {
-                        credentialType?: 'oauth' | 'password';
-                } = { urls: [...server.urls] };
-                if (server.username) {
-                        entry.username = server.username;
-                }
-                if (server.credential) {
-                        entry.credential = server.credential;
+	return servers.map((server) => {
+		const entry: RTCIceServer & {
+			credentialType?: 'oauth' | 'password';
+		} = { urls: [...server.urls] };
+		if (server.username) {
+			entry.username = server.username;
+		}
+		if (server.credential) {
+			entry.credential = server.credential;
 		}
 		const type = server.credentialType?.toLowerCase();
 		if (type === 'oauth') {
@@ -499,49 +499,49 @@ function coerceFramePacket(payload: unknown): RemoteDesktopFramePacket | null {
 
 	if (Array.isArray((payload as { deltas?: unknown }).deltas)) {
 		const deltas: RemoteDesktopFramePacket['deltas'] = [];
-                for (const entry of (payload as { deltas: unknown[] }).deltas) {
-                        if (!entry || typeof entry !== 'object') {
-                                return null;
-                        }
-                        const rect = { ...(entry as RemoteDesktopDeltaRect) };
-                        const data = ensureBase64Data((entry as { data?: unknown }).data);
-                        if (data === null || data === undefined) {
-                                return null;
-                        }
+		for (const entry of (payload as { deltas: unknown[] }).deltas) {
+			if (!entry || typeof entry !== 'object') {
+				return null;
+			}
+			const rect = { ...(entry as RemoteDesktopDeltaRect) };
+			const data = ensureBase64Data((entry as { data?: unknown }).data);
+			if (data === null || data === undefined) {
+				return null;
+			}
 			rect.data = data;
 			deltas.push(rect);
 		}
 		frame.deltas = deltas;
 	}
 
-        if (
-                (payload as { clip?: unknown }).clip &&
-                typeof (payload as { clip?: unknown }).clip === 'object'
-        ) {
-                const clipSource = (payload as { clip: { durationMs?: unknown; frames?: unknown } }).clip;
-                const frames: RemoteDesktopVideoClip['frames'] = [];
-                if (Array.isArray((clipSource as { frames?: unknown }).frames)) {
-                        for (const entry of (clipSource as { frames: unknown[] }).frames) {
-                                if (!entry || typeof entry !== 'object') {
-                                        return null;
-                                }
-                                const clipFrame = { ...(entry as RemoteDesktopVideoFrame) };
-                                const data = ensureBase64Data((entry as { data?: unknown }).data);
-                                if (data === null || data === undefined) {
-                                        return null;
-                                }
-                                clipFrame.data = data;
-                                frames.push(clipFrame);
-                        }
-                }
-                frame.clip = {
-                        durationMs:
-                                typeof clipSource.durationMs === 'number' && Number.isFinite(clipSource.durationMs)
-                                        ? clipSource.durationMs
-                                        : 0,
-                        frames
-                } satisfies RemoteDesktopVideoClip;
-        }
+	if (
+		(payload as { clip?: unknown }).clip &&
+		typeof (payload as { clip?: unknown }).clip === 'object'
+	) {
+		const clipSource = (payload as { clip: { durationMs?: unknown; frames?: unknown } }).clip;
+		const frames: RemoteDesktopVideoClip['frames'] = [];
+		if (Array.isArray((clipSource as { frames?: unknown }).frames)) {
+			for (const entry of (clipSource as { frames: unknown[] }).frames) {
+				if (!entry || typeof entry !== 'object') {
+					return null;
+				}
+				const clipFrame = { ...(entry as RemoteDesktopVideoFrame) };
+				const data = ensureBase64Data((entry as { data?: unknown }).data);
+				if (data === null || data === undefined) {
+					return null;
+				}
+				clipFrame.data = data;
+				frames.push(clipFrame);
+			}
+		}
+		frame.clip = {
+			durationMs:
+				typeof clipSource.durationMs === 'number' && Number.isFinite(clipSource.durationMs)
+					? clipSource.durationMs
+					: 0,
+			frames
+		} satisfies RemoteDesktopVideoClip;
+	}
 
 	if (Array.isArray((payload as { media?: unknown }).media)) {
 		const media: RemoteDesktopMediaSample[] = [];

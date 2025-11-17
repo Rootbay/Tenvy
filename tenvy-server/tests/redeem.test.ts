@@ -2,7 +2,11 @@ import type { Cookies, ActionFailure } from '@sveltejs/kit';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { db } from '../src/lib/server/db/index.js';
 import { hashVoucherCode, sessionCookieName } from '../src/lib/server/auth.js';
-import { voucher as voucherTable, user as userTable, session as sessionTable } from '../src/lib/server/db/schema.js';
+import {
+	voucher as voucherTable,
+	user as userTable,
+	session as sessionTable
+} from '../src/lib/server/db/schema.js';
 import { eq } from 'drizzle-orm';
 
 vi.mock('$env/dynamic/private', () => import('./mocks/env-dynamic-private'));
@@ -39,7 +43,10 @@ function createCookieJar(): TestCookies {
 	};
 }
 
-function createRedeemEvent(voucherCode: string, clientAddress = '127.0.0.1'): RedeemEventWithTestCookies {
+function createRedeemEvent(
+	voucherCode: string,
+	clientAddress = '127.0.0.1'
+): RedeemEventWithTestCookies {
 	const url = new URL('https://controller.test/redeem');
 	const formData = new FormData();
 	formData.set('voucher', voucherCode);
@@ -150,8 +157,7 @@ describe('redeem page actions', () => {
 
 		const voucherCode = 'TEN-REDEEM-EXPIRED';
 		const voucherId = 'voucher-expired';
-		db
-			.insert(voucherTable)
+		db.insert(voucherTable)
 			.values({
 				id: voucherId,
 				codeHash: hashVoucherCode(voucherCode),

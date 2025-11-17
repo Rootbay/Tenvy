@@ -677,36 +677,36 @@
 		return normalized;
 	}
 
-        function normalizeHive(hive: RegistryHive): RegistryHive {
-                const normalized: RegistryHive = {};
-                for (const [path, entry] of Object.entries(hive)) {
-                        normalized[path] = {
-                                ...entry,
-                                values: entry.values.map((value) => ({ ...value })),
-                                subKeys: []
-                        } satisfies RegistryKey;
-                }
-                for (const entry of Object.values(normalized) as RegistryKey[]) {
-                        if (entry.parentPath) {
-                                const parent = normalized[entry.parentPath];
-                                if (parent) {
-                                        parent.subKeys.push(entry.path);
-                                }
-                        }
-                }
-                for (const entry of Object.values(normalized) as RegistryKey[]) {
-                        entry.subKeys = entry.subKeys
-                                .filter((child, index, array) => {
-                                        return array.indexOf(child) === index && Boolean(normalized[child]);
-                                })
-                                .sort((a, b) => {
-                                        const left = normalized[a]?.name ?? '';
-                                        const right = normalized[b]?.name ?? '';
-                                        return left.localeCompare(right);
-                                });
-                }
-                return normalized;
-        }
+	function normalizeHive(hive: RegistryHive): RegistryHive {
+		const normalized: RegistryHive = {};
+		for (const [path, entry] of Object.entries(hive)) {
+			normalized[path] = {
+				...entry,
+				values: entry.values.map((value) => ({ ...value })),
+				subKeys: []
+			} satisfies RegistryKey;
+		}
+		for (const entry of Object.values(normalized) as RegistryKey[]) {
+			if (entry.parentPath) {
+				const parent = normalized[entry.parentPath];
+				if (parent) {
+					parent.subKeys.push(entry.path);
+				}
+			}
+		}
+		for (const entry of Object.values(normalized) as RegistryKey[]) {
+			entry.subKeys = entry.subKeys
+				.filter((child, index, array) => {
+					return array.indexOf(child) === index && Boolean(normalized[child]);
+				})
+				.sort((a, b) => {
+					const left = normalized[a]?.name ?? '';
+					const right = normalized[b]?.name ?? '';
+					return left.localeCompare(right);
+				});
+		}
+		return normalized;
+	}
 
 	function parseTimestamp(value?: string | null): Date | null {
 		if (!value) {

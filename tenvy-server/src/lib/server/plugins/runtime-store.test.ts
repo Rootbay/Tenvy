@@ -8,8 +8,8 @@ import { tmpdir } from 'node:os';
 import { createPluginRuntimeStore } from './runtime-store.js';
 import * as schema from '$lib/server/db/schema.js';
 import type {
-        PluginManifest,
-        PluginSignatureVerificationSummary
+	PluginManifest,
+	PluginSignatureVerificationSummary
 } from '../../../../../shared/types/plugin-manifest';
 import type { LoadedPluginManifest } from '$lib/data/plugin-manifests.js';
 
@@ -103,9 +103,9 @@ let dbPath: string;
 
 const openRuntimeStore = () => {
 	const sqlite = new Database(dbPath);
-        sqlite.exec(PLUGIN_TABLE_DDL);
-        const drizzleDb = drizzle(sqlite, { schema }) as BetterSQLite3Database<typeof schema>;
-        return { store: createPluginRuntimeStore(drizzleDb), sqlite };
+	sqlite.exec(PLUGIN_TABLE_DDL);
+	const drizzleDb = drizzle(sqlite, { schema }) as BetterSQLite3Database<typeof schema>;
+	return { store: createPluginRuntimeStore(drizzleDb), sqlite };
 };
 
 beforeEach(() => {

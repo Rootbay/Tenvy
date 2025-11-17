@@ -34,36 +34,36 @@ vi.mock('../src/lib/server/rat/store.js', () => ({
 const modulePromise = import('../src/routes/api/agents/[id]/notes/+server.js');
 
 type Locals = {
-        user: AuthenticatedUser | null;
-        session: SessionValidationResult['session'];
+	user: AuthenticatedUser | null;
+	session: SessionValidationResult['session'];
 };
 
 const defaultUser: AuthenticatedUser = {
-        id: 'operator-1',
-        role: 'operator',
-        passkeyRegistered: true,
-        voucherId: 'voucher-1',
-        voucherActive: true,
-        voucherExpiresAt: null
+	id: 'operator-1',
+	role: 'operator',
+	passkeyRegistered: true,
+	voucherId: 'voucher-1',
+	voucherActive: true,
+	voucherExpiresAt: null
 };
 
 function createDefaultSession(): NonNullable<SessionValidationResult['session']> {
-        return {
-                id: 'session-1',
-                userId: defaultUser.id,
-                expiresAt: new Date('2024-01-01T00:00:00.000Z'),
-                createdAt: new Date('2024-01-01T00:00:00.000Z'),
-                description: 'long'
-        } satisfies NonNullable<SessionValidationResult['session']>;
+	return {
+		id: 'session-1',
+		userId: defaultUser.id,
+		expiresAt: new Date('2024-01-01T00:00:00.000Z'),
+		createdAt: new Date('2024-01-01T00:00:00.000Z'),
+		description: 'long'
+	} satisfies NonNullable<SessionValidationResult['session']>;
 }
 
 function resolveLocals(overrides?: Partial<Locals>): Locals {
-        const base: Locals = {
-                user: defaultUser,
-                session: createDefaultSession()
-        };
+	const base: Locals = {
+		user: defaultUser,
+		session: createDefaultSession()
+	};
 
-        return overrides ? { ...base, ...overrides } : base;
+	return overrides ? { ...base, ...overrides } : base;
 }
 
 type Handler =
@@ -74,21 +74,21 @@ type Handler =
 		: never;
 
 function createEvent<T extends Handler>(
-        handler: T,
-        init: Partial<Parameters<T>[0]> & { method?: string } = {}
+	handler: T,
+	init: Partial<Parameters<T>[0]> & { method?: string } = {}
 ) {
-        const { method, locals, request, params, ...rest } = init;
-        const httpMethod = method ?? 'GET';
-        const resolvedRequest =
-                request ?? new Request('https://controller.test/api', { method: httpMethod });
-        const resolvedLocals = resolveLocals(locals as Partial<Locals> | undefined);
+	const { method, locals, request, params, ...rest } = init;
+	const httpMethod = method ?? 'GET';
+	const resolvedRequest =
+		request ?? new Request('https://controller.test/api', { method: httpMethod });
+	const resolvedLocals = resolveLocals(locals as Partial<Locals> | undefined);
 
-        return {
-                params: { id: 'agent-1', ...(params ?? {}) },
-                request: resolvedRequest,
-                locals: resolvedLocals,
-                ...rest
-        } as Parameters<T>[0];
+	return {
+		params: { id: 'agent-1', ...(params ?? {}) },
+		request: resolvedRequest,
+		locals: resolvedLocals,
+		...rest
+	} as Parameters<T>[0];
 }
 
 describe('agent notes API', () => {
@@ -112,21 +112,21 @@ describe('agent notes API', () => {
 
 		getOperatorNote.mockReturnValueOnce(stored);
 
-                const response = await GET(
-                        createEvent(GET, {
-                                locals: resolveLocals({
-                                        user: {
-                                                ...defaultUser,
-                                                id: 'viewer-1',
-                                                role: 'operator'
-                                        }
-                                })
-                        })
-                );
+		const response = await GET(
+			createEvent(GET, {
+				locals: resolveLocals({
+					user: {
+						...defaultUser,
+						id: 'viewer-1',
+						role: 'operator'
+					}
+				})
+			})
+		);
 
-                expect(requireOperator).toHaveBeenCalledWith(
-                        expect.objectContaining({ id: 'viewer-1', role: 'operator' })
-                );
+		expect(requireOperator).toHaveBeenCalledWith(
+			expect.objectContaining({ id: 'viewer-1', role: 'operator' })
+		);
 		expect(await response.json()).toEqual(stored);
 	});
 
@@ -149,14 +149,14 @@ describe('agent notes API', () => {
 			body: JSON.stringify({ note: 'Refined objective', tags: ['priority', 'followup'] })
 		});
 
-                const locals = resolveLocals({
-                        user: { ...defaultUser, id: 'operator-77', role: 'operator' }
-                });
+		const locals = resolveLocals({
+			user: { ...defaultUser, id: 'operator-77', role: 'operator' }
+		});
 
-                const response = await POST(
-                        createEvent(POST, {
-                                method: 'POST',
-                                request,
+		const response = await POST(
+			createEvent(POST, {
+				method: 'POST',
+				request,
 				locals
 			})
 		);
@@ -197,13 +197,13 @@ describe('agent notes API', () => {
 			body: JSON.stringify({ notes: envelopes })
 		});
 
-                const response = await POST(
-                        createEvent(POST, {
-                                method: 'POST',
-                                request,
-                                locals: resolveLocals({ user: null, session: null })
-                        })
-                );
+		const response = await POST(
+			createEvent(POST, {
+				method: 'POST',
+				request,
+				locals: resolveLocals({ user: null, session: null })
+			})
+		);
 
 		expect(requireOperator).not.toHaveBeenCalled();
 		expect(syncSharedNotes).toHaveBeenCalledWith('agent-1', 'agent-token', envelopes);

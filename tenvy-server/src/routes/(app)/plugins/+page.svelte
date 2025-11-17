@@ -8,7 +8,7 @@
 		formatSignatureTime,
 		signatureBadge
 	} from '$lib/components/plugins/utils.js';
-     import type { PluginManifest } from '../../../../../shared/types/plugin-manifest';
+	import type { PluginManifest } from '../../../../../shared/types/plugin-manifest';
 	import { Badge } from '$lib/components/ui/badge/index.js';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import {

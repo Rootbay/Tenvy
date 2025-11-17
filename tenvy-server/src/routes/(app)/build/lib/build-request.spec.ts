@@ -52,22 +52,22 @@ function createInput(overrides: Partial<BuildRequestInput> = {}): BuildRequestIn
 		modules: agentModules.map((module) => module.id)
 	};
 
-        const modules = overrides.modules ?? base.modules ?? [];
+	const modules = overrides.modules ?? base.modules ?? [];
 
-        return {
-                ...base,
-                ...overrides,
-                customHeaders: overrides.customHeaders
-                        ? overrides.customHeaders.map((header) => ({ ...header }))
-                        : [],
-                customCookies: overrides.customCookies
-                        ? overrides.customCookies.map((cookie) => ({ ...cookie }))
-                        : [],
-                fileInformation: overrides.fileInformation
-                        ? { ...overrides.fileInformation }
-                        : { ...base.fileInformation },
-                modules: [...modules]
-        };
+	return {
+		...base,
+		...overrides,
+		customHeaders: overrides.customHeaders
+			? overrides.customHeaders.map((header) => ({ ...header }))
+			: [],
+		customCookies: overrides.customCookies
+			? overrides.customCookies.map((cookie) => ({ ...cookie }))
+			: [],
+		fileInformation: overrides.fileInformation
+			? { ...overrides.fileInformation }
+			: { ...base.fileInformation },
+		modules: [...modules]
+	};
 }
 
 describe('prepareBuildRequest', () => {

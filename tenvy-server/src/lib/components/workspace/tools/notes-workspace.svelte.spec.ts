@@ -50,10 +50,10 @@ describe('notes workspace', () => {
 		);
 
 		const client = structuredClone(baseClient);
-                const { unmount } = render(NotesWorkspace, {
-                        target: document.body,
-                        props: { client }
-                });
+		const { unmount } = render(NotesWorkspace, {
+			target: document.body,
+			props: { client }
+		});
 
 		const notesField = page.getByLabelText('Operational notes');
 		await expect.element(notesField).toBeInTheDocument();
@@ -77,7 +77,7 @@ describe('notes workspace', () => {
 
 		expect(client.notes).toBe('Mission accomplished');
 
-                unmount();
+		unmount();
 	});
 
 	it('renders an error message when note persistence fails', async () => {
@@ -90,10 +90,10 @@ describe('notes workspace', () => {
 		);
 
 		const client = structuredClone(baseClient);
-                const { unmount } = render(NotesWorkspace, {
-                        target: document.body,
-                        props: { client }
-                });
+		const { unmount } = render(NotesWorkspace, {
+			target: document.body,
+			props: { client }
+		});
 
 		const notesField = page.getByLabelText('Operational notes');
 		await notesField.fill('Pending escalation');
@@ -108,6 +108,6 @@ describe('notes workspace', () => {
 			.element(page.getByText('Registry unavailable', { exact: false }))
 			.toBeInTheDocument();
 
-                unmount();
+		unmount();
 	});
 });

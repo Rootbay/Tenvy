@@ -88,10 +88,14 @@
 	const pathGenerator = geoPath(projection);
 	const graticulePath = pathGenerator(geoGraticule10()) ?? '';
 	const landPaths = worldFeatures.features.map(
-		(entry: Feature<Geometry, WorldProperties>, index: number) => ({
-			id: String(entry.id ?? entry.properties?.name ?? index),
-			d: pathGenerator(entry) ?? ''
-		})
+		(entry: Feature<Geometry, WorldProperties>, index: number) => {
+			const baseId = entry.id ?? entry.properties?.name ?? index;
+			return {
+				id: String(baseId),
+				key: `${baseId}-${index}`,
+				d: pathGenerator(entry) ?? ''
+			};
+		}
 	);
 
 	let markers = $state<Marker[]>([]);
@@ -203,7 +207,7 @@
 				<path d={graticulePath} class="fill-none stroke-border/40 stroke-[0.4]" />
 			{/if}
 
-			{#each landPaths as land (land.id)}
+			{#each landPaths as land (land.key)}
 				{#if land.d}
 					<path
 						d={land.d}

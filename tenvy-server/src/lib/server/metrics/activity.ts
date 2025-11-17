@@ -326,9 +326,9 @@ export function buildActivitySnapshot(): ActivitySnapshot {
 		const diff = now.getTime() - lastSeen.getTime();
 		return diff >= windowMs && diff < windowMs * 2;
 	}).length;
-        const liveBeaconDelta: { text: string; tone: ActivitySummaryTone } = hasLastSeen
-                ? formatDelta(liveBeacons - previousLiveBeacons, 'previous window')
-                : { text: 'Telemetry unavailable', tone: 'neutral' };
+	const liveBeaconDelta: { text: string; tone: ActivitySummaryTone } = hasLastSeen
+		? formatDelta(liveBeacons - previousLiveBeacons, 'previous window')
+		: { text: 'Telemetry unavailable', tone: 'neutral' };
 
 	const executedTotal = relevantEvents.filter((event) => event.executedAt).length;
 	const queuedTotal = relevantEvents.length - executedTotal;

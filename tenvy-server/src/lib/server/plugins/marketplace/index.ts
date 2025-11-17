@@ -7,19 +7,19 @@ import {
 	pluginMarketplaceTransaction
 } from '$lib/server/db/schema.js';
 import type {
-        PluginManifest,
-        PluginLicenseInfo,
-        PluginSignatureVerificationError,
-        PluginSignatureVerificationResult,
-        PluginSignatureVerificationSummary,
-        PluginSignatureStatus,
-        PluginSignatureType
+	PluginManifest,
+	PluginLicenseInfo,
+	PluginSignatureVerificationError,
+	PluginSignatureVerificationResult,
+	PluginSignatureVerificationSummary,
+	PluginSignatureStatus,
+	PluginSignatureType
 } from '../../../../../../shared/types/plugin-manifest';
 import {
-        validatePluginManifest,
-        verifyPluginSignature,
-        resolveManifestSignature,
-        isPluginSignatureType
+	validatePluginManifest,
+	verifyPluginSignature,
+	resolveManifestSignature,
+	isPluginSignatureType
 } from '../../../../../../shared/types/plugin-manifest';
 import { getVerificationOptions } from '$lib/server/plugins/signature-policy.js';
 
@@ -42,8 +42,8 @@ export type MarketplaceSignatureState = {
 };
 
 export type MarketplaceListing = Omit<MarketplaceListingRow, 'signature'> & {
-        manifestObject: PluginManifest;
-        signature: MarketplaceSignatureState;
+	manifestObject: PluginManifest;
+	signature: MarketplaceSignatureState;
 };
 export type MarketplaceEntitlement = MarketplaceEntitlementRow & {
 	listing: MarketplaceListing;
@@ -129,32 +129,32 @@ const baseSignatureSummary = (manifest: PluginManifest): PluginSignatureVerifica
 };
 
 const summarizeVerificationSuccess = (
-        manifest: PluginManifest,
-        result: PluginSignatureVerificationResult
+	manifest: PluginManifest,
+	result: PluginSignatureVerificationResult
 ): PluginSignatureVerificationSummary => {
-        const summary = baseSignatureSummary(manifest);
-        summary.checkedAt = new Date();
-        summary.trusted = result.trusted;
-        summary.signatureType = result.signatureType;
-        summary.hash = result.hash ?? summary.hash;
-        summary.signer = result.signer ?? summary.signer ?? null;
-        summary.publicKey = result.publicKey ?? summary.publicKey ?? null;
-        summary.certificateChain = result.certificateChain?.length
-                ? [...result.certificateChain]
-                : summary.certificateChain;
-        summary.signedAt = result.signedAt ?? summary.signedAt;
+	const summary = baseSignatureSummary(manifest);
+	summary.checkedAt = new Date();
+	summary.trusted = result.trusted;
+	summary.signatureType = result.signatureType;
+	summary.hash = result.hash ?? summary.hash;
+	summary.signer = result.signer ?? summary.signer ?? null;
+	summary.publicKey = result.publicKey ?? summary.publicKey ?? null;
+	summary.certificateChain = result.certificateChain?.length
+		? [...result.certificateChain]
+		: summary.certificateChain;
+	summary.signedAt = result.signedAt ?? summary.signedAt;
 
-        const declaredType = resolveManifestSignature(manifest).type?.trim().toLowerCase();
+	const declaredType = resolveManifestSignature(manifest).type?.trim().toLowerCase();
 
-        if (result.trusted) {
-                summary.status = 'trusted';
-        } else if (!declaredType || declaredType === 'none') {
-                summary.status = 'unsigned';
-        } else {
-                summary.status = 'untrusted';
-        }
+	if (result.trusted) {
+		summary.status = 'trusted';
+	} else if (!declaredType || declaredType === 'none') {
+		summary.status = 'unsigned';
+	} else {
+		summary.status = 'untrusted';
+	}
 
-        return summary;
+	return summary;
 };
 
 const summarizeVerificationFailure = (
@@ -237,31 +237,31 @@ const assembleSignatureState = (row: MarketplaceListingRow): MarketplaceSignatur
 });
 
 const assembleListing = (row: MarketplaceListingRow): MarketplaceListing => {
-        const { signature: _signature, ...rest } = row;
-        return {
-                ...rest,
-                manifestObject: parseManifest(row.manifest),
-                signature: assembleSignatureState(row)
-        };
+	const { signature: _signature, ...rest } = row;
+	return {
+		...rest,
+		manifestObject: parseManifest(row.manifest),
+		signature: assembleSignatureState(row)
+	};
 };
 
 export async function submitListing(input: SubmitListingInput): Promise<MarketplaceListing> {
-        const { manifest } = input;
-        const problems = validatePluginManifest(manifest);
-        const trimmedRepositoryUrl = manifest.repositoryUrl?.trim();
-        if (!trimmedRepositoryUrl) {
-                problems.push('repositoryUrl is required');
-        }
-        if (problems.length > 0) {
-                throw new MarketplaceError('Invalid plugin manifest', problems);
-        }
-        const repositoryUrl = trimmedRepositoryUrl!;
+	const { manifest } = input;
+	const problems = validatePluginManifest(manifest);
+	const trimmedRepositoryUrl = manifest.repositoryUrl?.trim();
+	if (!trimmedRepositoryUrl) {
+		problems.push('repositoryUrl is required');
+	}
+	if (problems.length > 0) {
+		throw new MarketplaceError('Invalid plugin manifest', problems);
+	}
+	const repositoryUrl = trimmedRepositoryUrl!;
 
-        const summary = input.summary?.trim().length
-                ? input.summary.trim()
-                : (manifest.description ?? '');
-        const pricingTier = input.pricingTier?.trim() ?? 'free';
-        const signature = await signatureDetails(manifest);
+	const summary = input.summary?.trim().length
+		? input.summary.trim()
+		: (manifest.description ?? '');
+	const pricingTier = input.pricingTier?.trim() ?? 'free';
+	const signature = await signatureDetails(manifest);
 
 	const existing = await db
 		.select()
@@ -271,16 +271,16 @@ export async function submitListing(input: SubmitListingInput): Promise<Marketpl
 
 	const submitter = input.submittedBy ?? existing[0]?.submittedBy ?? null;
 
-        const baseRecord = {
-                pluginId: manifest.id,
-                name: manifest.name,
-                summary,
-                repositoryUrl,
-                version: manifest.version,
-                manifest: JSON.stringify(manifest),
-                pricingTier,
-                status: 'pending' as MarketplaceStatus,
-                submittedBy: submitter,
+	const baseRecord = {
+		pluginId: manifest.id,
+		name: manifest.name,
+		summary,
+		repositoryUrl,
+		version: manifest.version,
+		manifest: JSON.stringify(manifest),
+		pricingTier,
+		status: 'pending' as MarketplaceStatus,
+		submittedBy: submitter,
 		reviewedAt: null,
 		reviewerId: null,
 		updatedAt: now(),
@@ -322,17 +322,14 @@ export async function submitListing(input: SubmitListingInput): Promise<Marketpl
 }
 
 export async function listListings(status?: MarketplaceStatus): Promise<MarketplaceListing[]> {
-        const rows = status
-                ? await db
-                        .select()
-                        .from(pluginMarketplaceListing)
-                        .where(eq(pluginMarketplaceListing.status, status))
-                        .orderBy(pluginMarketplaceListing.name)
-                : await db
-                        .select()
-                        .from(pluginMarketplaceListing)
-                        .orderBy(pluginMarketplaceListing.name);
-        return rows.map(assembleListing);
+	const rows = status
+		? await db
+				.select()
+				.from(pluginMarketplaceListing)
+				.where(eq(pluginMarketplaceListing.status, status))
+				.orderBy(pluginMarketplaceListing.name)
+		: await db.select().from(pluginMarketplaceListing).orderBy(pluginMarketplaceListing.name);
+	return rows.map(assembleListing);
 }
 
 export async function getListing(id: string): Promise<MarketplaceListing | null> {

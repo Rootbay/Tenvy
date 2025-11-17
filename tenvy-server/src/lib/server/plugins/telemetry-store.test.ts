@@ -16,8 +16,8 @@ import {
 } from '$lib/server/db/schema.js';
 import type { AgentMetadata } from '../../../../../shared/types/agent';
 import type {
-        PluginInstallationTelemetry,
-        PluginManifest
+	PluginInstallationTelemetry,
+	PluginManifest
 } from '../../../../../shared/types/plugin-manifest';
 
 vi.mock('$env/dynamic/private', () => import('../../../../tests/mocks/env-dynamic-private'));
@@ -172,7 +172,7 @@ describe('PluginTelemetryStore', () => {
 				status: 'installed',
 				hash: manifestHash,
 				timestamp: now,
-                                error: undefined
+				error: undefined
 			}
 		]);
 
@@ -210,7 +210,7 @@ describe('PluginTelemetryStore', () => {
 				status: 'installed',
 				hash: mismatchedHash,
 				timestamp: now,
-                                error: undefined
+				error: undefined
 			}
 		]);
 
@@ -250,7 +250,7 @@ describe('PluginTelemetryStore', () => {
 				status: 'installed',
 				hash: manifestHash,
 				timestamp: now,
-                                error: undefined
+				error: undefined
 			}
 		]);
 
@@ -286,7 +286,7 @@ describe('PluginTelemetryStore', () => {
 			status: 'installed',
 			hash: manifestHash,
 			timestamp: iso,
-                                error: undefined
+			error: undefined
 		} as unknown as PluginInstallationTelemetry;
 
 		await store.syncAgent('agent-1', baseMetadata, [legacyPayload]);
@@ -370,7 +370,7 @@ describe('PluginTelemetryStore', () => {
 				status: 'installed',
 				hash: manifestHash,
 				timestamp: Date.now(),
-                                error: undefined
+				error: undefined
 			}
 		]);
 
@@ -413,7 +413,7 @@ describe('PluginTelemetryStore', () => {
 			.set({ approvalStatus: 'approved', approvedAt })
 			.where(eq(pluginTable.id, 'test-plugin'));
 
-                store.invalidateManifestSnapshot();
+		store.invalidateManifestSnapshot();
 
 		const baseline = await store.getManifestSnapshot();
 		const descriptor = baseline.manifests[0];

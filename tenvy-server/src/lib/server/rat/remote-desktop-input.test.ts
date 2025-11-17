@@ -102,10 +102,10 @@ describe('RemoteDesktopQuicInputService.send', () => {
 		// three event chunks (256 + 256 + 88)
 		expect(write).toHaveBeenCalledTimes(3);
 
-                const payloads = write.mock.calls.map(([chunk = '']) => {
-                        const value = typeof chunk === 'string' ? chunk : String(chunk ?? '');
-                        return JSON.parse(value.trim()) as { events: RemoteDesktopInputEvent[] };
-                });
+		const payloads = write.mock.calls.map(([chunk = '']) => {
+			const value = typeof chunk === 'string' ? chunk : String(chunk ?? '');
+			return JSON.parse(value.trim()) as { events: RemoteDesktopInputEvent[] };
+		});
 		const delivered = payloads.flatMap((entry) => entry.events);
 		expect(delivered).toHaveLength(events.length);
 		expect(delivered[0]).toEqual(events[0]);
@@ -116,11 +116,11 @@ describe('RemoteDesktopQuicInputService.send', () => {
 		const service = new RemoteDesktopQuicInputService();
 		const agentId = 'agent-quic-fail';
 		const sessionId = 'session-quic-fail';
-                const write = vi
-                        .fn<(chunk: string) => boolean>()
-                        .mockImplementationOnce((_chunk) => true)
-                        .mockImplementationOnce((_chunk) => false)
-                        .mockImplementation((_chunk) => true);
+		const write = vi
+			.fn<(chunk: string) => boolean>()
+			.mockImplementationOnce((_chunk) => true)
+			.mockImplementationOnce((_chunk) => false)
+			.mockImplementation((_chunk) => true);
 		registerConnection(service, agentId, sessionId, { write });
 
 		const events = createEvents(300);

@@ -3,8 +3,11 @@ import type {
 	PluginSignatureVerificationError,
 	PluginSignatureVerificationResult,
 	PluginSignatureVerificationSummary
-} from '../../../../shared/types/plugin-manifest';
-import { isPluginSignatureType, resolveManifestSignature } from '../../../../shared/types/plugin-manifest';
+} from '../../../../../shared/types/plugin-manifest';
+import {
+	isPluginSignatureType,
+	resolveManifestSignature
+} from '../../../../../shared/types/plugin-manifest';
 
 const normalizeTimestamp = (value: string | undefined | null): Date | null => {
 	if (value == null || value.trim().length === 0) {
@@ -18,7 +21,8 @@ const baseVerificationSummary = (manifest: PluginManifest): PluginSignatureVerif
 	const metadata = resolveManifestSignature(manifest);
 	const chain = metadata.certificateChain?.length ? [...metadata.certificateChain] : undefined;
 	const resolvedType = isPluginSignatureType(metadata.type) ? metadata.type : 'sha256';
-	const normalizedHash = metadata.hash?.trim().toLowerCase() ?? manifest.package?.hash?.trim().toLowerCase();
+	const normalizedHash =
+		metadata.hash?.trim().toLowerCase() ?? manifest.package?.hash?.trim().toLowerCase();
 
 	return {
 		trusted: false,

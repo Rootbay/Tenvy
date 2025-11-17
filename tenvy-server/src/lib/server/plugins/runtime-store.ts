@@ -5,8 +5,8 @@ import { db } from '$lib/server/db/index.js';
 import { plugin } from '$lib/server/db/schema.js';
 import type * as Schema from '$lib/server/db/schema.js';
 import type {
-        PluginApprovalStatus,
-        PluginRuntimeType
+	PluginApprovalStatus,
+	PluginRuntimeType
 } from '../../../../../shared/types/plugin-manifest';
 import type { LoadedPluginManifest } from '$lib/data/plugin-manifests.js';
 

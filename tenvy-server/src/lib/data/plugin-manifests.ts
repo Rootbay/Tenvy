@@ -102,9 +102,9 @@ export async function loadPluginManifests(
 	if (options.directory) {
 		const directory = resolveDirectory(options.directory);
 
-                let entries: Dirent[];
-                try {
-                        entries = await readdir(directory, { withFileTypes: true });
+		let entries: Dirent[];
+		try {
+			entries = await readdir(directory, { withFileTypes: true });
 		} catch (error) {
 			const err = error as NodeJS.ErrnoException;
 			if (err?.code === 'ENOENT') {

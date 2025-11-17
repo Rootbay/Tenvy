@@ -41,8 +41,8 @@ export const workspaceComponentMap: Partial<Record<DialogToolId, Component<any>>
 };
 
 const keyloggerModesMap: Partial<Record<DialogToolId, 'standard' | 'offline'>> = {
-        'keylogger-standard': 'standard',
-        'keylogger-offline': 'offline'
+	'keylogger-standard': 'standard',
+	'keylogger-offline': 'offline'
 };
 
 export const workspaceToolIds = [
@@ -77,9 +77,9 @@ export function isWorkspaceTool(id: ClientToolId): id is DialogToolId {
 }
 
 export function getWorkspaceComponent(id: DialogToolId): Component<any> | null {
-        return workspaceComponentMap[id] ?? null;
+	return workspaceComponentMap[id] ?? null;
 }
 
 export function getKeyloggerMode(id: DialogToolId): 'standard' | 'offline' | null {
-        return keyloggerModesMap[id] ?? null;
+	return keyloggerModesMap[id] ?? null;
 }

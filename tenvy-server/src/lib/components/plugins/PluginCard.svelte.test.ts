@@ -19,11 +19,11 @@ const basePlugin: Plugin = {
 	lastChecked: '2024-01-02',
 	size: '12 MB',
 	capabilities: ['Collect telemetry'],
-        artifact: 'endpoint-monitor.zip',
-        runtime: {
-                type: 'native',
-                sandboxed: false
-        },
+	artifact: 'endpoint-monitor.zip',
+	runtime: {
+		type: 'native',
+		sandboxed: false
+	},
 	distribution: {
 		defaultMode: 'manual',
 		allowManualPush: true,

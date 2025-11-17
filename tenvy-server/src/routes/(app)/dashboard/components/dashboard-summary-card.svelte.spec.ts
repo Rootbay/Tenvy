@@ -8,10 +8,10 @@ const percentageFormatter = new Intl.NumberFormat('en-US', { maximumFractionDigi
 
 describe('dashboard-summary-card', () => {
 	it('renders the primary dashboard metrics', async () => {
-                render(DashboardSummaryCard, {
-                        target: document.body,
-                        props: {
-                                totals: { total: 128, connected: 96 },
+		render(DashboardSummaryCard, {
+			target: document.body,
+			props: {
+				totals: { total: 128, connected: 96 },
 				newClients: {
 					today: { total: 7, deltaPercent: 0.12, series: [] },
 					week: { total: 32, deltaPercent: -0.08, series: [] }

@@ -18,12 +18,12 @@
 	import { appendWorkspaceLog, createWorkspaceLogEntry } from '$lib/workspace/utils';
 	import type { WorkspaceLogEntry } from '$lib/workspace/types';
 	import type {
-                KeyloggerSessionResponse,
-                KeyloggerStartConfig,
-                KeyloggerSessionState,
-                KeyloggerTelemetryState,
-                KeyloggerTelemetryBatch
-        } from '$lib/types/keylogger';
+		KeyloggerSessionResponse,
+		KeyloggerStartConfig,
+		KeyloggerSessionState,
+		KeyloggerTelemetryState,
+		KeyloggerTelemetryBatch
+	} from '$lib/types/keylogger';
 
 	type KeyloggerMode = 'standard' | 'offline';
 
@@ -249,10 +249,10 @@
 
 	const copy = modeCopy[mode as KeyloggerMode];
 
-        const metadata = $derived(() => [
-                {
-                        label: 'Mode',
-                        value: mode,
+	const metadata = $derived(() => [
+		{
+			label: 'Mode',
+			value: mode,
 			hint: copy.subtitle
 		},
 		{
@@ -263,7 +263,7 @@
 			label: 'Session',
 			value: session ? (session.active ? 'Active' : 'Stopped') : 'Not started'
 		}
-        ]) as unknown as { label: string; value: string; hint?: string }[];
+	]) as unknown as { label: string; value: string; hint?: string }[];
 
 	const watchers = [
 		{ id: 'foreground', description: 'Track active window focus changes' },
@@ -271,7 +271,9 @@
 		{ id: 'clipboard', description: 'Mirror clipboard text mutations' }
 	] as const;
 
-        const latestBatches = $derived(() => telemetryState.batches.slice(0, 5)) as unknown as KeyloggerTelemetryBatch[];
+	const latestBatches = $derived(() =>
+		telemetryState.batches.slice(0, 5)
+	) as unknown as KeyloggerTelemetryBatch[];
 </script>
 
 <div class="space-y-6">

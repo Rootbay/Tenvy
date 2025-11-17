@@ -166,21 +166,21 @@ function upsertAgent(list: AgentSnapshot[], next: AgentSnapshot): AgentSnapshot[
 export type ClientsTableStore = ReturnType<typeof createClientsTableStore>;
 
 export function createClientsTableStore(initialAgents: AgentSnapshot[]): {
-        subscribe: (
-                run: (value: ClientsTableState) => void,
-                invalidate?: (value?: ClientsTableState) => void
-        ) => () => void;
-        setAgents: (agents: AgentSnapshot[]) => void;
-        setSearchQuery: (value: string) => void;
-        setStatusFilter: (value: StatusFilter) => void;
-        setTagFilter: (value: TagFilter) => void;
-        setPerPage: (value: number) => void;
-        goToPage: (page: number) => void;
-        nextPage: () => void;
-        previousPage: () => void;
-        optimisticUpdateAgent: (agent: AgentSnapshot) => void;
-        isOptimistic: (agentId: string) => boolean;
-        clearOptimisticAgent: (agentId: string) => void;
+	subscribe: (
+		run: (value: ClientsTableState) => void,
+		invalidate?: (value?: ClientsTableState) => void
+	) => () => void;
+	setAgents: (agents: AgentSnapshot[]) => void;
+	setSearchQuery: (value: string) => void;
+	setStatusFilter: (value: StatusFilter) => void;
+	setTagFilter: (value: TagFilter) => void;
+	setPerPage: (value: number) => void;
+	goToPage: (page: number) => void;
+	nextPage: () => void;
+	previousPage: () => void;
+	optimisticUpdateAgent: (agent: AgentSnapshot) => void;
+	isOptimistic: (agentId: string) => boolean;
+	clearOptimisticAgent: (agentId: string) => void;
 } {
 	const agents = writable(dedupeAgents(initialAgents ?? []));
 	const searchQuery = writable('');

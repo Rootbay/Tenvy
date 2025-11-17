@@ -10,23 +10,23 @@
 	import { DEFAULT_FILE_INFORMATION } from '../lib/constants.js';
 	import ChevronDown from '@lucide/svelte/icons/chevron-down';
 
-        let {
-                fileIconName = $bindable(),
-                fileIconError = $bindable(),
-                handleIconSelection,
-                clearIconSelection,
-                isWindowsTarget,
-                fileInformationOpen = $bindable(),
-                fileInformation = $bindable()
-        } = $props<{
-                fileIconName: string | null;
-                fileIconError: string | null;
-                handleIconSelection: (event: Event) => void;
-                clearIconSelection: () => void;
-                isWindowsTarget: boolean;
-                fileInformationOpen: boolean;
-                fileInformation: typeof DEFAULT_FILE_INFORMATION;
-        }>();
+	let {
+		fileIconName = $bindable(),
+		fileIconError = $bindable(),
+		handleIconSelection,
+		clearIconSelection,
+		isWindowsTarget,
+		fileInformationOpen = $bindable(),
+		fileInformation = $bindable()
+	} = $props<{
+		fileIconName: string | null;
+		fileIconError: string | null;
+		handleIconSelection: (event: Event) => void;
+		clearIconSelection: () => void;
+		isWindowsTarget: boolean;
+		fileInformationOpen: boolean;
+		fileInformation: typeof DEFAULT_FILE_INFORMATION;
+	}>();
 </script>
 
 <section class="space-y-4 rounded-lg border border-border/70 bg-background/60 p-6 shadow-sm">

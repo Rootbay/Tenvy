@@ -45,23 +45,23 @@ export const POST: RequestHandler = async (event) => {
 		}
 	});
 
-        const rawOptions = await generateRegistrationOptions({
-                rpName: 'Tenvy Controller',
-                rpID: event.url.hostname,
-                userName: `tenvy-${user.id.slice(0, 8)}`,
-                userID: userIdBytes,
-                timeout: 60_000,
-                attestationType: 'none',
-                authenticatorSelection: {
-                        residentKey: 'required',
-                        requireResidentKey: true,
-                        userVerification: 'required'
-                },
-                excludeCredentials
-        });
-        const options = ensureChallengeOptions(rawOptions, 'registration');
+	const rawOptions = await generateRegistrationOptions({
+		rpName: 'Tenvy Controller',
+		rpID: event.url.hostname,
+		userName: `tenvy-${user.id.slice(0, 8)}`,
+		userID: userIdBytes,
+		timeout: 60_000,
+		attestationType: 'none',
+		authenticatorSelection: {
+			residentKey: 'required',
+			requireResidentKey: true,
+			userVerification: 'required'
+		},
+		excludeCredentials
+	});
+	const options = ensureChallengeOptions(rawOptions, 'registration');
 
-        await db
+	await db
 		.update(table.user)
 		.set({
 			currentChallenge: options.challenge,

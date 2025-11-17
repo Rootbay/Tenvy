@@ -31,11 +31,11 @@ const countries: DashboardCountryStat[] = [
 describe('dashboard-country-list', () => {
 	it('renders countries and toggles the selected country', async () => {
 		const selectedCountry = writable<string | null>(null);
-                const { unmount } = render(DashboardCountryList, {
-                        countries,
-                        selectedCountry,
-                        percentageFormatter
-                });
+		const { unmount } = render(DashboardCountryList, {
+			countries,
+			selectedCountry,
+			percentageFormatter
+		});
 
 		await expect.element(page.getByText('United States')).toBeInTheDocument();
 		await expect.element(page.getByText('21.7%')).toBeInTheDocument();
@@ -45,6 +45,6 @@ describe('dashboard-country-list', () => {
 
 		await page.getByRole('button', { name: /Canada/ }).click();
 		expect(get(selectedCountry)).toBeNull();
-                unmount();
-        });
+		unmount();
+	});
 });

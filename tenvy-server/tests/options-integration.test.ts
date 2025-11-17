@@ -8,26 +8,26 @@ import type { AuthenticatedUser, SessionValidationResult } from '../src/lib/serv
 vi.mock('$env/dynamic/private', () => import('./mocks/env-dynamic-private'));
 
 const requireOperator = vi.fn(
-        (user: AuthenticatedUser | null | undefined) =>
-                user ?? {
-                        id: 'operator',
-                        role: 'operator',
-                        passkeyRegistered: true,
-                        voucherId: 'voucher-1',
-                        voucherActive: true,
-                        voucherExpiresAt: null
-                }
+	(user: AuthenticatedUser | null | undefined) =>
+		user ?? {
+			id: 'operator',
+			role: 'operator',
+			passkeyRegistered: true,
+			voucherId: 'voucher-1',
+			voucherActive: true,
+			voucherExpiresAt: null
+		}
 );
 const requireViewer = vi.fn(
-        (user: AuthenticatedUser | null | undefined) =>
-                user ?? {
-                        id: 'viewer',
-                        role: 'viewer',
-                        passkeyRegistered: true,
-                        voucherId: 'voucher-1',
-                        voucherActive: true,
-                        voucherExpiresAt: null
-                }
+	(user: AuthenticatedUser | null | undefined) =>
+		user ?? {
+			id: 'viewer',
+			role: 'viewer',
+			passkeyRegistered: true,
+			voucherId: 'voucher-1',
+			voucherActive: true,
+			voucherExpiresAt: null
+		}
 );
 
 vi.mock('../src/lib/server/authorization.js', () => ({
@@ -47,9 +47,9 @@ const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const agentModuleRoot = join(repoRoot, 'tenvy-client');
 
 async function resetRegistry() {
-        const { registry } = await storeModulePromise;
-        (
-                registry as unknown as {
+	const { registry } = await storeModulePromise;
+	(
+		registry as unknown as {
 			agents?: Map<string, unknown>;
 			fingerprints?: Map<string, unknown>;
 			sessionTokens?: Map<string, unknown>;
@@ -62,27 +62,27 @@ async function resetRegistry() {
 }
 
 const noopCookies: Cookies = {
-        get: () => undefined,
-        getAll: () => [],
-        set: () => {},
-        delete: () => {},
-        serialize: () => ''
+	get: () => undefined,
+	getAll: () => [],
+	set: () => {},
+	delete: () => {},
+	serialize: () => ''
 };
 
 function createCommandEvent(overrides: Partial<CommandPostEvent> = {}): CommandPostEvent {
-        const url = overrides.url ?? new URL('https://controller.test/api');
-        return {
-                params: { id: 'agent-1', ...(overrides.params ?? {}) },
-                request: overrides.request ?? new Request(url, { method: 'GET' }),
-                locals: overrides.locals ?? resolveLocals(),
-                url,
-                route: overrides.route ?? { id: '/api/agents/[id]/commands' },
-                cookies: overrides.cookies ?? noopCookies,
-                fetch: overrides.fetch ?? fetch,
-                setHeaders: overrides.setHeaders ?? (() => {}),
-                getClientAddress: overrides.getClientAddress ?? (() => '127.0.0.1'),
-                platform: overrides.platform ?? {}
-        } as unknown as CommandPostEvent;
+	const url = overrides.url ?? new URL('https://controller.test/api');
+	return {
+		params: { id: 'agent-1', ...(overrides.params ?? {}) },
+		request: overrides.request ?? new Request(url, { method: 'GET' }),
+		locals: overrides.locals ?? resolveLocals(),
+		url,
+		route: overrides.route ?? { id: '/api/agents/[id]/commands' },
+		cookies: overrides.cookies ?? noopCookies,
+		fetch: overrides.fetch ?? fetch,
+		setHeaders: overrides.setHeaders ?? (() => {}),
+		getClientAddress: overrides.getClientAddress ?? (() => '127.0.0.1'),
+		platform: overrides.platform ?? {}
+	} as unknown as CommandPostEvent;
 }
 
 function runAgentCommand(command: Command): Promise<CommandResult> {
@@ -161,17 +161,17 @@ describe('options integration', () => {
 			}
 		};
 
-                const postResponse = await POST(
-                        createCommandEvent({
-                                params: { id: registration.agentId },
-                                request: new Request('https://controller.test/api', {
-                                        method: 'POST',
-                                        headers: { 'Content-Type': 'application/json' },
-                                        body: JSON.stringify(commandRequest)
-                                }),
-                                locals: resolveLocals()
-                        })
-                );
+		const postResponse = await POST(
+			createCommandEvent({
+				params: { id: registration.agentId },
+				request: new Request('https://controller.test/api', {
+					method: 'POST',
+					headers: { 'Content-Type': 'application/json' },
+					body: JSON.stringify(commandRequest)
+				}),
+				locals: resolveLocals()
+			})
+		);
 
 		expect(postResponse.status).toBe(200);
 		const queued = (await postResponse.json()) as CommandQueueResponse;
@@ -200,32 +200,32 @@ describe('options integration', () => {
 	});
 });
 type Locals = {
-        user: AuthenticatedUser | null;
-        session: SessionValidationResult['session'];
+	user: AuthenticatedUser | null;
+	session: SessionValidationResult['session'];
 };
 
 function createSession(): NonNullable<SessionValidationResult['session']> {
-        return {
-                id: 'session-options',
-                userId: 'operator',
-                expiresAt: new Date('2024-01-01T00:00:00.000Z'),
-                createdAt: new Date('2024-01-01T00:00:00.000Z'),
-                description: 'long'
-        } satisfies NonNullable<SessionValidationResult['session']>;
+	return {
+		id: 'session-options',
+		userId: 'operator',
+		expiresAt: new Date('2024-01-01T00:00:00.000Z'),
+		createdAt: new Date('2024-01-01T00:00:00.000Z'),
+		description: 'long'
+	} satisfies NonNullable<SessionValidationResult['session']>;
 }
 
 function resolveLocals(overrides?: Partial<Locals>): Locals {
-        const base: Locals = {
-                user: {
-                        id: 'operator',
-                        role: 'operator',
-                        passkeyRegistered: true,
-                        voucherId: 'voucher-1',
-                        voucherActive: true,
-                        voucherExpiresAt: null
-                },
-                session: createSession()
-        };
+	const base: Locals = {
+		user: {
+			id: 'operator',
+			role: 'operator',
+			passkeyRegistered: true,
+			voucherId: 'voucher-1',
+			voucherActive: true,
+			voucherExpiresAt: null
+		},
+		session: createSession()
+	};
 
-        return overrides ? { ...base, ...overrides } : base;
+	return overrides ? { ...base, ...overrides } : base;
 }

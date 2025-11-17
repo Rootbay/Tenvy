@@ -1,16 +1,16 @@
 <script lang="ts">
-        import { browser } from '$app/environment';
-        import { onMount } from 'svelte';
+	import { browser } from '$app/environment';
+	import { onMount } from 'svelte';
 	import { Textarea } from '$lib/components/ui/textarea/index.js';
 	import { Input } from '$lib/components/ui/input/index.js';
 	import { Label } from '$lib/components/ui/label/index.js';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import type { Client } from '$lib/data/clients';
 
-        const { client, class: className = '' } = $props<{
-                client: Client;
-                class?: string;
-        }>();
+	const { client, class: className = '' } = $props<{
+		client: Client;
+		class?: string;
+	}>();
 
 	let noteText = $state(client.notes ?? '');
 	let noteTagsInput = $state(client.noteTags?.join(' ') ?? '');
@@ -35,10 +35,10 @@
 		return value.map((tag) => `${tag ?? ''}`.trim()).filter((tag) => tag.length > 0);
 	}
 
-        function clearNoteFeedback() {
-                noteSaveError = null;
-                noteSaveSuccess = null;
-        }
+	function clearNoteFeedback() {
+		noteSaveError = null;
+		noteSaveSuccess = null;
+	}
 
 	onMount(() => {
 		if (!browser) {
@@ -181,22 +181,22 @@
 	<div class="flex-1 space-y-6 overflow-auto px-6 py-5">
 		<div class="grid gap-2">
 			<Label for={notesFieldId}>Operational notes</Label>
-                        <Textarea
-                                id={notesFieldId}
-                                class="min-h-32"
-                                bind:value={noteText}
-                                on:input={() => clearNoteFeedback()}
-                                placeholder={`Add context, requirements, or follow-up actions for ${client.codename}.`}
-                        />
+			<Textarea
+				id={notesFieldId}
+				class="min-h-32"
+				bind:value={noteText}
+				on:input={() => clearNoteFeedback()}
+				placeholder={`Add context, requirements, or follow-up actions for ${client.codename}.`}
+			/>
 		</div>
 		<div class="grid gap-2">
 			<Label for={`${notesFieldId}-tags`}>Quick tags</Label>
-                        <Input
-                                id={`${notesFieldId}-tags`}
-                                bind:value={noteTagsInput}
-                                on:input={() => clearNoteFeedback()}
-                                placeholder="intel priority staging"
-                        />
+			<Input
+				id={`${notesFieldId}-tags`}
+				bind:value={noteTagsInput}
+				on:input={() => clearNoteFeedback()}
+				placeholder="intel priority staging"
+			/>
 		</div>
 		{#if noteSaveError}
 			<p class="text-sm text-destructive">{noteSaveError}</p>
@@ -204,9 +204,9 @@
 			<p class="text-sm text-emerald-600">{noteSaveSuccess}</p>
 		{/if}
 	</div>
-        <div class="flex items-center justify-end gap-2 border-t border-border/70 bg-muted/30 px-6 py-4">
-                <slot name="secondary" {noteSavePending} />
-                <Button type="submit" disabled={noteSavePending}>
+	<div class="flex items-center justify-end gap-2 border-t border-border/70 bg-muted/30 px-6 py-4">
+		<slot name="secondary" {noteSavePending} />
+		<Button type="submit" disabled={noteSavePending}>
 			{#if noteSavePending}
 				Saving…
 			{:else}

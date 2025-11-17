@@ -265,7 +265,7 @@ func (m *Manager) performLookup(ctx context.Context, payload commandPayload, res
 		location.Timezone = nil
 	}
 	if payload.IncludeMap {
-		location.MapURL = fmt.Sprintf("https://maps.example.com/?lat=%.4f&lon=%.4f", location.Latitude, location.Longitude)
+		location.MapURL = buildGeolocationMapURL(location.Latitude, location.Longitude)
 	}
 	location.RetrievedAt = m.now().Format(time.RFC3339)
 
@@ -331,4 +331,17 @@ func classifyNetwork(ip net.IP) string {
 		return "multicast"
 	}
 	return "public"
+}
+
+const geolocationMapZoom = 9
+
+func buildGeolocationMapURL(latitude, longitude float64) string {
+	return fmt.Sprintf(
+		"https://www.openstreetmap.org/?mlat=%.4f&mlon=%.4f#map=%d/%.4f/%.4f",
+		latitude,
+		longitude,
+		geolocationMapZoom,
+		latitude,
+		longitude,
+	)
 }

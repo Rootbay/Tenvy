@@ -81,9 +81,9 @@
 	let seedDeleting = $state<string | null>(null);
 	let selectedSeedAppId = $state(applications[0]?.id ?? '');
 
-        const selectedSeedApplication = $derived(
-                applications.find((app) => app.id === selectedSeedAppId.trim()) ?? null
-        );
+	const selectedSeedApplication = $derived(
+		applications.find((app) => app.id === selectedSeedAppId.trim()) ?? null
+	);
 
 	const {
 		session,
@@ -116,17 +116,15 @@
 	let pointerActive = false;
 	let activePointerId: number | null = null;
 
-        const normalizedAppId = $derived(appId.trim());
-        const selectedApp = $derived(
-                applications.find((app) => app.id === normalizedAppId) ?? null
-        );
-        const appSelectionLabel = $derived(
-                selectedApp
-                        ? selectedApp.name
-                        : normalizedAppId
-                          ? `Custom · ${normalizedAppId}`
-                          : 'Manual selection'
-        );
+	const normalizedAppId = $derived(appId.trim());
+	const selectedApp = $derived(applications.find((app) => app.id === normalizedAppId) ?? null);
+	const appSelectionLabel = $derived(
+		selectedApp
+			? selectedApp.name
+			: normalizedAppId
+				? `Custom · ${normalizedAppId}`
+				: 'Manual selection'
+	);
 
 	function bundleKey(
 		platform: AppVncApplicationDescriptor['platforms'][number],
@@ -387,10 +385,10 @@
 		viewportEl?.focus();
 		pointerActive = true;
 		activePointerId = event.pointerId;
-                try {
-                        const target = event.currentTarget as HTMLElement | null;
-                        target?.setPointerCapture?.(event.pointerId);
-                } catch {
+		try {
+			const target = event.currentTarget as HTMLElement | null;
+			target?.setPointerCapture?.(event.pointerId);
+		} catch {
 			// ignore capture failures
 		}
 		const position = pointerPosition(event);
@@ -421,10 +419,10 @@
 			} satisfies AppVncInputEvent);
 			pointerActive = false;
 			activePointerId = null;
-                        try {
-                                const target = event.currentTarget as HTMLElement | null;
-                                target?.releasePointerCapture?.(event.pointerId);
-                        } catch {
+			try {
+				const target = event.currentTarget as HTMLElement | null;
+				target?.releasePointerCapture?.(event.pointerId);
+			} catch {
 				// ignore release failure
 			}
 		}
@@ -436,10 +434,10 @@
 		}
 		pointerActive = false;
 		activePointerId = null;
-                try {
-                        const target = event.currentTarget as HTMLElement | null;
-                        target?.releasePointerCapture?.(event.pointerId);
-                } catch {
+		try {
+			const target = event.currentTarget as HTMLElement | null;
+			target?.releasePointerCapture?.(event.pointerId);
+		} catch {
 			// ignore
 		}
 	}

@@ -223,9 +223,9 @@ describe('AgentRegistry database integration', () => {
 						pluginId: remoteDesktopEnginePluginId,
 						version: '0.0.1',
 						status: 'installed',
-                                                hash: expectedHash,
-                                                timestamp: Date.now(),
-                                                error: undefined
+						hash: expectedHash,
+						timestamp: Date.now(),
+						error: undefined
 					}
 				]
 			}
@@ -377,59 +377,57 @@ describe('AgentRegistry database integration', () => {
 
 		const originalTransaction = db.transaction.bind(db);
 		const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
-                const transactionSpy = vi
-                        .spyOn(db, 'transaction')
-                        .mockImplementation((callback, config) =>
-                                originalTransaction((tx) => {
-                                        let failureInjected = false;
-                                        const proxied = new Proxy(tx, {
-                                                get(target, property, receiver) {
-                                                        const value = Reflect.get(target, property, receiver);
-                                                        if (property === 'insert') {
-                                                                return (...args: unknown[]) => {
-                                                                        const builder = (value as (...args: unknown[]) => unknown).apply(target, args);
-									if (!failureInjected && args[0] === agentResultTable) {
-										failureInjected = true;
-										return new Proxy(builder as Record<string, unknown>, {
-											get(bTarget, bProperty, bReceiver) {
-												const bValue = Reflect.get(bTarget, bProperty, bReceiver);
-												if (bProperty === 'values') {
-													return (...valueArgs: unknown[]) => {
-														const nextBuilder = (
-															bValue as (...valueArgs: unknown[]) => unknown
-														).apply(bTarget, valueArgs);
-														return new Proxy(nextBuilder as Record<string, unknown>, {
-															get(nTarget, nProperty, nReceiver) {
-																const nValue = Reflect.get(nTarget, nProperty, nReceiver);
-																if (nProperty === 'run') {
-																	return () => {
-																		throw new Error('Simulated persistence failure');
-																	};
-																}
-																return typeof nValue === 'function'
-																	? (nValue as (...args: unknown[]) => unknown).bind(nTarget)
-																	: nValue;
+		const transactionSpy = vi.spyOn(db, 'transaction').mockImplementation((callback, config) =>
+			originalTransaction((tx) => {
+				let failureInjected = false;
+				const proxied = new Proxy(tx, {
+					get(target, property, receiver) {
+						const value = Reflect.get(target, property, receiver);
+						if (property === 'insert') {
+							return (...args: unknown[]) => {
+								const builder = (value as (...args: unknown[]) => unknown).apply(target, args);
+								if (!failureInjected && args[0] === agentResultTable) {
+									failureInjected = true;
+									return new Proxy(builder as Record<string, unknown>, {
+										get(bTarget, bProperty, bReceiver) {
+											const bValue = Reflect.get(bTarget, bProperty, bReceiver);
+											if (bProperty === 'values') {
+												return (...valueArgs: unknown[]) => {
+													const nextBuilder = (
+														bValue as (...valueArgs: unknown[]) => unknown
+													).apply(bTarget, valueArgs);
+													return new Proxy(nextBuilder as Record<string, unknown>, {
+														get(nTarget, nProperty, nReceiver) {
+															const nValue = Reflect.get(nTarget, nProperty, nReceiver);
+															if (nProperty === 'run') {
+																return () => {
+																	throw new Error('Simulated persistence failure');
+																};
 															}
-														});
-													};
-												}
-												return typeof bValue === 'function'
-													? (bValue as (...args: unknown[]) => unknown).bind(bTarget)
-													: bValue;
+															return typeof nValue === 'function'
+																? (nValue as (...args: unknown[]) => unknown).bind(nTarget)
+																: nValue;
+														}
+													});
+												};
 											}
-										});
-									}
-									return builder;
-								};
-							}
-                                                        return typeof value === 'function'
-                                                                ? (value as (...args: unknown[]) => unknown).bind(target)
-                                                                : value;
-                                                }
-                                        }) as typeof tx;
-                                        return callback(proxied);
-                                }, config)
-                        );
+											return typeof bValue === 'function'
+												? (bValue as (...args: unknown[]) => unknown).bind(bTarget)
+												: bValue;
+										}
+									});
+								}
+								return builder;
+							};
+						}
+						return typeof value === 'function'
+							? (value as (...args: unknown[]) => unknown).bind(target)
+							: value;
+					}
+				}) as typeof tx;
+				return callback(proxied);
+			}, config)
+		);
 
 		let errorCalls = 0;
 		try {
@@ -470,7 +468,7 @@ describe('AgentRegistry database integration', () => {
 				Promise.resolve(
 					registry.queueCommand(agentId, {
 						name: 'ping',
-                                                payload: { message: `ping-${index}` }
+						payload: { message: `ping-${index}` }
 					})
 				)
 			)

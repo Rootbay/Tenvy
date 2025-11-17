@@ -44,28 +44,28 @@
 	const lastCollectedLabel = $derived(() => formatTimestamp(snapshot?.report.collectedAt));
 	const lastReceivedLabel = $derived(() => formatTimestamp(snapshot?.receivedAt));
 
-        const heroMetadata = $derived(() => {
-                if (surface !== 'workspace') {
-                        return [];
-                }
-                return [
-                        {
-                                label: 'Collected',
-                                value: lastCollectedLabel ?? 'Pending',
-                                hint: snapshot ? 'Agent inventory timestamp' : 'Awaiting snapshot'
-                        },
-                        {
-                                label: 'Received',
-                                value: lastReceivedLabel ?? 'Pending',
-                                hint: snapshot ? 'Controller receipt time' : 'Pending update'
-                        },
-                        {
-                                label: 'Agent version',
-                                value: snapshot?.report.agent.version ?? client.version ?? '—',
-                                hint: `Codename ${client.codename}`
-                        }
-                ];
-        }) as unknown as { label: string; value: string; hint?: string }[];
+	const heroMetadata = $derived(() => {
+		if (surface !== 'workspace') {
+			return [];
+		}
+		return [
+			{
+				label: 'Collected',
+				value: lastCollectedLabel ?? 'Pending',
+				hint: snapshot ? 'Agent inventory timestamp' : 'Awaiting snapshot'
+			},
+			{
+				label: 'Received',
+				value: lastReceivedLabel ?? 'Pending',
+				hint: snapshot ? 'Controller receipt time' : 'Pending update'
+			},
+			{
+				label: 'Agent version',
+				value: snapshot?.report.agent.version ?? client.version ?? '—',
+				hint: `Codename ${client.codename}`
+			}
+		];
+	}) as unknown as { label: string; value: string; hint?: string }[];
 
 	async function loadSnapshot(refresh = false) {
 		loading = true;

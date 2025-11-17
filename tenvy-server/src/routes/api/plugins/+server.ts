@@ -225,9 +225,7 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 			}
 		};
 		const cleanupWrittenFiles = async () => {
-			await Promise.allSettled(
-				writtenPaths.map((path) => rm(path, { force: true }))
-			);
+			await Promise.allSettled(writtenPaths.map((path) => rm(path, { force: true })));
 		};
 
 		try {

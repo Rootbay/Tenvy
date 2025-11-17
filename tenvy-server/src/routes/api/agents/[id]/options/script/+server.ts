@@ -117,10 +117,10 @@ export const GET: RequestHandler = async ({ params, request, setHeaders }) => {
 		headers['Content-Type'] = 'application/octet-stream';
 	}
 
-        const view = data instanceof Uint8Array ? data : new Uint8Array(data);
-        const copy = new Uint8Array(view);
-        const arrayBuffer: ArrayBuffer = copy.buffer;
-        const body = new Blob([arrayBuffer]);
-        setHeaders(headers);
-        return new Response(body);
+	const view = data instanceof Uint8Array ? data : new Uint8Array(data);
+	const copy = new Uint8Array(view);
+	const arrayBuffer: ArrayBuffer = copy.buffer;
+	const body = new Blob([arrayBuffer]);
+	setHeaders(headers);
+	return new Response(body);
 };

@@ -10,37 +10,37 @@
 	} from '../lib/constants.js';
 	import { WandSparkles } from '@lucide/svelte';
 
-        let {
-                installationPath = $bindable(),
-                mutexName = $bindable(),
-                meltAfterRun = $bindable(),
-                startupOnBoot = $bindable(),
-                developerMode = $bindable(),
-                compressBinary = $bindable(),
-                forceAdmin = $bindable(),
-                watchdogEnabled = $bindable(),
-                watchdogIntervalSeconds = $bindable(),
-                enableFilePumper = $bindable(),
-                filePumperTargetSize = $bindable(),
-                filePumperUnit = $bindable(),
-                applyInstallationPreset,
-                assignMutexName
-        } = $props<{
-                installationPath: string;
-                mutexName: string;
-                meltAfterRun: boolean;
-                startupOnBoot: boolean;
-                developerMode: boolean;
-                compressBinary: boolean;
-                forceAdmin: boolean;
-                watchdogEnabled: boolean;
-                watchdogIntervalSeconds: string;
-                enableFilePumper: boolean;
-                filePumperTargetSize: string;
-                filePumperUnit: FilePumperUnit;
-                applyInstallationPreset: (value: string) => void;
-                assignMutexName: () => void;
-        }>();
+	let {
+		installationPath = $bindable(),
+		mutexName = $bindable(),
+		meltAfterRun = $bindable(),
+		startupOnBoot = $bindable(),
+		developerMode = $bindable(),
+		compressBinary = $bindable(),
+		forceAdmin = $bindable(),
+		watchdogEnabled = $bindable(),
+		watchdogIntervalSeconds = $bindable(),
+		enableFilePumper = $bindable(),
+		filePumperTargetSize = $bindable(),
+		filePumperUnit = $bindable(),
+		applyInstallationPreset,
+		assignMutexName
+	} = $props<{
+		installationPath: string;
+		mutexName: string;
+		meltAfterRun: boolean;
+		startupOnBoot: boolean;
+		developerMode: boolean;
+		compressBinary: boolean;
+		forceAdmin: boolean;
+		watchdogEnabled: boolean;
+		watchdogIntervalSeconds: string;
+		enableFilePumper: boolean;
+		filePumperTargetSize: string;
+		filePumperUnit: FilePumperUnit;
+		applyInstallationPreset: (value: string) => void;
+		assignMutexName: () => void;
+	}>();
 </script>
 
 <section class="space-y-6 rounded-lg border border-border/70 bg-background/60 p-6 shadow-sm">

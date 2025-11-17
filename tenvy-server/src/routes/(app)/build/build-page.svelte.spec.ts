@@ -91,7 +91,7 @@ describe('build page port validation', () => {
 	});
 
 	it('prevents build requests when the port falls outside the allowed range', async () => {
-                const { unmount } = render(BuildPage);
+		const { unmount } = render(BuildPage);
 
 		const portInput = document.getElementById('port') as HTMLInputElement | null;
 		expect(portInput).toBeTruthy();
@@ -114,11 +114,11 @@ describe('build page port validation', () => {
 			expect.objectContaining({ position: 'bottom-right' })
 		);
 
-                unmount();
+		unmount();
 	});
 
 	it('blocks builds when the poll interval is not a positive integer', async () => {
-                const { unmount } = render(BuildPage);
+		const { unmount } = render(BuildPage);
 
 		const pollIntervalInput = document.getElementById('poll-interval') as HTMLInputElement | null;
 		expect(pollIntervalInput).toBeTruthy();
@@ -141,11 +141,11 @@ describe('build page port validation', () => {
 			expect.objectContaining({ position: 'bottom-right' })
 		);
 
-                unmount();
+		unmount();
 	});
 
 	it('generates sanitized mutex names when requested', async () => {
-                const { unmount } = render(BuildPage);
+		const { unmount } = render(BuildPage);
 
 		const generateButton = page.getByRole('button', { name: /generate/i });
 		generateButton.click();
@@ -161,14 +161,14 @@ describe('build page port validation', () => {
 		expect(mutexInput.value).not.toBe('');
 		expect(mutexInput.value).toMatch(/^[A-Za-z0-9._-]+$/);
 
-                unmount();
+		unmount();
 	});
 
 	it('dismisses the progress toast when the component is destroyed mid-build', async () => {
 		const pendingFetch = new Promise<never>(() => {});
 		globalThis.fetch = vi.fn(() => pendingFetch as unknown as Promise<Response>);
 
-                const { unmount } = render(BuildPage);
+		const { unmount } = render(BuildPage);
 
 		const buildButton = page.getByRole('button', { name: 'Build Agent' });
 		buildButton.click();
@@ -180,7 +180,7 @@ describe('build page port validation', () => {
 			([id]) => id === 'build-progress-toast'
 		).length;
 
-                unmount();
+		unmount();
 
 		const dismissesAfterDestroy = toast.dismiss.mock.calls.filter(
 			([id]) => id === 'build-progress-toast'
@@ -190,7 +190,7 @@ describe('build page port validation', () => {
 	});
 
 	it('lazy loads tab content when activating a new tab', async () => {
-                const { unmount } = render(BuildPage);
+		const { unmount } = render(BuildPage);
 
 		const persistenceTab = page.getByRole('tab', { name: 'Persistence' });
 		persistenceTab.click();
@@ -201,7 +201,7 @@ describe('build page port validation', () => {
 		const installationPathInput = document.getElementById('path');
 		expect(installationPathInput).toBeTruthy();
 
-                unmount();
+		unmount();
 	});
 
 	it('prefetches additional tabs during idle time', async () => {
@@ -217,7 +217,7 @@ describe('build page port validation', () => {
 		globalThis.requestIdleCallback = idleCallback;
 		globalThis.cancelIdleCallback = vi.fn();
 
-                const renderResult = render(BuildPage);
+		const renderResult = render(BuildPage);
 
 		try {
 			await tick();
@@ -232,7 +232,7 @@ describe('build page port validation', () => {
 			expect(executionImportSpy).toHaveBeenCalledTimes(1);
 			expect(presentationImportSpy).toHaveBeenCalledTimes(1);
 		} finally {
-                        renderResult.unmount();
+			renderResult.unmount();
 
 			if (originalRequestIdleCallback) {
 				globalThis.requestIdleCallback = originalRequestIdleCallback;

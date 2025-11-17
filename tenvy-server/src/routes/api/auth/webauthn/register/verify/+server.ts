@@ -9,8 +9,8 @@ import * as auth from '$lib/server/auth';
 import { issueRecoveryCodes } from '$lib/server/auth/recovery';
 import { limitWebAuthn } from '$lib/server/rate-limiters';
 import {
-        ensureRegistrationVerification,
-        type WebAuthnRegistrationVerification
+	ensureRegistrationVerification,
+	type WebAuthnRegistrationVerification
 } from '$lib/server/auth/webauthn-utils';
 
 export const POST: RequestHandler = async (event) => {
@@ -46,20 +46,20 @@ export const POST: RequestHandler = async (event) => {
 		return json({ message: 'Registration challenge expired. Please try again.' }, { status: 400 });
 	}
 
-        let verification: WebAuthnRegistrationVerification;
-        try {
-                const result = await verifyRegistrationResponse({
-                        expectedChallenge: userRecord.currentChallenge,
-                        expectedOrigin: event.url.origin,
-                        expectedRPID: event.url.hostname,
-                        response: body,
-                        requireUserVerification: true
-                });
-                verification = ensureRegistrationVerification(result);
-        } catch (error) {
-                const message = error instanceof Error ? error.message : 'Failed to verify passkey.';
-                return json({ message }, { status: 400 });
-        }
+	let verification: WebAuthnRegistrationVerification;
+	try {
+		const result = await verifyRegistrationResponse({
+			expectedChallenge: userRecord.currentChallenge,
+			expectedOrigin: event.url.origin,
+			expectedRPID: event.url.hostname,
+			response: body,
+			requireUserVerification: true
+		});
+		verification = ensureRegistrationVerification(result);
+	} catch (error) {
+		const message = error instanceof Error ? error.message : 'Failed to verify passkey.';
+		return json({ message }, { status: 400 });
+	}
 
 	if (!verification.verified || !verification.registrationInfo) {
 		return json({ message: 'Passkey could not be verified.' }, { status: 400 });

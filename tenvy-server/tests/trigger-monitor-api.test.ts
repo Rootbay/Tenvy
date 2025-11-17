@@ -37,19 +37,20 @@ type Handler =
 		: never;
 
 function createEvent<T extends Handler>(
-        handler: T,
-        init: Partial<Parameters<T>[0]> & { method?: string } = {}
+	handler: T,
+	init: Partial<Parameters<T>[0]> & { method?: string } = {}
 ) {
-        const method = init.method ?? 'GET';
-        const request = init.request instanceof Request
-                ? init.request
-                : new Request('https://controller.test/api', { method });
-        return {
-                params: { id: 'agent-1', ...(init.params ?? {}) },
-                request,
-                locals: init.locals ?? { user: { id: 'tester' } },
-                ...init
-        } as Parameters<T>[0];
+	const method = init.method ?? 'GET';
+	const request =
+		init.request instanceof Request
+			? init.request
+			: new Request('https://controller.test/api', { method });
+	return {
+		params: { id: 'agent-1', ...(init.params ?? {}) },
+		request,
+		locals: init.locals ?? { user: { id: 'tester' } },
+		...init
+	} as Parameters<T>[0];
 }
 
 describe('trigger monitor API', () => {

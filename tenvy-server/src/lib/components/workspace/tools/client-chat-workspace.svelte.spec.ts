@@ -58,10 +58,10 @@ describe('client chat workspace', () => {
 			} as unknown as Response)
 		);
 
-                const { component, unmount } = render(ClientChatWorkspace, {
-                        target: document.body,
-                        props: { client: baseClient }
-                });
+		const { component, unmount } = render(ClientChatWorkspace, {
+			target: document.body,
+			props: { client: baseClient }
+		});
 		const logs: WorkspaceLogEntry[][] = [];
 		component.$on('logchange', (event) => {
 			logs.push(event.detail);
@@ -95,7 +95,7 @@ describe('client chat workspace', () => {
 			detail: 'Delivered to active chat session'
 		});
 
-                unmount();
+		unmount();
 	});
 
 	it('records a queued message when the agent is offline', async () => {
@@ -118,10 +118,10 @@ describe('client chat workspace', () => {
 			} as unknown as Response)
 		);
 
-                const { component, unmount } = render(ClientChatWorkspace, {
-                        target: document.body,
-                        props: { client: baseClient }
-                });
+		const { component, unmount } = render(ClientChatWorkspace, {
+			target: document.body,
+			props: { client: baseClient }
+		});
 		const logs: WorkspaceLogEntry[][] = [];
 		component.$on('logchange', (event) => {
 			logs.push(event.detail);
@@ -152,6 +152,6 @@ describe('client chat workspace', () => {
 			})
 		);
 
-                unmount();
+		unmount();
 	});
 });

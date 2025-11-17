@@ -1,7 +1,7 @@
 import type {
-        PluginManifest,
-        PluginSignatureStatus,
-        PluginSignatureType
+	PluginManifest,
+	PluginSignatureStatus,
+	PluginSignatureType
 } from '../../../../shared/types/plugin-manifest';
 
 export type MarketplaceStatus = 'pending' | 'approved' | 'rejected';

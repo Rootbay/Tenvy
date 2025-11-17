@@ -8,8 +8,8 @@ import { decodeBase64url } from '@oslojs/encoding';
 import * as auth from '$lib/server/auth';
 import { limitWebAuthn } from '$lib/server/rate-limiters';
 import {
-        ensureAuthenticationVerification,
-        type WebAuthnAuthenticationVerification
+	ensureAuthenticationVerification,
+	type WebAuthnAuthenticationVerification
 } from '$lib/server/auth/webauthn-utils';
 
 const CHALLENGE_COOKIE = 'webauthn-auth-challenge';
@@ -63,30 +63,30 @@ export const POST: RequestHandler = async (event) => {
 		return json({ message: 'Voucher inactive. Renew your license to continue.' }, { status: 403 });
 	}
 
-        let verification: WebAuthnAuthenticationVerification;
-        try {
-                const parsedTransports = record.passkey.transports
-                        ? (JSON.parse(record.passkey.transports) as string[] | undefined)
-                        : undefined;
+	let verification: WebAuthnAuthenticationVerification;
+	try {
+		const parsedTransports = record.passkey.transports
+			? (JSON.parse(record.passkey.transports) as string[] | undefined)
+			: undefined;
 
-                const result = await verifyAuthenticationResponse({
-                        response: body,
-                        expectedChallenge: challenge,
-                        expectedOrigin: event.url.origin,
-                        expectedRPID: event.url.hostname,
-                        requireUserVerification: true,
-                        credential: {
-                                id: record.passkey.id,
-                                publicKey: decodeBase64url(record.passkey.publicKey),
-                                counter: record.passkey.counter,
-                                transports: parsedTransports
-                        }
-                });
-                verification = ensureAuthenticationVerification(result);
-        } catch (error) {
-                const message = error instanceof Error ? error.message : 'Failed to verify passkey.';
-                return json({ message }, { status: 400 });
-        }
+		const result = await verifyAuthenticationResponse({
+			response: body,
+			expectedChallenge: challenge,
+			expectedOrigin: event.url.origin,
+			expectedRPID: event.url.hostname,
+			requireUserVerification: true,
+			credential: {
+				id: record.passkey.id,
+				publicKey: decodeBase64url(record.passkey.publicKey),
+				counter: record.passkey.counter,
+				transports: parsedTransports
+			}
+		});
+		verification = ensureAuthenticationVerification(result);
+	} catch (error) {
+		const message = error instanceof Error ? error.message : 'Failed to verify passkey.';
+		return json({ message }, { status: 400 });
+	}
 
 	if (!verification.verified || !verification.authenticationInfo) {
 		return json({ message: 'Invalid passkey response.' }, { status: 400 });

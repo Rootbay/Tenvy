@@ -26,32 +26,33 @@
 		agent?: AgentSnapshot | null;
 	}>();
 
-        const isWorkspace = isWorkspaceTool(tool.id);
-        const dialogToolId: DialogToolId | null = isWorkspace ? (tool.id as DialogToolId) : null;
-        const keyloggerMode = dialogToolId ? getKeyloggerMode(dialogToolId) : null;
-        const workspaceComponent = dialogToolId ? getWorkspaceComponent(dialogToolId) : null;
-        const requiresAgent = dialogToolId ? workspaceRequiresAgent.has(dialogToolId) : false;
-        const missingAgent = requiresAgent && !agent;
+	const isWorkspace = isWorkspaceTool(tool.id);
+	const dialogToolId: DialogToolId | null = isWorkspace ? (tool.id as DialogToolId) : null;
+	const keyloggerMode = dialogToolId ? getKeyloggerMode(dialogToolId) : null;
+	const workspaceComponent = dialogToolId ? getWorkspaceComponent(dialogToolId) : null;
+	const requiresAgent = dialogToolId ? workspaceRequiresAgent.has(dialogToolId) : false;
+	const missingAgent = requiresAgent && !agent;
 
-        const workspaceProps: Record<string, unknown> | null = dialogToolId && workspaceComponent
-                ? (() => {
-                                const base: Record<string, unknown> = { client };
-                                if (dialogToolId === 'cmd') {
-                                        base.agent = agent;
-                                }
-                                if (dialogToolId === 'remote-desktop') {
-                                        base.initialSession = null;
-                                }
-                                return base;
-                        })()
-                : null;
+	const workspaceProps: Record<string, unknown> | null =
+		dialogToolId && workspaceComponent
+			? (() => {
+					const base: Record<string, unknown> = { client };
+					if (dialogToolId === 'cmd') {
+						base.agent = agent;
+					}
+					if (dialogToolId === 'remote-desktop') {
+						base.initialSession = null;
+					}
+					return base;
+				})()
+			: null;
 
 	onMount(() => {
-                if (!browser || !dialogToolId) {
-                        return;
-                }
+		if (!browser || !dialogToolId) {
+			return;
+		}
 
-                notifyToolActivationCommand(client.id, dialogToolId, {
+		notifyToolActivationCommand(client.id, dialogToolId, {
 			action: 'open',
 			metadata: { surface: 'workspace' }
 		});

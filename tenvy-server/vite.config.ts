@@ -42,15 +42,13 @@ const serverHost = resolveHost(process.env.TENVY_SERVER_HOST ?? process.env.HOST
 const isVitest = process.env.VITEST === 'true';
 
 const testAliases: AliasOptions = isVitest
-        ? [
-                        {
-                                find: '$env/dynamic/private',
-                                replacement: fileURLToPath(
-                                        new URL('./tests/mocks/env-dynamic-private.ts', import.meta.url)
-                                )
-                        }
-                ]
-        : [];
+	? [
+			{
+				find: '$env/dynamic/private',
+				replacement: fileURLToPath(new URL('./tests/mocks/env-dynamic-private.ts', import.meta.url))
+			}
+		]
+	: [];
 
 const enableBrowserTests = process.env.ENABLE_BROWSER_TESTS === 'true';
 
@@ -64,15 +62,15 @@ const playwrightProvider = playwright();
 const browserInstances: BrowserInstanceOption[] = [{ browser: 'chromium' }];
 
 const browserProjects = [
-        {
-                test: {
-                        name: 'client',
-                        environment: 'browser' as const,
-                        browser: {
-                                enabled: true,
-                                provider: playwrightProvider,
-                                instances: browserInstances
-                        },
+	{
+		test: {
+			name: 'client',
+			environment: 'browser' as const,
+			browser: {
+				enabled: true,
+				provider: playwrightProvider,
+				instances: browserInstances
+			},
 			include: ['src/**/*.svelte.{test,spec}.{js,ts}'],
 			exclude: ['src/lib/server/**'],
 			setupFiles: ['./vitest-setup-client.ts']
@@ -105,9 +103,9 @@ export default defineConfig({
 		port: serverPort,
 		strictPort: true
 	},
-        resolve: {
-                alias: testAliases
-        },
+	resolve: {
+		alias: testAliases
+	},
 	test: enableBrowserTests
 		? {
 				expect: { requireAssertions: true },

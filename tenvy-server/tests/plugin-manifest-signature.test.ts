@@ -60,13 +60,13 @@ describe('verifyPluginSignature', () => {
 			}
 		};
 
-                await expect(
-                        verifyPluginSignature(manifest, {
-                                sha256AllowList: ['deadbeef']
-                        })
-                ).rejects.toMatchObject({
-                        code: 'HASH_NOT_ALLOWED'
-                });
+		await expect(
+			verifyPluginSignature(manifest, {
+				sha256AllowList: ['deadbeef']
+			})
+		).rejects.toMatchObject({
+			code: 'HASH_NOT_ALLOWED'
+		});
 	});
 
 	it('verifies ed25519 signatures with known keys', async () => {

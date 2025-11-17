@@ -49,14 +49,14 @@ afterEach(() => {
 });
 
 describe('remote-desktop-workspace.svelte wheel handling', () => {
-        it('prevents local scrolling when the session is active', async () => {
-                const { unmount } = render(RemoteDesktopWorkspace, {
-                        target: document.body,
-                        props: {
-                                client: baseClient,
-                                initialSession: createSession({ active: true })
-                        }
-                });
+	it('prevents local scrolling when the session is active', async () => {
+		const { unmount } = render(RemoteDesktopWorkspace, {
+			target: document.body,
+			props: {
+				client: baseClient,
+				initialSession: createSession({ active: true })
+			}
+		});
 
 		const viewport = page.getByRole('application', { name: 'Remote desktop viewport' });
 		await expect.element(viewport).toBeInTheDocument();
@@ -64,11 +64,13 @@ describe('remote-desktop-workspace.svelte wheel handling', () => {
 			.element(page.getByText('Session inactive · start streaming to receive frames'))
 			.not.toBeInTheDocument();
 
-                const outcome = await (viewport as unknown as {
-                        evaluate: <T>(callback: (element: HTMLElement) => T | Promise<T>) => Promise<T>;
-                }).evaluate((element) => {
-                        document.body.style.height = '2000px';
-                        document.body.style.margin = '0';
+		const outcome = await (
+			viewport as unknown as {
+				evaluate: <T>(callback: (element: HTMLElement) => T | Promise<T>) => Promise<T>;
+			}
+		).evaluate((element) => {
+			document.body.style.height = '2000px';
+			document.body.style.margin = '0';
 			const scroller = document.scrollingElement ?? document.body;
 			scroller.scrollTop = 0;
 			const before = scroller.scrollTop;
@@ -86,17 +88,17 @@ describe('remote-desktop-workspace.svelte wheel handling', () => {
 		expect(outcome.defaultPrevented).toBe(true);
 		expect(outcome.after).toBe(outcome.before);
 
-                unmount();
+		unmount();
 	});
 
 	it('allows local scrolling when the session is inactive', async () => {
-                const { unmount } = render(RemoteDesktopWorkspace, {
-                        target: document.body,
-                        props: {
-                                client: baseClient,
-                                initialSession: createSession({ active: false })
-                        }
-                });
+		const { unmount } = render(RemoteDesktopWorkspace, {
+			target: document.body,
+			props: {
+				client: baseClient,
+				initialSession: createSession({ active: false })
+			}
+		});
 
 		const viewport = page.getByRole('application', { name: 'Remote desktop viewport' });
 		await expect.element(viewport).toBeInTheDocument();
@@ -104,11 +106,13 @@ describe('remote-desktop-workspace.svelte wheel handling', () => {
 			.element(page.getByText('Session inactive · start streaming to receive frames'))
 			.toBeInTheDocument();
 
-                const outcome = await (viewport as unknown as {
-                        evaluate: <T>(callback: (element: HTMLElement) => T | Promise<T>) => Promise<T>;
-                }).evaluate((element) => {
-                        document.body.style.height = '2000px';
-                        document.body.style.margin = '0';
+		const outcome = await (
+			viewport as unknown as {
+				evaluate: <T>(callback: (element: HTMLElement) => T | Promise<T>) => Promise<T>;
+			}
+		).evaluate((element) => {
+			document.body.style.height = '2000px';
+			document.body.style.margin = '0';
 			const scroller = document.scrollingElement ?? document.body;
 			scroller.scrollTop = 0;
 			const before = scroller.scrollTop;
@@ -126,6 +130,6 @@ describe('remote-desktop-workspace.svelte wheel handling', () => {
 		expect(outcome.defaultPrevented).toBe(false);
 		expect(outcome.after).toBeGreaterThan(outcome.before);
 
-                unmount();
-        });
+		unmount();
+	});
 });

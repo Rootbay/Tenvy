@@ -80,7 +80,7 @@ describe('agent contract smoke tests', () => {
 					offset: '+01:00',
 					abbreviation: 'WET'
 				},
-				mapUrl: 'https://maps.example.com/?lat=38.7223&lon=-9.1393',
+				mapUrl: 'https://www.openstreetmap.org/?mlat=38.7223&mlon=-9.1393#map=9/38.7223/-9.1393',
 				retrievedAt: '2024-06-01T12:01:00Z'
 			}
 		} satisfies unknown;

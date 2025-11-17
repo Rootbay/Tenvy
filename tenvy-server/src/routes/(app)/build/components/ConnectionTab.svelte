@@ -85,17 +85,17 @@
 		removeCustomCookie
 	}: Props = $props();
 
-        const hasModuleSelection = $derived(selectedModules.length > 0);
+	const hasModuleSelection = $derived(selectedModules.length > 0);
 
-        function toggleModuleSelection(moduleId: string) {
-                const trimmed = moduleId.trim();
-                if (!trimmed) {
-                        return;
-                }
-                if (selectedModules.includes(trimmed)) {
-                        selectedModules = selectedModules.filter((id) => id !== trimmed);
-                        return;
-                }
+	function toggleModuleSelection(moduleId: string) {
+		const trimmed = moduleId.trim();
+		if (!trimmed) {
+			return;
+		}
+		if (selectedModules.includes(trimmed)) {
+			selectedModules = selectedModules.filter((id) => id !== trimmed);
+			return;
+		}
 		const baseOrder = new Map(availableModules.map((module, index) => [module.id, index]));
 		const next = [...selectedModules, trimmed];
 		next.sort((left, right) => {
@@ -458,7 +458,7 @@
 		<div class="grid gap-3 md:grid-cols-2">
 			{#each availableModules as module (module.id)}
 				{@const moduleInputId = `module-${module.id}`}
-                                {@const isSelected = selectedModules.includes(module.id)}
+				{@const isSelected = selectedModules.includes(module.id)}
 				<label
 					for={moduleInputId}
 					class={`flex cursor-pointer flex-col gap-3 rounded-lg border p-4 transition-colors ${

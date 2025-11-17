@@ -1,5 +1,5 @@
 <script lang="ts">
-        import type { HTMLInputAttributes, HTMLInputTypeAttribute } from 'svelte/elements';
+	import type { HTMLInputAttributes, HTMLInputTypeAttribute } from 'svelte/elements';
 	import { cn, type WithElementRef } from '$lib/utils.js';
 
 	type InputType = Exclude<HTMLInputTypeAttribute, 'file'>;
@@ -9,19 +9,19 @@
 			({ type: 'file'; files?: FileList } | { type?: InputType; files?: undefined })
 	>;
 
-        export interface $$Events {
-                input: Event & { currentTarget: HTMLInputElement };
-                change: Event & { currentTarget: HTMLInputElement };
-        }
+	export interface $$Events {
+		input: Event & { currentTarget: HTMLInputElement };
+		change: Event & { currentTarget: HTMLInputElement };
+	}
 
-        let {
-                ref = $bindable(null),
-                value = $bindable(),
-                type,
-                files = $bindable(),
-                class: className,
-                ...restProps
-        }: Props = $props();
+	let {
+		ref = $bindable(null),
+		value = $bindable(),
+		type,
+		files = $bindable(),
+		class: className,
+		...restProps
+	}: Props = $props();
 </script>
 
 {#if type === 'file'}

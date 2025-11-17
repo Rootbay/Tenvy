@@ -76,34 +76,34 @@
 
 	const tool = getClientTool(toolId);
 
-        const activeWorkspace = getWorkspaceComponent(toolId);
-        const keyloggerMode = getKeyloggerMode(toolId);
-        const isWorkspaceDialog = isWorkspaceTool(toolId);
-        const missingAgent = workspaceRequiresAgent.has(toolId) && !agent;
-        const workspaceProps: Record<string, unknown> | null = (() => {
-                if (!activeWorkspace) {
-                        return null;
-                }
+	const activeWorkspace = getWorkspaceComponent(toolId);
+	const keyloggerMode = getKeyloggerMode(toolId);
+	const isWorkspaceDialog = isWorkspaceTool(toolId);
+	const missingAgent = workspaceRequiresAgent.has(toolId) && !agent;
+	const workspaceProps: Record<string, unknown> | null = (() => {
+		if (!activeWorkspace) {
+			return null;
+		}
 
-                if (toolId === 'cmd' && !agent) {
-                        return null;
-                }
+		if (toolId === 'cmd' && !agent) {
+			return null;
+		}
 
-                const base: Record<string, unknown> = { client };
+		const base: Record<string, unknown> = { client };
 
-                if (toolId === 'cmd' && agent) {
-                        base.agent = agent;
-                }
+		if (toolId === 'cmd' && agent) {
+			base.agent = agent;
+		}
 
-                if (toolId === 'remote-desktop') {
-                        base.initialSession = null;
-                }
+		if (toolId === 'remote-desktop') {
+			base.initialSession = null;
+		}
 
-                return base;
-        })();
+		return base;
+	})();
 
-        const windowWidth = !isWorkspaceDialog ? 640 : toolId === 'system-monitor' ? 1180 : 980;
-        const windowHeight = isWorkspaceDialog ? (toolId === 'system-monitor' ? 720 : 640) : 540;
+	const windowWidth = !isWorkspaceDialog ? 640 : toolId === 'system-monitor' ? 1180 : 980;
+	const windowHeight = isWorkspaceDialog ? (toolId === 'system-monitor' ? 720 : 640) : 540;
 
 	onMount(() => {
 		if (!browser) {
@@ -294,9 +294,9 @@
 </script>
 
 <Dialog.Root
-        bind:open
-        onOpenChange={handleOpenChange}
-        onOpenChangeComplete={handleOpenChangeComplete}
+	bind:open
+	onOpenChange={handleOpenChange}
+	onOpenChangeComplete={handleOpenChangeComplete}
 >
 	<Dialog.Content
 		class="pointer-events-none top-0 left-0 z-50 h-screen w-screen max-w-none translate-x-0 translate-y-0 border-none bg-transparent p-0 shadow-none"
@@ -354,16 +354,16 @@
 						</div>
 					{:else if toolId === 'system-info'}
 						<SystemInformationDialog {client} />
-                                        {:else if toolId === 'notes'}
-                                                <NotesWorkspace {client}>
-                                                        <svelte:fragment slot="secondary" let:noteSavePending>
-                                                                <Dialog.Close>
-                                                                        {#snippet child({ props })}
-                                                                                <Button variant="outline" disabled={noteSavePending} {...props}>Cancel</Button>
-                                                                        {/snippet}
-                                                                </Dialog.Close>
-                                                        </svelte:fragment>
-                                                </NotesWorkspace>
+					{:else if toolId === 'notes'}
+						<NotesWorkspace {client}>
+							<svelte:fragment slot="secondary" let:noteSavePending>
+								<Dialog.Close>
+									{#snippet child({ props })}
+										<Button variant="outline" disabled={noteSavePending} {...props}>Cancel</Button>
+									{/snippet}
+								</Dialog.Close>
+							</svelte:fragment>
+						</NotesWorkspace>
 					{:else if toolId === 'open-url'}
 						<form class="flex h-full flex-col" onsubmit={handleOpenUrlSubmit}>
 							<div class="flex-1 space-y-6 overflow-auto px-6 py-5">
@@ -408,15 +408,13 @@
 											<label
 												class="flex items-start gap-3 rounded-md border border-transparent px-2 py-2 transition hover:border-border/60"
 											>
-                                                                                                <Checkbox
-                                                                                                        aria-describedby={`${checklistId}-description`}
-                                                                                                        aria-label={resolveChecklistLabel(item)}
-                                                                                                        checked={Boolean(openUrlChecklistState[item.id])}
-                                                                                                        disabled={openUrlPending || openUrlComplete}
-                                                                                                        onCheckedChange={(value) =>
-                                                                                                                setChecklistChecked(item.id, value === true)
-                                                                                                        }
-                                                                                                />
+												<Checkbox
+													aria-describedby={`${checklistId}-description`}
+													aria-label={resolveChecklistLabel(item)}
+													checked={Boolean(openUrlChecklistState[item.id])}
+													disabled={openUrlPending || openUrlComplete}
+													onCheckedChange={(value) => setChecklistChecked(item.id, value === true)}
+												/>
 												<div class="space-y-1 text-sm leading-relaxed">
 													<span class="font-medium text-foreground"
 														>{resolveChecklistLabel(item)}</span

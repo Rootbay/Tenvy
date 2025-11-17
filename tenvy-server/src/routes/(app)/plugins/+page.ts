@@ -32,10 +32,10 @@ type RegistryEntriesResponse = { entries: PluginRegistryEntry[] };
 type MinimalUser = { id: string; role: UserRole };
 
 export const load: PageLoad = async ({ fetch, parent }) => {
-        const parentData = await parent();
+	const parentData = await parent();
 
-        const parentUser = (parentData as { user?: MinimalUser | null }).user;
-        const minimalUser = parentUser ? { id: parentUser.id, role: parentUser.role } : null;
+	const parentUser = (parentData as { user?: MinimalUser | null }).user;
+	const minimalUser = parentUser ? { id: parentUser.id, role: parentUser.role } : null;
 
 	const [pluginsResponse, registryResponse, listingsResponse, entitlementsResponse] =
 		await Promise.all([

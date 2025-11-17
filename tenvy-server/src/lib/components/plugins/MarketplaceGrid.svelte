@@ -112,17 +112,17 @@
 										{listing.repositoryUrl}
 									</a>
 								</div>
-                                                                {#if listing.manifest.license}
-                                                                        <div class="flex items-center gap-2">
-                                                                                <ShieldCheck class="h-3.5 w-3.5" />
-                                                                                <span>{listing.manifest.license.spdxId}</span>
-                                                                        </div>
-                                                                {:else}
-                                                                        <div class="flex items-center gap-2">
-                                                                                <ShieldCheck class="h-3.5 w-3.5" />
-                                                                                <span>Unlicensed</span>
-                                                                        </div>
-                                                                {/if}
+								{#if listing.manifest.license}
+									<div class="flex items-center gap-2">
+										<ShieldCheck class="h-3.5 w-3.5" />
+										<span>{listing.manifest.license.spdxId}</span>
+									</div>
+								{:else}
+									<div class="flex items-center gap-2">
+										<ShieldCheck class="h-3.5 w-3.5" />
+										<span>Unlicensed</span>
+									</div>
+								{/if}
 								<div class="flex items-center gap-2">
 									<ListingSignatureIcon class="h-3.5 w-3.5" />
 									<span>

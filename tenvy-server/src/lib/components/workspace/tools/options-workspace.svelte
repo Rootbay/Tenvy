@@ -753,15 +753,15 @@
 
 			<div>
 				<Label>Sound Volume</Label>
-                                <Slider
-                                        type="single"
-                                        min={0}
-                                        max={100}
-                                        step={5}
-                                        value={soundVolume}
-                                        onValueChange={(value) => (soundVolume = value)}
-                                        onValueCommit={(value) => void handleSoundVolumeCommit(value)}
-                                />
+				<Slider
+					type="single"
+					min={0}
+					max={100}
+					step={5}
+					value={soundVolume}
+					onValueChange={(value) => (soundVolume = value)}
+					onValueCommit={(value) => void handleSoundVolumeCommit(value)}
+				/>
 				<p class="mt-1 text-xs text-muted-foreground">Volume: {soundVolume}%</p>
 			</div>
 		</TabsContent>
@@ -798,15 +798,15 @@
 
 				<div>
 					<Label>Delay (seconds)</Label>
-                                        <Slider
-                                                type="single"
-                                                min={0}
-                                                max={60}
-                                                step={5}
-                                                value={scriptDelay}
-                                                onValueChange={(value) => (scriptDelay = value)}
-                                                onValueCommit={(value) => void handleScriptDelayCommit(value)}
-                                        />
+					<Slider
+						type="single"
+						min={0}
+						max={60}
+						step={5}
+						value={scriptDelay}
+						onValueChange={(value) => (scriptDelay = value)}
+						onValueCommit={(value) => void handleScriptDelayCommit(value)}
+					/>
 					<p class="mt-1 text-xs text-muted-foreground">Delay: {scriptDelay}s</p>
 				</div>
 

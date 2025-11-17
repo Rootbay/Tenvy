@@ -1,9 +1,9 @@
 import { agentModuleCapabilityIndex, agentModuleIndex } from '../../../../shared/modules/index.js';
 import type {
-        PluginManifest,
-        PluginRuntimeType,
-        PluginSignatureStatus,
-        PluginSignatureType
+	PluginManifest,
+	PluginRuntimeType,
+	PluginSignatureStatus,
+	PluginSignatureType
 } from '../../../../shared/types/plugin-manifest';
 import { loadPluginManifests, type LoadedPluginManifest } from './plugin-manifests.js';
 import {

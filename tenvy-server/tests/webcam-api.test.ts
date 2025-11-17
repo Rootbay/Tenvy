@@ -27,14 +27,12 @@ vi.mock('../src/lib/server/rat/store.js', () => ({
 }));
 
 const refreshModule = await import(
-        '../src/routes/api/agents/[clientId]/webcam/devices/refresh/+server'
+	'../src/routes/api/agents/[clientId]/webcam/devices/refresh/+server'
 );
 const devicesModule = await import('../src/routes/api/agents/[clientId]/webcam/devices/+server');
-const sessionsModule = await import(
-        '../src/routes/api/agents/[clientId]/webcam/sessions/+server'
-);
+const sessionsModule = await import('../src/routes/api/agents/[clientId]/webcam/sessions/+server');
 const sessionModule = await import(
-        '../src/routes/api/agents/[clientId]/webcam/sessions/[sessionId]/+server'
+	'../src/routes/api/agents/[clientId]/webcam/sessions/[sessionId]/+server'
 );
 const { webcamControlManager } = await import('../src/lib/server/rat/webcam.js');
 

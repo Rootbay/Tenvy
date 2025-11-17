@@ -88,10 +88,10 @@ let manifestDir: string;
 const openRepository = () => {
 	const sqlite = new Database(dbPath);
 	sqlite.exec(PLUGIN_TABLE_DDL);
-        const drizzleDb = drizzle(sqlite, { schema: { plugin: pluginTable } });
-        const runtimeStore = createPluginRuntimeStore(
-                drizzleDb as unknown as Parameters<typeof createPluginRuntimeStore>[0]
-        );
+	const drizzleDb = drizzle(sqlite, { schema: { plugin: pluginTable } });
+	const runtimeStore = createPluginRuntimeStore(
+		drizzleDb as unknown as Parameters<typeof createPluginRuntimeStore>[0]
+	);
 	const repository = createPluginRepository({ runtimeStore, directory: manifestDir });
 	return { repository, runtimeStore, sqlite };
 };

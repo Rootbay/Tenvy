@@ -315,16 +315,16 @@
 				<div class="space-y-2">
 					{#each checklistDefinitions as item (item.id)}
 						{@const checklistId = `open-url-checklist-${item.id}`}
-                                                <label
-                                                        class="flex items-start gap-3 rounded-md border border-transparent px-2 py-2 transition hover:border-border/60"
-                                                >
-                                                        <Checkbox
-                                                                aria-describedby={`${checklistId}-description`}
-                                                                aria-label={resolveChecklistLabel(item)}
-                                                                checked={Boolean(checklistState[item.id])}
-                                                                disabled={dispatching}
-                                                                onCheckedChange={(value) => setChecklistChecked(item.id, value === true)}
-                                                        />
+						<label
+							class="flex items-start gap-3 rounded-md border border-transparent px-2 py-2 transition hover:border-border/60"
+						>
+							<Checkbox
+								aria-describedby={`${checklistId}-description`}
+								aria-label={resolveChecklistLabel(item)}
+								checked={Boolean(checklistState[item.id])}
+								disabled={dispatching}
+								onCheckedChange={(value) => setChecklistChecked(item.id, value === true)}
+							/>
 							<div class="space-y-1 text-sm leading-relaxed">
 								<span class="font-medium text-foreground">{resolveChecklistLabel(item)}</span>
 								{#if resolveChecklistDescription(item)}
