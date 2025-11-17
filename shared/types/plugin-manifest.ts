@@ -460,14 +460,19 @@ export function validatePluginManifest(manifest: PluginManifest): string[] {
   });
 
   ensureArray(manifest.requirements?.platforms).forEach((platform, index) => {
-    if (!pluginPlatforms.includes(platform as PluginPlatform)) {
+    const normalized = platform?.trim().toLowerCase() ?? '';
+    if (!normalized || !pluginPlatforms.includes(normalized as PluginPlatform)) {
       problems.push(`unsupported platform ${platform ?? index}`);
     }
   });
 
   ensureArray(manifest.requirements?.architectures).forEach(
     (architecture, index) => {
-      if (!pluginArchitectures.includes(architecture as PluginArchitecture)) {
+      const normalized = architecture?.trim().toLowerCase() ?? '';
+      if (
+        !normalized ||
+        !pluginArchitectures.includes(normalized as PluginArchitecture)
+      ) {
         problems.push(`unsupported architecture ${architecture ?? index}`);
       }
     },

