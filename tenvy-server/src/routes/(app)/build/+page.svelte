@@ -42,7 +42,7 @@
 		withPresetSpoofExtension
 	} from './lib/utils.js';
 	import { prepareBuildRequest } from './lib/build-request.js';
-	import { agentModules } from '../../../../../shared/modules/index.js';
+	import { agentModules, agentModuleIndex } from '../../../../../shared/modules/index.js';
 
 	type BuildStatus = 'idle' | 'running' | 'success' | 'error';
 
@@ -100,6 +100,21 @@
 	let audioStreamingTouched = $state(false);
 	const moduleCatalog = agentModules;
 	let selectedModules = $state(moduleCatalog.map((module) => module.id));
+	const selectedModuleSummary = () => {
+		const selectedNames = selectedModules
+			.map((moduleId) => agentModuleIndex.get(moduleId)?.title ?? moduleId)
+			.filter(Boolean);
+
+		if (!selectedNames.length) {
+			return 'No modules selected yet.';
+		}
+
+		const preview = selectedNames.slice(0, 3);
+		const remainder = selectedNames.length - preview.length;
+
+		return remainder > 0 ? `${preview.join(', ')} +${remainder} more` : preview.join(', ');
+	};
+	const activeTabMeta = () => TAB_METADATA[activeTab];
 	type BuildTab = 'connection' | 'persistence' | 'execution' | 'presentation';
 	const DEFAULT_TAB: BuildTab = 'connection';
 	let activeTab = $state<BuildTab>(DEFAULT_TAB);
@@ -122,6 +137,61 @@
 			return { default: module.default };
 		}
 	};
+
+	type TabSummary = {
+		title: string;
+		description: string;
+	};
+
+	const TAB_METADATA: Record<BuildTab, TabSummary> = {
+		connection: {
+			title: 'Connection blueprint',
+			description:
+				'Define how the agent reaches your controller, from connection endpoints to protocol and module selection.'
+		},
+		persistence: {
+			title: 'Persistence & delivery',
+			description:
+				'Configure installation paths, startup hooks, and runtime hardening to keep the agent alive and stealthy.'
+		},
+		execution: {
+			title: 'Execution guardrails',
+			description:
+				'Control execution timing, allowed users/locales, and internet requirements so the agent behaves predictably.'
+		},
+		presentation: {
+			title: 'Presentation polish',
+			description:
+				'Tweak the binary’s icon, metadata, and file appearance so it blends with legitimate software on the target.'
+		}
+	};
+
+	const BUILD_STATUS_BADGE: Record<BuildStatus, { label: string; classes: string }> = {
+		idle: {
+			label: 'Awaiting build',
+			classes: 'border-border/70 bg-muted/20 text-muted-foreground'
+		},
+		running: {
+			label: 'Building…',
+			classes: 'border-amber-400/60 bg-amber-500/10 text-amber-600'
+		},
+		success: {
+			label: 'Ready',
+			classes: 'border-emerald-400/60 bg-emerald-500/10 text-emerald-600'
+		},
+		error: {
+			label: 'Failed',
+			classes: 'border-rose-400/60 bg-rose-500/10 text-rose-600'
+		}
+	};
+
+	const BUILD_STATUS_HINT: Record<BuildStatus, string> = {
+		idle: 'The builder is idle. Configure the tabs above and run a build when you’re ready.',
+		running: 'Compilation is running. Notifications will surface progress and results.',
+		success: 'Artifact generated. Use the download link below or share the output path.',
+		error: 'Last build failed. Review errors or adjust settings before retrying.'
+	};
+	const buildStatusBadge = () => BUILD_STATUS_BADGE[buildStatus];
 
 	let tabComponents = $state<Partial<Record<BuildTab, TabComponent>>>({
 		connection: ConnectionTab
@@ -317,7 +387,11 @@
 	}
 
 	$effect(() => {
-		void loadTabComponent(activeTab);
+		const tab = activeTab;
+		if (tabComponents[tab] || tabLoading[tab]) {
+			return;
+		}
+		void loadTabComponent(tab);
 	});
 
 	const markAudioStreamingTouched = () => {
@@ -702,7 +776,7 @@
 	});
 </script>
 
-<div class="mx-auto w-full space-y-6 px-4 pb-10">
+<div class="mx-auto w-full space-y-6 pb-10">
 	<Card>
 		<CardHeader class="space-y-4">
 			<div class="flex flex-wrap items-center justify-between gap-3">
@@ -732,16 +806,31 @@
 			<div class="grid gap-8 xl:grid-cols-[minmax(0,2.35fr)_minmax(0,1fr)]">
 				<div class="space-y-8">
 					<Tabs bind:value={activeTab} class="space-y-6">
-						<TabsList
-							class="flex w-full flex-wrap gap-2 rounded-lg border border-border/70 bg-muted/40 p-1"
-						>
-							<TabsTrigger value="connection" class="flex-1 sm:flex-none">Connection</TabsTrigger>
-							<TabsTrigger value="persistence" class="flex-1 sm:flex-none">Persistence</TabsTrigger>
-							<TabsTrigger value="execution" class="flex-1 sm:flex-none">Execution</TabsTrigger>
-							<TabsTrigger value="presentation" class="flex-1 sm:flex-none"
-								>Presentation</TabsTrigger
+						<div class="space-y-4">
+							<TabsList
+								class="flex w-full flex-wrap gap-2 rounded-lg border border-border/70 bg-muted/40 p-1"
 							>
-						</TabsList>
+								<TabsTrigger value="connection" class="flex-1 sm:flex-none">Connection</TabsTrigger>
+								<TabsTrigger value="persistence" class="flex-1 sm:flex-none">Persistence</TabsTrigger>
+								<TabsTrigger value="execution" class="flex-1 sm:flex-none">Execution</TabsTrigger>
+								<TabsTrigger value="presentation" class="flex-1 sm:flex-none"
+									>Presentation</TabsTrigger
+								>
+							</TabsList>
+							<div class="rounded-lg border border-border/90 bg-background/80 p-4 text-sm text-muted-foreground">
+								<div class="flex items-center justify-between gap-2">
+									<p class="text-xs font-semibold uppercase tracking-wide text-foreground/70">
+										{activeTabMeta().title}
+									</p>
+									<span class="text-[0.65rem] text-muted-foreground">
+										{tabLoading[activeTab] ? 'Loading controls…' : 'Ready to configure'}
+									</span>
+								</div>
+								<p class="mt-1 text-[0.85rem] leading-relaxed text-muted-foreground">
+									{activeTabMeta().description}
+								</p>
+							</div>
+						</div>
 
 						<TabsContent value="connection" class="space-y-6">
 							{#if tabComponents.connection}
@@ -853,14 +942,45 @@
 					</Tabs>
 				</div>
 				<aside class="space-y-4 xl:sticky xl:top-24">
-					<div class="space-y-4 rounded-lg border border-border/70 bg-background/60 p-6">
-						<div class="space-y-2">
-							<h3 class="text-sm font-semibold">Ready to build?</h3>
-							<p class="text-xs text-muted-foreground">
-								Provide a host and port to embed defaults inside the generated binary. Additional
-								preferences are stored for the agent to consume on first launch.
-							</p>
+					<div class="space-y-6 rounded-lg border border-border/70 bg-background/60 p-6">
+						<div class="flex items-start justify-between gap-3">
+							<div class="space-y-1">
+								<h3 class="text-sm font-semibold">Ready to build?</h3>
+								<p class="text-xs text-muted-foreground">{BUILD_STATUS_HINT[buildStatus]}</p>
+							</div>
+							<Badge
+								class={`rounded-full border px-3 py-1 text-[0.65rem] font-medium ${buildStatusBadge().classes}`}
+							>
+								{buildStatusBadge().label}
+							</Badge>
 						</div>
+						<div class="space-y-2 text-sm">
+							<p class="flex items-center justify-between gap-2">
+								<span class="text-[0.65rem] uppercase tracking-wide text-muted-foreground">Output</span>
+								<code
+									class="rounded bg-muted/30 px-2 py-0.5 text-[0.75rem] font-semibold text-foreground"
+								>
+									{effectiveOutputFilename}
+								</code>
+							</p>
+							<p class="text-xs text-muted-foreground">
+								Target: {targetOS} · {targetArch}
+							</p>
+							<p class="text-xs text-muted-foreground">Modules: {selectedModuleSummary()}</p>
+						</div>
+						{#if downloadUrl}
+							<a
+								href={downloadUrl}
+								target="_blank"
+								rel="noreferrer"
+								class="flex items-center justify-between rounded border border-border/70 bg-muted/40 px-3 py-2 text-sm font-medium text-foreground transition hover:border-foreground/70"
+							>
+								<span>Download artifact</span>
+								{#if outputPath}
+									<span class="text-[0.65rem] text-muted-foreground">Saved to {outputPath}</span>
+								{/if}
+							</a>
+						{/if}
 						<Button type="button" class="w-full" disabled={isBuilding} onclick={buildAgent}>
 							{isBuilding ? 'Building…' : 'Build Agent'}
 						</Button>

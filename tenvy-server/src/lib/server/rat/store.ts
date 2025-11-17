@@ -71,6 +71,9 @@ const PENDING_COMMAND_DROP_WARN_INTERVAL_MS = 30_000;
 const PERSIST_DEBOUNCE_MS = 2_000;
 const SESSION_TOKEN_TTL_MS = 60_000;
 const COMMAND_OUTPUT_RETENTION_MS = 5 * 60 * 1000;
+const INACTIVITY_CHECK_INTERVAL_MS = 15_000;
+const INACTIVITY_TIMEOUT_MULTIPLIER = 2;
+const MIN_INACTIVITY_TIMEOUT_MS = 15_000;
 
 const SOCKET_OPEN_STATE = (() => {
 	const globalSocket = (globalThis as { WebSocket?: { OPEN?: number } }).WebSocket;
@@ -803,10 +806,55 @@ export class AgentRegistry {
 	private broadcastSequence = 0;
 	private readonly pluginTelemetry: PluginTelemetryStore;
 	private readonly subscriptionStore = new RegistrySubscriptionStore();
+	private inactivityCheckTimer: ReturnType<typeof setInterval> | null = null;
 
 	constructor() {
 		this.loadFromDatabase();
 		this.pluginTelemetry = new PluginTelemetryStore();
+		this.startInactivityMonitor();
+	}
+
+	private startInactivityMonitor(): void {
+		if (this.inactivityCheckTimer) {
+			return;
+		}
+
+		const timer = setInterval(() => {
+			try {
+				this.pruneInactiveAgents();
+			} catch (error) {
+				console.error('Failed to prune inactive agents', error);
+			}
+		}, INACTIVITY_CHECK_INTERVAL_MS);
+
+		timer.unref?.();
+		this.inactivityCheckTimer = timer;
+	}
+
+	private pruneInactiveAgents(): void {
+		const now = Date.now();
+
+		for (const record of this.agents.values()) {
+			if (record.status !== 'online' || record.session) {
+				continue;
+			}
+
+			const timeout = this.getAgentInactivityTimeout(record);
+			if (now - record.lastSeen.getTime() < timeout) {
+				continue;
+			}
+
+			record.status = 'offline';
+			this.schedulePersist();
+			this.notifyAgentUpdate(record);
+		}
+	}
+
+	private getAgentInactivityTimeout(record: AgentRecord): number {
+		const pollInterval = Math.max(record.config.pollIntervalMs, 1);
+		const maxBackoff = Math.max(record.config.maxBackoffMs ?? defaultAgentConfig.maxBackoffMs, pollInterval);
+		const base = Math.max(maxBackoff, MIN_INACTIVITY_TIMEOUT_MS);
+		return base * INACTIVITY_TIMEOUT_MULTIPLIER;
 	}
 
 	subscribe(listener: AgentRegistrySubscriber): () => void {

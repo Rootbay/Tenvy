@@ -123,6 +123,17 @@
 
 	const perPageOptions = [10, 25, 50];
 
+	const clientTableColumnWidths = [
+		'16rem',
+		'6rem',
+		'6rem',
+		'12rem',
+		'5rem',
+		'6rem',
+		'6rem',
+		'7rem'
+	];
+
 	type GeoLookupPayload = {
 		countryName: string | null;
 		countryCode: string | null;
@@ -894,13 +905,18 @@
 
 	<div class="space-y-4">
 		<TooltipProvider delayDuration={100}>
-			{#if isDesktop}
-				<ScrollArea class="rounded-lg border border-border/60">
-					<div class="min-w-0 md:min-w-[clamp(48rem,80vw,64rem)] xl:min-w-280">
-						<Table>
-							<TableHeader>
-								<TableRow>
-									<TableHead class="w-[16rem]">
+					{#if isDesktop}
+						<ScrollArea class="rounded-lg border border-border/60">
+							<div class="min-w-0 md:min-w-[clamp(48rem,80vw,64rem)] xl:min-w-280">
+								<Table>
+									<colgroup>
+										{#each clientTableColumnWidths as width}
+											<col style={`width:${width};`} />
+										{/each}
+									</colgroup>
+									<TableHeader>
+										<TableRow>
+											<TableHead class="w-[16rem]">
 										<Tooltip>
 											<TooltipTrigger>
 												{#snippet child({ props })}

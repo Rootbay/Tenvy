@@ -65,58 +65,53 @@
 
 	type NavHref = '/dashboard' | '/clients' | '/build' | '/activity' | '/plugins';
 
-	type NavItem = {
-		title: string;
-		icon: IconComponent;
-		badge?: string;
-		badgeClass?: string;
-		slug: NavKey;
-		href: NavHref;
-	};
+type NavItem = {
+	title: string;
+	icon: IconComponent;
+	badgeClass?: string;
+	slug: NavKey;
+	href: NavHref;
+};
 
 	type SidebarMenuButtonChildContext = Parameters<
 		NonNullable<ComponentProps<typeof SidebarMenuButton>['child']>
 	>[0];
 
 	const navItems: NavItem[] = [
-		{
-			title: 'Dashboard',
-			icon: LayoutDashboard,
-			badge: 'Live',
-			badgeClass: 'bg-emerald-500/20 text-emerald-500',
-			slug: 'dashboard',
-			href: '/dashboard'
-		},
-		{
-			title: 'Clients',
-			icon: Users,
-			badge: '18',
-			badgeClass: 'bg-blue-500/15 text-blue-500',
-			slug: 'clients',
-			href: '/clients'
-		},
-		{
-			title: 'Build',
-			icon: Hammer,
-			slug: 'build',
-			href: '/build'
-		},
-		{
-			title: 'Activity',
-			icon: Activity,
-			badge: '12',
-			badgeClass: 'bg-sidebar-primary/10 text-sidebar-primary',
-			slug: 'activity',
-			href: '/activity'
-		},
-		{
-			title: 'Plugins',
-			icon: PlugZap,
-			badge: '3',
-			badgeClass: 'bg-purple-500/15 text-purple-500',
-			slug: 'plugins',
-			href: '/plugins'
-		}
+	{
+		title: 'Dashboard',
+		icon: LayoutDashboard,
+		badgeClass: 'bg-emerald-500/20 text-emerald-500',
+		slug: 'dashboard',
+		href: '/dashboard'
+	},
+	{
+		title: 'Clients',
+		icon: Users,
+		badgeClass: 'bg-blue-500/15 text-blue-500',
+		slug: 'clients',
+		href: '/clients'
+	},
+	{
+		title: 'Build',
+		icon: Hammer,
+		slug: 'build',
+		href: '/build'
+	},
+	{
+		title: 'Activity',
+		icon: Activity,
+		badgeClass: 'bg-sidebar-primary/10 text-sidebar-primary',
+		slug: 'activity',
+		href: '/activity'
+	},
+	{
+		title: 'Plugins',
+		icon: PlugZap,
+		badgeClass: 'bg-purple-500/15 text-purple-500',
+		slug: 'plugins',
+		href: '/plugins'
+	}
 	];
 
 	const navSummaries: Record<NavKey, { title: string; description: string }> = {
@@ -369,9 +364,12 @@
 		}
 	});
 
+	type NavigationBadgeMap = Partial<Record<NavKey, string>>;
+
 	type LayoutData = {
 		activeNav: NavKey;
 		user: AuthenticatedUser;
+		navBadges?: NavigationBadgeMap;
 	};
 
 	let { children, data: layoutData } = $props<{ data: LayoutData }>();
@@ -419,6 +417,11 @@
 		return 'outline';
 	});
 
+	const navBadgeMap = $derived(
+		() => (layoutData as LayoutData)?.navBadges ?? ({} as NavigationBadgeMap)
+	);
+	const getNavBadge = (slug: NavKey) => navBadgeMap()[slug];
+
 	const voucherStatusLabel = $derived(() => {
 		const active = (layoutData as LayoutData)?.user?.voucherActive;
 		if (active === true) {
@@ -436,32 +439,19 @@
 	}
 </script>
 
-{#snippet SettingsLink({ props }: SidebarMenuButtonChildContext)}
-	{@const { class: existingClass } = props as { class?: string }}
-	{@const className = cn('cursor-pointer', existingClass)}
-	<button
-		{...props}
-		type="button"
-		role="link"
-		class={className}
-		onclick={navigateToSettings}
-		aria-current={(layoutData as LayoutData).activeNav === 'settings' ? 'page' : undefined}
-	>
-		<Settings />
-		<div class="flex min-w-0 flex-col gap-0.5 text-left">
-			<span class="truncate text-sm font-medium">Settings</span>
-		</div>
-	</button>
-{/snippet}
-
 <SidebarProvider>
 	<Sidebar collapsible="icon">
 		<SidebarHeader class="border-b border-sidebar-border px-2 pt-3 pb-4">
-			<div class="flex items-center gap-3 rounded-lg px-2 py-1.5">
-				<div class="flex h-14 w-14 items-center justify-center">
-					<img src="/LAHS.png" alt="Tenvy Logo" />
+			<div class="flex items-center gap-3 rounded-lg px-2 py-1.5 group-data-[state=collapsed]:justify-center">
+				<div class="flex h-14 w-14 items-center justify-center group-data-[state=collapsed]:h-9 group-data-[state=collapsed]:w-9">
+					<img
+						src="/LAHS.png"
+						alt="Tenvy Logo"
+						title="Tenvy Control · Made By Rootbay"
+						class="max-h-full max-w-full rounded-full"
+					/>
 				</div>
-				<div class="grid">
+				<div class="grid gap-px group-data-[state=collapsed]:hidden">
 					<span class="text-sm leading-tight font-semibold">Tenvy Control</span>
 					<span class="text-xs leading-tight text-sidebar-foreground/70">Made By Rootbay</span>
 				</div>
@@ -492,38 +482,47 @@
 							tooltipContent={item.title}
 							child={NavLink}
 						/>
-						{#if item.badge}
+						{@const badgeText = getNavBadge(item.slug)}
+						{#if badgeText}
 							<SidebarMenuBadge
 								class={cn('mr-2 bg-sidebar-accent text-sidebar-accent-foreground', item.badgeClass)}
 							>
-								{item.badge}
+								{badgeText}
 							</SidebarMenuBadge>
 						{/if}
 					</SidebarMenuItem>
 				{/each}
-				<SidebarMenuItem class="hidden cursor-pointer group-data-[state=collapsed]:block">
-					<SidebarMenuButton
-						isActive={(layoutData as LayoutData).activeNav === 'settings'}
-						tooltipContent="Settings"
-						child={SettingsLink}
-					/>
-				</SidebarMenuItem>
 			</SidebarMenu>
 		</SidebarContent>
-		<SidebarFooter class="mt-auto border-t border-sidebar-border px-2 py-4">
+		<SidebarFooter class="mt-auto border-t border-sidebar-border px-2 py-4 group-data-[state=collapsed]:border-t-0">
 			<div
 				class={cn(
 					'grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-2',
 					'group-data-[state=collapsed]:grid-cols-1 group-data-[state=collapsed]:items-stretch group-data-[state=collapsed]:gap-3'
 				)}
 			>
+				<Button
+					type="button"
+					variant="ghost"
+					size="icon"
+					class="hidden shrink-0 text-sidebar-foreground/70 hover:text-sidebar-accent-foreground group-data-[state=collapsed]:inline-flex"
+					onclick={navigateToSettings}
+				>
+					<Settings class="h-4 w-4" />
+					<span class="sr-only">Open settings</span>
+				</Button>
+				<Separator
+					orientation="horizontal"
+					class="hidden h-px w-full border-sidebar-border/60 group-data-[state=collapsed]:block"
+				/>
 				<div class="min-w-0 group-data-[state=collapsed]:w-full">
 					<Popover>
 						<PopoverTrigger
 							type="button"
 							class={cn(
 								'flex w-full min-w-0 items-center gap-3 rounded-md bg-sidebar-accent/60 px-3 py-2 text-left transition hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 focus-visible:ring-sidebar-ring focus-visible:outline-none',
-								'group-data-[state=collapsed]:justify-center group-data-[state=collapsed]:gap-2 group-data-[state=collapsed]:px-2 group-data-[state=collapsed]:py-3 group-data-[state=collapsed]:text-center'
+								'group-data-[state=collapsed]:justify-center group-data-[state=collapsed]:gap-2 group-data-[state=collapsed]:px-2 group-data-[state=collapsed]:py-3 group-data-[state=collapsed]:text-center',
+								'group-data-[state=collapsed]:bg-transparent group-data-[state=collapsed]:hover:bg-transparent group-data-[state=collapsed]:focus-visible:ring-0 group-data-[state=collapsed]:shadow-none'
 							)}
 						>
 							<Avatar class="h-9 w-9">
@@ -580,10 +579,10 @@
 								</Button>
 								<Button onclick={toggleMode} variant="ghost" size="sm" class="justify-start gap-2">
 									<Sun
-										class="h-[1.2rem] w-[1.2rem] scale-100 rotate-0 !transition-all dark:scale-0 dark:-rotate-90"
+										class="h-[1.2rem] w-[1.2rem] scale-100 rotate-0 transition-all! dark:scale-0 dark:-rotate-90"
 									/>
 									<Moon
-										class="absolute h-[1.2rem] w-[1.2rem] scale-0 rotate-90 !transition-all dark:scale-100 dark:rotate-0"
+										class="absolute h-[1.2rem] w-[1.2rem] scale-0 rotate-90 transition-all! dark:scale-100 dark:rotate-0"
 									/>
 									Toggle theme
 								</Button>
