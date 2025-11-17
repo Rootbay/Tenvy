@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { join, resolve, sep } from 'node:path';
 import { error, json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
@@ -17,10 +17,12 @@ import {
 	PluginRegistryError
 } from '$lib/server/plugins/registry-store.js';
 import {
-        validatePluginManifest,
-        verifyPluginSignature,
-        type PluginManifest
+	validatePluginManifest,
+	verifyPluginSignature,
+	type PluginManifest,
+	type PluginSignatureVerificationSummary
 } from '../../../../../shared/types/plugin-manifest';
+import { summarizeVerificationSuccess } from '$lib/server/plugins/signature-summary.js';
 
 const MANIFEST_FILE_EXTENSION = '.json';
 const PLUGIN_ID_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9._-]*$/;
@@ -144,13 +146,13 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 		}
 
 		const validationErrors = validatePluginManifest(manifest);
-                if (validationErrors.length > 0) {
-                        console.warn('Rejected plugin upload: manifest failed validation', {
-                                errors: validationErrors
-                        });
-                        const details = validationErrors.join(', ');
-                        throw error(400, details ? `Invalid plugin manifest: ${details}` : 'Invalid plugin manifest');
-                }
+		if (validationErrors.length > 0) {
+			console.warn('Rejected plugin upload: manifest failed validation', {
+				errors: validationErrors
+			});
+			const details = validationErrors.join(', ');
+			throw error(400, details ? `Invalid plugin manifest: ${details}` : 'Invalid plugin manifest');
+		}
 
 		const pluginId = ensurePluginId(manifest);
 		const manifestDirectory = resolveManifestDirectory();
@@ -198,8 +200,15 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 			manifest.package.sizeBytes = artifactBuffer.byteLength;
 		}
 
+		let signatureSummary: PluginSignatureVerificationSummary;
 		try {
-			await verifyPluginSignature(manifest, getVerificationOptions());
+			const result = await verifyPluginSignature(manifest, getVerificationOptions());
+			signatureSummary = summarizeVerificationSuccess(manifest, result);
+			if (!signatureSummary.trusted) {
+				console.warn(
+					`Plugin manifest ${manifest.id} marked as ${signatureSummary.status} during verification`
+				);
+			}
 		} catch (err) {
 			console.warn('Rejected plugin upload: signature verification failed', err);
 			throw error(400, {
@@ -207,15 +216,36 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 			});
 		}
 
-		await writeArtifact(manifestDirectory, artifactName, artifactBuffer);
-		await writeManifest(manifestDirectory, pluginId, manifest);
+		const artifactPath = join(manifestDirectory, artifactName);
+		const manifestPath = join(manifestDirectory, `${pluginId}${MANIFEST_FILE_EXTENSION}`);
+		const writtenPaths: string[] = [];
+		const recordWritten = (path: string) => {
+			if (!writtenPaths.includes(path)) {
+				writtenPaths.push(path);
+			}
+		};
+		const cleanupWrittenFiles = async () => {
+			await Promise.allSettled(
+				writtenPaths.map((path) => rm(path, { force: true }))
+			);
+		};
 
 		try {
+			await writeArtifact(manifestDirectory, artifactName, artifactBuffer);
+			recordWritten(artifactPath);
+			await writeManifest(manifestDirectory, pluginId, manifest);
+			recordWritten(manifestPath);
+
 			await registryStore.publish({
 				manifest,
-				actorId: locals.user?.id ?? null
+				actorId: locals.user?.id ?? null,
+				skipValidation: true,
+				preverifiedSummary: signatureSummary
 			});
 		} catch (err) {
+			if (writtenPaths.length > 0) {
+				await cleanupWrittenFiles();
+			}
 			if (err instanceof PluginRegistryError) {
 				throw error(400, { message: err.message });
 			}

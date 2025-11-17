@@ -5,19 +5,21 @@ import { pluginRegistryEntry as registryTable } from '$lib/server/db/schema.js';
 import {
 	validatePluginManifest,
 	verifyPluginSignature,
-	resolveManifestSignature,
-	isPluginSignatureType,
-        type PluginManifest,
-        type PluginSignatureVerificationError,
-        type PluginSignatureVerificationResult,
-        type PluginSignatureVerificationSummary,
-        type PluginApprovalStatus
+	type PluginManifest,
+	type PluginSignatureVerificationError,
+	type PluginSignatureVerificationResult,
+	type PluginSignatureVerificationSummary,
+	type PluginApprovalStatus
 } from '../../../../../shared/types/plugin-manifest';
 import { getVerificationOptions } from '$lib/server/plugins/signature-policy.js';
 import {
 	createPluginRuntimeStore,
 	type PluginRuntimeStore
 } from '$lib/server/plugins/runtime-store.js';
+import {
+	summarizeVerificationFailure,
+	summarizeVerificationSuccess
+} from '$lib/server/plugins/signature-summary.js';
 
 export type PluginRegistryStatus = Exclude<PluginApprovalStatus, 'pending'> | 'pending';
 
@@ -53,6 +55,8 @@ export interface PublishPluginInput {
 	actorId?: string | null;
 	metadata?: PluginRegistryMetadata | null;
 	approvalNote?: string | null;
+	skipValidation?: boolean;
+	preverifiedSummary?: PluginSignatureVerificationSummary | null;
 }
 
 export interface ApprovePluginInput {
@@ -99,66 +103,6 @@ const parseMetadata = (payload: string | null | undefined): PluginRegistryMetada
 		console.warn('Failed to parse plugin registry metadata', error);
 		return null;
 	}
-};
-
-const baseVerificationSummary = (manifest: PluginManifest): PluginSignatureVerificationSummary => {
-	const metadata = resolveManifestSignature(manifest);
-	const chain = metadata.certificateChain?.length ? [...metadata.certificateChain] : undefined;
-	const resolvedType = isPluginSignatureType(metadata.type) ? metadata.type : 'sha256';
-	const normalizedHash =
-		metadata.hash?.trim().toLowerCase() ?? manifest.package?.hash?.trim().toLowerCase();
-
-	return {
-		trusted: false,
-		signatureType: resolvedType,
-		hash: normalizedHash,
-		signer: metadata.signer ?? null,
-		signedAt: metadata.timestamp ? new Date(metadata.timestamp) : null,
-		publicKey: null,
-		certificateChain: chain,
-		checkedAt: new Date(),
-		status: !metadata.type || metadata.type === 'none' ? 'unsigned' : 'untrusted',
-		error: undefined,
-		errorCode: undefined
-	};
-};
-
-const summarizeVerificationSuccess = (
-	manifest: PluginManifest,
-	result: PluginSignatureVerificationResult
-): PluginSignatureVerificationSummary => {
-	const summary = baseVerificationSummary(manifest);
-	summary.checkedAt = new Date();
-	summary.trusted = result.trusted;
-	summary.signatureType = result.signatureType;
-	summary.hash = result.hash ?? summary.hash;
-	summary.signer = result.signer ?? summary.signer ?? null;
-	summary.publicKey = result.publicKey ?? summary.publicKey ?? null;
-	summary.certificateChain = result.certificateChain?.length
-		? [...result.certificateChain]
-		: summary.certificateChain;
-	summary.signedAt = result.signedAt ?? summary.signedAt;
-
-        summary.status = result.trusted ? 'trusted' : 'untrusted';
-
-	return summary;
-};
-
-const summarizeVerificationFailure = (
-	manifest: PluginManifest,
-	error: PluginSignatureVerificationError | Error
-): PluginSignatureVerificationSummary => {
-	const summary = baseVerificationSummary(manifest);
-	summary.checkedAt = new Date();
-	summary.trusted = false;
-	summary.error = error.message;
-	if ('code' in error && typeof error.code === 'string') {
-		summary.errorCode = error.code;
-		summary.status = error.code === 'UNSIGNED' ? 'unsigned' : 'invalid';
-	} else {
-		summary.status = 'invalid';
-	}
-	return summary;
 };
 
 const computeManifestDigest = (manifestJson: string): string =>
@@ -225,8 +169,12 @@ export const createPluginRegistryStore = (
 	runtimeStore: PluginRuntimeStore = createPluginRuntimeStore()
 ): PluginRegistryStore => {
 	const verifyManifest = async (
-		manifest: PluginManifest
+		manifest: PluginManifest,
+		preverifiedSummary?: PluginSignatureVerificationSummary | null
 	): Promise<PluginSignatureVerificationSummary> => {
+		if (preverifiedSummary) {
+			return preverifiedSummary;
+		}
 		try {
 			const result = await verifyPluginSignature(manifest, verificationOptions());
 			return summarizeVerificationSuccess(manifest, result);
@@ -238,11 +186,13 @@ export const createPluginRegistryStore = (
 
 	const publish = async (input: PublishPluginInput): Promise<PluginRegistryRecord> => {
 		const manifest = input.manifest;
-		const validationErrors = validatePluginManifest(manifest);
-		if (validationErrors.length > 0) {
-			throw new PluginRegistryError(
-				`Plugin manifest failed validation: ${validationErrors.join(', ')}`
-			);
+		if (!input.skipValidation) {
+			const validationErrors = validatePluginManifest(manifest);
+			if (validationErrors.length > 0) {
+				throw new PluginRegistryError(
+					`Plugin manifest failed validation: ${validationErrors.join(', ')}`
+				);
+			}
 		}
 
 		const pluginId = manifest.id.trim();
@@ -295,7 +245,7 @@ export const createPluginRegistryStore = (
 			})
 			.run();
 
-		const verification = await verifyManifest(manifest);
+		const verification = await verifyManifest(manifest, input.preverifiedSummary ?? null);
 		const loadedRecord = {
 			source: `registry:${id}`,
 			manifest,
