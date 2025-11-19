@@ -1023,15 +1023,19 @@ export class AgentRegistry {
 			if (!streams) {
 				return;
 			}
-			const target = streams.get(commandId);
-			if (!target || target.listeners.size > 0) {
-				return;
-			}
-			streams.delete(commandId);
-			if (streams.size === 0) {
-				this.commandOutputStreams.delete(agentId);
-			}
-		}, COMMAND_OUTPUT_RETENTION_MS);
+                        const target = streams.get(commandId);
+                        if (!target) {
+                                return;
+                        }
+                        if (target.listeners.size > 0) {
+                                this.scheduleCommandOutputCleanup(agentId, commandId, target);
+                                return;
+                        }
+                        streams.delete(commandId);
+                        if (streams.size === 0) {
+                                this.commandOutputStreams.delete(agentId);
+                        }
+                }, COMMAND_OUTPUT_RETENTION_MS);
 	}
 
 	private notifyCommand(
@@ -1955,10 +1959,8 @@ export class AgentRegistry {
 			throw new RegistryError('Failed to create command output stream', 500);
 		}
 
-		this.clearCommandOutputCleanup(stream);
-
-		const normalized = normalizeCommandOutputEvent(commandId, event);
-		stream.events.push(normalized);
+                const normalized = normalizeCommandOutputEvent(commandId, event);
+                stream.events.push(normalized);
 
 		for (const listener of stream.listeners) {
 			try {
@@ -1968,10 +1970,11 @@ export class AgentRegistry {
 			}
 		}
 
-		if (normalized.type === 'end') {
-			stream.completed = true;
-			this.scheduleCommandOutputCleanup(id, commandId, stream);
-		}
+                if (normalized.type === 'end') {
+                        stream.completed = true;
+                }
+
+                this.scheduleCommandOutputCleanup(id, commandId, stream);
 
 		this.schedulePersist();
 	}
@@ -1991,8 +1994,9 @@ export class AgentRegistry {
 			throw new RegistryError('Failed to create command output stream', 500);
 		}
 
-		this.clearCommandOutputCleanup(stream);
-		stream.listeners.add(listener);
+                this.clearCommandOutputCleanup(stream);
+                stream.listeners.add(listener);
+                this.scheduleCommandOutputCleanup(id, commandId, stream);
 
 		const unsubscribe = () => {
 			stream.listeners.delete(listener);
