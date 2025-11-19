@@ -2,8 +2,18 @@ import { drizzle } from 'drizzle-orm/better-sqlite3';
 import Database from 'better-sqlite3';
 import * as schema from './schema';
 import { env } from '$env/dynamic/private';
+import { ensureParentDirectory } from '../fs-utils';
 
 if (!env.DATABASE_URL) throw new Error('DATABASE_URL is not set');
+
+const normalizedDbPath = env.DATABASE_URL.startsWith('file:')
+        ? env.DATABASE_URL.slice('file:'.length)
+        : env.DATABASE_URL;
+
+if (!env.DATABASE_URL.startsWith('file::memory:') && env.DATABASE_URL !== ':memory:') {
+        const filePath = normalizedDbPath.split('?')[0];
+        await ensureParentDirectory(filePath);
+}
 
 const client = new Database(env.DATABASE_URL);
 
