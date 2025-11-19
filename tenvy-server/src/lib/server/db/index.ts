@@ -10,12 +10,14 @@ const normalizedDbPath = env.DATABASE_URL.startsWith('file:')
         ? env.DATABASE_URL.slice('file:'.length)
         : env.DATABASE_URL;
 
+const useFileUri = env.DATABASE_URL.startsWith('file:');
+
 if (!env.DATABASE_URL.startsWith('file::memory:') && env.DATABASE_URL !== ':memory:') {
         const filePath = normalizedDbPath.split('?')[0];
         await ensureParentDirectory(filePath);
 }
 
-const client = new Database(env.DATABASE_URL);
+const client = new Database(env.DATABASE_URL, { uri: useFileUri });
 
 client.pragma('foreign_keys = ON');
 
