@@ -2459,5 +2459,46 @@ export class AgentRegistry {
 }
 
 export const registry = new AgentRegistry();
+const shutdownHookKey = Symbol.for('tenvy.registry.shutdown');
+type GlobalWithRegistryShutdownFlag = typeof globalThis & { [shutdownHookKey]?: boolean };
+const globalWithRegistryShutdownFlag = globalThis as GlobalWithRegistryShutdownFlag;
+
+const shutdownSignals = ['SIGINT', 'SIGTERM'] as const;
+const shutdownSignalExitCodes: Record<(typeof shutdownSignals)[number], number> = {
+	SIGINT: 130,
+	SIGTERM: 143
+};
+
+let shutdownFlushPromise: Promise<void> | null = null;
+
+async function flushRegistryBeforeExit(reason: string): Promise<void> {
+	if (shutdownFlushPromise) {
+		return shutdownFlushPromise;
+	}
+
+	shutdownFlushPromise = registry.flush().catch((error) => {
+		console.error(`Failed to flush agent registry during ${reason}`, error);
+	});
+
+	return shutdownFlushPromise;
+}
+
+if (!globalWithRegistryShutdownFlag[shutdownHookKey]) {
+	for (const signal of shutdownSignals) {
+		process.once(signal, (received) => {
+			const exitCode = shutdownSignalExitCodes[received] ?? 0;
+			void flushRegistryBeforeExit(`signal ${received}`).finally(() => {
+				process.exit(exitCode);
+			});
+		});
+	}
+
+	process.once('beforeExit', () => {
+		void flushRegistryBeforeExit('beforeExit');
+	});
+
+	globalWithRegistryShutdownFlag[shutdownHookKey] = true;
+}
+
 export { RegistryError };
 export type { AgentRegistryEvent } from '../../../../../shared/types/registry-events';
